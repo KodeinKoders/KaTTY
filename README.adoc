@@ -1,0 +1,10 @@
+= KaTTY
+:toc: macro
+:toclevels: 2
+:idprefix:
+:idseparator: -
+:source-highlighter: highlight.js
+
+*A desktop application built with Compose for Desktop.*
+
+KaTTY is a JVM desktop application written in Kotlin with Compose Multiplatform.
