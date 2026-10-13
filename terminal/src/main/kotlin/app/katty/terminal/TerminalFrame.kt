@@ -81,8 +81,11 @@ public data class TerminalRowId(
  * keep what it prepared for a row (its text layout, for instance) in a cache keyed by the row itself,
  * or by its [id]. Equality is by identity, on purpose: comparing the cells of a whole screen would defeat
  * the point.
+ *
+ * A [TerminalSession] creates them. They can be created to draw a frame that does not come from a session,
+ * in a preview or a test.
  */
-public class TerminalRow internal constructor(
+public class TerminalRow(
     public val id: TerminalRowId,
     public val cells: List<TerminalCell>,
 ) {

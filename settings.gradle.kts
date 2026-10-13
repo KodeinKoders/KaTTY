@@ -30,4 +30,5 @@ include(
     ":app",
     ":ghostty-vt",
     ":terminal",
+    ":terminal-compose",
 )
