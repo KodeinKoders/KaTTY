@@ -4,10 +4,13 @@ import app.katty.ghostty.ffm.GhosttyString
 import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
 import app.katty.ghostty.ffm.GhosttyTerminalWritePtyFn
 import app.katty.ghostty.ffm.GhosttyVt
+import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.util.Objects
+
+private val logger = LoggerFactory.getLogger(GhosttyTerminal::class.java)
 
 /**
  * A virtual terminal: it consumes the bytes a program writes, and maintains the screen, the cursor,
@@ -37,7 +40,7 @@ public class GhosttyTerminal(
      * or the device attributes. They have to be written to the program's input.
      *
      * It is called on the thread that called [vtWrite], while it runs, so it must not call back into this
-     * terminal.
+     * terminal. An exception it throws is logged, since it cannot cross into the native code.
      */
     @Volatile
     public var onWritePty: ((ByteArray) -> Unit)? = null
@@ -66,7 +69,7 @@ public class GhosttyTerminal(
                     try {
                         onWritePty?.invoke(data.reinterpret(len).toArray(ValueLayout.JAVA_BYTE))
                     } catch (e: Throwable) {
-                        e.printStackTrace()
+                        logger.error("onWritePty failed", e)
                     }
                 },
                 callbacks,

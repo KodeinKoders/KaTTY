@@ -95,26 +95,27 @@ public class GhosttyRenderState : AutoCloseable {
         }
 
     public val colors: GhosttyRenderColors
-        get() {
-            requireOpen()
-            return Arena.ofConfined().use { local ->
-                val colors = GhosttyRenderStateColors.allocate(local)
-                GhosttyRenderStateColors.size(colors, GhosttyRenderStateColors.sizeof())
-                checkResult(
-                    GhosttyVt.ghostty_render_state_get(handle, GhosttyVt.GHOSTTY_RENDER_STATE_DATA_COLORS(), colors),
-                    "ghostty_render_state_get(COLORS)",
-                )
-                GhosttyRenderColors(
-                    background = readRgb(GhosttyRenderStateColors.background(colors)),
-                    foreground = readRgb(GhosttyRenderStateColors.foreground(colors)),
-                    cursor = if (GhosttyRenderStateColors.cursor_has_value(colors)) {
-                        readRgb(GhosttyRenderStateColors.cursor(colors))
-                    } else {
-                        null
-                    },
-                    palette = List(PALETTE_SIZE) { readRgb(GhosttyRenderStateColors.palette(colors, it.toLong())) },
-                )
-            }
+        get() = withColors { colors ->
+            GhosttyRenderColors(
+                background = readRgb(GhosttyRenderStateColors.background(colors)),
+                foreground = readRgb(GhosttyRenderStateColors.foreground(colors)),
+                cursor = if (GhosttyRenderStateColors.cursor_has_value(colors)) {
+                    readRgb(GhosttyRenderStateColors.cursor(colors))
+                } else {
+                    null
+                },
+            )
+        }
+
+    /**
+     * The 256 colors that a cell's palette index refers to.
+     *
+     * Cells already carry their resolved colors, so most renderers never need it: it is read when asked,
+     * not along with [colors].
+     */
+    public val palette: List<GhosttyRgb>
+        get() = withColors { colors ->
+            List(PALETTE_SIZE) { readRgb(GhosttyRenderStateColors.palette(colors, it.toLong())) }
         }
 
     public val cursor: GhosttyRenderCursor
@@ -309,6 +310,19 @@ public class GhosttyRenderState : AutoCloseable {
         requireOpen()
         checkResult(GhosttyVt.ghostty_render_state_get(handle, data, scratch), "ghostty_render_state_get")
         return scratch.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF
+    }
+
+    private fun <T> withColors(read: (MemorySegment) -> T): T {
+        requireOpen()
+        return Arena.ofConfined().use { local ->
+            val colors = GhosttyRenderStateColors.allocate(local)
+            GhosttyRenderStateColors.size(colors, GhosttyRenderStateColors.sizeof())
+            checkResult(
+                GhosttyVt.ghostty_render_state_get(handle, GhosttyVt.GHOSTTY_RENDER_STATE_DATA_COLORS(), colors),
+                "ghostty_render_state_get(COLORS)",
+            )
+            read(colors)
+        }
     }
 
     private fun requireOpen() {

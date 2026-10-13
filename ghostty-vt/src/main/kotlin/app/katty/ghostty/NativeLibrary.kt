@@ -1,7 +1,9 @@
 package app.katty.ghostty
 
+import org.slf4j.LoggerFactory
 import java.nio.file.Files
-import java.nio.file.Path
+
+private val logger = LoggerFactory.getLogger(NativeLibrary::class.java)
 
 /**
  * Loads the libghostty-vt dylib bundled in the jar, once.
@@ -43,6 +45,7 @@ internal object NativeLibrary {
         directory.toFile().deleteOnExit()
 
         System.load(file.toAbsolutePath().toString())
+        logger.debug("Loaded libghostty-vt for {}-{} from {}", os, arch, file)
     }
 
     private fun unsupported() = UnsupportedOperationException(

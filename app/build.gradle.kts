@@ -17,6 +17,9 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.swing)
 
+    // Prints the logs of the libraries that log with SLF4J.
+    runtimeOnly(libs.slf4j.simple)
+
     testImplementation(libs.kotlin.test.junit)
 }
 

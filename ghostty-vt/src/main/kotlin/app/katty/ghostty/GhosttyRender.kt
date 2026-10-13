@@ -38,8 +38,6 @@ public data class GhosttyRenderColors(
     public val foreground: GhosttyRgb,
     /** `null` when the program did not set a cursor color: use the foreground. */
     public val cursor: GhosttyRgb?,
-    /** The 256 colors that a cell's palette index refers to. */
-    public val palette: List<GhosttyRgb>,
 )
 
 public enum class GhosttyCursorStyle {

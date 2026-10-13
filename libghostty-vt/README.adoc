@@ -58,7 +58,7 @@ This needs Zig 0.16.0 or later, and writes the library to `zig-out/lib/` and the
 . Copy `zig-out/include/ghostty` over `include/ghostty`, removing headers that no longer exist.
 . Copy `zig-out/lib/libghostty-vt.<version>.dylib` to `lib/macos-aarch64/`.
 . Update the commit, date and version in the <<provenance>> table.
-. Regenerate the Java bindings and the `GhosttyKey` enum with `ghostty-vt/jextract.sh`, and commit the result.
+. Regenerate the Java bindings and the key enums (`GhosttyKey`, and `TerminalKey` of the `terminal` module) with `ghostty-vt/jextract.sh`, and commit the result.
 +
 This needs https://jdk.java.net/jextract/[jextract] for JDK 25, either on the `PATH` or located by the `JEXTRACT` environment variable.
 . Run `./gradlew build`.

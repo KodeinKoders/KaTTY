@@ -50,7 +50,7 @@ class GhosttyRenderStateTest {
     fun resolvesColors() {
         val rows = render("a\u001b[31mb\u001b[38;2;255;100;0mc\u001b[44md")
         val cells = rows[0].cells!!
-        val palette = state.colors.palette
+        val palette = state.palette
 
         assertNull(cells[0].foreground, "The default foreground is not an explicit color")
         assertNull(cells[0].background)

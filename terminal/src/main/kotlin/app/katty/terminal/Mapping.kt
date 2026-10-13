@@ -1,0 +1,96 @@
+package app.katty.terminal
+
+import app.katty.ghostty.GhosttyCellStyle
+import app.katty.ghostty.GhosttyCellWidth
+import app.katty.ghostty.GhosttyCursorStyle
+import app.katty.ghostty.GhosttyKey
+import app.katty.ghostty.GhosttyKeyAction
+import app.katty.ghostty.GhosttyKeyEvent
+import app.katty.ghostty.GhosttyMods
+import app.katty.ghostty.GhosttyRenderCell
+import app.katty.ghostty.GhosttyRenderCursor
+import app.katty.ghostty.GhosttyRgb
+import app.katty.ghostty.GhosttyUnderline
+
+// What the terminal module's API hides of ghostty-vt: this file is where the two are converted.
+
+internal fun GhosttyRgb.toTerminal() = TerminalColor(rgb)
+
+private fun GhosttyCellStyle.toTerminal(): TerminalStyle =
+    if (this == GhosttyCellStyle.NONE) {
+        TerminalStyle.NONE
+    } else {
+        TerminalStyle(
+            bold = bold,
+            italic = italic,
+            faint = faint,
+            blink = blink,
+            inverse = inverse,
+            invisible = invisible,
+            strikethrough = strikethrough,
+            overline = overline,
+            underline = when (underline) {
+                GhosttyUnderline.NONE -> TerminalUnderline.NONE
+                GhosttyUnderline.SINGLE -> TerminalUnderline.SINGLE
+                GhosttyUnderline.DOUBLE -> TerminalUnderline.DOUBLE
+                GhosttyUnderline.CURLY -> TerminalUnderline.CURLY
+                GhosttyUnderline.DOTTED -> TerminalUnderline.DOTTED
+                GhosttyUnderline.DASHED -> TerminalUnderline.DASHED
+            },
+        )
+    }
+
+internal fun GhosttyRenderCell.toTerminal() = TerminalCell(
+    text = text,
+    foreground = foreground?.toTerminal(),
+    background = background?.toTerminal(),
+    style = style.toTerminal(),
+    width = when (width) {
+        GhosttyCellWidth.NARROW -> TerminalCellWidth.NARROW
+        GhosttyCellWidth.WIDE -> TerminalCellWidth.WIDE
+        GhosttyCellWidth.SPACER_TAIL -> TerminalCellWidth.SPACER_TAIL
+        GhosttyCellWidth.SPACER_HEAD -> TerminalCellWidth.SPACER_HEAD
+    },
+)
+
+internal fun GhosttyRenderCursor.toTerminal() = TerminalCursor(
+    x = x,
+    y = y,
+    visible = visible,
+    blinking = blinking,
+    shape = when (style) {
+        GhosttyCursorStyle.BAR -> TerminalCursorShape.BAR
+        GhosttyCursorStyle.BLOCK -> TerminalCursorShape.BLOCK
+        GhosttyCursorStyle.UNDERLINE -> TerminalCursorShape.UNDERLINE
+        GhosttyCursorStyle.BLOCK_HOLLOW -> TerminalCursorShape.BLOCK_HOLLOW
+    },
+)
+
+// Both enums have the same entries, in the same order, which a test checks: indexing is enough.
+private val ghosttyKeys: List<GhosttyKey> = TerminalKey.entries.map { GhosttyKey.valueOf(it.name) }
+
+private fun Set<TerminalModifier>.toGhostty(): GhosttyMods =
+    fold(GhosttyMods.NONE) { mods, modifier ->
+        mods or when (modifier) {
+            TerminalModifier.SHIFT -> GhosttyMods.SHIFT
+            TerminalModifier.CTRL -> GhosttyMods.CTRL
+            TerminalModifier.ALT -> GhosttyMods.ALT
+            TerminalModifier.SUPER -> GhosttyMods.SUPER
+            TerminalModifier.CAPS_LOCK -> GhosttyMods.CAPS_LOCK
+            TerminalModifier.NUM_LOCK -> GhosttyMods.NUM_LOCK
+        }
+    }
+
+internal fun KeyInput.toGhostty() = GhosttyKeyEvent(
+    key = ghosttyKeys[key.ordinal],
+    action = when (action) {
+        TerminalKeyAction.RELEASE -> GhosttyKeyAction.RELEASE
+        TerminalKeyAction.PRESS -> GhosttyKeyAction.PRESS
+        TerminalKeyAction.REPEAT -> GhosttyKeyAction.REPEAT
+    },
+    mods = mods.toGhostty(),
+    consumedMods = consumedMods.toGhostty(),
+    composing = composing,
+    text = text,
+    unshiftedCodepoint = unshiftedCodepoint,
+)

@@ -32,5 +32,9 @@ tasks.test {
 }
 
 dependencies {
+    implementation(libs.slf4j.api)
+
     testImplementation(libs.kotlin.test.junit)
+
+    testRuntimeOnly(libs.slf4j.simple)
 }
