@@ -423,6 +423,40 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun selectsAllTheTextOfTheHistoryAndTheScreen() {
+        val session = start("""seq 1 20; sleep 30""", rows = 5)
+        session.awaitFrame { it.text(3) == "20" || it.text(4) == "20" }
+
+        session.selectAll()
+
+        assertEquals((1..20).joinToString("\n"), session.selectedText())
+        session.awaitFrame { it.selection.isNotEmpty() }
+    }
+
+    @Test
+    fun selectingAllOfAnEmptyTerminalSelectsNothing() {
+        val session = start("sleep 30")
+
+        session.selectAll()
+
+        assertEquals(null, session.selectedText())
+    }
+
+    @Test
+    fun clearingTheScrollbackKeepsTheScreenAndRemovesTheHistory() {
+        val session = start("""seq 1 20; sleep 30""", rows = 5)
+        session.awaitFrame { it.scrollbar != null && it.text(3) == "20" }
+        val screen = session.screenText()
+
+        session.clearScrollback()
+
+        val frame = session.awaitFrame { it.scrollbar == null }
+        assertEquals(screen, session.screenText())
+        assertEquals("20", frame.text(3))
+        assertEquals(5L, session.rowCount())
+    }
+
+    @Test
     fun aClickWithoutADragSelectsNothingAndUnselects() {
         val session = selectionSession()
         session.select(0.2f, 0.5f, 4.7f, 0.5f)

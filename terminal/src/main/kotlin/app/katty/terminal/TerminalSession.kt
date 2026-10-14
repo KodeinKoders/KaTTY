@@ -759,6 +759,34 @@ public class TerminalSession private constructor(
         frameRequests.trySend(Unit)
     }
 
+    /**
+     * Selects all the text of the history and the screen. It is the terminal's own selection, as the mouse makes it: it is in the
+     * frames, [selectedText] gives its text, and what is typed for the program unselects it.
+     */
+    public fun selectAll() {
+        lock.withLock {
+            if (closed.get()) return
+            selectionGesture.reset()
+            if (terminal.selectAll()) hasSelection = true
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    /**
+     * Removes the history, and keeps what is on the screen: what a program does with `CSI 3 J`, which the program does not see here.
+     * The selection goes with it, since the rows that it was on may be gone.
+     */
+    public fun clearScrollback() {
+        lock.withLock {
+            if (closed.get()) return
+            selectionGesture.reset()
+            unselect()
+            terminal.vtWrite("\u001b[3J")
+            publishAfterWrite()
+        }
+        frameRequests.trySend(Unit)
+    }
+
     // Under the lock.
     private fun unselect() {
         if (!hasSelection) return

@@ -616,6 +616,24 @@ public class GhosttyTerminal private constructor(
         }
     }
 
+    /**
+     * Selects all the text of the history and the screen, which makes it the terminal's selection.
+     *
+     * @return Whether there was any text to select.
+     */
+    public fun selectAll(): Boolean {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val selection = arena.allocate(GhosttySelection.layout())
+            GhosttySelection.size(selection, GhosttySelection.layout().byteSize())
+            val result = GhosttyVt.ghostty_terminal_select_all(handle, selection)
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use false
+            checkResult(result, "ghostty_terminal_select_all")
+            installSelection(selection)
+            true
+        }
+    }
+
     /** The column of the cursor on the screen, from 0. */
     public val cursorColumn: Int get() = getUInt16(GhosttyVt.GHOSTTY_TERMINAL_DATA_CURSOR_X())
 
