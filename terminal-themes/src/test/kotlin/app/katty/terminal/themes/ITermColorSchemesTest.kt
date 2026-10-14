@@ -19,6 +19,35 @@ class ITermColorSchemesTest {
     }
 
     @Test
+    fun hasAnEntryForEachSchemeInTheOrderOfTheNames() {
+        assertEquals(ITermColorSchemes.names, ITermColorSchemes.entries.map { it.name })
+    }
+
+    @Test
+    fun theEntriesHaveTheColorsThatLoadingTheSchemeGives() {
+        val differences = ITermColorSchemes.entries.mapNotNull { entry ->
+            val theme = ITermColorSchemes.load(entry.name)
+            val expected = listOf(theme.background, theme.foreground) + theme.ansi.subList(1, 7)
+            val actual = listOf(entry.background, entry.foreground) + entry.accents
+            if (expected == actual) null else entry.name
+        }
+
+        assertEquals(emptyList(), differences)
+    }
+
+    @Test
+    fun knowsWhichSchemesAreDark() {
+        val byName = ITermColorSchemes.entries.associateBy { it.name }
+
+        assertTrue(byName.getValue("Dracula").dark)
+        assertTrue(byName.getValue("iTerm2 Solarized Dark").dark)
+        assertTrue(!byName.getValue("iTerm2 Solarized Light").dark)
+        assertTrue(!byName.getValue("Alabaster").dark)
+        // Both kinds are there, and not only a few of one.
+        assertTrue(ITermColorSchemes.entries.count { it.dark } in 200..700)
+    }
+
+    @Test
     fun readsEveryScheme() {
         // Reports all the ones that cannot be read, not only the first.
         val failures = ITermColorSchemes.names.mapNotNull { name ->

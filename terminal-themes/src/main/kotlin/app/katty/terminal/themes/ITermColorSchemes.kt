@@ -1,5 +1,6 @@
 package app.katty.terminal.themes
 
+import app.katty.terminal.TerminalColor
 import app.katty.terminal.TerminalTheme
 
 /**
@@ -19,6 +20,26 @@ public object ITermColorSchemes {
     }
 
     private val known: Set<String> by lazy { names.toSet() }
+
+    /**
+     * What a picker shows of each scheme, in the order of [names]: read from an index that is made when the module is built, so that
+     * the schemes are not parsed to draw a list of them. [load] has the whole scheme.
+     */
+    public val entries: List<ITermColorSchemeInfo> by lazy {
+        val index = ITermColorSchemes::class.java.getResourceAsStream("$DIRECTORY/index.tsv")
+            ?: throw IllegalStateException("The index of the color schemes' colors is missing from the resources")
+        index.use { it.reader(Charsets.UTF_8).readLines() }.filter { it.isNotEmpty() }.map { line ->
+            val fields = line.split('\t')
+            fun color(i: Int) = TerminalColor(fields[i].toInt(16))
+            ITermColorSchemeInfo(
+                name = fields[0],
+                dark = fields[1] == "1",
+                background = color(2),
+                foreground = color(3),
+                accents = (4..9).map(::color),
+            )
+        }
+    }
 
     /**
      * Reads the scheme called [name].
