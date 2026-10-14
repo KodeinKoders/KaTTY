@@ -29,6 +29,7 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 private const val INK_THRESHOLD = 40
+private const val COLOR_THRESHOLD = 30
 
 private val FOREGROUND = TerminalColor(0xD8D8D8)
 private val BACKGROUND = TerminalColor(0x1E1E1E)
@@ -79,6 +80,19 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 
     fun pixel(x: Int, y: Int): Int = bitmap.getColor(x, y) and 0xFFFFFF
 
+    /** Whether anything in the cell is not gray: the text and the background of these tests are. */
+    fun hasColor(col: Int, row: Int): Boolean {
+        val left = (col * typography.cellWidth).toInt()
+        val top = (row * typography.cellHeight).toInt()
+        return (left until (left + typography.cellWidth.toInt())).any { x ->
+            (top until (top + typography.cellHeight.toInt())).any { y ->
+                val color = pixel(x, y)
+                val channels = listOf(color shr 16 and 0xFF, color shr 8 and 0xFF, color and 0xFF)
+                channels.max() - channels.min() > COLOR_THRESHOLD
+            }
+        }
+    }
+
     /** Whether a line of the cell, across it, is in the color: an underline. */
     fun hasLine(col: Int, row: Int, color: TerminalColor): Boolean {
         val left = (col * typography.cellWidth).toInt() + 1
@@ -106,10 +120,10 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = ""): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
-        typography = rememberTerminalTypography(fontSize.sp)
+        typography = if (font != null) rememberTerminalTypography(fontSize.sp, font) else rememberTerminalTypography(fontSize.sp)
         TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit)
     }
     scene.useScene {
@@ -352,6 +366,44 @@ class TerminalViewTest {
 
         assertEquals(FOREGROUND.rgb, render("no-preedit", frame).center(5, 0), "The cursor is a block")
         assertEquals(BACKGROUND.rgb, render("preedit-cursor", frame, preedit = "'").center(5, 0), "The cursor does not hide the text")
+    }
+
+    @Test
+    fun aSymbolThatCanBeAnEmojiIsDrawnAsTextUnlessItIsAskedToBeAnEmoji() {
+        // The system picks the emoji font for these, which draws pictures in color: the blue pause button
+        // that Claude Code's plan mode would show instead of two bars.
+        val frame = frame(
+            30,
+            listOf(
+                row(
+                    30,
+                    cell("\u23F8"), cell("\u2764"), cell("\u23FA"), cell("\u26A0"), cell("\u23F5"),
+                    cell("\u23F8\uFE0F"), cell("\u2764\uFE0F"), cell("\uD83D\uDE00", width = TerminalCellWidth.WIDE),
+                ),
+            ),
+        )
+
+        val rendered = render("text-symbols", frame, fontSize = 24f)
+
+        for (col in 0..4) assertTrue(rendered.hasInk(col, 0), "The symbol of the cell $col is drawn")
+        for (col in 0..4) assertEquals(false, rendered.hasColor(col, 0), "The symbol of the cell $col is a picture")
+        for (col in 5..7) assertTrue(rendered.hasColor(col, 0), "The emoji of the cell $col is not a picture")
+    }
+
+    @Test
+    fun aSymbolIsDrawnAsTextWhicheverFontTheTerminalHas() {
+        // The fix is not about JetBrains Mono: it is about any font that lacks the symbol. Menlo does, and a font that
+        // has it (STIX Two Math) draws it itself.
+        val frame = frame(30, listOf(row(30, cell("\u23F8"), cell("\u2764"), cell("\u23FA"), cell("\u23F8\uFE0F"))))
+        for (name in listOf("Menlo", "STIX Two Math", "Apple Symbols", "Courier New")) {
+            val font = TerminalFont.system(name) ?: continue
+
+            val rendered = render("text-symbols-$name", frame, fontSize = 24f, font = font)
+
+            for (col in 0..2) assertEquals(false, rendered.hasColor(col, 0), "$name: the symbol of the cell $col is a picture")
+            // A font that has the symbol itself draws it, even when the emoji is asked for: that is its business.
+            if (font.fallback.familyFor("\u23F8") != null) assertTrue(rendered.hasColor(3, 0), "$name: the emoji that was asked for is not a picture")
+        }
     }
 
     @Test
