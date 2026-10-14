@@ -17,9 +17,15 @@ dependencies {
     // TerminalSession and what it publishes are part of the API.
     api(projects.terminal)
 
+    // StateFlow is part of KattyStore's API.
+    api(libs.kotlinx.coroutines)
+
     implementation(libs.kotlinx.serialization.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.slf4j.api)
 
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 
     testRuntimeOnly(libs.slf4j.simple)
 }
