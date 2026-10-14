@@ -3,13 +3,16 @@ composeMaterial3 = "1.12.0-alpha03" # https://github.com/JetBrains/compose-multi
 composeMultiplatform = "1.12.1"     # https://github.com/JetBrains/compose-multiplatform/releases
 coroutines = "1.11.0"               # https://github.com/Kotlin/kotlinx.coroutines/releases
 kotlin = "2.4.21"                   # https://kotlinlang.org/docs/releases.html#release-history
+kotlinxSerialization = "1.11.0"     # https://github.com/Kotlin/kotlinx.serialization/releases
 pty4j = "0.14.0"                    # https://github.com/JetBrains/pty4j/releases
 slf4j = "2.0.19"                    # https://www.slf4j.org/news.html
+xmlutil = "1.0.2"                   # https://github.com/pdvrieze/xmlutil/releases
 
 [plugins]
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-plugin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 
 [libraries]
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
@@ -21,8 +24,11 @@ kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version
 
 kotlinx-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
+kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinxSerialization" }
 
 pty4j = { module = "org.jetbrains.pty4j:pty4j", version.ref = "pty4j" }
 
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+
+xmlutil-serialization = { module = "io.github.pdvrieze.xmlutil:serialization", version.ref = "xmlutil" }

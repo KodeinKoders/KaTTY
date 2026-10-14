@@ -31,4 +31,5 @@ include(
     ":ghostty-vt",
     ":terminal",
     ":terminal-compose",
+    ":terminal-themes",
 )
