@@ -36,6 +36,9 @@ public value class GhosttyMode private constructor(internal val packed: Short) {
         /** Application keypad. */
         public val KEYPAD_KEYS: GhosttyMode = dec(66)
 
+        /** The wheel sends the arrow keys on the alternate screen, when the program did not ask for the mouse. */
+        public val ALT_SCROLL: GhosttyMode = dec(1007)
+
         /** Focus in/out events are reported. */
         public val FOCUS_EVENT: GhosttyMode = dec(1004)
 

@@ -137,4 +137,30 @@ public data class TerminalFrame(
     public val selectionColor: TerminalColor? = null,
     /** The color of what is selected, `null` for the background when there is no [selectionColor], or else its own. */
     public val selectedTextColor: TerminalColor? = null,
+    /** Where the viewport is in the history and the screen, or `null` when there is no history to scroll. */
+    public val scrollbar: TerminalScrollbar? = null,
 )
+
+/**
+ * Where the viewport is in what can be scrolled, in rows: what a scrollbar draws.
+ *
+ * @param total The rows of the history and of the screen.
+ * @param offset The row at the top of the viewport, from 0 at the top of the history: [TerminalSession.scrollToRow]
+ * takes it. It is `total - len` at the bottom, where the screen is.
+ * @param len The rows of the viewport.
+ */
+public data class TerminalScrollbar(
+    public val total: Long,
+    public val offset: Long,
+    public val len: Long,
+) {
+    /** Whether the viewport shows the screen, and not the history. */
+    public val atBottom: Boolean get() = offset + len >= total
+}
+
+/** Which way a drag that selects asks to scroll, which is when the pointer is past the top or the bottom. */
+public enum class TerminalAutoscroll {
+    NONE,
+    UP,
+    DOWN,
+}

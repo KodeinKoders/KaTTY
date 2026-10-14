@@ -120,11 +120,11 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
         typography = if (font != null) rememberTerminalTypography(fontSize.sp, font) else rememberTerminalTypography(fontSize.sp)
-        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit)
+        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized)
     }
     scene.useScene {
         val image = scene.render()
@@ -448,6 +448,41 @@ class TerminalViewTest {
         // The cell after the text, which is empty, is the selection color when it is selected.
         val spaced = frame(30, listOf(row(30, *text("██ ", foreground = GREEN)))).copy(selection = listOf(2..2), selectionColor = selectedBackground)
         assertEquals(selectedBackground.rgb, render("selection-theme-space", spaced).center(2, 0))
+    }
+
+    @Test
+    fun theScrollbarIsAThumbOverTheRightEdgeWhereTheHistoryIs() {
+        // At the top of 100 rows, 10 of them in view: the thumb is at the top, as short as it can be.
+        val frame = frame(30, listOf(row(30, *text("text")))).copy(scrollbar = app.katty.terminal.TerminalScrollbar(total = 100, offset = 0, len = 10))
+
+        val rendered = render("scrollbar", frame, scrollbarAlpha = 1f)
+
+        // The middle of the thumb, 6 dp from the right edge, at 2 pixels to the dp.
+        val x = 640 - 12
+        assertNotEquals(BACKGROUND.rgb, rendered.pixel(x, 10), "The thumb is drawn at the top")
+        assertEquals(BACKGROUND.rgb, rendered.pixel(x, 200), "And not where the history is not")
+        assertEquals(BACKGROUND.rgb, rendered.pixel(x - 40, 10), "Nor beside it")
+    }
+
+    @Test
+    fun theScrollbarIsStrongerWhenItIsUsed() {
+        val frame = frame(30, listOf(row(30))).copy(scrollbar = app.katty.terminal.TerminalScrollbar(total = 100, offset = 0, len = 10))
+        val x = 640 - 12
+
+        val faint = render("scrollbar-faint", frame, scrollbarAlpha = 1f).pixel(x, 10)
+        val strong = render("scrollbar-strong", frame, scrollbarAlpha = 1f, scrollbarEmphasized = true).pixel(x, 10)
+
+        // Both are the color of the text over the background, the strong one more.
+        assertTrue(strong > faint, "${"%06x".format(strong)} is not stronger than ${"%06x".format(faint)}")
+    }
+
+    @Test
+    fun theScrollbarIsGoneOnceItHasFaded() {
+        val frame = frame(30, listOf(row(30))).copy(scrollbar = app.katty.terminal.TerminalScrollbar(total = 100, offset = 0, len = 10))
+
+        val rendered = render("scrollbar-faded", frame, scrollbarAlpha = 0f)
+
+        assertEquals(BACKGROUND.rgb, rendered.pixel(640 - 12, 10))
     }
 
     @Test

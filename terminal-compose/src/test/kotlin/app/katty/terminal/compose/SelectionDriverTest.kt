@@ -132,4 +132,19 @@ class SelectionDriverTest {
         assertEquals(PointerIcon.Text, terminalPointerIcon(TerminalPointerShape.TEXT, mouseTracking = false, SelectionModifiers(false, alt = true, meta = false)))
         assertEquals(PointerIcon.Text, terminalPointerIcon(TerminalPointerShape.TEXT, mouseTracking = false, SelectionModifiers(false, alt = false, meta = true)))
     }
+
+    @Test
+    fun thePointerIsTheArrowOverTheScrollbarWhateverElseItWouldBe() {
+        for (shape in listOf(TerminalPointerShape.TEXT, TerminalPointerShape.POINTER, TerminalPointerShape.CROSSHAIR)) {
+            for (tracking in listOf(false, true)) {
+                for (modifiers in listOf(none, shift, block, shiftBlock)) {
+                    assertEquals(
+                        PointerIcon.Default,
+                        terminalPointerIcon(shape, tracking, modifiers, overScrollbar = true),
+                        "$shape, tracking $tracking, $modifiers",
+                    )
+                }
+            }
+        }
+    }
 }

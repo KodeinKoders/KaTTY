@@ -1,8 +1,12 @@
 package app.katty.terminal
 
 import app.katty.ghostty.GhosttyKeyEncoder
+import app.katty.ghostty.GhosttyMode
 import app.katty.ghostty.GhosttyMouseEncoder
 import app.katty.ghostty.GhosttyMouseShape
+import app.katty.ghostty.GhosttyScreen
+import app.katty.ghostty.GhosttyScrollViewport
+import app.katty.ghostty.GhosttyScrollbar
 import app.katty.ghostty.GhosttySelectionGesture
 import app.katty.ghostty.GhosttyRenderState
 import app.katty.ghostty.GhosttyRowId
@@ -170,13 +174,76 @@ public class TerminalSession private constructor(
             keyEncoder.setOptionsFrom(terminal)
             val bytes = keyEncoder.encode(input.toGhostty())
             // What is typed for the program unselects: the selection is of what was on the screen before.
-            if (bytes.isNotEmpty()) unselect()
+            if (bytes.isNotEmpty()) {
+                unselect()
+                snapToBottom()
+            }
             bytes
         }
         if (bytes.isNotEmpty()) {
             outgoing.put(bytes)
             frameRequests.trySend(Unit)
         }
+    }
+
+    /** Scrolls the viewport by [rows] rows through the history: up is negative. Nothing on the alternate screen, which has none. */
+    public fun scrollBy(rows: Int) {
+        scroll(GhosttyScrollViewport.Delta(rows.toLong()))
+    }
+
+    /** Scrolls a page: [direction] is `-1` for up and `1` for down. A page is the screen but a row, so that what was at the edge stays in view. */
+    public fun scrollPage(direction: Int) {
+        val rows = lock.withLock { if (closed.get()) return else terminal.rows }
+        scrollBy(direction.coerceIn(-1, 1) * maxOf(1, rows - 1))
+    }
+
+    public fun scrollToTop() {
+        scroll(GhosttyScrollViewport.Top)
+    }
+
+    public fun scrollToBottom() {
+        scroll(GhosttyScrollViewport.Bottom)
+    }
+
+    /** Scrolls so that [row], counted from 0 at the top of the history, is the first row: [TerminalScrollbar.offset] is such a row. */
+    public fun scrollToRow(row: Long) {
+        scroll(GhosttyScrollViewport.Row(row))
+    }
+
+    /**
+     * What the wheel does when the program did not ask for the mouse: [rows] rows, up negative. It scrolls the history,
+     * except on the alternate screen, which has none, where it sends that many arrow keys to the program, as xterm's
+     * alternate scroll does, unless the program turned that off.
+     */
+    public fun scrollWheel(rows: Int) {
+        if (rows == 0) return
+        val bytes = lock.withLock {
+            if (closed.get()) return
+            if (terminal.activeScreen != GhosttyScreen.ALTERNATE) {
+                terminal.scroll(GhosttyScrollViewport.Delta(rows.toLong()))
+                return@withLock null
+            }
+            if (!terminal.isModeEnabled(GhosttyMode.ALT_SCROLL)) return@withLock null
+            keyEncoder.setOptionsFrom(terminal)
+            val key = if (rows < 0) TerminalKey.ARROW_UP else TerminalKey.ARROW_DOWN
+            List(kotlin.math.abs(rows)) { keyEncoder.encode(KeyInput(key).toGhostty()) }.filter { it.isNotEmpty() }
+        }
+        bytes?.forEach(outgoing::put)
+        frameRequests.trySend(Unit)
+    }
+
+    private fun scroll(to: GhosttyScrollViewport) {
+        lock.withLock {
+            if (closed.get()) return
+            terminal.scroll(to)
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    // What is typed brings the screen back, where the program's cursor is. Under the lock.
+    private fun snapToBottom() {
+        val position = terminal.scrollbar
+        if (position.offset + position.len < position.total) terminal.scroll(GhosttyScrollViewport.Bottom)
     }
 
     /**
@@ -205,10 +272,11 @@ public class TerminalSession private constructor(
      *
      * @param rectangle Whether to select a block of cells instead of a flow of text.
      */
-    public fun selectionDrag(column: Float, row: Float, rectangle: Boolean = false) {
-        lock.withLock {
-            if (closed.get()) return
-            val at = locate(column, row)
+    public fun selectionDrag(column: Float, row: Float, rectangle: Boolean = false): TerminalAutoscroll {
+        val autoscroll = lock.withLock {
+            if (closed.get()) return TerminalAutoscroll.NONE
+            // The position is not kept inside the screen, or the gesture would not know that it is past an edge.
+            val at = locate(column, row, clampPosition = false)
             val selected = selectionGesture.drag(
                 at.column, at.row, at.xPx, at.yPx,
                 cols = terminal.cols,
@@ -217,8 +285,38 @@ public class TerminalSession private constructor(
                 rectangle = rectangle,
             )
             if (selected) hasSelection = true
+            selectionGesture.autoscroll().toTerminal()
         }
         frameRequests.trySend(Unit)
+        return autoscroll
+    }
+
+    /**
+     * What a drag that is past the top or the bottom does at each tick (the caller ticks every so often, with the last
+     * position of the pointer): the viewport is scrolled by a row, and the selection goes with it.
+     *
+     * @return Which way it scrolled, [TerminalAutoscroll.NONE] when the drag is not past an edge any more or is over.
+     */
+    public fun selectionAutoscroll(column: Float, row: Float, rectangle: Boolean = false): TerminalAutoscroll {
+        val direction = lock.withLock {
+            if (closed.get()) return TerminalAutoscroll.NONE
+            val direction = selectionGesture.autoscroll().toTerminal()
+            if (direction == TerminalAutoscroll.NONE) return@withLock direction
+            // The tick scrolls the viewport by a row itself, and extends the selection to the edge.
+            val at = locate(column, row, clampPosition = false)
+            val edgeRow = if (direction == TerminalAutoscroll.UP) 0 else terminal.rows - 1
+            val selected = selectionGesture.tick(
+                at.column, edgeRow, at.xPx, at.yPx,
+                cols = terminal.cols,
+                cellWidthPx = cellWidthPx,
+                screenHeightPx = terminal.rows * cellHeightPx,
+                rectangle = rectangle,
+            )
+            if (selected) hasSelection = true
+            direction
+        }
+        frameRequests.trySend(Unit)
+        return direction
     }
 
     /**
@@ -258,12 +356,15 @@ public class TerminalSession private constructor(
     // that the terminal was given. Under the lock.
     private class Located(val column: Int, val row: Int, val xPx: Double, val yPx: Double)
 
-    private fun locate(column: Float, row: Float): Located {
+    private fun locate(column: Float, row: Float, clampPosition: Boolean = true): Located {
         val cols = terminal.cols
         val rows = terminal.rows
         val x = column.coerceIn(0f, cols - 0.001f)
         val y = row.coerceIn(0f, rows - 0.001f)
-        return Located(x.toInt(), y.toInt(), (x * cellWidthPx).toDouble(), (y * cellHeightPx).toDouble())
+        // The position that is not clamped is how a drag tells that it is past an edge.
+        val xPx = (if (clampPosition) x else column) * cellWidthPx
+        val yPx = (if (clampPosition) y else row) * cellHeightPx
+        return Located(x.toInt(), y.toInt(), xPx.toDouble(), yPx.toDouble())
     }
 
     /**
@@ -424,10 +525,12 @@ public class TerminalSession private constructor(
     private fun produceFrame(): TerminalFrame {
         val tracking: Boolean
         val shape: GhosttyMouseShape
+        val position: GhosttyScrollbar
         lock.withLock {
             renderState.update(terminal)
             tracking = terminal.mouseTracking
             shape = terminal.mouseShape
+            position = terminal.scrollbar
         }
 
         val previous = rowCache
@@ -470,6 +573,8 @@ public class TerminalSession private constructor(
             selection = selection,
             selectionColor = theme?.selection,
             selectedTextColor = theme?.selectedText,
+            // Nothing to scroll when everything is on the screen: no scrollbar.
+            scrollbar = if (position.total > position.len) TerminalScrollbar(position.total, position.offset, position.len) else null,
         )
         renderState.clean()
         return frame
@@ -494,6 +599,9 @@ public class TerminalSession private constructor(
         // system gives for it, or half a second.
         private const val REPEAT_CLICK_DISTANCE_PX = 5.0
         private val REPEAT_CLICK_INTERVAL_NS = ((java.awt.Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval") as? Int) ?: 500) * 1_000_000L
+
+        // How much memory the history may take, which is Ghostty's own default.
+        private const val SCROLLBACK_MAX_BYTES = 10_000_000L
 
         // What a cell is until the first resize tells it.
         private const val INITIAL_CELL_WIDTH_PX = 8
@@ -541,7 +649,9 @@ public class TerminalSession private constructor(
             // Whatever fails after the program started must not leave it, or the native objects, behind.
             val toClose = ArrayDeque<AutoCloseable>()
             try {
-                val terminal = GhosttyTerminal(cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink).also { toClose.addFirst(it) }
+                val terminal = GhosttyTerminal(
+                    cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink, scrollbackMaxBytes = SCROLLBACK_MAX_BYTES,
+                ).also { toClose.addFirst(it) }
                 // Before the session, so that the first frame already has the colors.
                 terminal.applyTheme(theme)
                 val renderState = GhosttyRenderState().also { toClose.addFirst(it) }

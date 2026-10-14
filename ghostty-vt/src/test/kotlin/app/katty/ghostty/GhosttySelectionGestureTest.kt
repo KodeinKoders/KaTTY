@@ -155,4 +155,35 @@ class GhosttySelectionGestureTest {
 
         assertEquals("HELLO", terminal.selectedText())
     }
+
+    @Test
+    fun aDragPastAnEdgeAsksToScrollThatWay() {
+        for (i in 1..20) terminal.vtWrite("line $i\r\n")
+        press(2, 1)
+
+        gesture.drag(2, 3, 25.0, 4 * cellHeight + 30.0, cols = 20, cellWidthPx = cellWidth, screenHeightPx = 4 * cellHeight, rectangle = false)
+        assertEquals(GhosttyAutoscroll.DOWN, gesture.autoscroll())
+
+        gesture.drag(2, 0, 25.0, -15.0, cols = 20, cellWidthPx = cellWidth, screenHeightPx = 4 * cellHeight, rectangle = false)
+        assertEquals(GhosttyAutoscroll.UP, gesture.autoscroll())
+
+        gesture.drag(2, 2, 25.0, 2 * cellHeight + 8.0, cols = 20, cellWidthPx = cellWidth, screenHeightPx = 4 * cellHeight, rectangle = false)
+        assertEquals(GhosttyAutoscroll.NONE, gesture.autoscroll())
+    }
+
+    @Test
+    fun aTickScrollsTheViewportAndExtendsTheSelectionToTheEdge() {
+        for (i in 1..20) terminal.vtWrite("line $i\r\n")
+        terminal.scroll(GhosttyScrollViewport.Delta(-6))
+        press(0, 0)
+        gesture.drag(5, 3, 57.0, 4 * cellHeight + 30.0, cols = 20, cellWidthPx = cellWidth, screenHeightPx = 4 * cellHeight, rectangle = false)
+        val before = terminal.selectedText()!!.lines().size
+        val offset = terminal.scrollbar.offset
+
+        assertTrue(gesture.tick(5, 3, 57.0, 4 * cellHeight + 30.0, cols = 20, cellWidthPx = cellWidth, screenHeightPx = 4 * cellHeight, rectangle = false))
+
+        // The tick moved the viewport itself, and the selection went with it.
+        assertEquals(offset + 1, terminal.scrollbar.offset)
+        assertTrue(terminal.selectedText()!!.lines().size > before, "The selection follows the scroll")
+    }
 }

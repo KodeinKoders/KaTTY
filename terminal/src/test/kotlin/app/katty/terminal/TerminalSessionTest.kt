@@ -497,6 +497,166 @@ class TerminalSessionTest {
         assertEquals(TerminalColor(0xAABBCC), frame.selectedTextColor)
     }
 
+    // 200 lines in a screen of 6 rows, whose cells are 10 by 20 pixels: most of them are history.
+    private fun historySession(): TerminalSession {
+        val session = start("seq 1 200; sleep 30", rows = 6)
+        session.resize(80, 6, 10, 20)
+        session.awaitFrame { frame -> frame.rows.any { frame.text(frame.rows.indexOf(it)) == "200" } && frame.scrollbar != null }
+        return session
+    }
+
+    private fun TerminalFrame.firstNumber() = text(0).toInt()
+
+    @Test
+    fun hasNoScrollbarWhenEverythingIsOnTheScreen() {
+        val session = start("echo hi; sleep 30")
+
+        assertEquals(null, session.awaitFrame { it.text(0) == "hi" }.scrollbar)
+    }
+
+    @Test
+    fun scrollsThroughTheHistory() {
+        val session = historySession()
+        val bottom = session.frames.value
+        assertTrue(bottom.scrollbar!!.atBottom)
+        assertEquals(6, bottom.scrollbar!!.len)
+
+        session.scrollBy(-10)
+
+        val scrolled = session.awaitFrame { it.firstNumber() == bottom.firstNumber() - 10 }
+        assertEquals(bottom.scrollbar!!.offset - 10, scrolled.scrollbar!!.offset)
+        assertEquals(false, scrolled.scrollbar!!.atBottom)
+        assertEquals(null, scrolled.cursor.x, "The cursor is on the screen, which is not in view")
+    }
+
+    @Test
+    fun scrollsByAPageButARow() {
+        val session = historySession()
+        val bottom = session.frames.value
+
+        session.scrollPage(-1)
+        val up = session.awaitFrame { it.firstNumber() == bottom.firstNumber() - 5 }
+        session.scrollPage(1)
+
+        session.awaitFrame { it.firstNumber() == up.firstNumber() + 5 }
+    }
+
+    @Test
+    fun scrollsToTheTopTheBottomAndARow() {
+        val session = historySession()
+
+        session.scrollToTop()
+        val top = session.awaitFrame { it.firstNumber() == 1 }
+        assertEquals(0, top.scrollbar!!.offset)
+
+        session.scrollToRow(50)
+        session.awaitFrame { it.firstNumber() == 51 }
+
+        session.scrollToBottom()
+        session.awaitFrame { it.scrollbar!!.atBottom }
+    }
+
+    @Test
+    fun theViewStaysWhereItIsWhileTheProgramWrites() {
+        val session = historySession()
+        session.scrollBy(-20)
+        val scrolled = session.awaitFrame { !it.scrollbar!!.atBottom }
+
+        session.writeToScreen("more\r\nmore\r\nmore\r\n")
+        val after = session.awaitFrame { it.scrollbar!!.total > scrolled.scrollbar!!.total }
+
+        assertEquals(scrolled.scrollbar!!.offset, after.scrollbar!!.offset)
+        assertEquals(scrolled.firstNumber(), after.firstNumber())
+    }
+
+    @Test
+    fun typingBringsTheScreenBack() {
+        val session = historySession()
+        session.scrollBy(-20)
+        session.awaitFrame { !it.scrollbar!!.atBottom }
+
+        session.sendKey(KeyInput(TerminalKey.ENTER))
+
+        session.awaitFrame { it.scrollbar!!.atBottom }
+    }
+
+    @Test
+    fun aKeyThatSendsNothingDoesNotBringTheScreenBack() {
+        val session = historySession()
+        session.scrollBy(-20)
+        val scrolled = session.awaitFrame { !it.scrollbar!!.atBottom }
+
+        session.sendKey(KeyInput(TerminalKey.SHIFT_LEFT))
+
+        assertEquals(scrolled.scrollbar!!.offset, session.frames.value.scrollbar!!.offset)
+    }
+
+    @Test
+    fun theWheelScrollsTheHistoryOnTheMainScreen() {
+        val session = historySession()
+        val bottom = session.frames.value
+
+        session.scrollWheel(-3)
+
+        session.awaitFrame { it.firstNumber() == bottom.firstNumber() - 3 }
+    }
+
+    @Test
+    fun theWheelSendsArrowKeysOnTheAlternateScreen() {
+        val session = start("""printf '\033[?1049h'; stty raw -echo; echo ready; head -c9 | tr -d '\033' | od -An -c""")
+        session.awaitFrame { "ready" in it.text() }
+
+        // Up, up, down.
+        session.scrollWheel(-2)
+        session.scrollWheel(1)
+
+        val frame = session.awaitFrame { "[A[A[B" in it.text().replace(Regex("\\s+"), "") }
+        assertEquals(null, frame.scrollbar, "The alternate screen has no history")
+    }
+
+    @Test
+    fun theWheelDoesNothingOnTheAlternateScreenWhenTheProgramTurnedAlternateScrollOff() {
+        val session = start("""printf '\033[?1049h\033[?1007l'; stty raw -echo; echo ready; head -c1 | od -An -c""")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.scrollWheel(-3)
+        session.sendKey(KeyInput(TerminalKey.ENTER))
+
+        // The first byte that the program read is the Enter.
+        session.awaitFrame { "\\r" in it.text() }
+    }
+
+    @Test
+    fun dragsASelectionPastTheBottomAndScrollsWithIt() {
+        val session = historySession()
+        session.scrollBy(-30)
+        val start = session.awaitFrame { !it.scrollbar!!.atBottom }
+
+        session.selectionPress(0.2f, 0.5f)
+        // Below the screen, which has 6 rows.
+        val autoscroll = session.selectionDrag(2.7f, 8f)
+        assertEquals(TerminalAutoscroll.DOWN, autoscroll)
+        repeat(3) { assertEquals(TerminalAutoscroll.DOWN, session.selectionAutoscroll(2.7f, 8f)) }
+        val text = session.selectionRelease(2.7f, 8f)
+
+        val scrolled = session.awaitFrame { it.scrollbar!!.offset == start.scrollbar!!.offset + 3 }
+        assertEquals(start.firstNumber() + 3, scrolled.firstNumber())
+        // What was scrolled in is selected, which is more lines than the screen has.
+        assertTrue(text!!.lines().size > 6, "The selection is ${text.lines().size} lines: $text")
+    }
+
+    @Test
+    fun doesNotAutoscrollWhenThePointerIsNotPastAnEdge() {
+        val session = historySession()
+        session.scrollBy(-30)
+        session.awaitFrame { !it.scrollbar!!.atBottom }
+
+        session.selectionPress(0.2f, 0.5f)
+
+        assertEquals(TerminalAutoscroll.NONE, session.selectionDrag(2.7f, 2.5f))
+        assertEquals(TerminalAutoscroll.NONE, session.selectionAutoscroll(2.7f, 2.5f))
+    }
+
     @Test
     fun theCursorBlinksUnlessTheProgramOrTheCallerSaysOtherwise() {
         val session = start("sleep 30")

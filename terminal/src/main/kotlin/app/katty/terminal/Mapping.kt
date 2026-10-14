@@ -1,5 +1,6 @@
 package app.katty.terminal
 
+import app.katty.ghostty.GhosttyAutoscroll
 import app.katty.ghostty.GhosttyCellStyle
 import app.katty.ghostty.GhosttyCellWidth
 import app.katty.ghostty.GhosttyCursorStyle
@@ -151,3 +152,5 @@ internal fun MouseInput.toGhostty(xPx: Float, yPx: Float) = GhosttyMouseEvent(
 
 // Both enums have the same entries, in the same order, which a test checks: the names are enough.
 internal fun GhosttyMouseShape.toTerminal(): TerminalPointerShape = TerminalPointerShape.valueOf(name)
+
+internal fun GhosttyAutoscroll.toTerminal(): TerminalAutoscroll = TerminalAutoscroll.valueOf(name)

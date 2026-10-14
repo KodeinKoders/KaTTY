@@ -475,4 +475,155 @@ class TerminalTest {
         // The first byte that the program read is the Enter: it was not told about the selection.
         scene.renderUntil("the Enter to be read") { "\\r" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) } }
     }
+
+    // 200 lines in a terminal that fills the scene: most of them are history.
+    private fun historyScene(prefix: String = "", suffix: String = "sleep 30"): Pair<ImageComposeScene, TerminalSession> {
+        val session = session("${prefix}seq 1 200; $suffix", cols = 80, rows = 24)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(
+                LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true },
+                androidx.compose.ui.platform.LocalClipboard provides clipboard,
+            ) {
+                Terminal(session, Modifier.fillMaxSize())
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene and show the end of the history") {
+            val frame = session.frames.value
+            frame.cols != 80 && frame.scrollbar != null && frame.rows.indices.any { frame.text(it) == "200" }
+        }
+        scene.settle()
+        return scene to session
+    }
+
+    private fun TerminalFrame.firstNumber() = text(0).toInt()
+
+    private fun ImageComposeScene.wheel(notches: Float, at: Offset = Offset(100f, 100f)) =
+        sendPointerEvent(PointerEventType.Scroll, at, scrollDelta = Offset(0f, notches))
+
+    @Test
+    fun theWheelScrollsTheHistory() {
+        val (scene, session) = historyScene()
+        val bottom = session.frames.value
+
+        scene.wheel(-1f)
+
+        scene.renderUntil("the history to scroll three rows") { session.frames.value.let { it.scrollbar!!.offset == bottom.scrollbar!!.offset - 3 } }
+        assertEquals(bottom.firstNumber() - 3, session.frames.value.firstNumber())
+    }
+
+    @Test
+    fun theWheelIsTheProgramsWhenItAskedForTheMouse() {
+        val (scene, session) = historyScene(
+            prefix = """printf '\033[?1000h\033[?1006h'; """,
+            suffix = """stty raw -echo; head -c10 | tr -d '\033' | od -An -c""",
+        )
+        scene.renderUntil("the mouse to be asked for") { session.frames.value.mouseTracking }
+
+        scene.wheel(-1f, at(2.5f, 1.5f))
+
+        session.awaitReports(scene, "[<64;3;2M")
+        // The history did not scroll: the screen is still at the bottom, where what the program printed is.
+        assertTrue(session.frames.value.scrollbar!!.atBottom)
+    }
+
+    private fun ImageComposeScene.shiftKey(code: Int) {
+        sendKeyEvent(KeyEvent(key = Key(code), type = KeyEventType.KeyDown, isShiftPressed = true))
+        sendKeyEvent(KeyEvent(key = Key(code), type = KeyEventType.KeyUp, isShiftPressed = true))
+    }
+
+    @Test
+    fun shiftAndPageUpScrollsAPageAndTheProgramIsToldNothing() {
+        val (scene, session) = historyScene(suffix = "stty raw -echo; head -c1 | od -An -c")
+        val bottom = session.frames.value
+
+        scene.shiftKey(AwtKeyEvent.VK_PAGE_UP)
+
+        val rows = bottom.rows.size
+        scene.renderUntil("a page up") { session.frames.value.scrollbar!!.offset == bottom.scrollbar!!.offset - (rows - 1) }
+        // The first byte that the program reads is the Enter: it was not told about the page up.
+        session.sendKey(app.katty.terminal.KeyInput(app.katty.terminal.TerminalKey.ENTER))
+        scene.renderUntil("the Enter to be read") { "\\r" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) } }
+    }
+
+    @Test
+    fun shiftAndHomeAndEndGoToTheTopAndTheBottom() {
+        val (scene, session) = historyScene()
+
+        scene.shiftKey(AwtKeyEvent.VK_HOME)
+        scene.renderUntil("the top") { session.frames.value.scrollbar!!.offset == 0L }
+        assertEquals(1, session.frames.value.firstNumber())
+
+        scene.shiftKey(AwtKeyEvent.VK_END)
+        scene.renderUntil("the bottom") { session.frames.value.scrollbar!!.atBottom }
+    }
+
+    private val strip get() = Offset(WIDTH - 5f, 0f).x
+
+    private fun geometry(frame: TerminalFrame) = ScrollbarGeometry(HEIGHT.toFloat(), frame.scrollbar!!, SCROLLBAR_MIN_THUMB_HEIGHT.value)
+
+    private fun ImageComposeScene.press(position: Offset) = sendPointerEvent(
+        PointerEventType.Press, position, button = primary,
+        buttons = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true),
+    )
+
+    private fun ImageComposeScene.move(position: Offset, held: Boolean) = sendPointerEvent(
+        PointerEventType.Move, position,
+        buttons = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = held),
+    )
+
+    private fun ImageComposeScene.release(position: Offset) = sendPointerEvent(
+        PointerEventType.Release, position, button = primary, buttons = androidx.compose.ui.input.pointer.PointerButtons(),
+    )
+
+    @Test
+    fun draggingTheThumbOfTheScrollbarScrollsTheHistory() {
+        val (scene, session) = historyScene()
+        val frame = session.frames.value
+        val geometry = geometry(frame)
+        val middle = geometry.thumbTop + geometry.thumbHeight / 2
+
+        scene.move(Offset(strip, middle), held = false)
+        scene.press(Offset(strip, middle))
+        scene.move(Offset(strip, 100f), held = true)
+        scene.release(Offset(strip, 100f))
+
+        // The thumb was grabbed in its middle: its middle is where the pointer went.
+        val expected = geometry.rowAt(100f - geometry.thumbHeight / 2)
+        scene.renderUntil("the history to follow the thumb") { session.frames.value.scrollbar!!.offset == expected }
+    }
+
+    @Test
+    fun aPressOnTheTrackOfTheScrollbarPutsTheThumbThere() {
+        val (scene, session) = historyScene()
+        val geometry = geometry(session.frames.value)
+
+        scene.move(Offset(strip, 50f), held = false)
+        scene.press(Offset(strip, 50f))
+        scene.release(Offset(strip, 50f))
+
+        val expected = geometry.rowAt(50f - geometry.thumbHeight / 2)
+        scene.renderUntil("the history to jump") { session.frames.value.scrollbar!!.offset == expected }
+    }
+
+    @Test
+    fun aSelectionDraggedPastTheBottomScrollsTheHistoryAndSelectsWhatComesIn() {
+        val (scene, session) = historyScene()
+        scene.wheel(-10f)
+        scene.renderUntil("the history to scroll") { !session.frames.value.scrollbar!!.atBottom }
+        val start = session.frames.value
+        val primaryDown = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true)
+
+        scene.sendPointerEvent(PointerEventType.Move, at(0.2f, 1.5f))
+        scene.press(at(0.2f, 1.5f))
+        // Below the terminal, with the button held: the history scrolls on its own.
+        scene.sendPointerEvent(PointerEventType.Move, Offset(30f, HEIGHT + 40f), buttons = primaryDown)
+        scene.renderUntil("the history to autoscroll") { session.frames.value.scrollbar!!.offset >= start.scrollbar!!.offset + 3 }
+        scene.release(Offset(30f, HEIGHT + 40f))
+
+        // What came in is selected: more lines than the screen has.
+        scene.renderUntil("the selection to be copied") { clipboard.copied.isNotEmpty() }
+        val rows = start.rows.size
+        assertTrue(clipboard.copied.last().lines().size > rows - 1, "The selection is ${clipboard.copied.last().lines().size} lines")
+    }
 }

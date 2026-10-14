@@ -1,6 +1,8 @@
 package app.katty.terminal.compose
 
 import androidx.compose.foundation.focusable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,6 +42,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
@@ -50,9 +53,11 @@ import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalMouseButton
 import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.datatransfer.StringSelection
+import java.awt.event.KeyEvent as AwtKeyEvent
 import kotlin.math.roundToInt
 
 /**
@@ -103,6 +108,23 @@ public fun Terminal(
     val copy: (String) -> Unit = remember(clipboard) {
         { text -> scope.launch { clipboard.setClipEntry(ClipEntry(StringSelection(text))) } }
     }
+    val wheel = remember(session) { WheelScroller() }
+    val scrollbarInteraction = remember(session) { ScrollbarInteraction() }
+    val autoscroll = remember(session, scope) { SelectionAutoscroll(scope, session) }
+    val density = LocalDensity.current
+    // The scrollbar shows for a moment when the user scrolls, and while the pointer is on it.
+    var scrolledAt by remember { mutableStateOf(0) }
+    var recentlyScrolled by remember { mutableStateOf(false) }
+    LaunchedEffect(scrolledAt) {
+        if (scrolledAt == 0) return@LaunchedEffect
+        recentlyScrolled = true
+        delay(SCROLLBAR_VISIBLE_MS)
+        recentlyScrolled = false
+    }
+    val scrollbarAlpha by animateFloatAsState(
+        targetValue = if (frame.scrollbar != null && (recentlyScrolled || scrollbarInteraction.hovered || scrollbarInteraction.dragging)) 1f else 0f,
+        animationSpec = tween(SCROLLBAR_FADE_MS),
+    )
     val caretRect = remember { { caretRectInRoot(latestFrame.value, latestTypography.value, coordinates) } }
 
     // As many cells as fit. It is the number of them that matters, not the size in pixels: the terminal is
@@ -132,12 +154,20 @@ public fun Terminal(
         typography = typography,
         focused = active,
         preedit = textInput.preedit,
+        scrollbarAlpha = scrollbarAlpha,
+        scrollbarEmphasized = scrollbarInteraction.hovered || scrollbarInteraction.dragging,
         modifier = modifier
             .onSizeChanged { size = it }
             .onGloballyPositioned { coordinates = it }
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
-            .pointerHoverIcon(terminalPointerIcon(frame.pointerShape, frame.mouseTracking, selectionModifiers))
+            .pointerHoverIcon(
+                terminalPointerIcon(
+                    frame.pointerShape, frame.mouseTracking, selectionModifiers,
+                    // Only while there is a scrollbar: what was hovered is stale when it is gone.
+                    overScrollbar = frame.scrollbar != null && (scrollbarInteraction.hovered || scrollbarInteraction.dragging),
+                ),
+            )
             .pointerInput(session, focusRequester, copy) {
                 awaitPointerEventScope {
                     while (true) {
@@ -145,21 +175,54 @@ public fun Terminal(
                         // The terminal takes the focus when it is pressed, and is told about it or not.
                         if (event.type == PointerEventType.Press) focusRequester.requestFocus()
 
+                        if (event.type == PointerEventType.Exit) scrollbarInteraction.exit()
                         val info = event.toPointerInfo() ?: continue
                         selectionModifiers = SelectionModifiers(info.shift, info.alt, info.meta)
                         val typography = latestTypography.value
                         val tracking = latestFrame.value.mouseTracking
+
+                        // The scrollbar is along the right edge, and what the pointer does there is for it.
+                        val position = latestFrame.value.scrollbar
+                        if (position != null && !selection.selecting) {
+                            val geometry = ScrollbarGeometry(size.height.toFloat(), position, with(density) { SCROLLBAR_MIN_THUMB_HEIGHT.toPx() })
+                            val handled = scrollbarInteraction.handle(info, geometry, size.width.toFloat(), with(density) { SCROLLBAR_STRIP_WIDTH.toPx() }) {
+                                scrolledAt++
+                                session.scrollToRow(it)
+                            }
+                            if (handled) {
+                                event.changes.forEach { it.consume() }
+                                continue
+                            }
+                        }
 
                         // Selecting text is the terminal's, and the program is told nothing of it.
                         val selecting = selection.translate(info, typography.cellWidth, typography.cellHeight, tracking)
                         if (selecting.isNotEmpty() || selection.selecting) {
                             for (action in selecting) {
                                 when (action) {
-                                    is SelectionAction.Press -> session.selectionPress(action.column, action.row)
-                                    is SelectionAction.Drag -> session.selectionDrag(action.column, action.row, action.rectangle)
+                                    is SelectionAction.Press -> {
+                                        autoscroll.stop()
+                                        session.selectionPress(action.column, action.row)
+                                    }
+                                    // Past the top or the bottom, the history scrolls for as long as the pointer stays.
+                                    is SelectionAction.Drag -> autoscroll.drag(action.column, action.row, action.rectangle) { scrolledAt++ }
                                     // What is selected is copied as soon as the button is up.
-                                    is SelectionAction.Release -> session.selectionRelease(action.column, action.row)?.let(copy)
+                                    is SelectionAction.Release -> {
+                                        autoscroll.stop()
+                                        session.selectionRelease(action.column, action.row)?.let(copy)
+                                    }
                                 }
+                            }
+                            event.changes.forEach { it.consume() }
+                            continue
+                        }
+
+                        // What the wheel does when the program did not ask for the mouse: the history, or arrow keys.
+                        if (info.kind == PointerInfo.Kind.SCROLL && !tracking) {
+                            val rows = wheel.add(info.scrollY, maxRows = latestFrame.value.rows.size)
+                            if (rows != 0) {
+                                scrolledAt++
+                                session.scrollWheel(rows)
                             }
                             event.changes.forEach { it.consume() }
                             continue
@@ -176,6 +239,20 @@ public fun Terminal(
             .onPreviewKeyEvent { event ->
                 val info = event.toKeyInfo()
                 selectionModifiers = SelectionModifiers(info.shift, info.alt, info.meta)
+                // Shift and PageUp, PageDown, Home or End scroll the history, when there is some: the program gets nothing. On the
+                // alternate screen there is none, and they are the program's.
+                if (latestFrame.value.scrollbar != null && isHistoryKey(info)) {
+                    if (info.kind == KeyInfo.Kind.PRESSED) {
+                        scrolledAt++
+                        when (info.keyCode) {
+                            AwtKeyEvent.VK_PAGE_UP -> session.scrollPage(-1)
+                            AwtKeyEvent.VK_PAGE_DOWN -> session.scrollPage(1)
+                            AwtKeyEvent.VK_HOME -> session.scrollToTop()
+                            else -> session.scrollToBottom()
+                        }
+                    }
+                    return@onPreviewKeyEvent true
+                }
                 if (info.kind == KeyInfo.Kind.PRESSED) textInput.keyPressed()
                 val input = keys.translate(info) ?: return@onPreviewKeyEvent false
                 val text = input.text
@@ -205,7 +282,7 @@ private fun caretRectInRoot(frame: TerminalFrame, typography: TerminalTypography
 }
 
 // What matters of a pointer event of the mouse, or `null` for the ones that the terminal is not told about (the pointer
-// entering or leaving).
+// entering, or leaving with no button down).
 @OptIn(ExperimentalComposeUiApi::class)
 private fun PointerEvent.toPointerInfo(): PointerInfo? {
     val kind = when (type) {
@@ -213,6 +290,9 @@ private fun PointerEvent.toPointerInfo(): PointerInfo? {
         PointerEventType.Release -> PointerInfo.Kind.RELEASE
         PointerEventType.Move -> PointerInfo.Kind.MOVE
         PointerEventType.Scroll -> PointerInfo.Kind.SCROLL
+        // The pointer leaves the terminal with a button down, which is a drag that goes on outside: its position is past
+        // the edge, which is how a selection autoscrolls.
+        PointerEventType.Exit -> if (buttons.isPrimaryPressed) PointerInfo.Kind.MOVE else return null
         else -> return null
     }
     val change = changes.firstOrNull() ?: return null

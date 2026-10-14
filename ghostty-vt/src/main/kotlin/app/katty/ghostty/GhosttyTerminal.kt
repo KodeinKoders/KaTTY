@@ -6,6 +6,9 @@ import app.katty.ghostty.ffm.GhosttyPoint
 import app.katty.ghostty.ffm.GhosttyPointCoordinate
 import app.katty.ghostty.ffm.GhosttyPointValue
 import app.katty.ghostty.ffm.GhosttyString
+import app.katty.ghostty.ffm.GhosttyTerminalScrollViewport
+import app.katty.ghostty.ffm.GhosttyTerminalScrollViewportValue
+import app.katty.ghostty.ffm.GhosttyTerminalScrollbar
 import app.katty.ghostty.ffm.GhosttyTerminalSelectionFormatOptions
 import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
 import app.katty.ghostty.ffm.GhosttyTerminalWritePtyFn
@@ -30,12 +33,15 @@ private val logger = LoggerFactory.getLogger(GhosttyTerminal::class.java)
  * when a program asks for it. Nothing is reported when it is `null`.
  * @param defaultCursorBlink Whether the cursor blinks unless the program says otherwise: libghostty's own
  * default is that it does not, and most programs, shells included, never ask for it.
+ * @param scrollbackMaxBytes How much memory the history may take, about: libghostty prunes by pages, so it is
+ * somewhat more. `null` keeps libghostty's own limit.
  */
 public class GhosttyTerminal(
     cols: Int,
     rows: Int,
     terminfoName: String? = null,
     defaultCursorBlink: Boolean = false,
+    scrollbackMaxBytes: Long? = null,
 ) : AutoCloseable {
     internal val handle: MemorySegment
 
@@ -98,6 +104,17 @@ public class GhosttyTerminal(
                 )
             }
 
+            if (scrollbackMaxBytes != null) {
+                Arena.ofConfined().use { arena ->
+                    val limit = arena.allocate(ValueLayout.JAVA_LONG)
+                    limit.set(ValueLayout.JAVA_LONG, 0, scrollbackMaxBytes)
+                    checkResult(
+                        GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES(), limit),
+                        "ghostty_terminal_set(SCROLLBACK_MAX_BYTES)",
+                    )
+                }
+            }
+
             if (terminfoName != null) {
                 Arena.ofConfined().use { arena ->
                     // The string is copied by the terminal.
@@ -138,6 +155,60 @@ public class GhosttyTerminal(
                     "ghostty_terminal_get(KITTY_KEYBOARD_FLAGS)",
                 )
                 out.get(ValueLayout.JAVA_BYTE, 0).toInt() and 0xFF
+            }
+        }
+
+    /** Moves the viewport, which shows a part of the history and of the screen. Not past either end. */
+    public fun scroll(to: GhosttyScrollViewport) {
+        requireOpen()
+        Arena.ofConfined().use { arena ->
+            val behavior = arena.allocate(GhosttyTerminalScrollViewport.layout())
+            val value = GhosttyTerminalScrollViewport.value(behavior)
+            when (to) {
+                GhosttyScrollViewport.Top -> GhosttyTerminalScrollViewport.tag(behavior, GhosttyVt.GHOSTTY_SCROLL_VIEWPORT_TOP())
+                GhosttyScrollViewport.Bottom -> GhosttyTerminalScrollViewport.tag(behavior, GhosttyVt.GHOSTTY_SCROLL_VIEWPORT_BOTTOM())
+                is GhosttyScrollViewport.Delta -> {
+                    GhosttyTerminalScrollViewport.tag(behavior, GhosttyVt.GHOSTTY_SCROLL_VIEWPORT_DELTA())
+                    GhosttyTerminalScrollViewportValue.delta(value, to.rows)
+                }
+                is GhosttyScrollViewport.Row -> {
+                    GhosttyTerminalScrollViewport.tag(behavior, GhosttyVt.GHOSTTY_SCROLL_VIEWPORT_ROW())
+                    GhosttyTerminalScrollViewportValue.row(value, to.row)
+                }
+            }
+            GhosttyVt.ghostty_terminal_scroll_viewport(handle, behavior)
+        }
+    }
+
+    /** Where the viewport is in the history and the screen. */
+    public val scrollbar: GhosttyScrollbar
+        get() {
+            requireOpen()
+            return Arena.ofConfined().use { arena ->
+                val out = arena.allocate(GhosttyTerminalScrollbar.layout())
+                checkResult(
+                    GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_SCROLLBAR(), out),
+                    "ghostty_terminal_get(SCROLLBAR)",
+                )
+                GhosttyScrollbar(
+                    total = GhosttyTerminalScrollbar.total(out),
+                    offset = GhosttyTerminalScrollbar.offset(out),
+                    len = GhosttyTerminalScrollbar.len(out),
+                )
+            }
+        }
+
+    /** The screen that the program is on: the alternate one, of vim or less, has no history. */
+    public val activeScreen: GhosttyScreen
+        get() {
+            requireOpen()
+            return Arena.ofConfined().use { arena ->
+                val out = arena.allocate(ValueLayout.JAVA_INT)
+                checkResult(
+                    GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN(), out),
+                    "ghostty_terminal_get(ACTIVE_SCREEN)",
+                )
+                if (out.get(ValueLayout.JAVA_INT, 0) == GhosttyVt.GHOSTTY_TERMINAL_SCREEN_ALTERNATE()) GhosttyScreen.ALTERNATE else GhosttyScreen.PRIMARY
             }
         }
 

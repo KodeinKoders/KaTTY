@@ -1,6 +1,7 @@
 package app.katty.ghostty
 
 import app.katty.ghostty.ffm.GhosttyGridRef
+import app.katty.ghostty.ffm.GhosttyPointCoordinate
 import app.katty.ghostty.ffm.GhosttySelection
 import app.katty.ghostty.ffm.GhosttySelectionGestureGeometry
 import app.katty.ghostty.ffm.GhosttySurfacePosition
@@ -22,6 +23,7 @@ public class GhosttySelectionGesture(private val terminal: GhosttyTerminal) : Au
     private val pressEvent: MemorySegment
     private val dragEvent: MemorySegment
     private val releaseEvent: MemorySegment
+    private val tickEvent: MemorySegment
 
     private var closed = false
 
@@ -33,6 +35,7 @@ public class GhosttySelectionGesture(private val terminal: GhosttyTerminal) : Au
             pressEvent = newEvent(GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_PRESS()).also { events += it }
             dragEvent = newEvent(GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_DRAG()).also { events += it }
             releaseEvent = newEvent(GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_RELEASE()).also { events += it }
+            tickEvent = newEvent(GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_AUTOSCROLL_TICK()).also { events += it }
         } catch (e: Throwable) {
             events.forEach { GhosttyVt.ghostty_selection_gesture_event_free(it) }
             GhosttyVt.ghostty_selection_gesture_free(gesture, terminal.handle)
@@ -98,22 +101,61 @@ public class GhosttySelectionGesture(private val terminal: GhosttyTerminal) : Au
         return Arena.ofConfined().use { arena ->
             setRef(arena, dragEvent, column, row)
             setPosition(arena, dragEvent, xPx, yPx)
-            val geometry = arena.allocate(GhosttySelectionGestureGeometry.layout())
-            GhosttySelectionGestureGeometry.columns(geometry, cols)
-            GhosttySelectionGestureGeometry.cell_width(geometry, cellWidthPx)
-            GhosttySelectionGestureGeometry.padding_left(geometry, 0)
-            GhosttySelectionGestureGeometry.screen_height(geometry, screenHeightPx)
-            checkResult(
-                GhosttyVt.ghostty_selection_gesture_event_set(dragEvent, GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_GEOMETRY(), geometry),
-                "ghostty_selection_gesture_event_set(GEOMETRY)",
-            )
-            val rectangleFlag = arena.allocate(ValueLayout.JAVA_BOOLEAN)
-            rectangleFlag.set(ValueLayout.JAVA_BOOLEAN, 0, rectangle)
-            checkResult(
-                GhosttyVt.ghostty_selection_gesture_event_set(dragEvent, GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_RECTANGLE(), rectangleFlag),
-                "ghostty_selection_gesture_event_set(RECTANGLE)",
-            )
+            setGeometry(arena, dragEvent, cols, cellWidthPx, screenHeightPx)
+            setRectangle(arena, dragEvent, rectangle)
             apply(arena, dragEvent)
+        }
+    }
+
+    /**
+     * Which way the drag that is in progress asks to scroll, which is when the pointer is past the top or the bottom of
+     * the screen. Read it after [drag], and call [tick] every so often while it is not [GhosttyAutoscroll.NONE].
+     */
+    public fun autoscroll(): GhosttyAutoscroll {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val out = arena.allocate(ValueLayout.JAVA_INT)
+            val result = GhosttyVt.ghostty_selection_gesture_get(gesture, terminal.handle, GhosttyVt.GHOSTTY_SELECTION_GESTURE_DATA_AUTOSCROLL(), out)
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use GhosttyAutoscroll.NONE
+            checkResult(result, "ghostty_selection_gesture_get(AUTOSCROLL)")
+            when (out.get(ValueLayout.JAVA_INT, 0)) {
+                GhosttyVt.GHOSTTY_SELECTION_GESTURE_AUTOSCROLL_UP() -> GhosttyAutoscroll.UP
+                GhosttyVt.GHOSTTY_SELECTION_GESTURE_AUTOSCROLL_DOWN() -> GhosttyAutoscroll.DOWN
+                else -> GhosttyAutoscroll.NONE
+            }
+        }
+    }
+
+    /**
+     * One step of the autoscroll, while the pointer stays at [xPx] and [yPx], past an edge: **the viewport is scrolled by
+     * a row** and the selection is extended to the edge row of the viewport, at [column].
+     *
+     * @param edgeRow The row of the viewport at the edge that the pointer is past: the first or the last.
+     * @return Whether there is a selection now, installed in the terminal.
+     */
+    public fun tick(
+        column: Int,
+        edgeRow: Int,
+        xPx: Double,
+        yPx: Double,
+        cols: Int,
+        cellWidthPx: Int,
+        screenHeightPx: Int,
+        rectangle: Boolean,
+    ): Boolean {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val coordinate = arena.allocate(GhosttyPointCoordinate.layout())
+            GhosttyPointCoordinate.x(coordinate, column.toShort())
+            GhosttyPointCoordinate.y(coordinate, edgeRow)
+            checkResult(
+                GhosttyVt.ghostty_selection_gesture_event_set(tickEvent, GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_VIEWPORT(), coordinate),
+                "ghostty_selection_gesture_event_set(VIEWPORT)",
+            )
+            setPosition(arena, tickEvent, xPx, yPx)
+            setGeometry(arena, tickEvent, cols, cellWidthPx, screenHeightPx)
+            setRectangle(arena, tickEvent, rectangle)
+            apply(arena, tickEvent)
         }
     }
 
@@ -141,6 +183,7 @@ public class GhosttySelectionGesture(private val terminal: GhosttyTerminal) : Au
         GhosttyVt.ghostty_selection_gesture_event_free(pressEvent)
         GhosttyVt.ghostty_selection_gesture_event_free(dragEvent)
         GhosttyVt.ghostty_selection_gesture_event_free(releaseEvent)
+        GhosttyVt.ghostty_selection_gesture_event_free(tickEvent)
         // The tracked references of the gesture are the terminal's: once it is gone there is nothing to release.
         GhosttyVt.ghostty_selection_gesture_free(gesture, if (terminal.isClosed) MemorySegment.NULL else terminal.handle)
     }
@@ -170,6 +213,27 @@ public class GhosttySelectionGesture(private val terminal: GhosttyTerminal) : Au
         checkResult(
             GhosttyVt.ghostty_selection_gesture_event_set(event, GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_POSITION(), position),
             "ghostty_selection_gesture_event_set(POSITION)",
+        )
+    }
+
+    private fun setGeometry(arena: Arena, event: MemorySegment, cols: Int, cellWidthPx: Int, screenHeightPx: Int) {
+        val geometry = arena.allocate(GhosttySelectionGestureGeometry.layout())
+        GhosttySelectionGestureGeometry.columns(geometry, cols)
+        GhosttySelectionGestureGeometry.cell_width(geometry, cellWidthPx)
+        GhosttySelectionGestureGeometry.padding_left(geometry, 0)
+        GhosttySelectionGestureGeometry.screen_height(geometry, screenHeightPx)
+        checkResult(
+            GhosttyVt.ghostty_selection_gesture_event_set(event, GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_GEOMETRY(), geometry),
+            "ghostty_selection_gesture_event_set(GEOMETRY)",
+        )
+    }
+
+    private fun setRectangle(arena: Arena, event: MemorySegment, rectangle: Boolean) {
+        val flag = arena.allocate(ValueLayout.JAVA_BOOLEAN)
+        flag.set(ValueLayout.JAVA_BOOLEAN, 0, rectangle)
+        checkResult(
+            GhosttyVt.ghostty_selection_gesture_event_set(event, GhosttyVt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_RECTANGLE(), flag),
+            "ghostty_selection_gesture_event_set(RECTANGLE)",
         )
     }
 

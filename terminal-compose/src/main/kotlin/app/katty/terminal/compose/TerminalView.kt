@@ -17,10 +17,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.dp
 import app.katty.terminal.TerminalCellWidth
 import app.katty.terminal.TerminalCursor
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalFrame
+import app.katty.terminal.TerminalScrollbar
 import app.katty.terminal.TerminalUnderline
 import kotlinx.coroutines.delay
 import kotlin.math.max
@@ -39,6 +41,8 @@ internal fun TerminalView(
     focused: Boolean,
     modifier: Modifier = Modifier,
     preedit: String = "",
+    scrollbarAlpha: Float = 0f,
+    scrollbarEmphasized: Boolean = false,
 ) {
     // What is kept for the rows depends on how they are drawn.
     val layouts = remember(typography, frame.foreground, frame.background, frame.boldColor) { RowLayouts(typography) }
@@ -59,6 +63,8 @@ internal fun TerminalView(
         }
 
         if (frame.selection.isNotEmpty()) drawSelection(frame, rows, typography)
+
+        frame.scrollbar?.takeIf { scrollbarAlpha > 0f }?.let { drawScrollbar(it, frame, scrollbarAlpha, scrollbarEmphasized) }
 
         if (preedit.isNotEmpty()) {
             // The cursor would be in the way of what is being composed.
@@ -94,6 +100,26 @@ private fun DrawScope.drawCells(startCol: Int, cols: Int, top: Float, typography
     val left = round(startCol * typography.cellWidth)
     val right = round((startCol + cols) * typography.cellWidth)
     drawRect(color, topLeft = Offset(left, top), size = Size(right - left, typography.cellHeight))
+}
+
+/** The width of the strip along the right edge where the scrollbar is, and what the pointer in it is for. */
+internal val SCROLLBAR_STRIP_WIDTH = 12.dp
+private val SCROLLBAR_THUMB_WIDTH = 6.dp
+private val SCROLLBAR_THUMB_MARGIN = 3.dp
+internal val SCROLLBAR_MIN_THUMB_HEIGHT = 24.dp
+
+/**
+ * The scrollbar, over the text: a thumb in the color of the text, faint, and stronger when it is used.
+ */
+private fun DrawScope.drawScrollbar(scrollbar: TerminalScrollbar, frame: TerminalFrame, alpha: Float, emphasized: Boolean) {
+    val geometry = ScrollbarGeometry(size.height, scrollbar, SCROLLBAR_MIN_THUMB_HEIGHT.toPx())
+    val thumbWidth = SCROLLBAR_THUMB_WIDTH.toPx()
+    drawRoundRect(
+        color = frame.foreground.rgb.toColor().copy(alpha = alpha * (if (emphasized) 0.6f else 0.35f)),
+        topLeft = Offset(size.width - thumbWidth - SCROLLBAR_THUMB_MARGIN.toPx(), geometry.thumbTop),
+        size = Size(thumbWidth, geometry.thumbHeight),
+        cornerRadius = CornerRadius(thumbWidth / 2),
+    )
 }
 
 /**
