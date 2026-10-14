@@ -123,10 +123,10 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
-        typography = if (font != null) rememberTerminalTypography(fontSize.sp, font) else rememberTerminalTypography(fontSize.sp)
+        typography = rememberTerminalTypography(fontSize.sp, font ?: TerminalFont.bundled(), ligatures)
         TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink)
     }
     scene.useScene {
@@ -150,6 +150,19 @@ class TerminalViewTest {
             }
             file
         }
+    }
+
+    @Test
+    fun theFontJoinsOperatorsIntoOneGlyphUnlessLigaturesAreOff() {
+        val rows = listOf(row(20, *text("=> != === <= ->")))
+        val frame = frame(20, rows)
+
+        val joined = render("ligatures-on", frame)
+        val plain = render("ligatures-off", frame, ligatures = false)
+
+        // The cells are the same, so only what is drawn in them differs.
+        assertEquals(joined.typography.cellWidth, plain.typography.cellWidth)
+        assertNotEquals(joined.bytes().toList(), plain.bytes().toList())
     }
 
     @Test

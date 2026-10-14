@@ -24,6 +24,7 @@ internal class TerminalTypography(
     private val density: Density,
     val font: TerminalFont,
     private val fontSize: TextUnit,
+    private val ligatures: Boolean = true,
 ) {
     /**
      * The width of a cell in pixels: the advance of the font, which is not a whole number of pixels. It is not
@@ -34,7 +35,14 @@ internal class TerminalTypography(
     /** The height of a cell in pixels, which is a whole number of them so that rows do not blur. */
     val cellHeight: Float
 
-    private val baseStyle = TextStyle(fontFamily = font.family, fontSize = fontSize, letterSpacing = TextUnit.Unspecified)
+    // The font joins sequences such as => and != into one glyph with its `liga` and `calt` features, which are on unless a style turns them off.
+    // Compose reads the settings without quotes: with them (`'liga' 0`, the CSS way) they are ignored and the font still joins.
+    private val baseStyle = TextStyle(
+        fontFamily = font.family,
+        fontSize = fontSize,
+        letterSpacing = TextUnit.Unspecified,
+        fontFeatureSettings = if (ligatures) null else "liga 0, calt 0",
+    )
 
     init {
         // Measuring many characters gives the advance more precisely than one, whose width is a whole number.
@@ -67,8 +75,12 @@ internal class TerminalTypography(
 }
 
 @Composable
-internal fun rememberTerminalTypography(fontSize: TextUnit, font: TerminalFont = TerminalFont.bundled()): TerminalTypography {
+internal fun rememberTerminalTypography(
+    fontSize: TextUnit,
+    font: TerminalFont = TerminalFont.bundled(),
+    ligatures: Boolean = true,
+): TerminalTypography {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    return remember(measurer, density, font, fontSize) { TerminalTypography(measurer, density, font, fontSize) }
+    return remember(measurer, density, font, fontSize, ligatures) { TerminalTypography(measurer, density, font, fontSize, ligatures) }
 }

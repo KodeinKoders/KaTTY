@@ -90,6 +90,9 @@ import kotlin.math.roundToInt
  * one into another.
  * @param onOpenLink Opens the address of a link that was clicked. By default the system opens the ones that start with `http`, `https`,
  * `ftp`, `file` and `mailto`, and the others are refused.
+ * @param ligatures Whether the font joins sequences such as `=>` and `!=` into one glyph. Most programmers' fonts do, and it is on by default.
+ * @param onContextMenu Called with the position of a right press (in pixels, from the top left of the terminal) that is not the program's:
+ * the program did not ask for the mouse, or Shift is held. The host shows its menu there. Without it the press is handled as before.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -101,9 +104,11 @@ public fun Terminal(
     focusRequester: FocusRequester = remember { FocusRequester() },
     onOpenLink: (String) -> Unit = ::openInBrowser,
     primarySelection: TerminalPrimarySelection = remember(session) { TerminalPrimarySelection() },
+    ligatures: Boolean = true,
+    onContextMenu: ((Offset) -> Unit)? = null,
 ) {
     val frame by session.frames.collectAsState()
-    val typography = rememberTerminalTypography(fontSize, font)
+    val typography = rememberTerminalTypography(fontSize, font, ligatures)
 
     var size by remember { mutableStateOf(IntSize.Zero) }
     var focused by remember { mutableStateOf(false) }
@@ -131,6 +136,8 @@ public fun Terminal(
     }
     val primary = primarySelection
     val links = remember(session) { LinkInteraction() }
+    val contextMenu = remember(session) { ContextMenuGesture() }
+    val latestContextMenu = rememberUpdatedState(onContextMenu)
     val openLink = rememberUpdatedState(onOpenLink)
     val wheel = remember(session) { WheelScroller() }
     val wheelX = remember(session) { WheelNormalizer() }
@@ -260,6 +267,15 @@ public fun Terminal(
                                 open = { openLink.value(it) },
                             )
                             if (ofLink) {
+                                event.changes.forEach { it.consume() }
+                                continue
+                            }
+                        }
+
+                        // The right button opens the host's menu, when the program did not ask for the mouse or Shift is held.
+                        if (latestContextMenu.value != null && !selection.selecting) {
+                            val taken = contextMenu.handle(info, tracking) { x, y -> latestContextMenu.value?.invoke(Offset(x, y)) }
+                            if (taken) {
                                 event.changes.forEach { it.consume() }
                                 continue
                             }
