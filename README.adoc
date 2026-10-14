@@ -73,11 +73,11 @@ The shell runs, with colors, text attributes, the 811 iTerm2 color schemes (chos
 Images of the Kitty graphics protocol are drawn (`chafa -f kitty` for chafa, which does not detect it).
 Copy and paste are Command and C or V on macOS, and Control and Shift and C or V elsewhere.
 The session tells its host about the title, the working directory, the bell, notifications, progress, what a program writes in the clipboard (OSC 52, and reads of it if the host allows them), the commands that the shell starts and ends, and the alternate screen; zsh and bash are made to report their directory and their prompts, and Command and Up or Down jump between prompts.
+Programs that ask to be told about the focus (vim, tmux) are.
 Links, those that a program marks (OSC 8) and those that are written in the text, are underlined when Command is held over them (Control elsewhere) and opened with a click.
 
 What is not done yet:
 
-* the focus events;
 * input methods other than dead keys (the candidate windows of Chinese, Japanese and Korean input);
 * unicode placeholders for images, Sixel and the inline images of iTerm2;
 * other platforms than macOS on Apple Silicon.

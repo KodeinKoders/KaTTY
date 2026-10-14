@@ -183,6 +183,15 @@ public fun Terminal(
         }
     }
 
+    // A program that asked to know (mode 1004) is told when the keys start and stop going to this terminal. The focus moves for a
+    // moment when the input method session opens or closes: waiting a little, the effect is restarted by that and nothing is
+    // reported, where a program would be told that it lost the focus and had it back.
+    LaunchedEffect(session, active) {
+        delay(FOCUS_REPORT_DELAY_MS)
+        // It takes the lock of the terminal: not on the UI thread, which would wait for the program's output.
+        withContext(Dispatchers.Default) { session.setFocused(active) }
+    }
+
     TerminalView(
         frame = frame,
         typography = typography,
@@ -427,3 +436,6 @@ private fun PointerButton.toTerminal(): TerminalMouseButton? = when (this) {
     PointerButton.Forward -> TerminalMouseButton.FORWARD
     else -> null
 }
+
+// How long the focus must stay where it is before a program is told.
+private const val FOCUS_REPORT_DELAY_MS = 50L

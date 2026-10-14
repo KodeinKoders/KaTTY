@@ -85,6 +85,10 @@ public class TerminalSession private constructor(
     // the terminal. Under the lock.
     private var hasSelection = false
 
+    // What the program was last told about the focus, or would have been if it asked: a session starts not focused, like xterm's
+    // terminal, which tells a program that turns the mode on nothing until the focus changes. Under the lock.
+    private var lastFocused = false
+
     // The colors that a frame has besides the ones libghostty resolves. Written under the lock, with the
     // colors of the terminal, and read by the producer.
     @Volatile
@@ -545,6 +549,20 @@ public class TerminalSession private constructor(
             val x = (input.column * cellWidthPx).coerceIn(0f, cols * cellWidthPx - 1f)
             val y = (input.row * cellHeightPx).coerceIn(0f, rows * cellHeightPx - 1f)
             mouseEncoder.encode(input.toGhostty(x, y), input.anyButtonPressed)
+        }
+        if (bytes.isNotEmpty()) outgoing.put(bytes)
+    }
+
+    /**
+     * Tells the session whether the keys that are typed go to this terminal: a program that asked to know (mode 1004: vim, tmux)
+     * is sent `ESC [ I` when it gains the focus and `ESC [ O` when it loses it. It is told when it changes, and only if it asked.
+     * What is typed or selected is not touched.
+     */
+    public fun setFocused(focused: Boolean) {
+        val bytes = lock.withLock {
+            if (closed.get() || focused == lastFocused) return
+            lastFocused = focused
+            terminal.encodeFocus(focused)
         }
         if (bytes.isNotEmpty()) outgoing.put(bytes)
     }

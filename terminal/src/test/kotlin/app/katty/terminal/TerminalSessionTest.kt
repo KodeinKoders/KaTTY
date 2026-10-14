@@ -943,6 +943,61 @@ class TerminalSessionTest {
         assertNotEquals(0, session.awaitExit())
     }
 
+    @Test
+    fun tellsAProgramThatAskedToKnowWhenTheFocusChanges() {
+        val session = start("""printf '\033[?1004h'; stty raw -echo; echo ready; head -c6 | tr -d '\033' | od -An -c""")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.setFocused(true)
+        session.setFocused(false)
+
+        session.awaitFrame { "[I[O" in it.text().replace(Regex("\\s+"), "") }
+    }
+
+    @Test
+    fun doesNotTellAProgramThatDidNotAskToKnow() {
+        val session = start("""stty raw -echo; echo ready; head -c1 | od -An -c""")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.setFocused(true)
+        session.setFocused(false)
+        session.sendKey(KeyInput(TerminalKey.ENTER))
+
+        // The first byte that the program read is the Enter.
+        session.awaitFrame { "\\r" in it.text() }
+    }
+
+    @Test
+    fun tellsAProgramOnlyWhenTheFocusChanges() {
+        val session = start("""printf '\033[?1004h'; stty raw -echo; echo ready; head -c6 | tr -d '\033' | od -An -c""")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.setFocused(false)
+        session.setFocused(true)
+        session.setFocused(true)
+        session.setFocused(false)
+        session.setFocused(false)
+
+        // Not focused to start with: the first report is the gain, and nothing is repeated.
+        session.awaitFrame { "[I[O" in it.text().replace(Regex("\\s+"), "") }
+    }
+
+    @Test
+    fun reportingTheFocusDoesNotScrollTheHistoryBack() {
+        val session = start("""printf '\033[?1004h'; seq 1 200; sleep 30""", rows = 6)
+        session.resize(80, 6, 10, 20)
+        session.awaitFrame { frame -> frame.rows.any { frame.text(frame.rows.indexOf(it)) == "200" } && frame.scrollbar != null }
+        session.scrollBy(-10)
+        val scrolled = session.awaitFrame { it.scrollbar?.atBottom == false }
+
+        session.setFocused(true)
+        session.setFocused(false)
+
+        // What is typed brings the screen back to the bottom, a focus report is not typed.
+        Thread.sleep(100)
+        assertEquals(scrolled.scrollbar!!.offset, session.frames.value.scrollbar!!.offset)
+    }
+
     // The events that the session publishes from now on: nothing is replayed, so this comes before the program writes them.
     private fun TerminalSession.collectEvents(): List<TerminalEvent> {
         val events = CopyOnWriteArrayList<TerminalEvent>()

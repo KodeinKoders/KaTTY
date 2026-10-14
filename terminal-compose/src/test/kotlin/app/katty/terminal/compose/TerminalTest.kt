@@ -81,6 +81,16 @@ class TerminalTest {
         }
     }
 
+    // Renders for as long as [milliseconds] of real time: what is done after a delay happens in it.
+    private fun ImageComposeScene.renderFor(milliseconds: Long) {
+        val end = System.nanoTime() + milliseconds * 1_000_000
+        while (System.nanoTime() < end) {
+            render(clock)
+            clock += 16_000_000
+            Thread.sleep(10)
+        }
+    }
+
     // A few frames more, for what is done in an effect and has no outcome to wait for: the terminal takes the focus.
     private fun ImageComposeScene.settle() {
         repeat(5) {
@@ -307,6 +317,64 @@ class TerminalTest {
         scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_UP), type = KeyEventType.KeyUp, isMetaPressed = isMac, isCtrlPressed = !isMac, isShiftPressed = !isMac))
 
         scene.renderUntil("the viewport to go up") { session.frames.value.scrollbar!!.offset < bottom }
+    }
+
+    // A terminal in a window whose focus the test moves.
+    private fun focusScene(session: TerminalSession, windowFocus: androidx.compose.runtime.MutableState<Boolean>): ImageComposeScene =
+        ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(LocalWindowInfo provides object : WindowInfo { override val isWindowFocused get() = windowFocus.value }) {
+                Terminal(session, Modifier.fillMaxSize())
+            }
+        }.also { scenes += it }
+
+    @Test
+    fun tellsAProgramWhenTheWindowLosesAndRegainsTheFocus() {
+        // The program turns the mode on after the terminal had the focus: it is told of the changes only.
+        val session = session(
+            """stty raw -echo; echo ready; head -c1 >/dev/null; printf '\033[?1004h'; echo enabled; head -c6 | tr -d '\033' | od -An -c""",
+        )
+        val windowFocus = androidx.compose.runtime.mutableStateOf(true)
+        val scene = focusScene(session, windowFocus)
+        scene.renderUntil("the terminal to fit the scene and be ready") { session.frames.value.cols != 10 && session.frames.value.rows.indices.any { session.frames.value.text(it) == "ready" } }
+        // The terminal has the focus, and has told the program, which does not want to know yet.
+        scene.renderFor(200)
+        scene.type('x')
+        scene.renderUntil("the mode to be on") { session.frames.value.rows.indices.any { "enabled" in session.frames.value.text(it) } }
+
+        windowFocus.value = false
+        scene.renderFor(300)
+        windowFocus.value = true
+
+        scene.renderUntil("what the program read") {
+            session.frames.value.rows.indices.any { session.frames.value.text(it).replace(Regex("\\s+"), "") == "[O[I" }
+        }
+    }
+
+    @Test
+    fun doesNotTellAProgramOfAFocusThatMovedForAMoment() {
+        val session = session(
+            """stty raw -echo; echo ready; head -c1 >/dev/null; printf '\033[?1004h'; echo enabled; head -c1 | od -An -c""",
+        )
+        val windowFocus = androidx.compose.runtime.mutableStateOf(true)
+        val scene = focusScene(session, windowFocus)
+        scene.renderUntil("the terminal to fit the scene and be ready") { session.frames.value.cols != 10 && session.frames.value.rows.indices.any { session.frames.value.text(it) == "ready" } }
+        scene.renderFor(200)
+        scene.type('x')
+        scene.renderUntil("the mode to be on") { session.frames.value.rows.indices.any { "enabled" in session.frames.value.text(it) } }
+
+        // Away and back before anything is reported.
+        windowFocus.value = false
+        scene.render(clock)
+        windowFocus.value = true
+        scene.render(clock)
+        scene.renderFor(300)
+        scene.type('y')
+
+        // The first byte that the program read is the key, not a report.
+        scene.renderUntil("what the program read") {
+            session.frames.value.rows.indices.any { session.frames.value.text(it).replace(Regex("\\s+"), "") == "y" }
+        }
     }
 
     @Test

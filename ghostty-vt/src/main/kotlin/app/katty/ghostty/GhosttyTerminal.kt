@@ -578,6 +578,27 @@ public class GhosttyTerminal(
         }
     }
 
+    /**
+     * What to write to the program when the terminal gains ([focused]) or loses the focus, if it asked to be told (mode 1004):
+     * `ESC [ I` or `ESC [ O`. Nothing when it did not.
+     */
+    public fun encodeFocus(focused: Boolean): ByteArray {
+        requireOpen()
+        if (!isModeEnabled(GhosttyMode.FOCUS_EVENT)) return ByteArray(0)
+        val event = if (focused) GhosttyVt.GHOSTTY_FOCUS_GAINED() else GhosttyVt.GHOSTTY_FOCUS_LOST()
+        return Arena.ofConfined().use { arena ->
+            val written = arena.allocate(ValueLayout.JAVA_LONG)
+            var buffer = arena.allocate(FOCUS_REPORT_CAPACITY)
+            var result = GhosttyVt.ghostty_focus_encode(event, buffer, buffer.byteSize(), written)
+            if (result == GhosttyVt.GHOSTTY_OUT_OF_SPACE()) {
+                buffer = arena.allocate(written.get(ValueLayout.JAVA_LONG, 0))
+                result = GhosttyVt.ghostty_focus_encode(event, buffer, buffer.byteSize(), written)
+            }
+            checkResult(result, "ghostty_focus_encode")
+            buffer.asSlice(0, written.get(ValueLayout.JAVA_LONG, 0)).toArray(ValueLayout.JAVA_BYTE)
+        }
+    }
+
     /** Unselects what is selected. */
     public fun clearSelection() {
         requireOpen()
@@ -826,6 +847,7 @@ public class GhosttyTerminal(
 
     private companion object {
         const val PASTE_MARKERS_CAPACITY = 32L
+        const val FOCUS_REPORT_CAPACITY = 8L
         const val HYPERLINK_INITIAL_CAPACITY = 512L
     }
 
