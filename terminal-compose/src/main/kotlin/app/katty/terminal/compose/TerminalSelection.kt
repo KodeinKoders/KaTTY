@@ -77,6 +77,7 @@ internal data class SelectionModifiers(val shift: Boolean, val alt: Boolean, val
  * The pointer over the terminal.
  *
  * - Over the scrollbar, or while its thumb is dragged, it is the arrow whatever else: the strip is not the program's.
+ * - While the modifier that opens links is held over one, it is the hand.
  * - When a drag would select a block (Option and Command held, and the left button selects: the program did not
  *   ask for the mouse, or Shift is held) it is the cross.
  * - When the program asked for the mouse the pointer is the arrow, since the clicks are its own, unless it asked
@@ -88,8 +89,10 @@ internal fun terminalPointerIcon(
     mouseTracking: Boolean,
     modifiers: SelectionModifiers,
     overScrollbar: Boolean = false,
+    overLink: Boolean = false,
 ): PointerIcon = when {
     overScrollbar -> PointerIcon.Default
+    overLink -> PointerIcon.Hand
     modifiers.block && (!mouseTracking || modifiers.shift) -> PointerIcon.Crosshair
     mouseTracking && modifiers.shift -> PointerIcon.Text
     mouseTracking && shape == TerminalPointerShape.TEXT -> PointerIcon.Default

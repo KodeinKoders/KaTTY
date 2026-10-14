@@ -3,6 +3,7 @@ package app.katty.terminal
 import app.katty.ghostty.GhosttyAutoscroll
 import app.katty.ghostty.GhosttyCellStyle
 import app.katty.ghostty.GhosttyCellWidth
+import app.katty.ghostty.GhosttyClipboardLocation
 import app.katty.ghostty.GhosttyCursorStyle
 import app.katty.ghostty.GhosttyKey
 import app.katty.ghostty.GhosttyKeyAction
@@ -82,6 +83,7 @@ internal fun GhosttyRenderCell.toTerminal() = TerminalCell(
         GhosttyCellWidth.SPACER_TAIL -> TerminalCellWidth.SPACER_TAIL
         GhosttyCellWidth.SPACER_HEAD -> TerminalCellWidth.SPACER_HEAD
     },
+    hyperlink = hyperlink,
 )
 
 internal fun GhosttyRenderCursor.toTerminal() = TerminalCursor(
@@ -154,3 +156,7 @@ internal fun MouseInput.toGhostty(xPx: Float, yPx: Float) = GhosttyMouseEvent(
 internal fun GhosttyMouseShape.toTerminal(): TerminalPointerShape = TerminalPointerShape.valueOf(name)
 
 internal fun GhosttyAutoscroll.toTerminal(): TerminalAutoscroll = TerminalAutoscroll.valueOf(name)
+
+internal fun GhosttyClipboardLocation.toTerminal(): TerminalClipboardLocation = TerminalClipboardLocation.valueOf(name)
+
+internal fun TerminalClipboardLocation.toGhostty(): GhosttyClipboardLocation = GhosttyClipboardLocation.valueOf(name)

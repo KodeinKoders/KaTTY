@@ -238,8 +238,14 @@ public class GhosttyRenderState : AutoCloseable {
         val background = readCellColor(GhosttyVt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR())
 
         checkResult(cellValue(GhosttyVt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW(), scratch), "ghostty_render_state_row_cells_get(RAW)")
+        val raw = scratch.get(ValueLayout.JAVA_LONG, 0)
         checkResult(
-            GhosttyVt.ghostty_cell_get(scratch.get(ValueLayout.JAVA_LONG, 0), GhosttyVt.GHOSTTY_CELL_DATA_WIDE(), scratch),
+            GhosttyVt.ghostty_cell_get(raw, GhosttyVt.GHOSTTY_CELL_DATA_HAS_HYPERLINK(), scratch),
+            "ghostty_cell_get(HAS_HYPERLINK)",
+        )
+        val hyperlink = scratch.get(ValueLayout.JAVA_BOOLEAN, 0)
+        checkResult(
+            GhosttyVt.ghostty_cell_get(raw, GhosttyVt.GHOSTTY_CELL_DATA_WIDE(), scratch),
             "ghostty_cell_get(WIDE)",
         )
         val width = when (scratch.get(ValueLayout.JAVA_INT, 0)) {
@@ -249,7 +255,7 @@ public class GhosttyRenderState : AutoCloseable {
             else -> GhosttyCellWidth.NARROW
         }
 
-        return GhosttyRenderCell(text, foreground, background, style, width)
+        return GhosttyRenderCell(text, foreground, background, style, width, hyperlink)
     }
 
     private fun readCellText(): String {

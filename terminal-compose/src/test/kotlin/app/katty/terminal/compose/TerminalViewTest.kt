@@ -14,6 +14,7 @@ import app.katty.terminal.TerminalColor
 import app.katty.terminal.TerminalCursor
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalFrame
+import app.katty.terminal.TerminalLink
 import app.katty.terminal.TerminalRow
 import app.katty.terminal.TerminalRowId
 import app.katty.terminal.TerminalStyle
@@ -120,11 +121,11 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
         typography = if (font != null) rememberTerminalTypography(fontSize.sp, font) else rememberTerminalTypography(fontSize.sp)
-        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized)
+        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink)
     }
     scene.useScene {
         val image = scene.render()
@@ -135,6 +136,22 @@ private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, 
 }
 
 class TerminalViewTest {
+    @Test
+    fun underlinesTheLinkThatIsHovered() {
+        val frame = frame(20, listOf(row(20), row(20)))
+
+        val plain = render("link-plain", frame)
+        val hovered = render("link-hovered", frame, hoveredLink = TerminalLink("https://example.com", 1, 2..5))
+
+        for (col in 2..5) {
+            assertTrue(hovered.hasLine(col, 1, FOREGROUND), "The cell $col of the link is underlined")
+            assertTrue(!plain.hasLine(col, 1, FOREGROUND), "and is not without the hover")
+        }
+        assertTrue(!hovered.hasLine(1, 1, FOREGROUND), "The cell before it is not")
+        assertTrue(!hovered.hasLine(6, 1, FOREGROUND), "Nor the one after it")
+        assertTrue(!hovered.hasLine(3, 0, FOREGROUND), "Nor the same columns of another row")
+    }
+
     @Test
     fun cellSizeIsTheFontAdvanceAndAWholeLineHeight() {
         var typography: TerminalTypography? = null

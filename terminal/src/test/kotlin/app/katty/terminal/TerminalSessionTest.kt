@@ -25,8 +25,11 @@ import kotlin.time.TimeSource
 class TerminalSessionTest {
     private val sessions = mutableListOf<TerminalSession>()
 
+    private val collectors = mutableListOf<Job>()
+
     @AfterTest
     fun close() {
+        collectors.forEach { it.cancel() }
         sessions.forEach { it.close() }
     }
 
@@ -938,6 +941,206 @@ class TerminalSessionTest {
 
         // 0 would be the exit code of a program that ran to its end.
         assertNotEquals(0, session.awaitExit())
+    }
+
+    // The events that the session publishes from now on: nothing is replayed, so this comes before the program writes them.
+    private fun TerminalSession.collectEvents(): List<TerminalEvent> {
+        val events = CopyOnWriteArrayList<TerminalEvent>()
+        // Unconfined: collecting has started when this returns.
+        collectors += CoroutineScope(Dispatchers.Unconfined).launch { this@collectEvents.events.collect { events += it } }
+        return events
+    }
+
+    private fun await(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000
+        while (!condition()) {
+            check(System.nanoTime() < deadline) { "Still waiting for $what" }
+            Thread.sleep(5)
+        }
+    }
+
+    // A program that waits for a byte before it writes what is tested, so that the test is listening.
+    private fun startThatWaits(
+        writes: String,
+        rows: Int = 5,
+        clipboardWrite: Boolean = true,
+        clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
+    ): TerminalSession {
+        val script = "stty raw -echo; echo ready; head -c1 >/dev/null; $writes"
+        val session = TerminalSession.start(
+            80, rows, command = listOf("/bin/sh", "-c", script), clipboardWrite = clipboardWrite, clipboardReader = clipboardReader,
+        ).also { sessions += it }
+        session.awaitFrame { "ready" in it.text() }
+        return session
+    }
+
+    @Test
+    fun publishesTheTitleTheProgramSets() {
+        val session = startThatWaits("""printf '\033]2;my title\007'; sleep 30""")
+        assertEquals("", session.title.value)
+
+        session.paste("x")
+
+        await("the title") { session.title.value == "my title" }
+    }
+
+    @Test
+    fun publishesTheWorkingDirectoryAsAPath() {
+        val session = startThatWaits("""printf '\033]7;file://host/tmp/a%%20b\007'; sleep 30""")
+        assertEquals(null, session.workingDirectory.value)
+
+        session.paste("x")
+
+        await("the directory") { session.workingDirectory.value == "/tmp/a b" }
+    }
+
+    @Test
+    fun aResetClearsWhatWasReported() {
+        val session = startThatWaits("""printf '\033]2;t\007\033]7;file:///tmp\007'; head -c1 >/dev/null; printf '\033c'; sleep 30""")
+        session.paste("x")
+        await("the title") { session.title.value == "t" && session.workingDirectory.value == "/tmp" }
+
+        session.paste("x")
+
+        await("the reset") { session.title.value == "" && session.workingDirectory.value == null }
+    }
+
+    @Test
+    fun publishesTheBellAndNotifications() {
+        val session = startThatWaits("""printf 'a\007\033]9;body only\007\033]777;notify;Title;Body\007'; sleep 30""")
+        val events = session.collectEvents()
+
+        session.paste("x")
+
+        await("the events") { events.size >= 3 }
+        assertEquals(
+            listOf(TerminalEvent.Bell, TerminalEvent.Notification("", "body only"), TerminalEvent.Notification("Title", "Body")),
+            events.toList(),
+        )
+    }
+
+    @Test
+    fun publishesTheProgress() {
+        val session = startThatWaits("""printf '\033]9;4;1;50\007'; head -c1 >/dev/null; printf '\033]9;4;0\007'; sleep 30""")
+
+        session.paste("x")
+        await("the progress") { session.progress.value == TerminalProgress(TerminalProgressState.SET, 50) }
+
+        session.paste("x")
+        await("the end of the progress") { session.progress.value == null }
+    }
+
+    @Test
+    fun publishesTheStepsOfTheShell() {
+        val session = startThatWaits("""printf '\033]133;A\007\033]133;B\007\033]133;C\007\033]133;D;1\007'; sleep 30""")
+        val events = session.collectEvents()
+
+        session.paste("x")
+
+        await("the events") { events.size >= 3 }
+        assertEquals(
+            listOf(TerminalEvent.PromptStarted, TerminalEvent.CommandStarted(null), TerminalEvent.CommandFinished(1)),
+            events.toList(),
+        )
+    }
+
+    @Test
+    fun publishesWhatAProgramPutsInTheClipboard() {
+        val session = startThatWaits("""printf '\033]52;c;aGVsbG8=\007\033]52;p;d29ybGQ=\007'; sleep 30""")
+        val events = session.collectEvents()
+
+        session.paste("x")
+
+        await("the events") { events.size >= 2 }
+        assertEquals(
+            listOf(
+                TerminalEvent.ClipboardWrite(TerminalClipboardLocation.STANDARD, "hello"),
+                TerminalEvent.ClipboardWrite(TerminalClipboardLocation.PRIMARY, "world"),
+            ),
+            events.toList(),
+        )
+    }
+
+    @Test
+    fun refusesWhatAProgramPutsInTheClipboardWhenItIsNotAllowed() {
+        val session = startThatWaits("""printf '\033]52;c;aGVsbG8=\007\007'; sleep 30""", clipboardWrite = false)
+        val events = session.collectEvents()
+
+        session.paste("x")
+
+        // The bell that follows is there: what came before it was handled, and is not an event.
+        await("the bell") { events.isNotEmpty() }
+        assertEquals(listOf<TerminalEvent>(TerminalEvent.Bell), events.toList())
+    }
+
+    @Test
+    fun answersAProgramThatReadsTheClipboardWithWhatTheHostGives() {
+        val reads = CopyOnWriteArrayList<TerminalClipboardLocation>()
+        val session = startThatWaits(
+            """printf '\033]52;c;?\007'; head -c11 | tr -d '\033'""",
+            clipboardReader = { location -> reads += location; "hi" },
+        )
+
+        session.paste("x")
+
+        // The answer is the clipboard's text in base64.
+        session.awaitFrame { "]52;c;aGk=" in it.text() }
+        assertEquals(listOf(TerminalClipboardLocation.STANDARD), reads.toList())
+    }
+
+    @Test
+    fun doesNotAnswerAProgramThatReadsTheClipboardWithoutAReader() {
+        val session = startThatWaits("""printf '\033]52;c;?\007'; printf 'done\n'; sleep 30""")
+
+        session.paste("x")
+
+        session.awaitFrame { "done" in it.text() }
+        assertTrue("52;c" !in session.frames.value.text())
+    }
+
+    @Test
+    fun scrollsToThePreviousPromptTheShellMarked() {
+        val session = startThatWaits(
+            """i=0; while [ ${'$'}i -lt 60 ]; do printf '\033]133;A\007prompt %s\r\n' ${'$'}i; i=${'$'}((i+1)); done; sleep 30""",
+        )
+        session.paste("x")
+        val bottom = session.awaitFrame { it.scrollbar?.atBottom == true && "prompt 59" in it.text() }.scrollbar!!
+
+        session.scrollToPrompt(-1)
+
+        val scrolled = session.awaitFrame { frame -> frame.scrollbar!!.offset < bottom.offset }.scrollbar!!
+        // A prompt is a row here: one row up.
+        assertEquals(bottom.offset - 1, scrolled.offset)
+    }
+
+    @Test
+    fun findsTheLinksOnTheScreen() {
+        val session = startThatWaits(
+            """printf '\r\033]8;;https://example.com/a\033\\link\033]8;;\033\\ see https://kodein.net/x). end\r\n'; sleep 30""",
+        )
+        session.paste("x")
+        session.awaitFrame { "see https" in it.text(1) }
+
+        // The one the program marked: the four cells of "link".
+        assertEquals(TerminalLink("https://example.com/a", 1, 0..3), session.linkAt(2, 1))
+        // The one that is written, without the ")." that ends the sentence.
+        assertEquals(TerminalLink("https://kodein.net/x", 1, 9..28), session.linkAt(15, 1))
+        assertEquals(null, session.linkAt(6, 1), "A word that is not a link")
+        assertEquals(null, session.linkAt(60, 1), "An empty cell")
+        assertEquals(null, session.linkAt(0, 3), "An empty row")
+        assertEquals(null, session.linkAt(500, 1), "A cell that is not on the screen")
+    }
+
+    @Test
+    fun knowsWhenTheProgramIsOnTheAlternateScreen() {
+        val session = startThatWaits("""printf '\033[?1049h'; head -c1 >/dev/null; printf '\033[?1049l'; sleep 30""")
+        assertEquals(false, session.frames.value.alternateScreen)
+
+        session.paste("x")
+        session.awaitFrame { it.alternateScreen }
+
+        session.paste("x")
+        session.awaitFrame { !it.alternateScreen }
     }
 
     private companion object {

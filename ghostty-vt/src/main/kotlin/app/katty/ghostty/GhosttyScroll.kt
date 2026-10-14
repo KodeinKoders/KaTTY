@@ -13,6 +13,12 @@ public sealed interface GhosttyScrollViewport {
     /** By [rows] rows: up is negative. */
     public data class Delta(val rows: Long) : GhosttyScrollViewport
 
+    /**
+     * By [prompts] prompts that the shell marked (OSC 133): up is negative. Nothing happens without marks, and past the last one
+     * it stops at it.
+     */
+    public data class DeltaPrompt(val prompts: Long) : GhosttyScrollViewport
+
     /** To the row [row] of the history and the screen, the first row of the viewport, counted from 0 at the top of the history. */
     public data class Row(val row: Long) : GhosttyScrollViewport
 }

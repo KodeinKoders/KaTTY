@@ -192,6 +192,22 @@ internal fun isHistoryKey(key: KeyInfo): Boolean =
     key.kind != KeyInfo.Kind.TYPED && historyKeyCode(key.keyCode) && key.shift && !key.ctrl && !key.alt && !key.meta
 
 
+/**
+ * The prompts that a key jumps by (up is negative), or `null` when it is not one of the keys that jump between prompts: Command and Up or
+ * Down on macOS, and Control and Shift and Up or Down elsewhere, with nothing else held. They are for the terminal, and the
+ * program is told nothing of them, their release included, while there is history to jump in.
+ */
+internal fun promptJump(key: KeyInfo, mac: Boolean = isMac): Int? {
+    if (key.kind == KeyInfo.Kind.TYPED) return null
+    val modifiers = if (mac) key.meta && !key.ctrl && !key.alt && !key.shift else key.ctrl && key.shift && !key.alt && !key.meta
+    if (!modifiers) return null
+    return when (key.keyCode) {
+        AwtKeyEvent.VK_UP -> -1
+        AwtKeyEvent.VK_DOWN -> 1
+        else -> null
+    }
+}
+
 internal const val SCROLLBAR_VISIBLE_MS = 1000L
 internal const val SCROLLBAR_FADE_MS = 250
 

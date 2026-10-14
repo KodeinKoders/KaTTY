@@ -6,6 +6,8 @@ import app.katty.ghostty.GhosttyKeyEncoder
 import app.katty.ghostty.GhosttyMode
 import app.katty.ghostty.GhosttyMouseEncoder
 import app.katty.ghostty.GhosttyMouseShape
+import app.katty.ghostty.GhosttyProgressState
+import app.katty.ghostty.GhosttyPromptEventKind
 import app.katty.ghostty.GhosttyScreen
 import app.katty.ghostty.GhosttyScrollViewport
 import app.katty.ghostty.GhosttyScrollbar
@@ -23,7 +25,10 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -61,6 +66,7 @@ public class TerminalSession private constructor(
     private val mouseEncoder: GhosttyMouseEncoder,
     private val selectionGesture: GhosttySelectionGesture,
     theme: TerminalTheme?,
+    private val clipboardWrite: Boolean,
 ) : AutoCloseable {
     // Guards the terminal, and the key and mouse encoders that read it: the thread that feeds the terminal and the
     // ones that encode keys or resize it take turns. The render state is only ever used by the frame
@@ -106,6 +112,19 @@ public class TerminalSession private constructor(
 
     private val exitCode = MutableStateFlow<Int?>(null)
 
+    private val titleState = MutableStateFlow("")
+    private val workingDirectoryState = MutableStateFlow<String?>(null)
+    private val progressState = MutableStateFlow<TerminalProgress?>(null)
+
+    // Events are for whoever is collecting at the time: one that nobody collects is dropped, and a collector that is slow loses
+    // the oldest. The terminal calls back on the thread that reads the output, which must never wait for a collector.
+    private val eventFlow = MutableSharedFlow<TerminalEvent>(extraBufferCapacity = EVENT_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    // Set by the terminal's callbacks, which must not read the terminal: the title and the directory are read once the write
+    // that changed them has returned (see [publishAfterWrite]). Under the lock.
+    private var titleChanged = false
+    private var workingDirectoryChanged = false
+
     private val producerThreads = Executors.newSingleThreadExecutor { Thread(it, "katty-terminal-frames").apply { isDaemon = true } }
     private val producerDispatcher = producerThreads.asCoroutineDispatcher()
     private val producerScope = CoroutineScope(SupervisorJob() + producerDispatcher)
@@ -125,11 +144,27 @@ public class TerminalSession private constructor(
      */
     public val exited: StateFlow<Int?> get() = exitCode
 
+    /** The title that the program set (OSC 0 or 2), empty when it did not. */
+    public val title: StateFlow<String> get() = titleState
+
+    /**
+     * The directory that the shell reported (OSC 7), as a path, `null` when it did not. A shell does not report it on its own: see
+     * `shellIntegration` of [start].
+     */
+    public val workingDirectory: StateFlow<String?> get() = workingDirectoryState
+
+    /** What the program reports of its progress (OSC 9;4), `null` when it does not. */
+    public val progress: StateFlow<TerminalProgress?> get() = progressState
+
+    /** What happens besides the screen: see [TerminalEvent]. Nothing is replayed to a collector that comes late. */
+    public val events: SharedFlow<TerminalEvent> get() = eventFlow
+
     private fun launch() {
         // What the terminal answers to the program's queries (where the cursor is, what the terminal is) is
         // written to its input like what is typed. It is called while the terminal is written to, under
         // the lock: it only enqueues.
         terminal.onWritePty = { outgoing.put(it) }
+        installEffects()
 
         producerScope.launch {
             for (request in frameRequests) {
@@ -236,6 +271,14 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * Scrolls the history to the [delta]th prompt before the one at the top of the viewport (up is negative), as the shell
+     * marked them (OSC 133: see `shellIntegration` of [start]). It stops at the last one, and does nothing without marks.
+     */
+    public fun scrollToPrompt(delta: Int) {
+        scroll(GhosttyScrollViewport.DeltaPrompt(delta.toLong()))
+    }
+
+    /**
      * What the wheel does when the program did not ask for the mouse: [rows] rows, up negative. It scrolls the history,
      * except on the alternate screen, which has none, where it sends that many arrow keys to the program, as xterm's
      * alternate scroll does, unless the program turned that off.
@@ -255,6 +298,97 @@ public class TerminalSession private constructor(
         }
         bytes?.forEach(outgoing::put)
         frameRequests.trySend(Unit)
+    }
+
+    // What the terminal reports is called back while it is written to, on the reader's thread, under the lock: it only records,
+    // and the title and the directory, which the terminal says may be read once the callback has returned, are read by
+    // [publishAfterWrite].
+    private fun installEffects() {
+        terminal.onBell = { eventFlow.tryEmit(TerminalEvent.Bell) }
+        terminal.onTitleChanged = { titleChanged = true }
+        terminal.onPwdChanged = { workingDirectoryChanged = true }
+        terminal.onReset = {
+            // The terminal does not report the title and the directory that a reset clears.
+            titleChanged = true
+            workingDirectoryChanged = true
+            progressState.value = null
+        }
+        terminal.onNotification = { title, body -> eventFlow.tryEmit(TerminalEvent.Notification(title, body)) }
+        terminal.onProgress = { report ->
+            progressState.value = when (report.state) {
+                GhosttyProgressState.REMOVE -> null
+                GhosttyProgressState.SET -> TerminalProgress(TerminalProgressState.SET, report.percent)
+                GhosttyProgressState.ERROR -> TerminalProgress(TerminalProgressState.ERROR, report.percent)
+                GhosttyProgressState.INDETERMINATE -> TerminalProgress(TerminalProgressState.INDETERMINATE, report.percent)
+                GhosttyProgressState.PAUSE -> TerminalProgress(TerminalProgressState.PAUSE, report.percent)
+            }
+        }
+        terminal.onSemanticPrompt = { step ->
+            when (step.kind) {
+                GhosttyPromptEventKind.PROMPT_START -> eventFlow.tryEmit(TerminalEvent.PromptStarted)
+                GhosttyPromptEventKind.OUTPUT_START -> eventFlow.tryEmit(TerminalEvent.CommandStarted(step.command.ifEmpty { null }))
+                GhosttyPromptEventKind.COMMAND_END -> eventFlow.tryEmit(TerminalEvent.CommandFinished(step.exitCode))
+                // What follows is what the user types: nothing for the host.
+                GhosttyPromptEventKind.INPUT_START -> Unit
+            }
+        }
+        terminal.onClipboardWrite = { location, text ->
+            clipboardWrite && eventFlow.tryEmit(TerminalEvent.ClipboardWrite(location.toTerminal(), text))
+        }
+    }
+
+    // Under the lock, after a write to the terminal.
+    private fun publishAfterWrite() {
+        if (titleChanged) {
+            titleChanged = false
+            titleState.value = terminal.title
+        }
+        if (workingDirectoryChanged) {
+            workingDirectoryChanged = false
+            workingDirectoryState.value = decodeWorkingDirectory(terminal.pwd)
+        }
+    }
+
+    /**
+     * The link at [column] and [row] of the screen as the last frame shows it, or `null` when there is none. It is an address that
+     * a program marked (OSC 8), or one written in the text, which is looked for in the row (one that goes on onto the next row is
+     * not found).
+     */
+    public fun linkAt(column: Int, row: Int): TerminalLink? {
+        val cells = frameState.value.rows.getOrNull(row)?.cells ?: return null
+        if (column !in cells.indices) return null
+        return lock.withLock {
+            if (closed.get()) return null
+            marked(cells, column, row) ?: written(cells, column, row)
+        }
+    }
+
+    // A link that the program marked: the cells around the one that have the same address.
+    private fun marked(cells: List<TerminalCell>, column: Int, row: Int): TerminalLink? {
+        if (!cells[column].hyperlink) return null
+        val url = terminal.hyperlinkAt(column, row) ?: return null
+        fun same(c: Int) = cells[c].hyperlink && terminal.hyperlinkAt(c, row) == url
+        var start = column
+        while (start > 0 && same(start - 1)) start--
+        var end = column
+        while (end < cells.lastIndex && same(end + 1)) end++
+        return TerminalLink(url, row, start..end)
+    }
+
+    // A link that is written in the text of the row.
+    private fun written(cells: List<TerminalCell>, column: Int, row: Int): TerminalLink? {
+        val text = StringBuilder()
+        // The column of each character: the second half of a wide character has none of its own.
+        val columns = ArrayList<Int>()
+        for ((c, cell) in cells.withIndex()) {
+            if (cell.width == TerminalCellWidth.SPACER_TAIL || cell.width == TerminalCellWidth.SPACER_HEAD) continue
+            val part = cell.text.ifEmpty { " " }
+            text.append(part)
+            repeat(part.length) { columns += c }
+        }
+        val index = columns.indexOf(column).takeIf { it >= 0 } ?: return null
+        val range = findUrl(text.toString(), index) ?: return null
+        return TerminalLink(text.substring(range.first, range.last + 1), row, columns[range.first]..columns[range.last])
     }
 
     private fun scroll(to: GhosttyScrollViewport) {
@@ -461,6 +595,7 @@ public class TerminalSession private constructor(
         lock.withLock {
             if (closed.get()) return
             terminal.vtWrite(text)
+            publishAfterWrite()
         }
         frameRequests.trySend(Unit)
     }
@@ -527,6 +662,7 @@ public class TerminalSession private constructor(
                         false
                     } else {
                         terminal.vtWrite(buffer, 0, read)
+                        publishAfterWrite()
                         true
                     }
                 }
@@ -568,6 +704,7 @@ public class TerminalSession private constructor(
     // costly part, does not hold up the thread that feeds the terminal.
     private fun produceFrame(): TerminalFrame {
         val tracking: Boolean
+        val alternate: Boolean
         val shape: GhosttyMouseShape
         val position: GhosttyScrollbar
         val placements: List<GhosttyImagePlacement>
@@ -577,6 +714,7 @@ public class TerminalSession private constructor(
         lock.withLock {
             renderState.update(terminal)
             tracking = terminal.mouseTracking
+            alternate = terminal.activeScreen == GhosttyScreen.ALTERNATE
             shape = terminal.mouseShape
             position = terminal.scrollbar
             cellWidth = cellWidthPx
@@ -637,6 +775,7 @@ public class TerminalSession private constructor(
             // Nothing to scroll when everything is on the screen: no scrollbar.
             scrollbar = if (position.total > position.len) TerminalScrollbar(position.total, position.offset, position.len) else null,
             images = images,
+            alternateScreen = alternate,
         )
         renderState.clean()
         return frame
@@ -705,6 +844,9 @@ public class TerminalSession private constructor(
         // How much memory the history may take, which is Ghostty's own default.
         private const val SCROLLBACK_MAX_BYTES = 10_000_000L
 
+        // How many events may wait for a collector that is slow.
+        private const val EVENT_BUFFER = 64
+
         // What a cell is until the first resize tells it.
         private const val INITIAL_CELL_WIDTH_PX = 8
         private const val INITIAL_CELL_HEIGHT_PX = 16
@@ -724,6 +866,15 @@ public class TerminalSession private constructor(
          * @param cursorBlink Whether the cursor blinks unless the program says otherwise. It almost never does,
          * a shell included, and a terminal's cursor is expected to blink: without this it would not.
          * @param theme The colors, libghostty's own by default. [setTheme] changes them.
+         * @param shellIntegration Whether to make zsh and bash report their prompts (OSC 133) and their directory (OSC 7), which they
+         * do not on their own: the [workingDirectory] and the [TerminalEvent.PromptStarted], [TerminalEvent.CommandStarted] and
+         * [TerminalEvent.CommandFinished] events, and [scrollToPrompt], depend on it. The user's own startup files are still read.
+         * Any other shell, and anything but a login or an interactive shell, is started as it is.
+         * @param clipboardWrite Whether a program may put text in the clipboard (OSC 52), which then comes as a
+         * [TerminalEvent.ClipboardWrite]. It is refused when `false`.
+         * @param clipboardReader What a program that reads the clipboard (OSC 52) gets: the text it returns, or a refusal for
+         * `null`. Programs cannot read it without one, and it is the host's to give: what is on the clipboard may be secret. It runs on
+         * the thread that reads the program's output, which waits for it: it must be quick, and must not call back into the session.
          */
         public fun start(
             cols: Int,
@@ -733,14 +884,18 @@ public class TerminalSession private constructor(
             directory: String = System.getProperty("user.home"),
             cursorBlink: Boolean = true,
             theme: TerminalTheme? = null,
+            clipboardWrite: Boolean = true,
+            clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
+            shellIntegration: Boolean = true,
         ): TerminalSession {
             val env = HashMap(System.getenv())
             env["TERM"] = TERM
             env["COLORTERM"] = "truecolor"
             env.putAll(environment)
+            val argv = if (shellIntegration) ShellIntegration.apply(command, env) else command
 
-            logger.info("Starting {} in a {}x{} terminal, in {}", command, cols, rows, directory)
-            val process = PtyProcessBuilder(command.toTypedArray())
+            logger.info("Starting {} in a {}x{} terminal, in {}", argv, cols, rows, directory)
+            val process = PtyProcessBuilder(argv.toTypedArray())
                 .setEnvironment(env)
                 .setDirectory(directory)
                 .setConsole(false)
@@ -764,7 +919,9 @@ public class TerminalSession private constructor(
                 val keyEncoder = GhosttyKeyEncoder().also { toClose.addFirst(it) }
                 val mouseEncoder = GhosttyMouseEncoder().also { toClose.addFirst(it) }
                 val selectionGesture = GhosttySelectionGesture(terminal).also { toClose.addFirst(it) }
-                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, selectionGesture, theme).also { it.launch() }
+                terminal.setClipboardReader(clipboardReader?.let { reader -> { location -> reader(location.toTerminal()) } })
+                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, selectionGesture, theme, clipboardWrite)
+                    .also { it.launch() }
             } catch (e: Throwable) {
                 logger.error("Could not start the session", e)
                 process.destroyForcibly()

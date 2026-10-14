@@ -224,6 +224,91 @@ class TerminalTest {
         }
     }
 
+    // A terminal that fills the scene, with what the program printed on it, and a clipboard that is not the system's. The links that are
+    // clicked are in [opened].
+    private val opened = java.util.concurrent.CopyOnWriteArrayList<String>()
+
+    private fun terminalScene(script: String, ready: (TerminalFrame) -> Boolean): Pair<ImageComposeScene, TerminalSession> {
+        val session = session(script, cols = 80, rows = 24)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(
+                LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true },
+                androidx.compose.ui.platform.LocalClipboard provides clipboard,
+            ) {
+                Terminal(session, Modifier.fillMaxSize(), onOpenLink = { opened += it })
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene and show the text") { session.frames.value.cols != 80 && ready(session.frames.value) }
+        scene.settle()
+        return scene to session
+    }
+
+    // The modifier that opens links on this system.
+    private fun linkModifiers() =
+        androidx.compose.ui.input.pointer.PointerKeyboardModifiers(isMetaPressed = isMac, isCtrlPressed = !isMac)
+
+    private fun ImageComposeScene.linkClick(position: Offset, modifiers: androidx.compose.ui.input.pointer.PointerKeyboardModifiers = linkModifiers()) {
+        val down = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true)
+        sendPointerEvent(PointerEventType.Move, position, keyboardModifiers = modifiers)
+        sendPointerEvent(PointerEventType.Press, position, keyboardModifiers = modifiers, button = primary, buttons = down)
+        sendPointerEvent(PointerEventType.Release, position, keyboardModifiers = modifiers, button = primary, buttons = androidx.compose.ui.input.pointer.PointerButtons())
+    }
+
+    @Test
+    fun opensTheLinksThatAreClickedWithTheModifierAndTellsTheProgramNothing() {
+        // The program asked for the mouse, and reads three bytes: a report of the click would be among them.
+        val (scene, session) = terminalScene(
+            """printf '\033[?1000h\033[?1006h'; stty raw -echo; printf '\033]8;;https://example.com/a\033\\link\033]8;;\033\\ and https://kodein.net/x\r\n'; head -c3 | od -An -c""",
+        ) { it.text(0).startsWith("link and") }
+
+        scene.linkClick(at(1.5f, 0.5f))
+        scene.linkClick(at(12.5f, 0.5f))
+        scene.renderUntil("the two links to be opened") { opened.size == 2 }
+        assertEquals(listOf("https://example.com/a", "https://kodein.net/x"), opened.toList())
+
+        "xyz".forEach { scene.type(it) }
+        scene.renderUntil("what the program read") { session.frames.value.rows.indices.any { session.frames.value.text(it).replace(Regex("\\s+"), " ").trim() == "x y z" } }
+    }
+
+    @Test
+    fun aClickWithoutTheModifierOpensNothing() {
+        val (scene, _) = terminalScene(
+            """printf '\033]8;;https://example.com/a\033\\link\033]8;;\033\\ text\r\n'; sleep 30""",
+        ) { it.text(0).startsWith("link text") }
+        opened.clear()
+
+        scene.linkClick(at(1.5f, 0.5f), androidx.compose.ui.input.pointer.PointerKeyboardModifiers())
+        scene.settle()
+
+        assertEquals(emptyList(), opened.toList())
+    }
+
+    @Test
+    fun putsWhatTheProgramWritesWithOsc52InTheClipboard() {
+        // The program waits for a key: the terminal is listening for the events by then, since they are not kept.
+        val (scene, _) = terminalScene(
+            """printf 'hello world'; stty raw -echo; head -c1 >/dev/null; printf '\033]52;c;aGVsbG8=\007'; sleep 30""",
+        ) { it.text(0).startsWith("hello world") }
+
+        scene.type('x')
+
+        scene.renderUntil("hello to be in the clipboard") { "hello" in clipboard.copied }
+    }
+
+    @Test
+    fun jumpsToThePreviousPromptWithTheKeys() {
+        val (scene, session) = terminalScene(
+            """i=0; while [ ${'$'}i -lt 100 ]; do printf '\033]133;A\007prompt %s\r\n' ${'$'}i; i=${'$'}((i+1)); done; sleep 30""",
+        ) { frame -> frame.rows.indices.any { frame.text(it) == "prompt 99" } && frame.scrollbar?.atBottom == true }
+        val bottom = session.frames.value.scrollbar!!.offset
+
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_UP), type = KeyEventType.KeyDown, isMetaPressed = isMac, isCtrlPressed = !isMac, isShiftPressed = !isMac))
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_UP), type = KeyEventType.KeyUp, isMetaPressed = isMac, isCtrlPressed = !isMac, isShiftPressed = !isMac))
+
+        scene.renderUntil("the viewport to go up") { session.frames.value.scrollbar!!.offset < bottom }
+    }
+
     @Test
     fun sendsTheKeysThatEditTheLineAsWhatTheLineEditorBinds() {
         org.junit.Assume.assumeTrue("The line editing keys are the ones of macOS", isMac)

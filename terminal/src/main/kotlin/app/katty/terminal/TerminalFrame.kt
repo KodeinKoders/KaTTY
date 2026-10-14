@@ -63,6 +63,8 @@ public data class TerminalCell(
     public val background: TerminalColor?,
     public val style: TerminalStyle,
     public val width: TerminalCellWidth,
+    /** Whether the cell is part of a hyperlink that a program marked (OSC 8): [TerminalSession.linkAt] has its address. */
+    public val hyperlink: Boolean = false,
 )
 
 /**
@@ -144,6 +146,8 @@ public data class TerminalFrame(
      * as the program placed them. Empty when there are none.
      */
     public val images: List<TerminalImagePlacement> = emptyList(),
+    /** Whether the program is on the alternate screen, such as the one of vim or less, which has no history. */
+    public val alternateScreen: Boolean = false,
 )
 
 /**

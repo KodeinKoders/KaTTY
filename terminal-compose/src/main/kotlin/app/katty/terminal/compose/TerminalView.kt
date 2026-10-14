@@ -25,6 +25,7 @@ import app.katty.terminal.TerminalCellWidth
 import app.katty.terminal.TerminalCursor
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalFrame
+import app.katty.terminal.TerminalLink
 import app.katty.terminal.TerminalImageLayer
 import app.katty.terminal.TerminalScrollbar
 import app.katty.terminal.TerminalUnderline
@@ -47,6 +48,7 @@ internal fun TerminalView(
     preedit: String = "",
     scrollbarAlpha: Float = 0f,
     scrollbarEmphasized: Boolean = false,
+    hoveredLink: TerminalLink? = null,
 ) {
     // What is kept for the rows depends on how they are drawn.
     val layouts = remember(typography, frame.foreground, frame.background, frame.boldColor) { RowLayouts(typography) }
@@ -75,6 +77,7 @@ internal fun TerminalView(
                 drawPreparedText(text, top, typography)
             }
         }
+        hoveredLink?.let { drawLinkUnderline(it, frame.foreground.rgb.toColor(), typography) }
         drawImages(frame, TerminalImageLayer.ABOVE_TEXT, bitmaps, typography)
 
         if (frame.selection.isNotEmpty()) drawSelection(frame, rows, typography)
@@ -116,6 +119,17 @@ private fun DrawScope.drawCells(startCol: Int, cols: Int, top: Float, typography
     val right = round((startCol + cols) * typography.cellWidth)
     drawRect(color, topLeft = Offset(left, top), size = Size(right - left, typography.cellHeight))
 }
+
+// The link that a click would open, underlined along the bottom of its cells, in the color of the text: what is written in it is
+// underlined or not, as the program wrote it.
+private fun DrawScope.drawLinkUnderline(link: TerminalLink, color: Color, typography: TerminalTypography) {
+    val left = round(link.columns.first * typography.cellWidth)
+    val right = round((link.columns.last + 1) * typography.cellWidth)
+    val bottom = (link.row + 1) * typography.cellHeight
+    drawRect(color, topLeft = Offset(left, round(bottom) - LINK_UNDERLINE_PX), size = Size(right - left, LINK_UNDERLINE_PX))
+}
+
+private const val LINK_UNDERLINE_PX = 1f
 
 /**
  * The images of a layer, on the cells that they cover. They are **clipped to the terminal**: one that is partly scrolled out

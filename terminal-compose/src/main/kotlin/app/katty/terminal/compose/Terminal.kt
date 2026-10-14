@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import app.katty.terminal.KeyInput
 import app.katty.terminal.TerminalKey
+import app.katty.terminal.TerminalClipboardLocation
+import app.katty.terminal.TerminalEvent
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalMouseButton
 import app.katty.terminal.TerminalSession
@@ -70,8 +72,17 @@ import kotlin.math.roundToInt
  * and an outline that does not blink when the window, or the terminal, does not have the focus.
  *
  * @param fontSize The size of the text, which gives the size of a cell. The font is always monospace.
+ * Links (an address that a program marked with OSC 8, or one that is written in the text) are opened with Command and a click on
+ * macOS, and Control and a click elsewhere, even when the program asked for the mouse: the link is underlined while the modifier is
+ * held over it.
+ *
+ * What a program puts in the clipboard (OSC 52) is put there, unless the session was started without allowing it. The other
+ * [TerminalEvent]s of the session are the host's.
+ *
  * @param focusRequester Gives the focus to the terminal, for whatever else takes it, such as a menu that is
  * closed, to give it back.
+ * @param onOpenLink Opens the address of a link that was clicked. By default the system opens the ones that start with `http`, `https`,
+ * `ftp`, `file` and `mailto`, and the others are refused.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -80,6 +91,7 @@ public fun Terminal(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = 13.sp,
     focusRequester: FocusRequester = remember { FocusRequester() },
+    onOpenLink: (String) -> Unit = ::openInBrowser,
 ) {
     val frame by session.frames.collectAsState()
     val typography = rememberTerminalTypography(fontSize)
@@ -109,6 +121,8 @@ public fun Terminal(
         { text -> scope.launch { clipboard.setClipEntry(ClipEntry(StringSelection(text))) } }
     }
     val primary = remember(session) { PrimarySelection() }
+    val links = remember(session) { LinkInteraction() }
+    val openLink = rememberUpdatedState(onOpenLink)
     val wheel = remember(session) { WheelScroller() }
     val wheelX = remember(session) { WheelNormalizer() }
     val wheelY = remember(session) { WheelNormalizer() }
@@ -144,6 +158,23 @@ public fun Terminal(
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
+    // What a program puts in the clipboard (OSC 52): the system's goes there, and what a middle click pastes is kept here.
+    LaunchedEffect(session) {
+        session.events.collect { event ->
+            if (event is TerminalEvent.ClipboardWrite) {
+                when (event.location) {
+                    TerminalClipboardLocation.STANDARD -> copy(event.text)
+                    TerminalClipboardLocation.PRIMARY, TerminalClipboardLocation.SELECTION -> primary.text = event.text
+                }
+            }
+        }
+    }
+
+    // The screen moves under a pointer that does not: what it is over may be another link, or none.
+    LaunchedEffect(frame) {
+        if (links.hovered != null) links.refresh(true, typography.cellWidth, typography.cellHeight) { column, row -> session.linkAt(column, row) }
+    }
+
     // The release of the keys that are down will not be seen.
     LaunchedEffect(active) {
         if (!active) {
@@ -159,6 +190,7 @@ public fun Terminal(
         preedit = textInput.preedit,
         scrollbarAlpha = scrollbarAlpha,
         scrollbarEmphasized = scrollbarInteraction.hovered || scrollbarInteraction.dragging,
+        hoveredLink = links.hovered,
         modifier = modifier
             .onSizeChanged { size = it }
             .onGloballyPositioned { coordinates = it }
@@ -169,6 +201,7 @@ public fun Terminal(
                     frame.pointerShape, frame.mouseTracking, selectionModifiers,
                     // Only while there is a scrollbar: what was hovered is stale when it is gone.
                     overScrollbar = frame.scrollbar != null && (scrollbarInteraction.hovered || scrollbarInteraction.dragging),
+                    overLink = links.hovered != null,
                 ),
             )
             .pointerInput(session, focusRequester, primary) {
@@ -178,7 +211,10 @@ public fun Terminal(
                         // The terminal takes the focus when it is pressed, and is told about it or not.
                         if (event.type == PointerEventType.Press) focusRequester.requestFocus()
 
-                        if (event.type == PointerEventType.Exit) scrollbarInteraction.exit()
+                        if (event.type == PointerEventType.Exit) {
+                            scrollbarInteraction.exit()
+                            links.exit()
+                        }
                         val info = event.toPointerInfo(wheelX, wheelY) ?: continue
                         selectionModifiers = SelectionModifiers(info.shift, info.alt, info.meta)
                         val typography = latestTypography.value
@@ -193,6 +229,19 @@ public fun Terminal(
                                 session.scrollToRow(it)
                             }
                             if (handled) {
+                                event.changes.forEach { it.consume() }
+                                continue
+                            }
+                        }
+
+                        // A click on a link, with the modifier that opens them, is the link's: not the program's, and not a selection.
+                        if (!selection.selecting) {
+                            val ofLink = links.handle(
+                                info, typography.cellWidth, typography.cellHeight,
+                                linkAt = { column, row -> session.linkAt(column, row) },
+                                open = { openLink.value(it) },
+                            )
+                            if (ofLink) {
                                 event.changes.forEach { it.consume() }
                                 continue
                             }
@@ -264,6 +313,20 @@ public fun Terminal(
                     // A repeat is a press too: holding the keys goes on moving.
                     if (info.kind == KeyInfo.Kind.PRESSED) session.sendText(text)
                     return@onPreviewKeyEvent true
+                }
+                // The modifier of the links was pressed or released: the link under the pointer shows or goes.
+                links.refresh(
+                    linkModifier(info.shift, info.ctrl, info.alt, info.meta), typography.cellWidth, typography.cellHeight,
+                ) { column, row -> session.linkAt(column, row) }
+                // The keys that jump between the prompts that the shell marked: when there is history to jump in.
+                promptJump(info)?.let { jump ->
+                    if (latestFrame.value.scrollbar != null) {
+                        if (info.kind == KeyInfo.Kind.PRESSED) {
+                            scrolledAt++
+                            session.scrollToPrompt(jump)
+                        }
+                        return@onPreviewKeyEvent true
+                    }
                 }
                 // Shift and PageUp, PageDown, Home or End scroll the history, when there is some: the program gets nothing. On the
                 // alternate screen there is none, and they are the program's.

@@ -1,5 +1,12 @@
 package app.katty.ghostty
 
+import app.katty.ghostty.ffm.GhosttyClipboardContent
+import app.katty.ghostty.ffm.GhosttyClipboardRead
+import app.katty.ghostty.ffm.GhosttyClipboardReadReply
+import app.katty.ghostty.ffm.GhosttyClipboardReadReplyFn
+import app.katty.ghostty.ffm.GhosttyClipboardWrite
+import app.katty.ghostty.ffm.GhosttyClipboardWriteReply
+import app.katty.ghostty.ffm.GhosttyClipboardWriteReplyFn
 import app.katty.ghostty.ffm.GhosttyColorRgb
 import app.katty.ghostty.ffm.GhosttyGridRef
 import app.katty.ghostty.ffm.GhosttyKittyGraphicsPlacementRenderInfo
@@ -8,12 +15,24 @@ import app.katty.ghostty.ffm.GhosttyPointCoordinate
 import app.katty.ghostty.ffm.GhosttyPointValue
 import app.katty.ghostty.ffm.GhosttySizeReportSize
 import app.katty.ghostty.ffm.GhosttyString
+import app.katty.ghostty.ffm.GhosttyTerminalBellFn
+import app.katty.ghostty.ffm.GhosttyTerminalClipboardReadFn
+import app.katty.ghostty.ffm.GhosttyTerminalClipboardWriteFn
+import app.katty.ghostty.ffm.GhosttyTerminalDesktopNotification
+import app.katty.ghostty.ffm.GhosttyTerminalDesktopNotificationFn
+import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
+import app.katty.ghostty.ffm.GhosttyTerminalProgressReport
+import app.katty.ghostty.ffm.GhosttyTerminalProgressReportFn
+import app.katty.ghostty.ffm.GhosttyTerminalPwdChangedFn
+import app.katty.ghostty.ffm.GhosttyTerminalResetFn
 import app.katty.ghostty.ffm.GhosttyTerminalScrollViewport
 import app.katty.ghostty.ffm.GhosttyTerminalScrollViewportValue
 import app.katty.ghostty.ffm.GhosttyTerminalScrollbar
-import app.katty.ghostty.ffm.GhosttyTerminalSizeFn
 import app.katty.ghostty.ffm.GhosttyTerminalSelectionFormatOptions
-import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
+import app.katty.ghostty.ffm.GhosttyTerminalSemanticPrompt
+import app.katty.ghostty.ffm.GhosttyTerminalSemanticPromptFn
+import app.katty.ghostty.ffm.GhosttyTerminalSizeFn
+import app.katty.ghostty.ffm.GhosttyTerminalTitleChangedFn
 import app.katty.ghostty.ffm.GhosttyTerminalWritePtyFn
 import app.katty.ghostty.ffm.GhosttyVt
 import org.slf4j.LoggerFactory
@@ -73,6 +92,49 @@ public class GhosttyTerminal(
      */
     @Volatile
     public var onWritePty: ((ByteArray) -> Unit)? = null
+
+    // What the terminal reports besides the screen. Each is called on the thread that called [vtWrite], while it runs, like
+    // [onWritePty]: it must only record or enqueue, and must not call back into this terminal. An exception that it throws is
+    // logged, since it cannot cross into the native code. The strings that come with them are copies.
+
+    /** A BEL character was written. */
+    @Volatile
+    public var onBell: (() -> Unit)? = null
+
+    /** The title changed (OSC 0 or 2): [title] has it, once the callback has returned. */
+    @Volatile
+    public var onTitleChanged: (() -> Unit)? = null
+
+    /** The working directory changed (OSC 7 and others), or was cleared: [pwd] has it. */
+    @Volatile
+    public var onPwdChanged: (() -> Unit)? = null
+
+    /** The terminal was reset (RIS). It did not call [onTitleChanged] nor [onPwdChanged] for what it cleared. */
+    @Volatile
+    public var onReset: (() -> Unit)? = null
+
+    /** A program asked for a desktop notification (OSC 9 or 777), with an empty title when it had none. */
+    @Volatile
+    public var onNotification: ((title: String, body: String) -> Unit)? = null
+
+    /** A program reported its progress (OSC 9;4). */
+    @Volatile
+    public var onProgress: ((GhosttyProgress) -> Unit)? = null
+
+    /** The shell reported a step of the prompt (OSC 133). */
+    @Volatile
+    public var onSemanticPrompt: ((GhosttySemanticPrompt) -> Unit)? = null
+
+    /**
+     * A program asked to put [String] in the clipboard (OSC 52): the text, empty to clear it. Return whether it is allowed.
+     * Without a handler, writes are refused.
+     */
+    @Volatile
+    public var onClipboardWrite: ((GhosttyClipboardLocation, String) -> Boolean)? = null
+
+    // Not installed until a reader is set: having one also makes the terminal send the program paste events (mode 5522).
+    private var clipboardReader: ((GhosttyClipboardLocation) -> String?)? = null
+    private var clipboardReadStub: MemorySegment? = null
 
     init {
         NativeLibrary.ensureLoaded()
@@ -134,6 +196,8 @@ public class GhosttyTerminal(
                 GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_SIZE(), size),
                 "ghostty_terminal_set(SIZE)",
             )
+
+            installEffects()
 
             Arena.ofConfined().use { arena ->
                 val blink = arena.allocate(ValueLayout.JAVA_BOOLEAN)
@@ -221,6 +285,10 @@ public class GhosttyTerminal(
                 is GhosttyScrollViewport.Delta -> {
                     GhosttyTerminalScrollViewport.tag(behavior, GhosttyVt.GHOSTTY_SCROLL_VIEWPORT_DELTA())
                     GhosttyTerminalScrollViewportValue.delta(value, to.rows)
+                }
+                is GhosttyScrollViewport.DeltaPrompt -> {
+                    GhosttyTerminalScrollViewport.tag(behavior, GhosttyVt.GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT())
+                    GhosttyTerminalScrollViewportValue.delta_prompt(value, to.prompts)
                 }
                 is GhosttyScrollViewport.Row -> {
                     GhosttyTerminalScrollViewport.tag(behavior, GhosttyVt.GHOSTTY_SCROLL_VIEWPORT_ROW())
@@ -528,6 +596,217 @@ public class GhosttyTerminal(
         )
     }
 
+    /** The title that a program set (OSC 0 or 2), empty when none did. */
+    public val title: String get() = readString(GhosttyVt.GHOSTTY_TERMINAL_DATA_TITLE(), "TITLE")
+
+    /**
+     * The working directory that the shell reported, as it sent it: a `file://` URI for OSC 7, a bare path for the others. Empty when
+     * there is none.
+     */
+    public val pwd: String get() = readString(GhosttyVt.GHOSTTY_TERMINAL_DATA_PWD(), "PWD")
+
+    private fun readString(data: Int, name: String): String {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val out = arena.allocate(GhosttyString.layout())
+            checkResult(GhosttyVt.ghostty_terminal_get(handle, data, out), "ghostty_terminal_get($name)")
+            copyString(out)
+        }
+    }
+
+    /**
+     * The address of the hyperlink (OSC 8) at [column] and [row] of the viewport, or `null` when the cell has none or is not on the
+     * screen.
+     */
+    public fun hyperlinkAt(column: Int, row: Int): String? {
+        requireOpen()
+        if (column !in 0 until cols || row !in 0 until rows) return null
+        return Arena.ofConfined().use { arena ->
+            val ref = gridRef(arena, column, row)
+            val length = arena.allocate(ValueLayout.JAVA_LONG)
+            var buffer = arena.allocate(HYPERLINK_INITIAL_CAPACITY)
+            var result = GhosttyVt.ghostty_grid_ref_hyperlink_uri(ref, buffer, buffer.byteSize(), length)
+            if (result == GhosttyVt.GHOSTTY_OUT_OF_SPACE()) {
+                buffer = arena.allocate(length.get(ValueLayout.JAVA_LONG, 0))
+                result = GhosttyVt.ghostty_grid_ref_hyperlink_uri(ref, buffer, buffer.byteSize(), length)
+            }
+            checkResult(result, "ghostty_grid_ref_hyperlink_uri")
+            val size = length.get(ValueLayout.JAVA_LONG, 0)
+            if (size == 0L) null else String(buffer.asSlice(0, size).toArray(ValueLayout.JAVA_BYTE), Charsets.UTF_8)
+        }
+    }
+
+    /**
+     * Sets what answers a program that reads the clipboard (OSC 52 with `?`): it gets the text, or is refused when this returns
+     * `null`. `null` clears it, and then reads are refused.
+     *
+     * It runs on the thread that called [vtWrite], and the terminal's input waits for it. Call it while nothing writes to the terminal.
+     */
+    public fun setClipboardReader(reader: ((GhosttyClipboardLocation) -> String?)?) {
+        requireOpen()
+        clipboardReader = reader
+        if (reader == null) {
+            checkResult(
+                GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_CLIPBOARD_READ(), MemorySegment.NULL),
+                "ghostty_terminal_set(CLIPBOARD_READ)",
+            )
+            return
+        }
+        val stub = clipboardReadStub ?: GhosttyTerminalClipboardReadFn.allocate(
+            GhosttyTerminalClipboardReadFn.Function { _, _, read -> guarded("The clipboard read") { answerClipboardRead(read) } },
+            callbacks,
+        ).also { clipboardReadStub = it }
+        checkResult(
+            GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_CLIPBOARD_READ(), stub),
+            "ghostty_terminal_set(CLIPBOARD_READ)",
+        )
+    }
+
+    private fun answerClipboardRead(read: MemorySegment) {
+        val struct = read.reinterpret(GhosttyClipboardRead.layout().byteSize())
+        val text = clipboardReader?.invoke(clipboardLocation(GhosttyClipboardRead.location(struct))) ?: return
+        Arena.ofConfined().use { arena ->
+            val bytes = text.encodeToByteArray()
+            val data = arena.allocate(maxOf(bytes.size.toLong(), 1L))
+            MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.size)
+            val mime = arena.allocateFrom("text/plain")
+            val content = arena.allocate(GhosttyClipboardContent.layout())
+            GhosttyString.ptr(GhosttyClipboardContent.mime(content), mime)
+            GhosttyString.len(GhosttyClipboardContent.mime(content), mime.byteSize() - 1)
+            GhosttyString.ptr(GhosttyClipboardContent.data(content), data)
+            GhosttyString.len(GhosttyClipboardContent.data(content), bytes.size.toLong())
+
+            val reply = arena.allocate(GhosttyClipboardReadReply.layout())
+            GhosttyClipboardReadReply.size(reply, GhosttyClipboardReadReply.layout().byteSize())
+            GhosttyClipboardReadReply.result(reply, GhosttyVt.GHOSTTY_CLIPBOARD_READ_RESULT_SUCCESS())
+            GhosttyClipboardReadReply.contents(reply, content)
+            GhosttyClipboardReadReply.contents_len(reply, 1)
+            GhosttyClipboardReadReplyFn.invoke(GhosttyClipboardRead.reply(struct), struct, reply)
+        }
+    }
+
+    private fun answerClipboardWrite(write: MemorySegment) {
+        val struct = write.reinterpret(GhosttyClipboardWrite.layout().byteSize())
+        val handler = onClipboardWrite ?: return
+        val count = GhosttyClipboardWrite.contents_len(struct)
+        val text = if (count == 0L) {
+            ""
+        } else {
+            val size = GhosttyClipboardContent.layout().byteSize()
+            val contents = GhosttyClipboardWrite.contents(struct).reinterpret(count * size)
+            // The first text: the other representations (images, HTML) are not for a terminal.
+            val content = (0 until count).map { contents.asSlice(it * size, size) }
+                .firstOrNull { copyString(GhosttyClipboardContent.mime(it)).startsWith("text/") }
+                ?: return
+            copyString(GhosttyClipboardContent.data(content))
+        }
+        if (!handler(clipboardLocation(GhosttyClipboardWrite.location(struct)), text)) return
+        // Only the protocols that acknowledge (OSC 5522) look at it: for the others, and for a refusal, not replying is enough.
+        Arena.ofConfined().use { arena ->
+            val reply = arena.allocate(GhosttyClipboardWriteReply.layout())
+            GhosttyClipboardWriteReply.size(reply, GhosttyClipboardWriteReply.layout().byteSize())
+            GhosttyClipboardWriteReply.result(reply, GhosttyVt.GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS())
+            GhosttyClipboardWriteReplyFn.invoke(GhosttyClipboardWrite.reply(struct), struct, reply)
+        }
+    }
+
+    private fun clipboardLocation(value: Int) = when (value) {
+        GhosttyVt.GHOSTTY_CLIPBOARD_LOCATION_SELECTION() -> GhosttyClipboardLocation.SELECTION
+        GhosttyVt.GHOSTTY_CLIPBOARD_LOCATION_PRIMARY() -> GhosttyClipboardLocation.PRIMARY
+        else -> GhosttyClipboardLocation.STANDARD
+    }
+
+    // A borrowed string, copied: it is only valid while the callback that got it runs.
+    private fun copyString(string: MemorySegment): String {
+        val length = GhosttyString.len(string)
+        if (length == 0L) return ""
+        return String(GhosttyString.ptr(string).reinterpret(length).toArray(ValueLayout.JAVA_BYTE), Charsets.UTF_8)
+    }
+
+    // An exception must never cross into native code: it would take the JVM down.
+    private inline fun guarded(what: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Throwable) {
+            logger.error("{} failed", what, e)
+        }
+    }
+
+    private fun installEffects() {
+        val effects = listOf(
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_BELL() to GhosttyTerminalBellFn.allocate(
+                GhosttyTerminalBellFn.Function { _, _ -> guarded("onBell") { onBell?.invoke() } },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_TITLE_CHANGED() to GhosttyTerminalTitleChangedFn.allocate(
+                GhosttyTerminalTitleChangedFn.Function { _, _ -> guarded("onTitleChanged") { onTitleChanged?.invoke() } },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_PWD_CHANGED() to GhosttyTerminalPwdChangedFn.allocate(
+                GhosttyTerminalPwdChangedFn.Function { _, _ -> guarded("onPwdChanged") { onPwdChanged?.invoke() } },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_RESET() to GhosttyTerminalResetFn.allocate(
+                GhosttyTerminalResetFn.Function { _, _ -> guarded("onReset") { onReset?.invoke() } },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION() to GhosttyTerminalDesktopNotificationFn.allocate(
+                GhosttyTerminalDesktopNotificationFn.Function { _, _, notification ->
+                    guarded("onNotification") {
+                        val struct = notification.reinterpret(GhosttyTerminalDesktopNotification.layout().byteSize())
+                        onNotification?.invoke(
+                            copyString(GhosttyTerminalDesktopNotification.title(struct)),
+                            copyString(GhosttyTerminalDesktopNotification.body(struct)),
+                        )
+                    }
+                },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_PROGRESS_REPORT() to GhosttyTerminalProgressReportFn.allocate(
+                GhosttyTerminalProgressReportFn.Function { _, _, report ->
+                    guarded("onProgress") {
+                        val struct = report.reinterpret(GhosttyTerminalProgressReport.layout().byteSize())
+                        val state = when (GhosttyTerminalProgressReport.state(struct)) {
+                            GhosttyVt.GHOSTTY_TERMINAL_PROGRESS_STATE_SET() -> GhosttyProgressState.SET
+                            GhosttyVt.GHOSTTY_TERMINAL_PROGRESS_STATE_ERROR() -> GhosttyProgressState.ERROR
+                            GhosttyVt.GHOSTTY_TERMINAL_PROGRESS_STATE_INDETERMINATE() -> GhosttyProgressState.INDETERMINATE
+                            GhosttyVt.GHOSTTY_TERMINAL_PROGRESS_STATE_PAUSE() -> GhosttyProgressState.PAUSE
+                            else -> GhosttyProgressState.REMOVE
+                        }
+                        val percent = GhosttyTerminalProgressReport.progress(struct).toInt().takeIf { it >= 0 }
+                        onProgress?.invoke(GhosttyProgress(state, percent))
+                    }
+                },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT() to GhosttyTerminalSemanticPromptFn.allocate(
+                GhosttyTerminalSemanticPromptFn.Function { _, _, event ->
+                    guarded("onSemanticPrompt") {
+                        val struct = event.reinterpret(GhosttyTerminalSemanticPrompt.layout().byteSize())
+                        val kind = when (GhosttyTerminalSemanticPrompt.kind(struct)) {
+                            GhosttyVt.GHOSTTY_SEMANTIC_PROMPT_PROMPT_START() -> GhosttyPromptEventKind.PROMPT_START
+                            GhosttyVt.GHOSTTY_SEMANTIC_PROMPT_INPUT_START() -> GhosttyPromptEventKind.INPUT_START
+                            GhosttyVt.GHOSTTY_SEMANTIC_PROMPT_OUTPUT_START() -> GhosttyPromptEventKind.OUTPUT_START
+                            GhosttyVt.GHOSTTY_SEMANTIC_PROMPT_COMMAND_END() -> GhosttyPromptEventKind.COMMAND_END
+                            else -> return@guarded
+                        }
+                        val exitCode = GhosttyTerminalSemanticPrompt.exit_code(struct).takeIf { GhosttyTerminalSemanticPrompt.has_exit_code(struct) }
+                        onSemanticPrompt?.invoke(GhosttySemanticPrompt(kind, exitCode, copyString(GhosttyTerminalSemanticPrompt.command(struct))))
+                    }
+                },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE() to GhosttyTerminalClipboardWriteFn.allocate(
+                GhosttyTerminalClipboardWriteFn.Function { _, _, write -> guarded("The clipboard write") { answerClipboardWrite(write) } },
+                callbacks,
+            ),
+        )
+        // Callbacks are passed as is, not through a pointer to them.
+        for ((option, stub) in effects) {
+            checkResult(GhosttyVt.ghostty_terminal_set(handle, option, stub), "ghostty_terminal_set(effect $option)")
+        }
+    }
+
     /** A reference to the cell at [column] and [row] of the viewport, which is valid until the terminal changes. */
     internal fun gridRef(arena: Arena, column: Int, row: Int): MemorySegment {
         requireOpen()
@@ -547,6 +826,7 @@ public class GhosttyTerminal(
 
     private companion object {
         const val PASTE_MARKERS_CAPACITY = 32L
+        const val HYPERLINK_INITIAL_CAPACITY = 512L
     }
 
     public fun isModeEnabled(mode: GhosttyMode): Boolean {

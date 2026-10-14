@@ -111,6 +111,8 @@ public data class GhosttyRenderCell(
     public val background: GhosttyRgb?,
     public val style: GhosttyCellStyle,
     public val width: GhosttyCellWidth,
+    /** Whether the cell is part of a hyperlink (OSC 8). The address is [GhosttyTerminal.hyperlinkAt]. */
+    public val hyperlink: Boolean = false,
 )
 
 /**
