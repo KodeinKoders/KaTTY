@@ -140,6 +140,20 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * Writes [text] on the screen, as if the program had written it: a message of the application, such as
+     * the one that says that the program exited. It is not sent to the program.
+     *
+     * Control sequences are interpreted, so a line ends with `\r\n`.
+     */
+    public fun writeToScreen(text: String) {
+        lock.withLock {
+            if (closed.get()) return
+            terminal.vtWrite(text)
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    /**
      * Ends the program if it is still running, and releases everything.
      */
     override fun close() {

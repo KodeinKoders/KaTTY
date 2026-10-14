@@ -143,6 +143,39 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun writesAMessageOnTheScreenAfterWhatTheProgramWrote() {
+        val session = start("printf hello")
+        val code = session.awaitExit()
+
+        session.writeToScreen("\r\n[exited with code $code]")
+
+        val frame = session.awaitFrame { it.text(1) == "[exited with code 0]" }
+        assertEquals("hello", frame.text(0), "The message comes after what the program wrote")
+    }
+
+    @Test
+    fun doesNotSendWhatItWritesOnTheScreenToTheProgram() {
+        // In raw mode, the program gets exactly the bytes that are sent: it must not get the message.
+        val session = start("stty raw -echo; echo ready; head -c1 | od -An -tx1")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.writeToScreen("message")
+        session.sendKey(KeyInput(TerminalKey.ENTER))
+
+        // The program only got the Enter, which is the one byte it reads.
+        val frame = session.awaitFrame { "0d" in it.text() }
+        assertTrue("message" in frame.text())
+    }
+
+    @Test
+    fun ignoresWhatIsWrittenOnTheScreenOnceClosed() {
+        val session = start("sleep 30")
+        session.close()
+
+        session.writeToScreen("too late")
+    }
+
+    @Test
     fun endsTheProgramWhenClosed() {
         val session = start("sleep 30")
         session.awaitFrame { true }

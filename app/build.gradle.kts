@@ -9,6 +9,9 @@ kotlin {
 }
 
 dependencies {
+    implementation(projects.terminal)
+    implementation(projects.terminalCompose)
+
     implementation(compose.desktop.currentOs)
 
     implementation(libs.compose.foundation)
@@ -24,5 +27,11 @@ dependencies {
 }
 
 compose {
-    desktop.application.mainClass = "app.katty.MainKt"
+    desktop.application {
+        mainClass = "app.katty.MainKt"
+
+        // ghostty-vt calls the FFM API, and pty4j calls JNA: both are restricted, and the JVM warns on the
+        // first native call without this flag.
+        jvmArgs += "--enable-native-access=ALL-UNNAMED"
+    }
 }
