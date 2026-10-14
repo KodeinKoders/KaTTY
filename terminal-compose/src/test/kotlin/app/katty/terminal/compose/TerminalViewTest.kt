@@ -79,6 +79,16 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 
     fun pixel(x: Int, y: Int): Int = bitmap.getColor(x, y) and 0xFFFFFF
 
+    /** Whether a line of the cell, across it, is in the color: an underline. */
+    fun hasLine(col: Int, row: Int, color: TerminalColor): Boolean {
+        val left = (col * typography.cellWidth).toInt() + 1
+        val right = ((col + 1) * typography.cellWidth).toInt() - 1
+        val top = (row * typography.cellHeight).toInt()
+        return (top until (top + typography.cellHeight.toInt())).any { y ->
+            (left until right).all { x -> distance(pixel(x, y), color.rgb) < INK_THRESHOLD }
+        }
+    }
+
     /**
      * Whether anything but the background is drawn in the cell. The edges of the text are blended, and
      * text that has the color of the background still leaves a pixel or two a few levels off: that is not ink.
@@ -96,11 +106,11 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = ""): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
         typography = rememberTerminalTypography(fontSize.sp)
-        TerminalView(frame, typography, focused, Modifier.fillMaxSize())
+        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit)
     }
     scene.useScene {
         val image = scene.render()
@@ -295,6 +305,53 @@ class TerminalViewTest {
 
         assertEquals(GREEN.rgb, rendered.center(1, 0))
         assertEquals(RED.rgb, rendered.center(5, 0), "The color of the program wins")
+    }
+
+    private val steadyCursor = { col: Int -> TerminalCursor(x = col, y = 0, visible = true, blinking = false, shape = TerminalCursorShape.BLOCK) }
+
+    @Test
+    fun theTextThatIsBeingComposedIsUnderlinedAtTheCursorAndCoversWhatIsThere() {
+        // Full blocks, so that what is covered is visible: a cell that shows the background is a cell that is covered.
+        val frame = frame(30, listOf(row(30, *text("███"))), steadyCursor(1))
+
+        val rendered = render("preedit", frame, preedit = "'")
+
+        assertEquals(BACKGROUND.rgb, rendered.center(1, 0), "The block is covered")
+        assertEquals(FOREGROUND.rgb, rendered.center(0, 0), "What is not under the preedit is not")
+        assertEquals(FOREGROUND.rgb, rendered.center(2, 0))
+        assertTrue(rendered.hasInk(1, 0), "The dead key is drawn")
+        assertTrue(rendered.hasLine(1, 0, FOREGROUND), "It is underlined")
+    }
+
+    @Test
+    fun eachCharacterOfTheTextThatIsBeingComposedIsUnderlinedInItsCell() {
+        val frame = frame(30, listOf(row(30)), steadyCursor(1))
+
+        val rendered = render("preedit-two", frame, preedit = "éé")
+
+        assertEquals(false, rendered.hasLine(0, 0, FOREGROUND), "Before it")
+        assertTrue(rendered.hasLine(1, 0, FOREGROUND))
+        assertTrue(rendered.hasLine(2, 0, FOREGROUND))
+        assertEquals(false, rendered.hasLine(3, 0, FOREGROUND), "After it")
+    }
+
+    @Test
+    fun theTextThatIsBeingComposedIsShiftedLeftToFitInTheLine() {
+        val frame = frame(30, listOf(row(30)), steadyCursor(29))
+
+        val rendered = render("preedit-edge", frame, preedit = "ab")
+
+        assertEquals(false, rendered.hasLine(27, 0, FOREGROUND))
+        assertTrue(rendered.hasLine(28, 0, FOREGROUND), "It starts one cell before the cursor")
+        assertTrue(rendered.hasLine(29, 0, FOREGROUND))
+    }
+
+    @Test
+    fun theCursorIsNotDrawnWhileComposing() {
+        val frame = frame(30, listOf(row(30)), steadyCursor(5))
+
+        assertEquals(FOREGROUND.rgb, render("no-preedit", frame).center(5, 0), "The cursor is a block")
+        assertEquals(BACKGROUND.rgb, render("preedit-cursor", frame, preedit = "'").center(5, 0), "The cursor does not hide the text")
     }
 
     @Test

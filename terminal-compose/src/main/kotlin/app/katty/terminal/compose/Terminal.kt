@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -15,12 +16,21 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import app.katty.terminal.KeyInput
+import app.katty.terminal.TerminalKey
+import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -56,6 +66,14 @@ public fun Terminal(
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val active = focused && windowFocused
     val keys = remember { KeyTranslator() }
+    // The text that is typed comes from two routes, and what is being composed is not in the terminal yet.
+    val textInput = remember(session) { TerminalTextInput { session.sendKey(KeyInput(TerminalKey.UNIDENTIFIED, text = it)) } }
+
+    // What the input method asks for is not composed: the cell of the cursor, for its candidate window.
+    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val latestFrame = rememberUpdatedState(frame)
+    val latestTypography = rememberUpdatedState(typography)
+    val caretRect = remember { { caretRectInRoot(latestFrame.value, latestTypography.value, coordinates) } }
 
     // As many cells as fit. It is the number of them that matters, not the size in pixels: the terminal is
     // not resized while a window is dragged for as long as the grid is the same.
@@ -78,8 +96,10 @@ public fun Terminal(
         frame = frame,
         typography = typography,
         focused = active,
+        preedit = textInput.preedit,
         modifier = modifier
             .onSizeChanged { size = it }
+            .onGloballyPositioned { coordinates = it }
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
             // A press is not consumed: what a program may do with the mouse comes later.
@@ -90,10 +110,31 @@ public fun Terminal(
                 }
             }
             .onPreviewKeyEvent { event ->
-                val input = keys.translate(event.toKeyInfo()) ?: return@onPreviewKeyEvent false
-                session.sendKey(input)
+                val info = event.toKeyInfo()
+                if (info.kind == KeyInfo.Kind.PRESSED) textInput.keyPressed()
+                val input = keys.translate(info) ?: return@onPreviewKeyEvent false
+                val text = input.text
+                if (info.kind == KeyInfo.Kind.TYPED && text != null) {
+                    // The input method may deliver it as well.
+                    textInput.deliver(text, TextRoute.KEY_TYPED)
+                } else {
+                    session.sendKey(input)
+                }
                 true
             }
+            // Compose's focus, not the window's: see terminalTextInput.
+            .terminalTextInput(textInput, enabled = focused, caretRectInRoot = caretRect)
             .focusable(),
+    )
+}
+
+// The cell of the cursor in the window, in pixels.
+private fun caretRectInRoot(frame: TerminalFrame, typography: TerminalTypography, coordinates: LayoutCoordinates?): Rect? {
+    val x = frame.cursor.x ?: return null
+    val y = frame.cursor.y ?: return null
+    val origin = coordinates?.takeIf { it.isAttached }?.positionInRoot() ?: return null
+    return Rect(
+        Offset(origin.x + x * typography.cellWidth, origin.y + y * typography.cellHeight),
+        Size(typography.cellWidth, typography.cellHeight),
     )
 }

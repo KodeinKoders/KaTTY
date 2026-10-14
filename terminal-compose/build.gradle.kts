@@ -26,6 +26,8 @@ dependencies {
 
     implementation(libs.compose.foundation)
 
+    implementation(libs.slf4j.api)
+
     testImplementation(compose.desktop.currentOs)
 
     testImplementation(libs.kotlin.test.junit)

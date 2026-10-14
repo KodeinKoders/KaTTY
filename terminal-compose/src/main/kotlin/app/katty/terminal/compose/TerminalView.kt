@@ -37,6 +37,7 @@ internal fun TerminalView(
     typography: TerminalTypography,
     focused: Boolean,
     modifier: Modifier = Modifier,
+    preedit: String = "",
 ) {
     // What is kept for the rows depends on how they are drawn.
     val layouts = remember(typography, frame.foreground, frame.background, frame.boldColor) { RowLayouts(typography) }
@@ -56,7 +57,12 @@ internal fun TerminalView(
             }
         }
 
-        if (cursorShown.value) drawCursor(frame, typography, focused)
+        if (preedit.isNotEmpty()) {
+            // The cursor would be in the way of what is being composed.
+            drawPreedit(frame, typography, preedit)
+        } else if (cursorShown.value) {
+            drawCursor(frame, typography, focused)
+        }
     }
 }
 
@@ -141,6 +147,32 @@ private fun DrawScope.drawUnderline(kind: TerminalUnderline, left: Float, right:
             }
             drawPath(path, color, style = Stroke(width = thickness))
         }
+    }
+}
+
+/**
+ * The text that is being composed, in the cells from the cursor's, underlined: it is not in the terminal yet.
+ * It covers what is under it.
+ */
+private fun DrawScope.drawPreedit(frame: TerminalFrame, typography: TerminalTypography, preedit: String) {
+    val cursor = frame.cursor
+    val cursorCol = cursor.x ?: return
+    val y = cursor.y ?: return
+    if (y !in frame.rows.indices) return
+
+    val cells = preeditCells(preedit)
+    var col = preeditStart(cursorCol, cells.sumOf { it.cols }, frame.cols)
+    val top = y * typography.cellHeight
+    val thickness = max(1f, round(typography.cellHeight / 16f))
+    val color = frame.foreground.rgb.toColor()
+    for (cell in cells) {
+        drawCells(col, cell.cols, top, typography, frame.background.rgb.toColor())
+        val layout = typography.layout(cell.text, bold = false, italic = false)
+        val left = col * typography.cellWidth
+        drawText(layout, color = color, topLeft = Offset(left, top))
+        val right = (col + cell.cols) * typography.cellWidth
+        drawUnderline(TerminalUnderline.SINGLE, left, right, top + layout.firstBaseline + thickness, thickness, color)
+        col += cell.cols
     }
 }
 
