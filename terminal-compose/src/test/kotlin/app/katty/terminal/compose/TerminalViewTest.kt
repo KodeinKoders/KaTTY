@@ -17,6 +17,7 @@ import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalLink
 import app.katty.terminal.TerminalRow
 import app.katty.terminal.TerminalRowId
+import app.katty.terminal.TerminalSearchMatch
 import app.katty.terminal.TerminalStyle
 import app.katty.terminal.TerminalUnderline
 import org.jetbrains.skia.Bitmap
@@ -216,6 +217,38 @@ class TerminalViewTest {
         val boldLeft = (4 * rendered.typography.cellWidth).toInt()
         val boldCell = (0 until rendered.typography.cellHeight.toInt()).map { y -> (0 until rendered.typography.cellWidth.toInt()).map { x -> rendered.pixel(boldLeft + x, y) } }
         assertNotEquals(regularCell, boldCell)
+    }
+
+    @Test
+    fun drawsTheMatchesOfASearchAndTheSelectedOneOtherwise() {
+        val frame = frame(30, listOf(row(30, *text("one needle two")), row(30, *text("needle again")))).copy(
+            searchMatches = listOf(
+                TerminalSearchMatch(0, 4..9, current = false),
+                TerminalSearchMatch(1, 0..5, current = true),
+            ),
+        )
+
+        val rendered = render("search-matches", frame)
+
+        val match = rendered.pixel((4 * rendered.typography.cellWidth).toInt() + 1, 2)
+        val current = rendered.pixel(1, (1 * rendered.typography.cellHeight).toInt() + 2)
+        assertEquals(0xFFD866, match, "A match is yellow")
+        assertEquals(0xFF9E3D, current, "The selected one is orange")
+        assertEquals(BACKGROUND.rgb, rendered.pixel((11 * rendered.typography.cellWidth).toInt(), 2), "What is not a match is not")
+        assertTrue(rendered.hasInk(5, 0, background = TerminalColor(0xFFD866)), "The text of a match shows on it")
+        assertTrue(rendered.hasInk(0, 1, background = TerminalColor(0xFF9E3D)), "and on the selected one")
+    }
+
+    @Test
+    fun aMatchThatWrapsIsDrawnOnBothRows() {
+        val frame = frame(30, listOf(row(30, *text("x".repeat(28) + "ne")), row(30, *text("edle")))).copy(
+            searchMatches = listOf(TerminalSearchMatch(0, 28..29, current = false), TerminalSearchMatch(1, 0..3, current = false)),
+        )
+
+        val rendered = render("search-wrapped", frame)
+
+        assertEquals(0xFFD866, rendered.pixel((28 * rendered.typography.cellWidth).toInt() + 1, 2))
+        assertEquals(0xFFD866, rendered.pixel(1, (1 * rendered.typography.cellHeight).toInt() + 2))
     }
 
     @Test

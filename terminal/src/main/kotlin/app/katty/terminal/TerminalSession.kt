@@ -1,5 +1,7 @@
 package app.katty.terminal
 
+import app.katty.ghostty.GhosttyCompressionMode
+import app.katty.ghostty.GhosttyCompressionResult
 import app.katty.ghostty.GhosttyImage
 import app.katty.ghostty.GhosttyImagePlacement
 import app.katty.ghostty.GhosttyKeyEncoder
@@ -10,18 +12,23 @@ import app.katty.ghostty.GhosttyProgressState
 import app.katty.ghostty.GhosttyPromptEventKind
 import app.katty.ghostty.GhosttyScreen
 import app.katty.ghostty.GhosttyScrollViewport
+import app.katty.ghostty.GhosttySearch
+import app.katty.ghostty.GhosttySearchStatus
+import app.katty.ghostty.GhosttyViewportMatch
 import app.katty.ghostty.GhosttyScrollbar
 import app.katty.ghostty.GhosttySelectionGesture
 import app.katty.ghostty.GhosttyRenderState
 import app.katty.ghostty.GhosttyRowId
 import app.katty.ghostty.GhosttyTerminal
+import app.katty.ghostty.GhosttyTrackedRef
 import com.pty4j.PtyProcess
 import com.pty4j.PtyProcessBuilder
 import com.pty4j.WinSize
 import com.pty4j.unix.UnixPtyProcess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -31,12 +38,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import java.io.IOException
-import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -90,6 +97,16 @@ public class TerminalSession private constructor(
     // terminal, which tells a program that turns the mode on nothing until the focus changes. Under the lock.
     private var lastFocused = false
 
+    // The search, which is made when the first query is set, and what it was asked for. Under the lock.
+    private var searcher: GhosttySearch? = null
+    private var searchQuery = ""
+
+    private val searchStateFlow = MutableStateFlow(TerminalSearchState())
+
+    // Where the output of the last command starts, as the shell reported it: it follows its row as the terminal scrolls and prunes.
+    // Under the lock.
+    private var outputStart: GhosttyTrackedRef? = null
+
     // The colors that a frame has besides the ones libghostty resolves. Written under the lock, with the
     // colors of the terminal, and read by the producer.
     @Volatile
@@ -133,9 +150,11 @@ public class TerminalSession private constructor(
     private var titleChanged = false
     private var workingDirectoryChanged = false
 
-    private val producerThreads = Executors.newSingleThreadExecutor { Thread(it, "katty-terminal-frames").apply { isDaemon = true } }
-    private val producerDispatcher = producerThreads.asCoroutineDispatcher()
-    private val producerScope = CoroutineScope(SupervisorJob() + producerDispatcher)
+    // One coroutine at a time, so that what only the producer touches (the render state, the caches) is never used by two, and on the threads
+    // that every session shares rather than one of its own. IO and not Default: closing a session waits for the producer, and many
+    // sessions that close at the same time must not wait for each other on the workers that the producers need.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val producerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
     private val reader = Thread(::readOutput, "katty-terminal-reader").apply { isDaemon = true }
     private val writer = Thread(::writeInput, "katty-terminal-writer").apply { isDaemon = true }
@@ -157,14 +176,16 @@ public class TerminalSession private constructor(
 
     /**
      * Tells the session whether anybody looks at it. A session that is not visible does not produce frames, which is the work that
-     * a hidden terminal has no use for (up to 60 times per second, reading every row that changed): its [frames] stay as they were,
-     * and so does what is derived from them, such as [linkAt].
+     * a hidden terminal has no use for (up to 60 times per second, reading every row that changed), and it lets go of what it holds
+     * for the next frame: [frames] is a blank frame of the same size, with no text, no cursor and no images, and so is what is derived
+     * from the last frame, such as [linkAt]. Its history is compressed once it is quiet, which loses nothing: reading it decompresses it.
      *
      * Everything else goes on: the program's output is read and fed to the terminal, keys, the mouse and the answers to the
      * program's queries are sent, and [title], [workingDirectory], [progress], [events] and [exited] are published. Showing the session
-     * again produces one frame at once, with everything that happened. It is shown when it starts.
+     * again produces one frame at once, with everything that happened, which is read again whole: it is the cost of a change of theme.
+     * It is shown when it starts.
      *
-     * A hidden session still holds its last frame and the images of it: this saves processor time, not memory.
+     * A host that keeps a hidden [app.katty.terminal.TerminalSession] composed sees the blank frame.
      */
     public fun setVisible(visible: Boolean) {
         if (visibleState.value == visible) return
@@ -205,6 +226,11 @@ public class TerminalSession private constructor(
                 }
                 val started = TimeSource.Monotonic.markNow()
                 settle(started)
+                // Hidden while it waited: the frame is for when it is shown.
+                if (!visibleState.value) {
+                    visibleState.first { it }
+                    frameRequests.tryReceive()
+                }
                 try {
                     frameState.value = produceFrame()
                 } catch (e: Throwable) {
@@ -218,8 +244,73 @@ public class TerminalSession private constructor(
                 if (remaining.isPositive()) delay(remaining)
             }
         }
+        // What a hidden session lets go of. It cannot be in the loop above, which waits for a request: this one acts as soon as the session is
+        // hidden. Both run one at a time on the producer's dispatcher, so neither interrupts the other half way.
+        producerScope.launch {
+            visibleState.collectLatest { visible -> if (!visible) releaseWhileHidden() }
+        }
         reader.start()
         writer.start()
+    }
+
+    // What the session does while it is hidden: the frame and what is kept for the next one are dropped, since nobody looks, and
+    // the history is compressed, which is lost to nobody: reading it decompresses it. It ends when the session is shown.
+    private suspend fun releaseWhileHidden() {
+        frameState.value = blankFrame(frameState.value)
+        rowCache = emptyMap()
+        imageCache.clear()
+
+        var seen = compressionActivity() ?: return
+        delay(HIDDEN_IDLE)
+        while (true) {
+            // Something was written: it is not an idle moment, which is when compressing is for.
+            val now = compressionActivity() ?: return
+            if (now != seen) {
+                seen = now
+                delay(HIDDEN_IDLE)
+                continue
+            }
+            when (compressOnce() ?: return) {
+                GhosttyCompressionResult.UNSUPPORTED -> return
+                GhosttyCompressionResult.PENDING -> delay(COMPRESSION_STEP_PAUSE)
+                GhosttyCompressionResult.COMPLETE -> {
+                    // Nothing to do until the terminal changes: it is looked at now and then.
+                    seen = compressionActivity() ?: return
+                    while (compressionActivity() == seen) delay(HIDDEN_POLL)
+                    seen = compressionActivity() ?: return
+                    delay(HIDDEN_IDLE)
+                }
+            }
+        }
+    }
+
+    private fun compressionActivity(): Long? = lock.withLock { if (closed.get()) null else terminal.compressionActivity() }
+
+    // A bounded amount of compression, under the lock for that long.
+    private fun compressOnce(): GhosttyCompressionResult? =
+        lock.withLock { if (closed.get()) null else terminal.compress(GhosttyCompressionMode.INCREMENTAL) }
+
+    // What a terminal that nobody sees is: the colors and the size, nothing on it.
+    private fun blankFrame(last: TerminalFrame): TerminalFrame {
+        val blank = TerminalRow(TerminalRowId(0, 0), emptyList())
+        return TerminalFrame(
+            cols = last.cols,
+            rows = List(last.rows.size) { blank },
+            background = last.background,
+            foreground = last.foreground,
+            cursorColor = last.cursorColor,
+            cursor = TerminalCursor(x = null, y = null, visible = false, blinking = false, shape = last.cursor.shape),
+            cursorTextColor = last.cursorTextColor,
+            boldColor = last.boldColor,
+            alternateScreen = last.alternateScreen,
+        )
+    }
+
+    /** How much native memory the session holds: its history, its screens and its images. */
+    public fun memoryUsage(): TerminalMemoryUsage = lock.withLock {
+        if (closed.get()) return TerminalMemoryUsage(0, 0, 0)
+        val usage = terminal.memoryUsage()
+        TerminalMemoryUsage(usage.residentBytes, usage.compressedBytes, usage.imageBytes)
     }
 
     /**
@@ -361,7 +452,12 @@ public class TerminalSession private constructor(
         terminal.onSemanticPrompt = { step ->
             when (step.kind) {
                 GhosttyPromptEventKind.PROMPT_START -> eventFlow.tryEmit(TerminalEvent.PromptStarted)
-                GhosttyPromptEventKind.OUTPUT_START -> eventFlow.tryEmit(TerminalEvent.CommandStarted(step.command.ifEmpty { null }))
+                GhosttyPromptEventKind.OUTPUT_START -> {
+                    // Here, where the screen is up to date: it is where the output starts, which it would not be after the write.
+                    outputStart?.close()
+                    outputStart = terminal.trackCursor()
+                    eventFlow.tryEmit(TerminalEvent.CommandStarted(step.command.ifEmpty { null }))
+                }
                 GhosttyPromptEventKind.COMMAND_END -> eventFlow.tryEmit(TerminalEvent.CommandFinished(step.exitCode))
                 // What follows is what the user types: nothing for the host.
                 GhosttyPromptEventKind.INPUT_START -> Unit
@@ -634,6 +730,81 @@ public class TerminalSession private constructor(
         sendTyped { terminal.encodePaste(text) }
     }
 
+    /** The search for a text in the history and the screen. */
+    public val search: TerminalSearch = TerminalSearch(this)
+
+    internal val searchState: StateFlow<TerminalSearchState> get() = searchStateFlow
+
+    internal fun setSearchQuery(query: String) {
+        lock.withLock {
+            if (closed.get()) return
+            searchQuery = query
+            if (query.isEmpty()) {
+                searcher?.setNeedle("")
+                searchStateFlow.value = TerminalSearchState()
+            } else {
+                val active = searcher ?: GhosttySearch(terminal).also { searcher = it }
+                active.setNeedle(query)
+                searchStateFlow.value = TerminalSearchState(query = query, searching = true)
+            }
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    // Toward older content is libghostty's next: up the screen.
+    internal fun moveSearch(towardOlder: Boolean) {
+        lock.withLock {
+            if (closed.get() || searchQuery.isEmpty()) return
+            val active = searcher ?: return
+            if (towardOlder) active.selectNext() else active.selectPrevious()
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    /** How many rows there are in the history and the screen. */
+    public fun rowCount(): Long = lock.withLock {
+        if (closed.get()) 0 else terminal.totalRows
+    }
+
+    /**
+     * The text of the rows [firstRow] to [lastRow] (the last one by default), both included, in the history and the screen: row 0 is the
+     * top of the history, in the space of [TerminalScrollbar.offset] and [scrollToRow]. The viewport does not move. A line that wraps is
+     * joined when [unwrap], and the blanks that end a line are dropped.
+     *
+     * It is read under the lock that the program's output is written under, and finding a row walks the history: for a very large
+     * one, read it in pieces rather than all at once, or the output waits.
+     *
+     * @throws IllegalArgumentException If the rows are not there.
+     */
+    public fun readText(firstRow: Long = 0, lastRow: Long? = null, unwrap: Boolean = true): String = lock.withLock {
+        if (closed.get()) return ""
+        terminal.readRows(firstRow, lastRow ?: (terminal.totalRows - 1), unwrap)
+    }
+
+    /** The text of the rows that are in view. */
+    public fun viewportText(unwrap: Boolean = true): String = lock.withLock {
+        if (closed.get()) return ""
+        val position = terminal.scrollbar
+        terminal.readRows(position.offset, position.offset + position.len - 1, unwrap)
+    }
+
+    /** The text of the screen, where the program's cursor is, whatever part of the history is in view. */
+    public fun screenText(unwrap: Boolean = true): String = lock.withLock {
+        if (closed.get()) return ""
+        val total = terminal.totalRows
+        terminal.readRows(total - terminal.rows, total - 1, unwrap)
+    }
+
+    /**
+     * The output of the last command that the shell started, or `null` if it started none or its output is not in the history any
+     * more. It needs the shell to mark its prompts and its commands (OSC 133): see `shellIntegration` of [start]. What a command that is
+     * still running has written is there too.
+     */
+    public fun lastCommandOutput(unwrap: Boolean = true): String? = lock.withLock {
+        if (closed.get()) return null
+        outputStart?.let { terminal.commandOutput(it, unwrap) }
+    }
+
     /** The text that is selected, for the caller to copy, or `null` when nothing is. */
     public fun selectedText(): String? = lock.withLock {
         if (closed.get()) null else terminal.selectedText()?.takeIf { it.isNotEmpty() }
@@ -709,7 +880,6 @@ public class TerminalSession private constructor(
 
         // The producer first: it uses the render state, which is freed below.
         runBlocking { producerScope.coroutineContext.job.cancelAndJoin() }
-        producerDispatcher.close()
 
         reader.join(DESTROY_TIMEOUT_MS)
         writer.join(DESTROY_TIMEOUT_MS)
@@ -717,6 +887,10 @@ public class TerminalSession private constructor(
 
         // What the reader still does with the terminal is under the lock, and checks it is not closed.
         lock.withLock {
+            outputStart?.close()
+            outputStart = null
+            searcher?.close()
+            searcher = null
             selectionGesture.close()
             keyEncoder.close()
             mouseEncoder.close()
@@ -790,8 +964,11 @@ public class TerminalSession private constructor(
         val fresh = HashMap<Int, GhosttyImage>()
         val cellWidth: Int
         val cellHeight: Int
+        var found: SearchFound? = null
         lock.withLock {
             renderState.update(terminal)
+            // As of this moment, with the rows that are read for it: what is found is where it is on this frame.
+            found = searchOnFrame()
             tracking = terminal.mouseTracking
             alternate = terminal.activeScreen == GhosttyScreen.ALTERNATE
             shape = terminal.mouseShape
@@ -855,10 +1032,51 @@ public class TerminalSession private constructor(
             scrollbar = if (position.total > position.len) TerminalScrollbar(position.total, position.offset, position.len) else null,
             images = images,
             alternateScreen = alternate,
+            searchMatches = found?.let { searchMatches(it, renderState.cols) } ?: emptyList(),
         )
         renderState.clean()
+        found?.let { result ->
+            searchStateFlow.value = result.state
+            // A search goes through the history a bounded amount at a time.
+            if (result.status != GhosttySearchStatus.COMPLETE) frameRequests.trySend(Unit)
+        }
         return frame
     }
+
+    // What the search has for one frame.
+    private class SearchFound(
+        val state: TerminalSearchState,
+        val status: GhosttySearchStatus,
+        val matches: List<GhosttyViewportMatch>,
+        val selected: GhosttyViewportMatch?,
+    )
+
+    // Under the lock.
+    private fun searchOnFrame(): SearchFound? {
+        val active = searcher ?: return null
+        if (searchQuery.isEmpty()) return null
+        active.feed()
+        val status = active.tick()
+        val total = active.totalMatches
+        val index = active.selectedIndex
+        return SearchFound(
+            // The newest is 0 for libghostty, and the last for a person.
+            state = TerminalSearchState(searchQuery, total, index?.let { total - it }, status != GhosttySearchStatus.COMPLETE),
+            status = status,
+            matches = active.viewportMatches(),
+            selected = active.selectedMatch(),
+        )
+    }
+
+    // A match that wraps is one for each of its rows.
+    private fun searchMatches(found: SearchFound, cols: Int): List<TerminalSearchMatch> =
+        found.matches.flatMap { match ->
+            (match.startRow..match.endRow).map { row ->
+                val first = if (row == match.startRow) match.startColumn else 0
+                val last = if (row == match.endRow) match.endColumn else cols - 1
+                TerminalSearchMatch(row, first..last, current = match == found.selected)
+            }
+        }
 
     // What is shown of the images, in cells, in the order that it is drawn in.
     private fun imagePlacements(
@@ -922,6 +1140,12 @@ public class TerminalSession private constructor(
 
         // How much memory the history may take, which is Ghostty's own default.
         private const val SCROLLBACK_MAX_BYTES = 10_000_000L
+
+        // A hidden session starts to compress its history after this long without output, looks at whether it has changed this
+        // often once it has compressed what it could, and pauses between the steps of a pass.
+        private val HIDDEN_IDLE = 1.seconds
+        private val HIDDEN_POLL = 1.seconds
+        private val COMPRESSION_STEP_PAUSE = 5.milliseconds
 
         // How many events may wait for a collector that is slow.
         private const val EVENT_BUFFER = 64

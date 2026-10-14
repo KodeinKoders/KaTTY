@@ -1205,15 +1205,91 @@ class TerminalSessionTest {
         val session = startThatWaits("""printf '\033]2;hidden title\007hello'; sleep 30""")
         // The frames that the first output asked for.
         Thread.sleep(150)
-        val before = session.frames.value
 
         session.setVisible(false)
+        val blank = session.awaitFrame { frame -> frame.rows.all { it.cells.isEmpty() } }
         session.paste("x")
 
         await("the title that the program set while hidden") { session.title.value == "hidden title" }
         Thread.sleep(200)
-        assertSame(before, session.frames.value, "No frame was produced")
+        assertSame(blank, session.frames.value, "No frame was produced")
         assertEquals(false, session.visible.value)
+    }
+
+    @Test
+    fun aHiddenSessionHasABlankFrameOfTheSameSizeAndLetsGoOfTheLastOne() {
+        val session = startThatWaits("""printf 'something on the screen'; sleep 30""", rows = 7)
+        session.paste("x")
+        var shown: TerminalFrame? = session.awaitFrame { "something" in it.text() }
+        val reference = java.lang.ref.WeakReference(shown)
+        val cols = shown!!.cols
+        shown = null
+
+        session.setVisible(false)
+
+        val blank = session.awaitFrame { frame -> frame.rows.all { it.cells.isEmpty() } }
+        assertEquals(cols, blank.cols)
+        assertEquals(7, blank.rows.size)
+        assertEquals(null, blank.cursor.x, "No cursor")
+        assertEquals(emptyList(), blank.images)
+        assertEquals(null, session.linkAt(0, 0), "Nothing to point at")
+        // Nothing holds the frame that was shown: the session, its row cache and its image cache have let go.
+        await("the frame to be collected") {
+            System.gc()
+            reference.get() == null
+        }
+    }
+
+    @Test
+    fun showingAHiddenSessionAgainGivesItsWholeScreenBack() {
+        val session = startThatWaits("""printf 'first line\r\n'; head -c1 >/dev/null; printf 'second line\r\n\033]2;done\007'; sleep 30""")
+        session.paste("x")
+        session.awaitFrame { "first line" in it.text() }
+        session.setVisible(false)
+        session.awaitFrame { frame -> frame.rows.all { it.cells.isEmpty() } }
+
+        session.paste("x")
+        session.awaitMarker("done")
+        session.setVisible(true)
+
+        val frame = session.awaitFrame { "second line" in it.text() }
+        assertTrue("first line" in frame.text(), "What was there before is back too")
+    }
+
+    @Test
+    fun aHiddenSessionCompressesItsHistoryAndReadsItBackWhole() {
+        val session = start("""yes 'some text that takes room in the history of the terminal' | head -n 150000; echo END; sleep 30""", rows = 6)
+        session.resize(80, 6, 10, 20)
+        session.awaitFrame { frame -> frame.rows.any { frame.text(frame.rows.indexOf(it)) == "END" } }
+        // Nothing more is written: it is quiet.
+        Thread.sleep(300)
+        val before = session.memoryUsage()
+        val sample = session.readText(1000, 1010)
+
+        session.setVisible(false)
+
+        await("the history to be compressed") { session.memoryUsage().residentBytes < before.residentBytes / 2 }
+        val after = session.memoryUsage()
+        assertTrue(after.compressedBytes > 0, "Compressed history: $after")
+        assertEquals(sample, session.readText(1000, 1010), "Reading decompresses it: nothing changed")
+        session.setVisible(true)
+        session.awaitFrame { frame -> frame.rows.any { it.cells.isNotEmpty() } }
+        assertEquals(sample, session.readText(1000, 1010))
+    }
+
+    @Test
+    fun theImagesOfAHiddenSessionAreBackWhenItIsShown() {
+        val image = """printf '\033_Ga=T,f=32,s=2,v=2,i=1,q=2;/////////////////////w==\033\\'"""
+        val session = startThatWaits("$image; sleep 30")
+        session.paste("x")
+        session.awaitFrame { it.images.isNotEmpty() }
+
+        session.setVisible(false)
+        session.awaitFrame { frame -> frame.rows.all { it.cells.isEmpty() } }
+        assertEquals(emptyList(), session.frames.value.images)
+        session.setVisible(true)
+
+        session.awaitFrame { it.images.isNotEmpty() }
     }
 
     @Test
@@ -1426,6 +1502,191 @@ class TerminalSessionTest {
 
         // The reset was ignored, so the mode is what the host set: the cursor blinks.
         session.awaitFrame { "[?12;1\$y" in it.text().replace(Regex("\\s+"), "") }
+    }
+
+    @Test
+    fun readsTheWholeHistoryAndTheRowsOfARange() {
+        val session = historySession()
+
+        assertEquals(200, session.readText().lines().size, "seq 1 200: one line each")
+        assertEquals((1..200).joinToString("\n"), session.readText())
+        assertEquals("100\n101\n102", session.readText(firstRow = 99, lastRow = 101))
+        assertEquals(session.rowCount(), session.frames.value.scrollbar!!.total)
+    }
+
+    @Test
+    fun readsTheTextInViewAndTheTextOfTheScreen() {
+        val session = historySession()
+        val bottom = session.viewportText()
+        assertEquals(bottom, session.screenText(), "At the bottom, the view is the screen")
+
+        session.scrollBy(-10)
+        val scrolled = session.awaitFrame { it.scrollbar?.atBottom == false }
+
+        assertEquals(scrolled.text(), session.viewportText().replace(Regex("\n+$"), ""), "What is in view")
+        assertEquals(bottom, session.screenText(), "The screen is where the program is")
+    }
+
+    @Test
+    fun rowsThatAreNotThereAreRefused() {
+        val session = historySession()
+
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { session.readText(firstRow = 0, lastRow = session.rowCount()) }
+    }
+
+    // 200 rows, of which the 3rd, the 51st and the 121st have the word in them.
+    private fun searchSession(): TerminalSession {
+        val session = start(
+            """i=0; while [ ${'$'}i -lt 200 ]; do if [ ${'$'}i -eq 2 ] || [ ${'$'}i -eq 50 ] || [ ${'$'}i -eq 120 ]; then echo row ${'$'}i needle; else echo row ${'$'}i; fi; i=${'$'}((i+1)); done; sleep 30""",
+            rows = 6,
+        )
+        session.resize(80, 6, 10, 20)
+        session.awaitFrame { frame -> frame.rows.any { frame.text(frame.rows.indexOf(it)) == "row 199" } && frame.scrollbar != null }
+        return session
+    }
+
+    private fun TerminalSession.awaitSearch(condition: (TerminalSearchState) -> Boolean): TerminalSearchState {
+        var last = search.state.value
+        await("the search: ${'$'}last") { last = search.state.value; condition(last) }
+        return last
+    }
+
+    @Test
+    fun countsWhatItFindsInTheHistory() {
+        val session = searchSession()
+        assertEquals(TerminalSearchState(), session.search.state.value)
+
+        session.search.setQuery("needle")
+
+        val state = session.awaitSearch { it.total == 3 && !it.searching }
+        assertEquals("needle", state.query)
+        assertEquals(null, state.selected, "Nothing is selected until it is moved")
+        assertEquals(emptyList(), session.frames.value.searchMatches, "None is in view")
+    }
+
+    @Test
+    fun movesFromTheTopToTheBottomAndRoundAndScrollsToTheMatch() {
+        val session = searchSession()
+        session.search.setQuery("needle")
+        session.awaitSearch { it.total == 3 && !it.searching }
+
+        session.search.next()
+        // The first one is the top-most, which is at the top of the history, far from the bottom.
+        assertEquals(1, session.awaitSearch { it.selected == 1 }.selected)
+        val top = session.awaitFrame { it.scrollbar?.atBottom == false && it.searchMatches.isNotEmpty() }
+        assertTrue(top.text(top.searchMatches.single().row).endsWith("needle"), "The match is in view: ${'$'}{top.text()}")
+        assertTrue(top.searchMatches.single().current)
+
+        session.search.next()
+        assertEquals(2, session.awaitSearch { it.selected == 2 }.selected)
+        session.search.next()
+        assertEquals(3, session.awaitSearch { it.selected == 3 }.selected)
+        session.search.next()
+        assertEquals(1, session.awaitSearch { it.selected == 1 }.selected, "Round to the first")
+    }
+
+    @Test
+    fun goesBackTowardTheTop() {
+        val session = searchSession()
+        session.search.setQuery("needle")
+        session.awaitSearch { it.total == 3 && !it.searching }
+
+        session.search.previous()
+        assertEquals(3, session.awaitSearch { it.selected == 3 }.selected, "From nothing, the last one")
+        session.search.previous()
+        assertEquals(2, session.awaitSearch { it.selected == 2 }.selected)
+    }
+
+    @Test
+    fun theMatchesInViewAreWhereTheyAreOnTheScreen() {
+        val session = startThatWaits("""printf '\r\n  a needle here\r\nNEEDLE\r\n'; sleep 30""")
+        session.search.setQuery("needle")
+        session.paste("x")
+
+        val frame = session.awaitFrame { it.searchMatches.size == 2 }
+        val first = frame.searchMatches[0]
+        assertEquals(4..9, first.columns)
+        assertEquals("a needle here", frame.text(first.row).trim())
+        assertEquals(0..5, frame.searchMatches[1].columns)
+        assertEquals("NEEDLE", frame.text(frame.searchMatches[1].row))
+    }
+
+    @Test
+    fun aMatchThatWrapsIsOneOnEachOfItsRows() {
+        // The word starts two columns before the edge of the 80.
+        val session = startThatWaits("""printf '\r\n'; printf 'x%.0s' ${'$'}(seq 1 77); printf 'needle\r\n'; sleep 30""")
+        session.search.setQuery("needle")
+        session.paste("x")
+
+        val frame = session.awaitFrame { it.searchMatches.size == 2 }
+        assertEquals(listOf(77..79, 0..2), frame.searchMatches.map { it.columns })
+        assertEquals(frame.searchMatches[0].row + 1, frame.searchMatches[1].row)
+    }
+
+    @Test
+    fun whatTheProgramWritesAfterwardsIsFound() {
+        val session = startThatWaits("""printf '\r\nneedle one\r\n'; head -c1 >/dev/null; printf 'needle two\r\n'; sleep 30""")
+        session.search.setQuery("needle")
+        session.paste("x")
+        session.awaitSearch { it.total == 1 && !it.searching }
+
+        session.paste("x")
+
+        assertEquals(2, session.awaitSearch { it.total == 2 }.total)
+    }
+
+    @Test
+    fun anEmptyQueryStopsTheSearchAndTakesTheMatchesOffTheScreen() {
+        val session = startThatWaits("""printf '\r\nneedle\r\n'; sleep 30""")
+        session.search.setQuery("needle")
+        session.paste("x")
+        session.awaitFrame { it.searchMatches.isNotEmpty() }
+
+        session.search.setQuery("")
+
+        session.awaitFrame { it.searchMatches.isEmpty() }
+        assertEquals(TerminalSearchState(), session.search.state.value)
+    }
+
+    @Test
+    fun theAlternateScreenIsSearchedOnItsOwn() {
+        val session = startThatWaits("""printf '\r\nneedle primary\r\n'; head -c1 >/dev/null; printf '\033[?1049h\033[Halternate needle'; sleep 30""")
+        session.search.setQuery("needle")
+        session.paste("x")
+        session.awaitSearch { it.total == 1 && !it.searching }
+
+        session.paste("x")
+
+        session.awaitFrame { it.alternateScreen && it.searchMatches.isNotEmpty() }
+        assertEquals(1, session.search.state.value.total)
+    }
+
+    @Test
+    fun aHiddenSessionDoesNotSearchAndCatchesUpWhenItIsShown() {
+        val session = startThatWaits("""printf '\r\nneedle one\r\n'; head -c1 >/dev/null; printf 'needle two\r\n\033]2;done\007'; sleep 30""")
+        session.search.setQuery("needle")
+        session.paste("x")
+        session.awaitSearch { it.total == 1 && !it.searching }
+        session.setVisible(false)
+
+        session.paste("x")
+        session.awaitMarker("done")
+        assertEquals(1, session.search.state.value.total, "Not searched while hidden")
+
+        session.setVisible(true)
+
+        assertEquals(2, session.awaitSearch { it.total == 2 }.total)
+    }
+
+    @Test
+    fun aSessionWithASearchCanBeClosed() {
+        val session = searchSession()
+        session.search.setQuery("needle")
+        session.awaitSearch { it.total == 3 }
+
+        session.close()
+
+        assertNotEquals(0, session.awaitExit())
     }
 
     private companion object {

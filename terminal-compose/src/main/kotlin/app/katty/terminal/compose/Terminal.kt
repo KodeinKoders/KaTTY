@@ -86,6 +86,8 @@ import kotlin.math.roundToInt
  *
  * @param focusRequester Gives the focus to the terminal, for whatever else takes it, such as a menu that is
  * closed, to give it back.
+ * @param primarySelection What was selected last, which a middle click pastes. Share one between terminals to paste what is selected in
+ * one into another.
  * @param onOpenLink Opens the address of a link that was clicked. By default the system opens the ones that start with `http`, `https`,
  * `ftp`, `file` and `mailto`, and the others are refused.
  */
@@ -98,6 +100,7 @@ public fun Terminal(
     font: TerminalFont = TerminalFont.bundled(),
     focusRequester: FocusRequester = remember { FocusRequester() },
     onOpenLink: (String) -> Unit = ::openInBrowser,
+    primarySelection: TerminalPrimarySelection = remember(session) { TerminalPrimarySelection() },
 ) {
     val frame by session.frames.collectAsState()
     val typography = rememberTerminalTypography(fontSize, font)
@@ -126,7 +129,7 @@ public fun Terminal(
     val copy: (String) -> Unit = remember(clipboard) {
         { text -> scope.launch { clipboard.setClipEntry(ClipEntry(StringSelection(text))) } }
     }
-    val primary = remember(session) { PrimarySelection() }
+    val primary = primarySelection
     val links = remember(session) { LinkInteraction() }
     val openLink = rememberUpdatedState(onOpenLink)
     val wheel = remember(session) { WheelScroller() }

@@ -148,6 +148,11 @@ public data class TerminalFrame(
     public val images: List<TerminalImagePlacement> = emptyList(),
     /** Whether the program is on the alternate screen, such as the one of vim or less, which has no history. */
     public val alternateScreen: Boolean = false,
+    /**
+     * The matches of the search ([TerminalSession.search]) that are in view, by row: empty when there is no search. It is not in the rows,
+     * like the selection, so that searching does not change them.
+     */
+    public val searchMatches: List<TerminalSearchMatch> = emptyList(),
 )
 
 /**

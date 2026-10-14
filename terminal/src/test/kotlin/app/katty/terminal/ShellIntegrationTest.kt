@@ -71,6 +71,28 @@ class ShellIntegrationTest {
         )
     }
 
+    private fun givesTheOutputOfTheLastCommand(shell: String) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+        val events = session.collectEvents()
+        assertEquals(null, session.lastCommandOutput(), "No command yet")
+
+        session.sendText("printf 'a\\nb\\n'\r")
+        await("the end of the first command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
+        assertEquals("a\nb", session.lastCommandOutput())
+
+        session.sendText("echo second\r")
+        await("the end of the second command") { events.count { it is TerminalEvent.PromptStarted } >= 2 }
+        assertEquals("second", session.lastCommandOutput(), "The last one, not the first")
+    }
+
+    @Test
+    fun zshGivesTheOutputOfTheLastCommand() = givesTheOutputOfTheLastCommand("/bin/zsh")
+
+    @Test
+    fun bashGivesTheOutputOfTheLastCommand() = givesTheOutputOfTheLastCommand("/bin/bash")
+
     @Test
     fun zshReportsItsDirectoryAndItsCommands() = reportsItsDirectoryAndItsCommands("/bin/zsh")
 

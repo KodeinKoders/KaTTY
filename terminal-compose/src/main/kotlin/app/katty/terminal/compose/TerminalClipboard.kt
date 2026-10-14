@@ -36,9 +36,13 @@ internal fun clipboardShortcut(key: KeyInfo, mac: Boolean = isMac): ClipboardSho
 /**
  * What was selected last in the terminal, which a middle click pastes: it is not the clipboard, which is the user's own and
  * which selecting does not touch. It stays when the selection goes.
+ *
+ * Every terminal has one of its own, unless the host gives them the same: then what is selected in one is pasted by the middle click of
+ * another. It is used from the UI thread.
  */
-internal class PrimarySelection {
-    var text: String? = null
+public class TerminalPrimarySelection {
+    /** The text, `null` until something was selected. */
+    public var text: String? = null
 }
 
 /**

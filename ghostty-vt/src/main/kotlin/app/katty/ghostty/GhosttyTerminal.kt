@@ -13,6 +13,7 @@ import app.katty.ghostty.ffm.GhosttyKittyGraphicsPlacementRenderInfo
 import app.katty.ghostty.ffm.GhosttyPoint
 import app.katty.ghostty.ffm.GhosttyPointCoordinate
 import app.katty.ghostty.ffm.GhosttyPointValue
+import app.katty.ghostty.ffm.GhosttySelection
 import app.katty.ghostty.ffm.GhosttySizeReportSize
 import app.katty.ghostty.ffm.GhosttyString
 import app.katty.ghostty.ffm.GhosttyTerminalBellFn
@@ -20,6 +21,7 @@ import app.katty.ghostty.ffm.GhosttyTerminalClipboardReadFn
 import app.katty.ghostty.ffm.GhosttyTerminalClipboardWriteFn
 import app.katty.ghostty.ffm.GhosttyTerminalDesktopNotification
 import app.katty.ghostty.ffm.GhosttyTerminalDesktopNotificationFn
+import app.katty.ghostty.ffm.GhosttyTerminalMemoryUsage
 import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
 import app.katty.ghostty.ffm.GhosttyTerminalProgressReport
 import app.katty.ghostty.ffm.GhosttyTerminalProgressReportFn
@@ -526,14 +528,106 @@ public class GhosttyTerminal(
      */
     public fun selectedText(): String? {
         requireOpen()
+        // Not a selection of its own: the one of the terminal.
+        return formatSelection(MemorySegment.NULL, unwrap = true)
+    }
+
+    /**
+     * The text of the rows [first] to [last], both included, of the history and the screen: row 0 is the top of the history, in the
+     * space of [GhosttyScrollbar.offset] and of [GhosttyScrollViewport.Row]. The viewport does not move. A soft-wrapped line is
+     * joined when [unwrap], and the blanks that end a line are dropped.
+     *
+     * Finding a row walks the pages of the history, which is slow for a very large one: read it in pieces.
+     *
+     * @throws IllegalArgumentException If the rows are not in the history and the screen.
+     */
+    public fun readRows(first: Long, last: Long, unwrap: Boolean = true): String {
+        requireOpen()
+        val total = totalRows
+        require(first in 0..last && last < total) { "The rows $first to $last are not in the $total rows of the terminal" }
         return Arena.ofConfined().use { arena ->
+            val selection = arena.allocate(GhosttySelection.layout())
+            GhosttySelection.size(selection, GhosttySelection.layout().byteSize())
+            GhosttySelection.rectangle(selection, false)
+            val start = pointRef(arena, GhosttyVt.GHOSTTY_POINT_TAG_SCREEN(), 0, first)
+            val end = pointRef(arena, GhosttyVt.GHOSTTY_POINT_TAG_SCREEN(), cols - 1, last)
+            MemorySegment.copy(start, 0, GhosttySelection.start(selection), 0, GhosttyGridRef.layout().byteSize())
+            MemorySegment.copy(end, 0, GhosttySelection.end(selection), 0, GhosttyGridRef.layout().byteSize())
+            formatSelection(selection, unwrap) ?: ""
+        }
+    }
+
+    /** All the text of the history and the screen, as [readRows] gives it. Empty when there is none. */
+    public fun allText(unwrap: Boolean = true): String {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val selection = arena.allocate(GhosttySelection.layout())
+            GhosttySelection.size(selection, GhosttySelection.layout().byteSize())
+            val result = GhosttyVt.ghostty_terminal_select_all(handle, selection)
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use ""
+            checkResult(result, "ghostty_terminal_select_all")
+            formatSelection(selection, unwrap) ?: ""
+        }
+    }
+
+    /** How many rows there are in the history and the screen. */
+    public val totalRows: Long
+        get() {
+            requireOpen()
+            return Arena.ofConfined().use { arena ->
+                val out = arena.allocate(ValueLayout.JAVA_LONG)
+                checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_TOTAL_ROWS(), out), "ghostty_terminal_get(TOTAL_ROWS)")
+                out.get(ValueLayout.JAVA_LONG, 0)
+            }
+        }
+
+    /**
+     * A reference to where the cursor is, which follows its row as the terminal scrolls, reflows and prunes. It has to be closed, and
+     * as long as the terminal is not: see [GhosttyTrackedRef].
+     */
+    public fun trackCursor(): GhosttyTrackedRef {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val point = arena.allocate(GhosttyPoint.layout())
+            GhosttyPoint.tag(point, GhosttyVt.GHOSTTY_POINT_TAG_ACTIVE())
+            val coordinate = GhosttyPointValue.coordinate(GhosttyPoint.value(point))
+            GhosttyPointCoordinate.x(coordinate, getUInt16(GhosttyVt.GHOSTTY_TERMINAL_DATA_CURSOR_X()).toShort())
+            GhosttyPointCoordinate.y(coordinate, getUInt16(GhosttyVt.GHOSTTY_TERMINAL_DATA_CURSOR_Y()))
+            val out = arena.allocate(ValueLayout.ADDRESS)
+            checkResult(GhosttyVt.ghostty_terminal_grid_ref_track(handle, point, out), "ghostty_terminal_grid_ref_track")
+            GhosttyTrackedRef(out.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
+    /**
+     * The output of the command that [ref] is in, as the shell marked it (OSC 133), or `null` when [ref] is not in the output of a
+     * command, or is gone.
+     */
+    public fun commandOutput(ref: GhosttyTrackedRef, unwrap: Boolean = true): String? {
+        requireOpen()
+        if (!ref.hasValue) return null
+        return Arena.ofConfined().use { arena ->
+            val snapshot = arena.allocate(GhosttyGridRef.layout())
+            GhosttyGridRef.size(snapshot, GhosttyGridRef.layout().byteSize())
+            checkResult(GhosttyVt.ghostty_tracked_grid_ref_snapshot(ref.handle, snapshot), "ghostty_tracked_grid_ref_snapshot")
+            val selection = arena.allocate(GhosttySelection.layout())
+            GhosttySelection.size(selection, GhosttySelection.layout().byteSize())
+            val result = GhosttyVt.ghostty_terminal_select_output(handle, snapshot, selection)
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use null
+            checkResult(result, "ghostty_terminal_select_output")
+            formatSelection(selection, unwrap)
+        }
+    }
+
+    // The plain text of [selection], or of the terminal's own when it is NULL, which is `null` when there is none.
+    private fun formatSelection(selection: MemorySegment, unwrap: Boolean): String? =
+        Arena.ofConfined().use { arena ->
             val options = arena.allocate(GhosttyTerminalSelectionFormatOptions.layout())
             GhosttyTerminalSelectionFormatOptions.size(options, GhosttyTerminalSelectionFormatOptions.layout().byteSize())
             GhosttyTerminalSelectionFormatOptions.emit(options, GhosttyVt.GHOSTTY_FORMATTER_FORMAT_PLAIN())
-            GhosttyTerminalSelectionFormatOptions.unwrap(options, true)
+            GhosttyTerminalSelectionFormatOptions.unwrap(options, unwrap)
             GhosttyTerminalSelectionFormatOptions.trim(options, true)
-            // Not a selection of its own: the one of the terminal.
-            GhosttyTerminalSelectionFormatOptions.selection(options, MemorySegment.NULL)
+            GhosttyTerminalSelectionFormatOptions.selection(options, selection)
 
             val pointer = arena.allocate(ValueLayout.ADDRESS)
             val length = arena.allocate(ValueLayout.JAVA_LONG)
@@ -550,7 +644,6 @@ public class GhosttyTerminal(
                 GhosttyVt.ghostty_free(MemorySegment.NULL, buffer, size)
             }
         }
-    }
 
     /**
      * What to write to the program for a paste of [text], according to the modes that it set: wrapped in the markers
@@ -607,6 +700,58 @@ public class GhosttyTerminal(
             val limit = arena.allocate(ValueLayout.JAVA_LONG)
             limit.set(ValueLayout.JAVA_LONG, 0, bytes)
             checkResult(GhosttyVt.ghostty_terminal_set(handle, option, limit), "ghostty_terminal_set($name)")
+        }
+    }
+
+    /**
+     * A token that changes when the terminal does: compressing is worth doing again once it has, and after the terminal has been left
+     * alone for a while. Only equality means anything.
+     */
+    public fun compressionActivity(): Long {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val out = arena.allocate(ValueLayout.JAVA_LONG)
+            checkResult(GhosttyVt.ghostty_terminal_compression_activity(handle, out), "ghostty_terminal_compression_activity")
+            out.get(ValueLayout.JAVA_LONG, 0)
+        }
+    }
+
+    /**
+     * Compresses scrollback that is old enough, to free memory: it changes how the history is stored and nothing that it holds, and
+     * reading it decompresses it as needed. The caller serializes it with every other access to the terminal.
+     */
+    public fun compress(mode: GhosttyCompressionMode): GhosttyCompressionResult {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val out = arena.allocate(ValueLayout.JAVA_INT)
+            val native = when (mode) {
+                GhosttyCompressionMode.INCREMENTAL -> GhosttyVt.GHOSTTY_TERMINAL_COMPRESSION_MODE_INCREMENTAL()
+                GhosttyCompressionMode.FULL -> GhosttyVt.GHOSTTY_TERMINAL_COMPRESSION_MODE_FULL()
+            }
+            checkResult(GhosttyVt.ghostty_terminal_compress(handle, native, out), "ghostty_terminal_compress")
+            when (out.get(ValueLayout.JAVA_INT, 0)) {
+                GhosttyVt.GHOSTTY_TERMINAL_COMPRESSION_RESULT_PENDING() -> GhosttyCompressionResult.PENDING
+                GhosttyVt.GHOSTTY_TERMINAL_COMPRESSION_RESULT_COMPLETE() -> GhosttyCompressionResult.COMPLETE
+                else -> GhosttyCompressionResult.UNSUPPORTED
+            }
+        }
+    }
+
+    /** How much native memory the terminal holds. */
+    public fun memoryUsage(): GhosttyMemoryUsage {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val usage = arena.allocate(GhosttyTerminalMemoryUsage.layout())
+            GhosttyTerminalMemoryUsage.size(usage, GhosttyTerminalMemoryUsage.layout().byteSize())
+            checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_MEMORY_USAGE(), usage), "ghostty_terminal_get(MEMORY_USAGE)")
+            GhosttyMemoryUsage(
+                compressionSupported = GhosttyTerminalMemoryUsage.compression_supported(usage),
+                residentBytes = GhosttyTerminalMemoryUsage.primary_resident_bytes(usage) + GhosttyTerminalMemoryUsage.alternate_resident_bytes(usage),
+                virtualBytes = GhosttyTerminalMemoryUsage.primary_virtual_bytes(usage) + GhosttyTerminalMemoryUsage.alternate_virtual_bytes(usage),
+                compressedPages = GhosttyTerminalMemoryUsage.primary_compressed_pages(usage) + GhosttyTerminalMemoryUsage.alternate_compressed_pages(usage),
+                compressedBytes = GhosttyTerminalMemoryUsage.primary_compressed_bytes(usage) + GhosttyTerminalMemoryUsage.alternate_compressed_bytes(usage),
+                imageBytes = GhosttyTerminalMemoryUsage.primary_image_bytes(usage) + GhosttyTerminalMemoryUsage.alternate_image_bytes(usage),
+            )
         }
     }
 
@@ -861,13 +1006,17 @@ public class GhosttyTerminal(
     }
 
     /** A reference to the cell at [column] and [row] of the viewport, which is valid until the terminal changes. */
-    internal fun gridRef(arena: Arena, column: Int, row: Int): MemorySegment {
+    internal fun gridRef(arena: Arena, column: Int, row: Int): MemorySegment =
+        pointRef(arena, GhosttyVt.GHOSTTY_POINT_TAG_VIEWPORT(), column, row.toLong())
+
+    // A reference to a cell, by the kind of coordinates [tag] and [row] are in.
+    private fun pointRef(arena: Arena, tag: Int, column: Int, row: Long): MemorySegment {
         requireOpen()
         val point = arena.allocate(GhosttyPoint.layout())
-        GhosttyPoint.tag(point, GhosttyVt.GHOSTTY_POINT_TAG_VIEWPORT())
+        GhosttyPoint.tag(point, tag)
         val coordinate = GhosttyPointValue.coordinate(GhosttyPoint.value(point))
         GhosttyPointCoordinate.x(coordinate, column.toShort())
-        GhosttyPointCoordinate.y(coordinate, row)
+        GhosttyPointCoordinate.y(coordinate, row.toInt())
 
         val ref = arena.allocate(GhosttyGridRef.layout())
         GhosttyGridRef.size(ref, GhosttyGridRef.layout().byteSize())

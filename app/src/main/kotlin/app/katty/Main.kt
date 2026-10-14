@@ -51,10 +51,14 @@ private fun ApplicationScope.Katty() {
         MaterialTheme {
             var themeName by remember { mutableStateOf(DEFAULT_THEME) }
             val terminalFocus = remember { FocusRequester() }
+            // The session that the find field searches: it is started by the shell below.
+            var session by remember { mutableStateOf<TerminalSession?>(null) }
 
             Column {
                 Row(Modifier.align(Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
                     Text("Hello, KaTTY!")
+                    Spacer(Modifier.width(16.dp))
+                    FindField(session)
                     Spacer(Modifier.width(16.dp))
                     ThemeSelector(
                         names = remember { ITermColorSchemes.names },
@@ -75,7 +79,7 @@ private fun ApplicationScope.Katty() {
                         .border(2.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     // Inside the border, which would hide the first cells.
-                    Shell(themeName, terminalFocus, Modifier.fillMaxSize().padding(2.dp))
+                    Shell(themeName, terminalFocus, Modifier.fillMaxSize().padding(2.dp)) { session = it }
                 }
             }
         }
@@ -86,7 +90,7 @@ private fun ApplicationScope.Katty() {
  * The user's login shell, in a terminal, with the colors of the theme called [themeName].
  */
 @Composable
-private fun Shell(themeName: String, focusRequester: FocusRequester, modifier: Modifier) {
+private fun Shell(themeName: String, focusRequester: FocusRequester, modifier: Modifier, onSession: (TerminalSession?) -> Unit) {
     // The terminal takes the size of the space it is given as soon as it is laid out: this is only where it starts.
     val started = remember { runCatching { TerminalSession.start(cols = 80, rows = 24, theme = loadTheme(themeName)) } }
     val session = started.getOrNull()
@@ -96,7 +100,11 @@ private fun Shell(themeName: String, focusRequester: FocusRequester, modifier: M
     }
 
     DisposableEffect(session) {
-        onDispose { session.close() }
+        onSession(session)
+        onDispose {
+            onSession(null)
+            session.close()
+        }
     }
 
     // The window stays open, with what the shell wrote: it may be what explains why it exited.

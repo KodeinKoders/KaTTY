@@ -560,7 +560,7 @@ class TerminalTest {
     private val clipboard = FakeClipboard()
 
     // A terminal that fills the scene, with what the program printed on it, and a clipboard that is not the system's.
-    private fun selectionScene(script: String): Pair<ImageComposeScene, TerminalSession> {
+    private fun selectionScene(script: String, primarySelection: TerminalPrimarySelection? = null): Pair<ImageComposeScene, TerminalSession> {
         val session = session(script, cols = 80, rows = 24)
         val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
             typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
@@ -568,7 +568,7 @@ class TerminalTest {
                 LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true },
                 androidx.compose.ui.platform.LocalClipboard provides clipboard,
             ) {
-                Terminal(session, Modifier.fillMaxSize())
+                if (primarySelection == null) Terminal(session, Modifier.fillMaxSize()) else Terminal(session, Modifier.fillMaxSize(), primarySelection = primarySelection)
             }
         }.also { scenes += it }
         scene.renderUntil("the terminal to fit the scene and show the text") { session.frames.value.cols != 80 && session.frames.value.text(0).startsWith("hello world") }
@@ -933,6 +933,22 @@ class TerminalTest {
 
         scene.renderUntil("the program to read the selection") { "hello" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) }.replace(Regex("\\s+"), "") }
         assertEquals(emptyList(), clipboard.copied.toList(), "The clipboard was not written")
+    }
+
+    @Test
+    fun aMiddleClickPastesWhatWasSelectedInAnotherTerminalWhenTheyShareTheSelection() {
+        val shared = TerminalPrimarySelection()
+        val (first, firstSession) = selectionScene("printf 'hello world'; sleep 30", shared)
+        val (second, secondSession) = selectionScene("""printf 'hello world'; stty raw -echo; head -c5 | od -An -c""", shared)
+        first.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+        first.renderUntil("the selection to be shown") { firstSession.selected().isNotEmpty() }
+        assertEquals("hello", shared.text)
+
+        second.middlePress(at(8.5f, 3.5f))
+
+        second.renderUntil("the other program to read the selection") {
+            "hello" in secondSession.frames.value.rows.indices.joinToString("") { secondSession.frames.value.text(it) }.replace(Regex("\\s+"), "")
+        }
     }
 
     @Test

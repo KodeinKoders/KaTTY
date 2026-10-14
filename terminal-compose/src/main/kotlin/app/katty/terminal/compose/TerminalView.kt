@@ -80,6 +80,7 @@ internal fun TerminalView(
         hoveredLink?.let { drawLinkUnderline(it, frame.foreground.rgb.toColor(), typography) }
         drawImages(frame, TerminalImageLayer.ABOVE_TEXT, bitmaps, typography)
 
+        if (frame.searchMatches.isNotEmpty()) drawSearchMatches(frame, rows, typography)
         if (frame.selection.isNotEmpty()) drawSelection(frame, rows, typography)
 
         frame.scrollbar?.takeIf { scrollbarAlpha > 0f }?.let { drawScrollbar(it, frame, scrollbarAlpha, scrollbarEmphasized) }
@@ -201,6 +202,28 @@ private fun DrawScope.drawSelection(frame: TerminalFrame, rows: List<PreparedRow
         }
     }
 }
+
+/**
+ * The matches of a search: the cells are filled, and the text that is in them is drawn again over it. They are the same on every theme:
+ * a yellow that every one has, and an orange for the one that is selected.
+ */
+private fun DrawScope.drawSearchMatches(frame: TerminalFrame, rows: List<PreparedRow>, typography: TerminalTypography) {
+    // The selected one last, which is on top if two meet.
+    for (match in frame.searchMatches.sortedBy { it.current }) {
+        if (match.row !in rows.indices) continue
+        val top = match.row * typography.cellHeight
+        val left = round(match.columns.first * typography.cellWidth)
+        val right = round((match.columns.last + 1) * typography.cellWidth)
+        clipRect(left, top, right, top + typography.cellHeight) {
+            drawRect(if (match.current) SEARCH_CURRENT_BACKGROUND else SEARCH_MATCH_BACKGROUND, Offset(left, top), Size(right - left, typography.cellHeight))
+            for (text in rows[match.row].texts) drawPreparedText(text, top, typography, SEARCH_TEXT)
+        }
+    }
+}
+
+private val SEARCH_MATCH_BACKGROUND = Color(0xFFFFD866)
+private val SEARCH_CURRENT_BACKGROUND = Color(0xFFFF9E3D)
+private val SEARCH_TEXT = Color(0xFF1E1E1E)
 
 private fun DrawScope.drawPreparedText(text: PreparedText, top: Float, typography: TerminalTypography, colorOverride: Color? = null) {
     val run = text.run

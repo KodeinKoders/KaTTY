@@ -75,6 +75,7 @@ Copy and paste are Command and C or V on macOS, and Control and Shift and C or V
 The session tells its host about the title, the working directory, the bell, notifications, progress, what a program writes in the clipboard (OSC 52, and reads of it if the host allows them), the commands that the shell starts and ends, and the alternate screen; zsh and bash are made to report their directory and their prompts, and Command and Up or Down jump between prompts.
 Programs that ask to be told about the focus (vim, tmux) are.
 The font (a family of the system, or files), the shape of the cursor and the limits of the history and the images are parameters, and a host can pause the terminals that it does not show.
+A host can search the scrollback (the matches are highlighted, and a position such as "3 of 12" is published), read the screen, the history and the output of the last command as text, and see how much memory each terminal holds: hidden terminals drop what they show and compress their history.
 Links, those that a program marks (OSC 8) and those that are written in the text, are underlined when Command is held over them (Control elsewhere) and opened with a click.
 
 What is not done yet:
