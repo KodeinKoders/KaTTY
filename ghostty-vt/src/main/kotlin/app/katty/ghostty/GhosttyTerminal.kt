@@ -6,10 +6,12 @@ import app.katty.ghostty.ffm.GhosttyKittyGraphicsPlacementRenderInfo
 import app.katty.ghostty.ffm.GhosttyPoint
 import app.katty.ghostty.ffm.GhosttyPointCoordinate
 import app.katty.ghostty.ffm.GhosttyPointValue
+import app.katty.ghostty.ffm.GhosttySizeReportSize
 import app.katty.ghostty.ffm.GhosttyString
 import app.katty.ghostty.ffm.GhosttyTerminalScrollViewport
 import app.katty.ghostty.ffm.GhosttyTerminalScrollViewportValue
 import app.katty.ghostty.ffm.GhosttyTerminalScrollbar
+import app.katty.ghostty.ffm.GhosttyTerminalSizeFn
 import app.katty.ghostty.ffm.GhosttyTerminalSelectionFormatOptions
 import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
 import app.katty.ghostty.ffm.GhosttyTerminalWritePtyFn
@@ -54,6 +56,14 @@ public class GhosttyTerminal(
 
     private var closed = false
 
+    // What the size queries (XTWINOPS) are answered with. The answer is given while the terminal is being
+    // written to, when it must not be read: so the size is kept here, as it was given to the last resize.
+    // The size of a cell is 0 until a resize gives it: there is no answer before.
+    private var reportedCols = cols
+    private var reportedRows = rows
+    private var reportedCellWidthPx = 0
+    private var reportedCellHeightPx = 0
+
     /**
      * Receives what the terminal answers to the program: replies to queries such as the cursor position
      * or the device attributes. They have to be written to the program's input.
@@ -97,6 +107,32 @@ public class GhosttyTerminal(
             checkResult(
                 GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_WRITE_PTY(), writePty),
                 "ghostty_terminal_set(WRITE_PTY)",
+            )
+
+            val size = GhosttyTerminalSizeFn.allocate(
+                GhosttyTerminalSizeFn.Function { _, _, out ->
+                    // An exception must never cross into native code: it would take the JVM down.
+                    try {
+                        if (reportedCellWidthPx <= 0 || reportedCellHeightPx <= 0) {
+                            false
+                        } else {
+                            val struct = out.reinterpret(GhosttySizeReportSize.layout().byteSize())
+                            GhosttySizeReportSize.rows(struct, reportedRows.toShort())
+                            GhosttySizeReportSize.columns(struct, reportedCols.toShort())
+                            GhosttySizeReportSize.cell_width(struct, reportedCellWidthPx)
+                            GhosttySizeReportSize.cell_height(struct, reportedCellHeightPx)
+                            true
+                        }
+                    } catch (e: Throwable) {
+                        logger.error("The size report failed", e)
+                        false
+                    }
+                },
+                callbacks,
+            )
+            checkResult(
+                GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_SIZE(), size),
+                "ghostty_terminal_set(SIZE)",
             )
 
             Arena.ofConfined().use { arena ->
@@ -599,10 +635,16 @@ public class GhosttyTerminal(
     /**
      * Resizes the terminal, reflowing its content.
      *
-     * The size of a cell in pixels is what programs get when they query the size of the terminal in pixels.
+     * The size of a cell in pixels is what programs get when they query the size of the terminal in pixels
+     * (`CSI 14 t`, `CSI 16 t`, and the in-band reports of mode 2048), and what sizes the images.
      */
     public fun resize(cols: Int, rows: Int, cellWidthPx: Int, cellHeightPx: Int) {
         requireOpen()
+        // Before the call: it answers in-band reports with them.
+        reportedCols = cols
+        reportedRows = rows
+        reportedCellWidthPx = cellWidthPx
+        reportedCellHeightPx = cellHeightPx
         checkResult(
             GhosttyVt.ghostty_terminal_resize(
                 handle,

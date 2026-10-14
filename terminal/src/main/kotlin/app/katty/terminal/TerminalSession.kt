@@ -16,6 +16,7 @@ import app.katty.ghostty.GhosttyTerminal
 import com.pty4j.PtyProcess
 import com.pty4j.PtyProcessBuilder
 import com.pty4j.WinSize
+import com.pty4j.unix.UnixPtyProcess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -426,7 +427,8 @@ public class TerminalSession private constructor(
     /**
      * Resizes the screen, reflowing what is on it, and tells the program.
      *
-     * The size of a cell in pixels is what programs get when they query the size of the terminal in pixels.
+     * The size of a cell in pixels is what programs get when they query the size of the terminal in pixels,
+     * whether they ask the terminal (`CSI 14 t`, `CSI 16 t`) or read the size of the pty.
      */
     public fun resize(cols: Int, rows: Int, cellWidthPx: Int, cellHeightPx: Int) {
         lock.withLock {
@@ -435,8 +437,11 @@ public class TerminalSession private constructor(
             this.cellWidthPx = cellWidthPx
             this.cellHeightPx = cellHeightPx
         }
-        // pty4j only passes the size in cells to the program, not the one in pixels.
-        process.winSize = WinSize(cols, rows)
+        // pty4j only passes the size in cells to the program, not the one in pixels: the session sets the whole size,
+        // and leaves pty4j's way for what is not a Unix pty or what the ioctl refused.
+        val fd = (process as? UnixPtyProcess)?.pty?.masterFD
+        val done = fd != null && setPtyWindowSize(fd, cols, rows, cols * cellWidthPx, rows * cellHeightPx)
+        if (!done) process.winSize = WinSize(cols, rows)
         frameRequests.trySend(Unit)
     }
 

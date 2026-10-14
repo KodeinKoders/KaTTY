@@ -96,6 +96,34 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun tellsTheProgramTheSizeOfItsCellsInPixelsInTheSizeOfThePty() {
+        // The program reads the size of its terminal as TIOCGWINSZ gives it (rows, columns, width and height in
+        // pixels) once it was resized: a byte of input tells it to.
+        val session = start(
+            """stty raw -echo; echo ready; head -c1 >/dev/null; perl -e '${'$'}ws = "\0" x 8; ioctl(STDIN, 0x40087468, ${'$'}ws); print join(" ", unpack("S4", ${'$'}ws)), "\n"'"""
+        )
+        session.awaitFrame { "ready" in it.text() }
+
+        session.resize(cols = 33, rows = 7, cellWidthPx = 9, cellHeightPx = 19)
+        session.paste("x")
+
+        // 33 columns of 9 pixels, 7 rows of 19.
+        session.awaitFrame { "7 33 297 133" in it.text() }
+    }
+
+    @Test
+    fun answersTheProgramWhenItAsksTheSizeOfACell() {
+        val session = start("""stty raw -echo; echo ready; head -c1 >/dev/null; printf '\033[16t'; head -c9 | tr -d '\033' | od -An -c""")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.resize(cols = 33, rows = 7, cellWidthPx = 9, cellHeightPx = 19)
+        session.paste("x")
+
+        // CSI 6 ; height ; width t
+        session.awaitFrame { "[6;19;9t" in it.text().replace(Regex("\\s+"), "") }
+    }
+
+    @Test
     fun sendsEnterAsACarriageReturn() {
         // In raw mode, the program gets exactly the bytes that are sent. "ready" means it is in raw mode.
         val session = start("stty raw -echo; echo ready; head -c1 | od -An -tx1")
