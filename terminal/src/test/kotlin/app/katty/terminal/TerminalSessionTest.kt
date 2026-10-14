@@ -143,6 +143,18 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun theCursorBlinksUnlessTheProgramOrTheCallerSaysOtherwise() {
+        val session = start("sleep 30")
+        assertTrue(session.awaitFrame { true }.cursor.blinking, "A terminal's cursor blinks")
+
+        session.writeToScreen("\u001b[2 q")
+        assertEquals(false, session.awaitFrame { !it.cursor.blinking }.cursor.blinking, "A steady cursor is what the program asked for")
+
+        val steady = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), cursorBlink = false).also { sessions += it }
+        assertEquals(false, steady.awaitFrame { true }.cursor.blinking)
+    }
+
+    @Test
     fun writesAMessageOnTheScreenAfterWhatTheProgramWrote() {
         val session = start("printf hello")
         val code = session.awaitExit()

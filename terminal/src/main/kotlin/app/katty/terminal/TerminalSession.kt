@@ -283,6 +283,8 @@ public class TerminalSession private constructor(
          * @param environment Added to the environment of the current process, and overrides it. `TERM` and
          * `COLORTERM` are set to what the terminal supports, unless it says otherwise.
          * @param directory Where the program starts, by default the user's home.
+         * @param cursorBlink Whether the cursor blinks unless the program says otherwise. It almost never does,
+         * a shell included, and a terminal's cursor is expected to blink: without this it would not.
          */
         public fun start(
             cols: Int,
@@ -290,6 +292,7 @@ public class TerminalSession private constructor(
             command: List<String> = listOf(System.getenv("SHELL") ?: "/bin/zsh", "-l"),
             environment: Map<String, String> = emptyMap(),
             directory: String = System.getProperty("user.home"),
+            cursorBlink: Boolean = true,
         ): TerminalSession {
             val env = HashMap(System.getenv())
             env["TERM"] = TERM
@@ -308,7 +311,7 @@ public class TerminalSession private constructor(
             // Whatever fails after the program started must not leave it, or the native objects, behind.
             val toClose = ArrayDeque<AutoCloseable>()
             try {
-                val terminal = GhosttyTerminal(cols, rows, terminfoName = TERM).also { toClose.addFirst(it) }
+                val terminal = GhosttyTerminal(cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink).also { toClose.addFirst(it) }
                 val renderState = GhosttyRenderState().also { toClose.addFirst(it) }
                 val keyEncoder = GhosttyKeyEncoder().also { toClose.addFirst(it) }
                 return TerminalSession(process, terminal, renderState, keyEncoder).also { it.launch() }

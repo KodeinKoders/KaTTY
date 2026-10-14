@@ -3,6 +3,7 @@
 package app.katty.terminal.compose
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -10,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.unit.Density
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalSession
@@ -46,6 +49,15 @@ class TerminalTest {
         ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
             typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
             Terminal(session, Modifier.fillMaxSize())
+        }.also { scenes += it }
+
+    // The scene is a window that has the focus of the system, unless it is said that it does not.
+    private fun show(session: TerminalSession, windowFocused: Boolean): ImageComposeScene =
+        ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = windowFocused }) {
+                Terminal(session, Modifier.fillMaxSize())
+            }
         }.also { scenes += it }
 
     private var clock = 0L
@@ -103,6 +115,51 @@ class TerminalTest {
         val frame = session.frames.value
         assertEquals((WIDTH / typography.cellWidth).toInt(), frame.cols)
         assertEquals((HEIGHT / typography.cellHeight).toInt(), frame.rows.size)
+    }
+
+    /** The color of the pixel at the top left of the screen, where the cursor of a program that wrote nothing is. */
+    private fun ImageComposeScene.cursorCell(x: Int, y: Int): Int {
+        val image = render(clock)
+        clock += 16_000_000
+        return Bitmap.makeFromImage(image).getColor(x, y) and 0xFFFFFF
+    }
+
+    @Test
+    fun theCursorIsABlockThatBlinksWhileTheWindowHasTheFocus() {
+        val session = session("sleep 30", cols = 80, rows = 24)
+        val scene = show(session, windowFocused = true)
+        scene.renderUntil("the terminal to fit the scene") { session.frames.value.cols != 80 }
+        scene.settle()
+        val cursor = session.frames.value.foreground.rgb
+        val background = session.frames.value.background.rgb
+        val middle = (typography!!.cellWidth / 2).toInt() to (typography!!.cellHeight / 2).toInt()
+
+        scene.renderUntil("the cursor to be shown, filled") { scene.cursorCell(middle.first, middle.second) == cursor }
+        scene.renderUntil("the cursor to be hidden") { scene.cursorCell(middle.first, middle.second) == background }
+        scene.renderUntil("the cursor to be shown again") { scene.cursorCell(middle.first, middle.second) == cursor }
+    }
+
+    @Test
+    fun theCursorIsAnOutlineThatDoesNotBlinkWhenTheWindowHasLostTheFocus() {
+        val session = session("sleep 30", cols = 80, rows = 24)
+        val scene = show(session, windowFocused = false)
+        scene.renderUntil("the terminal to fit the scene") { session.frames.value.cols != 80 }
+        scene.settle()
+        val cursor = session.frames.value.foreground.rgb
+        val background = session.frames.value.background.rgb
+        val middle = (typography!!.cellWidth / 2).toInt() to (typography!!.cellHeight / 2).toInt()
+        val edge = 0 to (typography!!.cellHeight / 2).toInt()
+
+        // Longer than two periods of a blinking cursor: it is the same at every moment.
+        val deadline = System.nanoTime() + 1_300_000_000L
+        var samples = 0
+        while (System.nanoTime() < deadline) {
+            assertEquals(background, scene.cursorCell(middle.first, middle.second), "The cursor is not filled")
+            assertEquals(cursor, scene.cursorCell(edge.first, edge.second), "Its outline is always drawn")
+            samples++
+            Thread.sleep(40)
+        }
+        assertTrue(samples > 10)
     }
 
     @Test

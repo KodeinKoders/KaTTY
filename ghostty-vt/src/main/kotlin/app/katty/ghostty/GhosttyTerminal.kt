@@ -22,11 +22,14 @@ private val logger = LoggerFactory.getLogger(GhosttyTerminal::class.java)
  *
  * @param terminfoName The terminfo entry this terminal runs as (for example `xterm-256color`), reported
  * when a program asks for it. Nothing is reported when it is `null`.
+ * @param defaultCursorBlink Whether the cursor blinks unless the program says otherwise: libghostty's own
+ * default is that it does not, and most programs, shells included, never ask for it.
  */
 public class GhosttyTerminal(
     cols: Int,
     rows: Int,
     terminfoName: String? = null,
+    defaultCursorBlink: Boolean = false,
 ) : AutoCloseable {
     internal val handle: MemorySegment
 
@@ -79,6 +82,15 @@ public class GhosttyTerminal(
                 GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_WRITE_PTY(), writePty),
                 "ghostty_terminal_set(WRITE_PTY)",
             )
+
+            Arena.ofConfined().use { arena ->
+                val blink = arena.allocate(ValueLayout.JAVA_BOOLEAN)
+                blink.set(ValueLayout.JAVA_BOOLEAN, 0, defaultCursorBlink)
+                checkResult(
+                    GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK(), blink),
+                    "ghostty_terminal_set(DEFAULT_CURSOR_BLINK)",
+                )
+            }
 
             if (terminfoName != null) {
                 Arena.ofConfined().use { arena ->

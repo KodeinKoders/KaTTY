@@ -216,6 +216,49 @@ class TerminalViewTest {
         assertEquals(BACKGROUND.rgb, hidden.center(5, 0))
     }
 
+    // Renders until the condition holds, since the cursor is hidden and shown by a delay.
+    private fun ImageComposeScene.renderUntil(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (!condition()) {
+            check(System.nanoTime() < deadline) { "Still waiting for $what" }
+            Thread.sleep(50)
+        }
+    }
+
+    private fun cursorIsShown(frame: TerminalFrame, block: ImageComposeScene.(shown: () -> Boolean) -> Unit) {
+        var typography: TerminalTypography? = null
+        val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
+            typography = rememberTerminalTypography(14.sp)
+            TerminalView(frame, typography, focused = true, Modifier.fillMaxSize())
+        }
+        scene.useScene {
+            it.block { Rendered(it.render(System.nanoTime()), typography!!).center(5, 0) == FOREGROUND.rgb }
+        }
+    }
+
+    @Test
+    fun aBlinkingCursorIsHiddenThenShownAgain() {
+        val blinking = TerminalCursor(x = 5, y = 0, visible = true, blinking = true, shape = TerminalCursorShape.BLOCK)
+
+        cursorIsShown(frame(30, listOf(row(30, *text("abc"))), blinking)) { shown ->
+            assertTrue(shown(), "It starts shown")
+            renderUntil("the cursor to be hidden") { !shown() }
+            renderUntil("the cursor to be shown again") { shown() }
+        }
+    }
+
+    @Test
+    fun aSteadyCursorStaysShown() {
+        val steady = TerminalCursor(x = 5, y = 0, visible = true, blinking = false, shape = TerminalCursorShape.BLOCK)
+
+        cursorIsShown(frame(30, listOf(row(30, *text("abc"))), steady)) { shown ->
+            assertTrue(shown())
+            // Longer than it takes a blinking one to be hidden.
+            Thread.sleep(1_000)
+            assertTrue(shown())
+        }
+    }
+
     @Test
     fun theCharacterUnderABlockCursorIsStillVisible() {
         val frame = frame(

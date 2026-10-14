@@ -155,6 +155,36 @@ class GhosttyRenderStateTest {
     }
 
     @Test
+    fun theCursorDoesNotBlinkUnlessTheProgramAsksForIt() {
+        state.update(terminal)
+        assertFalse(state.cursor.blinking, "libghostty's own default is a steady cursor")
+
+        terminal.vtWrite("\u001b[1 q")
+        state.update(terminal)
+        assertTrue(state.cursor.blinking, "CSI 1 q is a blinking block")
+
+        terminal.vtWrite("\u001b[2 q")
+        state.update(terminal)
+        assertFalse(state.cursor.blinking, "CSI 2 q is a steady block")
+    }
+
+    @Test
+    fun theCursorBlinksByDefaultWhenAskedToAndTheProgramCanStillChangeIt() {
+        GhosttyTerminal(cols = 20, rows = 5, defaultCursorBlink = true).use { blinking ->
+            state.update(blinking)
+            assertTrue(state.cursor.blinking, "From the start, not only after the program reset the cursor")
+
+            blinking.vtWrite("\u001b[2 q")
+            state.update(blinking)
+            assertFalse(state.cursor.blinking, "A program that asks for a steady cursor gets one")
+
+            blinking.vtWrite("\u001b[0 q")
+            state.update(blinking)
+            assertTrue(state.cursor.blinking, "Resetting the cursor style gives the default back")
+        }
+    }
+
+    @Test
     fun packsModes() {
         assertEquals(1004, GhosttyMode.FOCUS_EVENT.value)
         assertFalse(GhosttyMode.FOCUS_EVENT.isAnsi)
