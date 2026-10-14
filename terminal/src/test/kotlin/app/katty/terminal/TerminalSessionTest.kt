@@ -1020,10 +1020,12 @@ class TerminalSessionTest {
         rows: Int = 5,
         clipboardWrite: Boolean = true,
         clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
+        cursorBlink: Boolean = true,
     ): TerminalSession {
         val script = "stty raw -echo; echo ready; head -c1 >/dev/null; $writes"
         val session = TerminalSession.start(
             80, rows, command = listOf("/bin/sh", "-c", script), clipboardWrite = clipboardWrite, clipboardReader = clipboardReader,
+            cursorBlink = cursorBlink,
         ).also { sessions += it }
         session.awaitFrame { "ready" in it.text() }
         return session
@@ -1350,6 +1352,80 @@ class TerminalSessionTest {
         val session = start("sleep 30")
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { session.setScrollbackLimit(-1) }
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { session.setImageStorageLimit(-1) }
+    }
+
+    // The title is how the test knows that what the program wrote before it has been read: the frame that follows has its effects.
+    private fun TerminalSession.awaitMarker(marker: String): TerminalFrame {
+        await("the title $marker") { title.value == marker }
+        Thread.sleep(150)
+        return frames.value
+    }
+
+    @Test
+    fun aProgramCannotStopTheCursorFromBlinkingWithMode12() {
+        // What Emacs does when it exits: cnorm, which is mode 12 reset and the cursor shown.
+        val session = startThatWaits("""printf '\033[?12l\033[?25h\033]2;done\007'; sleep 30""")
+        assertEquals(true, session.frames.value.cursor.blinking)
+
+        session.paste("x")
+
+        assertEquals(true, session.awaitMarker("done").cursor.blinking, "It still blinks")
+    }
+
+    @Test
+    fun aProgramCannotMakeTheCursorBlinkWithMode12EitherWhenTheHostSaidItDoesNot() {
+        val session = startThatWaits("""printf '\033[?12h\033[?12;25h\033]2;done\007'; sleep 30""", cursorBlink = false)
+        assertEquals(false, session.frames.value.cursor.blinking)
+
+        session.paste("x")
+
+        assertEquals(false, session.awaitMarker("done").cursor.blinking)
+    }
+
+    @Test
+    fun theOtherModesOfAListThatHasMode12AreStillSet() {
+        val session = startThatWaits("""printf '\033[?12;25l\033]2;done\007'; sleep 30""")
+
+        session.paste("x")
+
+        val frame = session.awaitMarker("done")
+        assertEquals(false, frame.cursor.visible, "The cursor is hidden")
+        assertEquals(true, frame.cursor.blinking, "and still blinks")
+    }
+
+    @Test
+    fun aProgramStillSetsTheCursorStyleWithDecscusr() {
+        val session = startThatWaits(
+            """printf '\033[2 q\033]2;steady\007'; head -c1 >/dev/null; printf '\033[0 q\033]2;default\007'; sleep 30""",
+        )
+
+        session.paste("x")
+        val steady = session.awaitMarker("steady")
+        assertEquals(false, steady.cursor.blinking, "A steady block")
+        assertEquals(TerminalCursorShape.BLOCK, steady.cursor.shape)
+
+        session.paste("x")
+        assertEquals(true, session.awaitMarker("default").cursor.blinking, "The default is the host's")
+    }
+
+    @Test
+    fun aSequenceOfModeTwelveThatIsWrittenInTwoPiecesIsIgnoredToo() {
+        val session = startThatWaits("""printf '\033[?1'; sleep 0.3; printf '2l\033]2;done\007'; sleep 30""")
+
+        session.paste("x")
+
+        assertEquals(true, session.awaitMarker("done").cursor.blinking)
+    }
+
+    @Test
+    fun theTerminalStillAnswersAQueryOfMode12() {
+        // DECRQM: ESC [ ? 12 $ p, answered ESC [ ? 12 ; Ps $ y, where Ps is 1 for a mode that is set and 2 for one that is reset.
+        val session = startThatWaits("""printf '\033[?12l\033[?12${'$'}p'; head -c9 | tr -d '\033' | od -An -c""")
+
+        session.paste("x")
+
+        // The reset was ignored, so the mode is what the host set: the cursor blinks.
+        session.awaitFrame { "[?12;1\$y" in it.text().replace(Regex("\\s+"), "") }
     }
 
     private companion object {

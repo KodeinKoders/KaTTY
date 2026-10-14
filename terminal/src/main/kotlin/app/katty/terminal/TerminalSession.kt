@@ -727,16 +727,20 @@ public class TerminalSession private constructor(
 
     private fun readOutput() {
         val buffer = ByteArray(READ_BUFFER_SIZE)
+        // Only this thread uses it.
+        val cursorBlinkFilter = CursorBlinkModeFilter()
         try {
             val input = process.inputStream
             while (true) {
                 val read = input.read(buffer)
                 if (read < 0) break
+                // What the program says about the blinking of the cursor is not for the terminal: see CursorBlinkModeFilter.
+                val length = cursorBlinkFilter.filter(buffer, read)
                 val fed = lock.withLock {
                     if (closed.get()) {
                         false
                     } else {
-                        terminal.vtWrite(buffer, 0, read)
+                        if (length > 0) terminal.vtWrite(cursorBlinkFilter.output, 0, length)
                         publishAfterWrite()
                         true
                     }
@@ -939,7 +943,9 @@ public class TerminalSession private constructor(
          * `COLORTERM` are set to what the terminal supports, unless it says otherwise.
          * @param directory Where the program starts, by default the user's home.
          * @param cursorBlink Whether the cursor blinks unless the program says otherwise. It almost never does,
-         * a shell included, and a terminal's cursor is expected to blink: without this it would not.
+         * a shell included, and a terminal's cursor is expected to blink: without this it would not. A program says otherwise
+         * with DECSCUSR (`CSI Ps SP q`); **DEC mode 12 is ignored**, as Ghostty does when the blink is set: Emacs sets it when it
+         * exits, and the cursor of the shell would stay as it left it.
          * @param cursorShape The shape of the cursor until the program sets one (DECSCUSR), and when it resets it: a block by default.
          * Only [TerminalCursorShape.BAR], [TerminalCursorShape.BLOCK] and [TerminalCursorShape.UNDERLINE]: the hollow block is how an
          * unfocused block is drawn.
