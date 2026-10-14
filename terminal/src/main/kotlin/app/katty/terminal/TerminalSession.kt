@@ -3,6 +3,7 @@ package app.katty.terminal
 import app.katty.ghostty.GhosttyKeyEncoder
 import app.katty.ghostty.GhosttyMouseEncoder
 import app.katty.ghostty.GhosttyMouseShape
+import app.katty.ghostty.GhosttySelectionGesture
 import app.katty.ghostty.GhosttyRenderState
 import app.katty.ghostty.GhosttyRowId
 import app.katty.ghostty.GhosttyTerminal
@@ -51,6 +52,7 @@ public class TerminalSession private constructor(
     private val renderState: GhosttyRenderState,
     private val keyEncoder: GhosttyKeyEncoder,
     private val mouseEncoder: GhosttyMouseEncoder,
+    private val selectionGesture: GhosttySelectionGesture,
     theme: TerminalTheme?,
 ) : AutoCloseable {
     // Guards the terminal, and the key and mouse encoders that read it: the thread that feeds the terminal and the
@@ -65,6 +67,10 @@ public class TerminalSession private constructor(
     private var cellWidthPx = INITIAL_CELL_WIDTH_PX
     private var cellHeightPx = INITIAL_CELL_HEIGHT_PX
     private var mouseGeometry: List<Int>? = null
+
+    // Whether something is selected, as far as the session knows, so that the keys that unselect do not have to ask
+    // the terminal. Under the lock.
+    private var hasSelection = false
 
     // The colors that a frame has besides the ones libghostty resolves. Written under the lock, with the
     // colors of the terminal, and read by the producer.
@@ -162,9 +168,102 @@ public class TerminalSession private constructor(
         val bytes = lock.withLock {
             if (closed.get()) return
             keyEncoder.setOptionsFrom(terminal)
-            keyEncoder.encode(input.toGhostty())
+            val bytes = keyEncoder.encode(input.toGhostty())
+            // What is typed for the program unselects: the selection is of what was on the screen before.
+            if (bytes.isNotEmpty()) unselect()
+            bytes
         }
-        if (bytes.isNotEmpty()) outgoing.put(bytes)
+        if (bytes.isNotEmpty()) {
+            outgoing.put(bytes)
+            frameRequests.trySend(Unit)
+        }
+    }
+
+    /**
+     * A mouse button goes down to start selecting text, on the cell at [column] and [row] (fractional, from the top
+     * left of the screen: see [MouseInput]). A double click selects the word under the pointer, and a triple click
+     * the line; a single click selects nothing yet and unselects what was selected. Selecting is the terminal's
+     * own, and the program is told nothing: it is for the caller to decide which presses are for it.
+     */
+    public fun selectionPress(column: Float, row: Float) {
+        lock.withLock {
+            if (closed.get()) return
+            val at = locate(column, row)
+            val selected = selectionGesture.press(
+                at.column, at.row, at.xPx, at.yPx,
+                timeNs = System.nanoTime(),
+                repeatDistancePx = REPEAT_CLICK_DISTANCE_PX,
+                repeatIntervalNs = REPEAT_CLICK_INTERVAL_NS,
+            )
+            if (selected) hasSelection = true else unselect()
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    /**
+     * The pointer moves with the button held, which extends the selection to the cell at [column] and [row].
+     *
+     * @param rectangle Whether to select a block of cells instead of a flow of text.
+     */
+    public fun selectionDrag(column: Float, row: Float, rectangle: Boolean = false) {
+        lock.withLock {
+            if (closed.get()) return
+            val at = locate(column, row)
+            val selected = selectionGesture.drag(
+                at.column, at.row, at.xPx, at.yPx,
+                cols = terminal.cols,
+                cellWidthPx = cellWidthPx,
+                screenHeightPx = terminal.rows * cellHeightPx,
+                rectangle = rectangle,
+            )
+            if (selected) hasSelection = true
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    /**
+     * The button goes up, which ends the selection.
+     *
+     * @return The text that is selected, for the caller to copy, or `null` if nothing is selected.
+     */
+    public fun selectionRelease(column: Float, row: Float): String? {
+        val text = lock.withLock {
+            if (closed.get()) return null
+            val at = locate(column, row)
+            selectionGesture.release(at.column, at.row)
+            terminal.selectedText()?.takeIf { it.isNotEmpty() }
+        }
+        frameRequests.trySend(Unit)
+        return text
+    }
+
+    /** Unselects what is selected. */
+    public fun clearSelection() {
+        lock.withLock {
+            if (closed.get()) return
+            selectionGesture.reset()
+            unselect()
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    // Under the lock.
+    private fun unselect() {
+        if (!hasSelection) return
+        hasSelection = false
+        terminal.clearSelection()
+    }
+
+    // The cell under a position in cells, kept inside the screen, and the position in pixels with the size of a cell
+    // that the terminal was given. Under the lock.
+    private class Located(val column: Int, val row: Int, val xPx: Double, val yPx: Double)
+
+    private fun locate(column: Float, row: Float): Located {
+        val cols = terminal.cols
+        val rows = terminal.rows
+        val x = column.coerceIn(0f, cols - 0.001f)
+        val y = row.coerceIn(0f, rows - 0.001f)
+        return Located(x.toInt(), y.toInt(), (x * cellWidthPx).toDouble(), (y * cellHeightPx).toDouble())
     }
 
     /**
@@ -263,6 +362,7 @@ public class TerminalSession private constructor(
 
         // What the reader still does with the terminal is under the lock, and checks it is not closed.
         lock.withLock {
+            selectionGesture.close()
             keyEncoder.close()
             mouseEncoder.close()
             renderState.close()
@@ -342,6 +442,19 @@ public class TerminalSession private constructor(
         }
         rowCache = rows.indices.associate { rows[it].id to terminalRows[it] }
 
+        // libghostty keeps a selection on its cells when the program writes over them. What was selected is then
+        // not what is there: the selection goes, which is what happens when what is selected changes, and not
+        // when it is only redrawn as it was (the row is then the same object).
+        val written = rows.indices.any { i ->
+            val before = previous[rows[i].id]
+            rows[i].selection != null && before != null && before !== terminalRows[i]
+        }
+        if (written) {
+            lock.withLock { unselect() }
+            frameRequests.trySend(Unit)
+        }
+        val selection = if (written || rows.all { it.selection == null }) emptyList() else rows.map { it.selection }
+
         val colors = renderState.colors
         val frame = TerminalFrame(
             cols = renderState.cols,
@@ -354,6 +467,9 @@ public class TerminalSession private constructor(
             boldColor = theme?.bold,
             mouseTracking = tracking,
             pointerShape = shape.toTerminal(),
+            selection = selection,
+            selectionColor = theme?.selection,
+            selectedTextColor = theme?.selectedText,
         )
         renderState.clean()
         return frame
@@ -373,6 +489,11 @@ public class TerminalSession private constructor(
         // whole milliseconds, which is the resolution of delay on the producer's dispatcher.
         private val SETTLE_QUIET = 3.milliseconds
         private val SETTLE_MAX = 8.milliseconds
+
+        // Two clicks are one double click if they are this close in space and in time. The time is the one that the
+        // system gives for it, or half a second.
+        private const val REPEAT_CLICK_DISTANCE_PX = 5.0
+        private val REPEAT_CLICK_INTERVAL_NS = ((java.awt.Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval") as? Int) ?: 500) * 1_000_000L
 
         // What a cell is until the first resize tells it.
         private const val INITIAL_CELL_WIDTH_PX = 8
@@ -426,7 +547,8 @@ public class TerminalSession private constructor(
                 val renderState = GhosttyRenderState().also { toClose.addFirst(it) }
                 val keyEncoder = GhosttyKeyEncoder().also { toClose.addFirst(it) }
                 val mouseEncoder = GhosttyMouseEncoder().also { toClose.addFirst(it) }
-                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, theme).also { it.launch() }
+                val selectionGesture = GhosttySelectionGesture(terminal).also { toClose.addFirst(it) }
+                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, selectionGesture, theme).also { it.launch() }
             } catch (e: Throwable) {
                 logger.error("Could not start the session", e)
                 process.destroyForcibly()

@@ -1,7 +1,12 @@
 package app.katty.ghostty
 
 import app.katty.ghostty.ffm.GhosttyColorRgb
+import app.katty.ghostty.ffm.GhosttyGridRef
+import app.katty.ghostty.ffm.GhosttyPoint
+import app.katty.ghostty.ffm.GhosttyPointCoordinate
+import app.katty.ghostty.ffm.GhosttyPointValue
 import app.katty.ghostty.ffm.GhosttyString
+import app.katty.ghostty.ffm.GhosttyTerminalSelectionFormatOptions
 import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
 import app.katty.ghostty.ffm.GhosttyTerminalWritePtyFn
 import app.katty.ghostty.ffm.GhosttyVt
@@ -163,6 +168,73 @@ public class GhosttyTerminal(
                 GhosttyMouseShape.entries.getOrElse(out.get(ValueLayout.JAVA_INT, 0)) { GhosttyMouseShape.DEFAULT }
             }
         }
+
+    /**
+     * The text of the selection, which is what is copied: soft-wrapped lines are joined and the blanks that end a
+     * line are dropped. `null` when nothing is selected.
+     */
+    public fun selectedText(): String? {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val options = arena.allocate(GhosttyTerminalSelectionFormatOptions.layout())
+            GhosttyTerminalSelectionFormatOptions.size(options, GhosttyTerminalSelectionFormatOptions.layout().byteSize())
+            GhosttyTerminalSelectionFormatOptions.emit(options, GhosttyVt.GHOSTTY_FORMATTER_FORMAT_PLAIN())
+            GhosttyTerminalSelectionFormatOptions.unwrap(options, true)
+            GhosttyTerminalSelectionFormatOptions.trim(options, true)
+            // Not a selection of its own: the one of the terminal.
+            GhosttyTerminalSelectionFormatOptions.selection(options, MemorySegment.NULL)
+
+            val pointer = arena.allocate(ValueLayout.ADDRESS)
+            val length = arena.allocate(ValueLayout.JAVA_LONG)
+            val result = GhosttyVt.ghostty_terminal_selection_format_alloc(handle, MemorySegment.NULL, options, pointer, length)
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use null
+            checkResult(result, "ghostty_terminal_selection_format_alloc")
+
+            val size = length.get(ValueLayout.JAVA_LONG, 0)
+            val buffer = pointer.get(ValueLayout.ADDRESS, 0)
+            if (size == 0L || buffer == MemorySegment.NULL) return@use ""
+            try {
+                String(buffer.reinterpret(size).toArray(ValueLayout.JAVA_BYTE), Charsets.UTF_8)
+            } finally {
+                GhosttyVt.ghostty_free(MemorySegment.NULL, buffer, size)
+            }
+        }
+    }
+
+    /** Unselects what is selected. */
+    public fun clearSelection() {
+        requireOpen()
+        checkResult(
+            GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_SELECTION(), MemorySegment.NULL),
+            "ghostty_terminal_set(SELECTION)",
+        )
+    }
+
+    /** Makes the selection, a snapshot of references into this terminal, the one that is shown. */
+    internal fun installSelection(selection: MemorySegment) {
+        requireOpen()
+        checkResult(
+            GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_SELECTION(), selection),
+            "ghostty_terminal_set(SELECTION)",
+        )
+    }
+
+    /** A reference to the cell at [column] and [row] of the viewport, which is valid until the terminal changes. */
+    internal fun gridRef(arena: Arena, column: Int, row: Int): MemorySegment {
+        requireOpen()
+        val point = arena.allocate(GhosttyPoint.layout())
+        GhosttyPoint.tag(point, GhosttyVt.GHOSTTY_POINT_TAG_VIEWPORT())
+        val coordinate = GhosttyPointValue.coordinate(GhosttyPoint.value(point))
+        GhosttyPointCoordinate.x(coordinate, column.toShort())
+        GhosttyPointCoordinate.y(coordinate, row)
+
+        val ref = arena.allocate(GhosttyGridRef.layout())
+        GhosttyGridRef.size(ref, GhosttyGridRef.layout().byteSize())
+        checkResult(GhosttyVt.ghostty_terminal_grid_ref(handle, point, ref), "ghostty_terminal_grid_ref")
+        return ref
+    }
+
+    internal val isClosed: Boolean get() = closed
 
     public fun isModeEnabled(mode: GhosttyMode): Boolean {
         requireOpen()

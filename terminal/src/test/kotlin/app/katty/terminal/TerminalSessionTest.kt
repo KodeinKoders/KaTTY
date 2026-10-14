@@ -353,6 +353,150 @@ class TerminalSessionTest {
         assertEquals(app.katty.ghostty.GhosttyMouseShape.entries.size, TerminalPointerShape.entries.size)
     }
 
+    // A session with "hello world" and "second line" on its screen, whose cells are 10 by 20 pixels.
+    private fun selectionSession(): TerminalSession {
+        val session = start("""printf 'hello world\r\nsecond line'; sleep 30""", rows = 6)
+        session.resize(80, 6, 10, 20)
+        session.awaitFrame { it.text(1) == "second line" }
+        return session
+    }
+
+    private fun TerminalSession.select(fromColumn: Float, fromRow: Float, toColumn: Float, toRow: Float, rectangle: Boolean = false): String? {
+        selectionPress(fromColumn, fromRow)
+        selectionDrag(toColumn, toRow, rectangle)
+        return selectionRelease(toColumn, toRow)
+    }
+
+    @Test
+    fun selectsWhatIsDraggedOverAndGivesItsTextToCopy() {
+        val session = selectionSession()
+
+        // From the left half of the first cell to the right half of the fifth.
+        val text = session.select(0.2f, 0.5f, 4.7f, 0.5f)
+
+        assertEquals("hello", text)
+        val frame = session.awaitFrame { it.selection.isNotEmpty() }
+        assertEquals(0..4, frame.selection[0])
+        assertEquals(null, frame.selection[1])
+    }
+
+    @Test
+    fun aClickWithoutADragSelectsNothingAndUnselects() {
+        val session = selectionSession()
+        session.select(0.2f, 0.5f, 4.7f, 0.5f)
+        session.awaitFrame { it.selection.isNotEmpty() }
+
+        session.selectionPress(2.5f, 1.5f)
+        val text = session.selectionRelease(2.5f, 1.5f)
+
+        assertEquals(null, text)
+        session.awaitFrame { it.selection.isEmpty() }
+    }
+
+    @Test
+    fun aDoubleClickSelectsTheWordAndATripleClickTheLine() {
+        val session = selectionSession()
+
+        session.selectionPress(7.5f, 0.5f)
+        session.selectionRelease(7.5f, 0.5f)
+        session.selectionPress(7.5f, 0.5f)
+        assertEquals("world", session.selectionRelease(7.5f, 0.5f))
+
+        session.selectionPress(7.5f, 0.5f)
+        assertEquals("hello world", session.selectionRelease(7.5f, 0.5f))
+    }
+
+    @Test
+    fun aRectangleSelectsABlock() {
+        val session = selectionSession()
+
+        val text = session.select(2.2f, 0.5f, 4.7f, 1.5f, rectangle = true)
+
+        assertEquals("llo\ncon", text)
+        val frame = session.awaitFrame { it.selection.isNotEmpty() }
+        assertEquals(2..4, frame.selection[0])
+        assertEquals(2..4, frame.selection[1])
+    }
+
+    @Test
+    fun aPositionOutsideTheScreenIsOnItsEdge() {
+        val session = selectionSession()
+
+        val text = session.select(0.2f, 0.5f, 900f, 0.5f)
+
+        assertEquals("hello world", text)
+    }
+
+    @Test
+    fun typingForTheProgramUnselects() {
+        val session = selectionSession()
+        session.select(0.2f, 0.5f, 4.7f, 0.5f)
+        session.awaitFrame { it.selection.isNotEmpty() }
+
+        session.sendKey(KeyInput(TerminalKey.ENTER))
+
+        session.awaitFrame { it.selection.isEmpty() }
+    }
+
+    @Test
+    fun aKeyThatSendsNothingDoesNotUnselect() {
+        val session = selectionSession()
+        session.select(0.2f, 0.5f, 4.7f, 0.5f)
+        session.awaitFrame { it.selection.isNotEmpty() }
+
+        // A modifier alone: the program is sent nothing.
+        session.sendKey(KeyInput(TerminalKey.SHIFT_LEFT))
+
+        assertEquals(0..4, session.frames.value.selection[0])
+    }
+
+    @Test
+    fun theProgramWritingOverTheSelectionUnselectsIt() {
+        val session = selectionSession()
+        session.select(0.2f, 0.5f, 4.7f, 0.5f)
+        session.awaitFrame { it.selection.isNotEmpty() }
+
+        session.writeToScreen("\u001b[1;1HHELLO")
+
+        session.awaitFrame { it.text(0) == "HELLO world" && it.selection.isEmpty() }
+    }
+
+    @Test
+    fun theProgramRedrawingWhatWasThereKeepsTheSelection() {
+        val session = selectionSession()
+        session.select(0.2f, 0.5f, 4.7f, 0.5f)
+        session.awaitFrame { it.selection.isNotEmpty() }
+
+        // A shell does this all the time, with the cursor and the prompt.
+        session.writeToScreen("\u001b[1;1Hhello world")
+        session.writeToScreen("\u001b[2;1Hsecond line!")
+        session.awaitFrame { it.text(1) == "second line!" }
+
+        assertEquals(0..4, session.frames.value.selection[0])
+    }
+
+    @Test
+    fun clearingUnselects() {
+        val session = selectionSession()
+        session.select(0.2f, 0.5f, 4.7f, 0.5f)
+        session.awaitFrame { it.selection.isNotEmpty() }
+
+        session.clearSelection()
+
+        session.awaitFrame { it.selection.isEmpty() }
+    }
+
+    @Test
+    fun theFrameHasTheColorsOfTheThemeForWhatIsSelected() {
+        val themed = theme.copy(selection = TerminalColor(0x445566), selectedText = TerminalColor(0xAABBCC))
+
+        val session = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), theme = themed).also { sessions += it }
+
+        val frame = session.frames.value
+        assertEquals(TerminalColor(0x445566), frame.selectionColor)
+        assertEquals(TerminalColor(0xAABBCC), frame.selectedTextColor)
+    }
+
     @Test
     fun theCursorBlinksUnlessTheProgramOrTheCallerSaysOtherwise() {
         val session = start("sleep 30")

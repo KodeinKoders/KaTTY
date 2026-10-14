@@ -127,4 +127,14 @@ public data class TerminalFrame(
     public val mouseTracking: Boolean = false,
     /** The shape of the pointer that the program asked for: the text cursor until it says otherwise. */
     public val pointerShape: TerminalPointerShape = TerminalPointerShape.TEXT,
+    /**
+     * The selected cells of each row, in columns and both ends included, `null` for a row with none. It is empty
+     * when nothing is selected. It is not in the rows: selecting does not change them, so that what a renderer
+     * kept for a row stays good.
+     */
+    public val selection: List<IntRange?> = emptyList(),
+    /** The background of what is selected, `null` for the foreground. */
+    public val selectionColor: TerminalColor? = null,
+    /** The color of what is selected, `null` for the background when there is no [selectionColor], or else its own. */
+    public val selectedTextColor: TerminalColor? = null,
 )

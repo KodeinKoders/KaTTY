@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.drawText
 import app.katty.terminal.TerminalCellWidth
@@ -57,6 +58,8 @@ internal fun TerminalView(
             }
         }
 
+        if (frame.selection.isNotEmpty()) drawSelection(frame, rows, typography)
+
         if (preedit.isNotEmpty()) {
             // The cursor would be in the way of what is being composed.
             drawPreedit(frame, typography, preedit)
@@ -93,10 +96,30 @@ private fun DrawScope.drawCells(startCol: Int, cols: Int, top: Float, typography
     drawRect(color, topLeft = Offset(left, top), size = Size(right - left, typography.cellHeight))
 }
 
-private fun DrawScope.drawPreparedText(text: PreparedText, top: Float, typography: TerminalTypography) {
+/**
+ * What is selected: its cells are filled with the selection color, and the text that is in them is drawn again, in
+ * the color of selected text. Without a theme that has them, it is the colors of the terminal the other way round.
+ */
+private fun DrawScope.drawSelection(frame: TerminalFrame, rows: List<PreparedRow>, typography: TerminalTypography) {
+    val background = (frame.selectionColor ?: frame.foreground).rgb.toColor()
+    // The text keeps its own color on a selection color of the theme, unless the theme says how selected text is drawn.
+    val foreground = (frame.selectedTextColor ?: if (frame.selectionColor == null) frame.background else null)?.rgb?.toColor()
+    for ((y, range) in frame.selection.withIndex()) {
+        if (range == null || y !in rows.indices) continue
+        val top = y * typography.cellHeight
+        val left = round(range.first * typography.cellWidth)
+        val right = round((range.last + 1) * typography.cellWidth)
+        clipRect(left, top, right, top + typography.cellHeight) {
+            drawRect(background, Offset(left, top), Size(right - left, typography.cellHeight))
+            for (text in rows[y].texts) drawPreparedText(text, top, typography, foreground)
+        }
+    }
+}
+
+private fun DrawScope.drawPreparedText(text: PreparedText, top: Float, typography: TerminalTypography, colorOverride: Color? = null) {
     val run = text.run
     val left = run.startCol * typography.cellWidth
-    val color = run.foreground.toColor()
+    val color = colorOverride ?: run.foreground.toColor()
     drawText(text.layout, color = color, topLeft = Offset(left, top))
 
     val right = (run.startCol + run.cols) * typography.cellWidth

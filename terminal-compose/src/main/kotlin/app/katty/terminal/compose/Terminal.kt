@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,6 +38,8 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
@@ -47,7 +50,9 @@ import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalMouseButton
 import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.awt.datatransfer.StringSelection
 import kotlin.math.roundToInt
 
 /**
@@ -63,6 +68,7 @@ import kotlin.math.roundToInt
  * @param focusRequester Gives the focus to the terminal, for whatever else takes it, such as a menu that is
  * closed, to give it back.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 public fun Terminal(
     session: TerminalSession,
@@ -88,6 +94,15 @@ public fun Terminal(
     val latestFrame = rememberUpdatedState(frame)
     val latestTypography = rememberUpdatedState(typography)
     val mouse = remember(session) { MouseTranslator() }
+    val selection = remember(session) { SelectionDriver() }
+    // Which of the modifiers that select are down: Shift when the program has the mouse, and Option with Command for
+    // a block. The pointer shows it.
+    var selectionModifiers by remember { mutableStateOf(SelectionModifiers.NONE) }
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    val copy: (String) -> Unit = remember(clipboard) {
+        { text -> scope.launch { clipboard.setClipEntry(ClipEntry(StringSelection(text))) } }
+    }
     val caretRect = remember { { caretRectInRoot(latestFrame.value, latestTypography.value, coordinates) } }
 
     // As many cells as fit. It is the number of them that matters, not the size in pixels: the terminal is
@@ -105,7 +120,12 @@ public fun Terminal(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     // The release of the keys that are down will not be seen.
-    LaunchedEffect(active) { if (!active) keys.reset() }
+    LaunchedEffect(active) {
+        if (!active) {
+            keys.reset()
+            selectionModifiers = SelectionModifiers.NONE
+        }
+    }
 
     TerminalView(
         frame = frame,
@@ -117,17 +137,35 @@ public fun Terminal(
             .onGloballyPositioned { coordinates = it }
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
-            .pointerHoverIcon(pointerIconFor(frame.pointerShape))
-            .pointerInput(session, focusRequester) {
+            .pointerHoverIcon(terminalPointerIcon(frame.pointerShape, frame.mouseTracking, selectionModifiers))
+            .pointerInput(session, focusRequester, copy) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         // The terminal takes the focus when it is pressed, and is told about it or not.
                         if (event.type == PointerEventType.Press) focusRequester.requestFocus()
-                        if (!latestFrame.value.mouseTracking) continue
 
                         val info = event.toPointerInfo() ?: continue
+                        selectionModifiers = SelectionModifiers(info.shift, info.alt, info.meta)
                         val typography = latestTypography.value
+                        val tracking = latestFrame.value.mouseTracking
+
+                        // Selecting text is the terminal's, and the program is told nothing of it.
+                        val selecting = selection.translate(info, typography.cellWidth, typography.cellHeight, tracking)
+                        if (selecting.isNotEmpty() || selection.selecting) {
+                            for (action in selecting) {
+                                when (action) {
+                                    is SelectionAction.Press -> session.selectionPress(action.column, action.row)
+                                    is SelectionAction.Drag -> session.selectionDrag(action.column, action.row, action.rectangle)
+                                    // What is selected is copied as soon as the button is up.
+                                    is SelectionAction.Release -> session.selectionRelease(action.column, action.row)?.let(copy)
+                                }
+                            }
+                            event.changes.forEach { it.consume() }
+                            continue
+                        }
+
+                        if (!tracking) continue
                         val inputs = mouse.translate(info, typography.cellWidth, typography.cellHeight)
                         if (inputs.isEmpty()) continue
                         inputs.forEach(session::sendMouse)
@@ -137,6 +175,7 @@ public fun Terminal(
             }
             .onPreviewKeyEvent { event ->
                 val info = event.toKeyInfo()
+                selectionModifiers = SelectionModifiers(info.shift, info.alt, info.meta)
                 if (info.kind == KeyInfo.Kind.PRESSED) textInput.keyPressed()
                 val input = keys.translate(info) ?: return@onPreviewKeyEvent false
                 val text = input.text

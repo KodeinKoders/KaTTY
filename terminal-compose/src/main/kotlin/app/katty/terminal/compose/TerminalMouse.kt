@@ -33,9 +33,10 @@ internal class PointerInfo(
 /**
  * Turns the pointer events of Compose into what is sent to the program: it is the state of a gesture.
  *
- * - A press is sent unless Shift is held, which is for selecting and not for the program: such a press is
- *   swallowed, and so are its drag and its release. A press that was sent has its release sent, whatever was
- *   done to Shift in between, or the program would think that the button is still down.
+ * - A press is sent unless Shift is held, which is for selecting and not for the program ([SelectionDriver] takes
+ *   the left button then): such a press is swallowed, and so are its drag and its release. A press that was sent
+ *   has its release sent, whatever was done to Shift in between, or the program would think that the button is still
+ *   down.
  * - The wheel is a button that is pressed once for each notch. A trackpad gives fractions of one, which are added
  *   up until they make one. Shift is not a bypass for it: it is how AWT says that the scroll is horizontal.
  *

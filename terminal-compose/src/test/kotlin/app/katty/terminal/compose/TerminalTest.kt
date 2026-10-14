@@ -344,4 +344,135 @@ class TerminalTest {
         // The first byte that the program read is the Enter.
         scene.renderUntil("the Enter to be read") { "\\r" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) } }
     }
+
+    private class FakeClipboard : androidx.compose.ui.platform.Clipboard {
+        val copied = java.util.concurrent.CopyOnWriteArrayList<String>()
+
+        override suspend fun getClipEntry(): androidx.compose.ui.platform.ClipEntry? = null
+
+        override suspend fun setClipEntry(clipEntry: androidx.compose.ui.platform.ClipEntry?) {
+            val transferable = clipEntry?.nativeClipEntry as java.awt.datatransfer.Transferable
+            copied += transferable.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor) as String
+        }
+    }
+
+    private val clipboard = FakeClipboard()
+
+    // A terminal that fills the scene, with what the program printed on it, and a clipboard that is not the system's.
+    private fun selectionScene(script: String): Pair<ImageComposeScene, TerminalSession> {
+        val session = session(script, cols = 80, rows = 24)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(
+                LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true },
+                androidx.compose.ui.platform.LocalClipboard provides clipboard,
+            ) {
+                Terminal(session, Modifier.fillMaxSize())
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene and show the text") { session.frames.value.cols != 80 && session.frames.value.text(0).startsWith("hello world") }
+        scene.settle()
+        return scene to session
+    }
+
+    // A position in cells, in pixels.
+    private fun at(column: Float, row: Float) = Offset(column * typography!!.cellWidth, row * typography!!.cellHeight)
+
+    private fun ImageComposeScene.drag(
+        from: Offset, to: Offset,
+        shift: Boolean = false, alt: Boolean = false, meta: Boolean = false,
+    ) {
+        val modifiers = androidx.compose.ui.input.pointer.PointerKeyboardModifiers(isShiftPressed = shift, isAltPressed = alt, isMetaPressed = meta)
+        val down = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true)
+        sendPointerEvent(PointerEventType.Move, from, keyboardModifiers = modifiers)
+        sendPointerEvent(PointerEventType.Press, from, keyboardModifiers = modifiers, button = primary, buttons = down)
+        sendPointerEvent(PointerEventType.Move, to, keyboardModifiers = modifiers, buttons = down)
+        sendPointerEvent(PointerEventType.Release, to, keyboardModifiers = modifiers, button = primary, buttons = androidx.compose.ui.input.pointer.PointerButtons())
+    }
+
+    private fun ImageComposeScene.awaitCopied(expected: String) =
+        renderUntil("$expected to be copied") { expected in clipboard.copied }
+
+    private fun TerminalSession.selected() = frames.value.selection
+
+    @Test
+    fun selectsWhatIsDraggedOverAndCopiesItWhenTheButtonIsUp() {
+        val (scene, session) = selectionScene("printf 'hello world'; sleep 30")
+
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+
+        scene.awaitCopied("hello")
+        scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }
+        assertEquals(0..4, session.selected()[0])
+    }
+
+    @Test
+    fun selectsAWordWithADoubleClick() {
+        val (scene, session) = selectionScene("printf 'hello world'; sleep 30")
+        val down = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true)
+
+        repeat(2) {
+            scene.sendPointerEvent(PointerEventType.Press, at(7.5f, 0.5f), button = primary, buttons = down)
+            scene.sendPointerEvent(PointerEventType.Release, at(7.5f, 0.5f), button = primary, buttons = androidx.compose.ui.input.pointer.PointerButtons())
+        }
+
+        scene.awaitCopied("world")
+        assertEquals(6..10, session.selected().let { scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }; session.selected()[0] })
+    }
+
+    @Test
+    fun aClickUnselectsAndCopiesNothing() {
+        val (scene, session) = selectionScene("printf 'hello world'; sleep 30")
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+        scene.awaitCopied("hello")
+        val copies = clipboard.copied.size
+
+        scene.click(at(2.5f, 2.5f))
+
+        scene.renderUntil("the selection to go") { session.selected().isEmpty() }
+        assertEquals(copies, clipboard.copied.size)
+    }
+
+    @Test
+    fun optionAndCommandSelectABlock() {
+        val (scene, session) = selectionScene("printf 'hello world\\r\\nsecond line'; sleep 30")
+
+        scene.drag(at(2.2f, 0.5f), at(4.7f, 1.5f), alt = true, meta = true)
+
+        scene.awaitCopied("llo\ncon")
+    }
+
+    @Test
+    fun aProgramThatHasTheMouseKeepsItsClicksAndShiftSelects() {
+        val (scene, session) = selectionScene(
+            """printf '\033[?1000h\033[?1006h'; printf 'hello world'; stty raw -echo; head -c10 | tr -d '\033' | od -An -c""",
+        )
+        scene.renderUntil("the mouse to be asked for") { session.frames.value.mouseTracking }
+
+        // Without Shift the program gets the drag, and nothing is selected.
+        scene.drag(at(0.2f, 5.5f), at(4.7f, 5.5f))
+        session.awaitReports(scene, "[<0;1;6M")
+        assertEquals(emptyList(), session.selected())
+        assertEquals(emptyList(), clipboard.copied.toList())
+
+        // With Shift the terminal selects, and copies.
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f), shift = true)
+        scene.awaitCopied("hello")
+        assertEquals(0..4, session.selected().let { scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }; session.selected()[0] })
+    }
+
+    @Test
+    fun theProgramIsToldNothingOfWhatIsSelectedWithShift() {
+        val (scene, session) = selectionScene(
+            """printf '\033[?1000h\033[?1006h'; printf 'hello world'; stty raw -echo; head -c1 | od -An -c""",
+        )
+        scene.renderUntil("the mouse to be asked for") { session.frames.value.mouseTracking }
+
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f), shift = true)
+        scene.awaitCopied("hello")
+        session.sendKey(app.katty.terminal.KeyInput(app.katty.terminal.TerminalKey.ENTER))
+
+        // The first byte that the program read is the Enter: it was not told about the selection.
+        scene.renderUntil("the Enter to be read") { "\\r" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) } }
+    }
 }

@@ -407,6 +407,50 @@ class TerminalViewTest {
     }
 
     @Test
+    fun whatIsSelectedIsDrawnInTheColorsOfTheTerminalTheOtherWayRound() {
+        val frame = frame(30, listOf(row(30, *text("abcdef")))).copy(selection = listOf(1..3))
+
+        val rendered = render("selection", frame)
+
+        assertEquals(BACKGROUND.rgb, rendered.pixel(2, 2), "Not selected")
+        // The selected cells have the foreground as background, and their text is in the background.
+        assertEquals(FOREGROUND.rgb, rendered.pixel((1 * rendered.typography.cellWidth).toInt() + 1, 2))
+        assertEquals(FOREGROUND.rgb, rendered.pixel((4 * rendered.typography.cellWidth).toInt() - 2, 2))
+        assertEquals(BACKGROUND.rgb, rendered.pixel((4 * rendered.typography.cellWidth).toInt() + 1, 2), "The cell after is not")
+        assertTrue(rendered.hasInk(2, 0, background = FOREGROUND), "The text of a selected cell shows on the selection")
+        assertTrue(rendered.hasInk(0, 0), "The cell before has its text")
+    }
+
+    @Test
+    fun whatIsSelectedIsDrawnInTheColorsOfTheTheme() {
+        val selectedBackground = TerminalColor(0x335577)
+        val selectedText = TerminalColor(0xFFEE00)
+        val frame = frame(30, listOf(row(30, *text("████ ", foreground = RED))))
+            .copy(selection = listOf(1..2), selectionColor = selectedBackground, selectedTextColor = selectedText)
+
+        val rendered = render("selection-theme", frame)
+
+        // A full block is entirely in the color of its text: the selected text color on the selected cells.
+        assertEquals(selectedText.rgb, rendered.center(1, 0))
+        assertEquals(selectedText.rgb, rendered.center(2, 0))
+        assertEquals(RED.rgb, rendered.center(0, 0), "Not selected")
+        assertEquals(RED.rgb, rendered.center(3, 0))
+    }
+
+    @Test
+    fun whatIsSelectedKeepsItsOwnColorWhenTheThemeOnlyHasASelectionColor() {
+        val selectedBackground = TerminalColor(0x335577)
+        val frame = frame(30, listOf(row(30, *text("████ ", foreground = GREEN)))).copy(selection = listOf(1..2), selectionColor = selectedBackground)
+
+        val rendered = render("selection-theme-background", frame)
+
+        assertEquals(GREEN.rgb, rendered.center(1, 0))
+        // The cell after the text, which is empty, is the selection color when it is selected.
+        val spaced = frame(30, listOf(row(30, *text("██ ", foreground = GREEN)))).copy(selection = listOf(2..2), selectionColor = selectedBackground)
+        assertEquals(selectedBackground.rgb, render("selection-theme-space", spaced).center(2, 0))
+    }
+
+    @Test
     fun keepsWhatItPreparedForTheRowsThatDidNotChange() {
         var layouts: RowLayouts? = null
         ImageComposeScene(width = 100, height = 100) {
