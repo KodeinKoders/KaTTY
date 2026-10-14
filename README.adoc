@@ -51,6 +51,9 @@ The images that the rendering tests draw are kept in `terminal-compose/build/ren
 | `terminal-compose`
 | `Terminal`, the Compose composable that draws a session with the bundled JetBrains Mono, and sends it the keys that are typed.
 
+| `terminal-themes`
+| The color schemes of the https://github.com/mbadolato/iTerm2-Color-Schemes[iTerm2-Color-Schemes] collection (811 of them, in `iterm2-color-schemes`), read from the `.itermcolors` property lists with kotlinx.serialization and xmlutil, as themes for a terminal.
+
 | `terminal`
 | `TerminalSession`, which runs a program in a pseudo-terminal, feeds its output to a terminal, and publishes what the screen looks like as immutable frames.
 It has its own model of keys and frames, so that nothing above it mentions the binding.
@@ -66,7 +69,7 @@ Its `README.adoc` says which Ghostty commit it was built from, and how to update
 
 == Status
 
-The shell runs, with colors, text attributes, wide characters, a cursor, resizing with reflow, and the keyboard, including the Kitty keyboard protocol.
+The shell runs, with colors, text attributes, the 811 iTerm2 color schemes (chosen in the field next to the title), wide characters, a cursor, resizing with reflow, and the keyboard, including the Kitty keyboard protocol.
 
 What is not done yet:
 
@@ -81,4 +84,5 @@ What is not done yet:
 == License
 
 MIT, see `LICENSE`.
+The color schemes are under the MIT license of their collection, and each one belongs to its author: see `iterm2-color-schemes`.
 The bundled font, JetBrains Mono, is under the SIL Open Font License: its text is next to the font files, in `terminal-compose/src/main/resources/app/katty/terminal/compose/fonts`.

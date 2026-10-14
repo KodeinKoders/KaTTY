@@ -11,6 +11,7 @@ kotlin {
 dependencies {
     implementation(projects.terminal)
     implementation(projects.terminalCompose)
+    implementation(projects.terminalThemes)
 
     implementation(compose.desktop.currentOs)
 
@@ -19,6 +20,8 @@ dependencies {
     implementation(libs.compose.runtime)
 
     implementation(libs.kotlinx.coroutines.swing)
+
+    implementation(libs.slf4j.api)
 
     // Prints the logs of the libraries that log with SLF4J.
     runtimeOnly(libs.slf4j.simple)

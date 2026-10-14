@@ -13,12 +13,14 @@ The build needs JDK 25 (Gradle downloads it), because FFM is final there.
 ## Modules
 
 `app` → `terminal-compose` → `terminal` → `ghostty-vt` → `libghostty-vt/` (a prebuilt dylib and its headers, not a Gradle module).
+`app` also uses `terminal-themes` → `terminal`. `iterm2-color-schemes/` holds the color schemes it packs (not a Gradle module either).
 
 | Module | Package | Role |
 | --- | --- | --- |
 | `app` | `app.katty` | The window. `Shell` starts a `TerminalSession` and shows a `Terminal`. |
 | `terminal-compose` | `app.katty.terminal.compose` | `Terminal`, the composable. Draws frames with the bundled JetBrains Mono, translates key events. |
-| `terminal` | `app.katty.terminal` | `TerminalSession`: a program in a PTY, its output fed to a terminal, published as immutable `TerminalFrame`s. Has its own key and frame model. |
+| `terminal-themes` | `app.katty.terminal.themes` | `ITermColorSchemes`: the 811 `.itermcolors` schemes as `TerminalTheme`s, parsed on demand with kotlinx.serialization and xmlutil. The files and an `index.txt` of their names are copied into the resources by `prepareColorSchemes`. |
+| `terminal` | `app.katty.terminal` | `TerminalSession`: a program in a PTY, its output fed to a terminal, published as immutable `TerminalFrame`s. Has its own key, frame and theme model. |
 | `ghostty-vt` | `app.katty.ghostty` | Kotlin API over the jextract-generated FFM bindings (`…ghostty.ffm`, Java, committed). |
 
 **Nothing above `terminal` mentions `ghostty-vt`**: `terminal` converts in `Mapping.kt`, and `ghostty-vt` is only an `implementation` dependency of it.
@@ -87,6 +89,7 @@ It is slow to start (`--no-daemon`), and its tools that work through semantics (
 - **Concurrent Gradle builds in the same directory corrupt each other**: IntelliJ, the MCP server and a hot-reloading app all build in `build/`. Missing class files, `FileNotFoundException` in the Kotlin compiler or a `NoClassDefFoundError` after a successful build mean that happened: `./gradlew :<module>:clean` and run again.
 - A Compose composable keeps its focus when the OS window loses its own: use `LocalWindowInfo.current.isWindowFocused` as well to know whether the keys go to it.
 - libghostty-vt flags the row that the cursor leaves as dirty, even if it did not change, and its cursor does not blink unless the program asks for it (`TerminalSession.start` turns the default on).
+- libghostty-vt's render state only reads the default foreground and background when **both** are set, and keeps what it last read when they are cleared: to go back to the original colors, set them (white on black) instead of clearing them. `TerminalSession.setTheme(null)` does that.
 - pty4j ignores the size in pixels: the program only gets the size in cells.
 - The generated Java contains macOS system types: generating on another OS gives another file set.
 
