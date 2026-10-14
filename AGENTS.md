@@ -56,6 +56,7 @@ The ones that are easy to break:
 - A `GhosttyTerminal` is **not thread-safe**. In a session, one lock guards it, and the key encoder that reads it.
 - The `GhosttyRenderState` belongs to the frame producer thread: only its `update` reads the terminal, so only that is under the lock.
 - Callbacks of the terminal run on the thread that wrote to it, under the lock: they must only enqueue, and an exception must never escape them (it would take the JVM down).
+- The producer waits for the output to pause (3 ms, at most 8) before it makes a frame. A program redraws in several writes that are read separately, and zsh moving the selection in its completion menu moves the cursor down to the menu, draws, and moves it back: a frame made after the first write shows the cursor in the menu for a frame. Do not make it publish at the first chunk of output.
 - The frame producer publishes at most 60 frames per second. A row that did not change is **the same object** in the next frame (the renderer's cache relies on it): do not break that by creating rows needlessly.
 
 ## Keyboard

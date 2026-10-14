@@ -1,11 +1,16 @@
 package app.katty.terminal
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -205,6 +210,52 @@ class TerminalSessionTest {
         // Whichever of the two comes first, the program's background is the one that is used, and the theme's
         // foreground, which the program did not change.
         session.awaitFrame { it.background == TerminalColor(0xFF0000) && it.foreground == theme.foreground }
+    }
+
+    // Every frame that is published, which a collector that is slow would not see: it runs where the producer does.
+    private fun TerminalSession.recordFrames(): Pair<List<TerminalFrame>, Job> {
+        val seen = CopyOnWriteArrayList<TerminalFrame>()
+        val job = CoroutineScope(Dispatchers.Unconfined).launch { frames.collect { seen += it } }
+        return seen to job
+    }
+
+    @Test
+    fun showsARedrawThatTakesSeveralWritesWhole() {
+        // What zsh does when the selection moves in its completion menu: the cursor goes down to the menu,
+        // the entries are drawn, and the cursor goes back up to the line, in writes that are about half a
+        // millisecond apart. A frame of the middle of it would show the cursor in the menu. It is done many
+        // times, with pauses: whether the middle is caught is a matter of timing.
+        val script = """perl -e '${'$'}| = 1; print "prompt> ab"; for (1..40) { select(undef, undef, undef, 0.025); """ +
+            """print "\r\n"; select(undef, undef, undef, 0.001); print "\e[A\e[11C"; } print "done"; select(undef, undef, undef, 30)'"""
+        val session = start(script)
+        val (seen, job) = session.recordFrames()
+
+        try {
+            session.awaitFrame { "done" in it.text(0) }
+        } finally {
+            job.cancel()
+        }
+
+        assertTrue(seen.any { it.text(0) == "prompt> ab" }, "The prompt was shown")
+        // Without waiting for the output to pause, about a quarter of the redraws are caught in the middle. The
+        // two that are allowed are for the program being preempted for longer than the wait, on a busy machine.
+        val inTheMiddle = seen.count { it.cursor.y == 1 }
+        assertTrue(inTheMiddle <= 2, "The cursor was shown in the middle of the redraw in $inTheMiddle of the 40 redraws")
+    }
+
+    @Test
+    fun stillPublishesWhileTheProgramKeepsWriting() {
+        // Waiting for the output to pause must not starve the screen of a program that never does.
+        val session = start("""perl -e '${'$'}| = 1; for (1..300) { print "x"; select(undef, undef, undef, 0.001) } select(undef, undef, undef, 30)'""")
+        val (seen, job) = session.recordFrames()
+
+        try {
+            session.awaitFrame { frame -> frame.text().count { it == 'x' } == 300 }
+        } finally {
+            job.cancel()
+        }
+
+        assertTrue(seen.size >= 8, "Only ${seen.size} frames were published while the program wrote for 300ms")
     }
 
     @Test

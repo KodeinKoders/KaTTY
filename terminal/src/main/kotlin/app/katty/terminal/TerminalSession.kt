@@ -26,7 +26,10 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private val logger = LoggerFactory.getLogger(TerminalSession::class.java)
@@ -65,6 +68,10 @@ public class TerminalSession private constructor(
     // A conflated channel: any number of signals while a frame is being produced mean one more frame.
     private val frameRequests = Channel<Unit>(Channel.CONFLATED)
 
+    // When the reader last fed the terminal, in System.nanoTime() terms: what the producer waits on.
+    @Volatile
+    private var lastOutputNanos = System.nanoTime() - 1_000_000_000L
+
     // The rows of the last frame, to hand the same ones out again when they did not change. Only used by
     // the producer, once it runs.
     private var rowCache: Map<GhosttyRowId, TerminalRow> = emptyMap()
@@ -82,7 +89,8 @@ public class TerminalSession private constructor(
 
     /**
      * What the screen looks like. A new frame is published whenever it changes, at most 60 times per
-     * second: what the program writes in between is merged.
+     * second: what the program writes in between is merged, and a frame waits for the output to pause for a
+     * moment (3 milliseconds, at most eight), so that a redraw is not shown half-way.
      */
     public val frames: StateFlow<TerminalFrame> get() = frameState
 
@@ -100,6 +108,7 @@ public class TerminalSession private constructor(
         producerScope.launch {
             for (request in frameRequests) {
                 val started = TimeSource.Monotonic.markNow()
+                settle(started)
                 try {
                     frameState.value = produceFrame()
                 } catch (e: Throwable) {
@@ -108,14 +117,33 @@ public class TerminalSession private constructor(
                 }
 
                 // What is requested while waiting is merged into the one next frame, so the last output is
-                // always published, only later. After an idle period there is nothing to wait for: typing
-                // is not slowed down.
+                // always published, only later. After an idle period there is nothing to wait for.
                 val remaining = MIN_FRAME_INTERVAL - started.elapsedNow()
                 if (remaining.isPositive()) delay(remaining)
             }
         }
         reader.start()
         writer.start()
+    }
+
+    /**
+     * Waits for the program's output to pause, so that a redraw is shown whole.
+     *
+     * A program redraws in several writes, a fraction of a millisecond apart, that are read separately: zsh,
+     * moving the selection in its completion menu, moves the cursor down to the menu, draws the entries, and
+     * moves the cursor back to the line. A frame made after the first of them has the cursor in the menu, and
+     * the next frame is only made one frame interval later, so it is that frame that the display shows for a
+     * moment.
+     *
+     * The wait is at most [SETTLE_MAX] from [requested], so a program that never pauses is still shown, and
+     * it is part of the interval between two frames, which it does not lengthen.
+     */
+    private suspend fun settle(requested: TimeMark) {
+        while (true) {
+            val quiet = (System.nanoTime() - lastOutputNanos).nanoseconds
+            if (quiet >= SETTLE_QUIET || requested.elapsedNow() >= SETTLE_MAX) return
+            delay(1)
+        }
     }
 
     /**
@@ -223,6 +251,7 @@ public class TerminalSession private constructor(
                     }
                 }
                 if (!fed) break
+                lastOutputNanos = System.nanoTime()
                 frameRequests.trySend(Unit)
             }
         } catch (e: IOException) {
@@ -294,6 +323,13 @@ public class TerminalSession private constructor(
         // A program that floods the output must not keep the producer, and the lock it takes to read the
         // terminal, busy: more frames than a display shows are of no use.
         private val MIN_FRAME_INTERVAL = 1.seconds / 60
+
+        // A frame is made once the program has been silent for this long, or after SETTLE_MAX anyway. The writes
+        // of a redraw are 0.02 to 0.7 ms apart when zsh draws its completion menu, and the margin is for the
+        // reader's thread being late. This is up to 3 ms of latency, which is what shows a redraw whole. They are
+        // whole milliseconds, which is the resolution of delay on the producer's dispatcher.
+        private val SETTLE_QUIET = 3.milliseconds
+        private val SETTLE_MAX = 8.milliseconds
 
         private const val READ_BUFFER_SIZE = 64 * 1024
         private const val DESTROY_TIMEOUT_MS = 1000L
