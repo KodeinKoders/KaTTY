@@ -28,6 +28,7 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 include(
     ":app",
+    ":app-core",
     ":ghostty-vt",
     ":terminal",
     ":terminal-compose",

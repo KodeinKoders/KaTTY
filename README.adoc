@@ -46,7 +46,10 @@ The images that the rendering tests draw are kept in `terminal-compose/build/ren
 | Module | Role
 
 | `app`
-| The application: a window with a `Terminal` that runs the login shell.
+| The application: a window (Jewel's decorated window, on the JetBrains Runtime) with a `Terminal` that runs the login shell.
+
+| `app-core`
+| What the application keeps and knows, with no Compose: where it writes its files.
 
 | `terminal-compose`
 | `Terminal`, the Compose composable that draws a session with the bundled JetBrains Mono, and sends it the keys that are typed.
