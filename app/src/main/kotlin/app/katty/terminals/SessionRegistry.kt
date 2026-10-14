@@ -1,6 +1,8 @@
 package app.katty.terminals
 
 import androidx.compose.ui.focus.FocusRequester
+import app.katty.core.GitInfo
+import app.katty.core.GitReader
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
 import app.katty.core.TerminalId
@@ -13,7 +15,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.withContext
+import java.nio.file.Path
+import app.katty.terminal.TerminalEvent
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -32,8 +41,15 @@ class TerminalHandle(
     val session: TerminalSession?,
     val failure: String? = null,
     val generation: Int = 0,
+    /** The name of the shell that runs, as its executable is called: `zsh`. */
+    val shellName: String = "zsh",
 ) {
     val focus: FocusRequester = FocusRequester()
+
+    internal val gitState = MutableStateFlow<GitInfo?>(null)
+
+    /** The branch, worktree or commit that the shell is in, `null` when it is not in a repository. */
+    val git: StateFlow<GitInfo?> get() = gitState
 }
 
 /**
@@ -128,11 +144,16 @@ class SessionRegistry(
             logger.error("Could not start the shell of {}", spec.id.value, e)
             return TerminalHandle(spec.id, null, e.message ?: e.toString(), generation)
         }
-        // Where the shell goes is where it starts the next time.
+        val handle = TerminalHandle(spec.id, session, generation = generation, shellName = shellName())
+        // Where the shell goes is where it starts the next time, and what repository it is in is read again then, and when a command ends.
         followers[spec.id] = scope.launch {
-            session.workingDirectory.filterNotNull().collect { store.setDirectory(spec.id, it) }
+            launch { session.workingDirectory.filterNotNull().collect { store.setDirectory(spec.id, it) } }
+            merge(session.workingDirectory.map { }, session.events.filterIsInstance<TerminalEvent.CommandFinished>().map { }).conflate().collect {
+                val directory = session.workingDirectory.value ?: spec.directory
+                handle.gitState.value = withContext(Dispatchers.IO) { GitReader.read(Path.of(directory)) }
+            }
         }
-        return TerminalHandle(spec.id, session, generation = generation)
+        return handle
     }
 
     private fun stop(handle: TerminalHandle) {
@@ -143,6 +164,9 @@ class SessionRegistry(
         scope.launch(Dispatchers.IO) { session.close() }
     }
 }
+
+// What the shell is called, as its program is: the one that the user's login shell is.
+private fun shellName(): String = File(System.getenv("SHELL") ?: "/bin/zsh").name.ifEmpty { "shell" }
 
 private fun loadColorScheme(name: String): TerminalTheme? =
     try {

@@ -133,6 +133,55 @@ class SessionRegistryTest {
         assertEquals("/tmp", store.state.value.locate(id)!!.terminal.directory)
     }
 
+    private fun git(directory: java.io.File, vararg arguments: String) {
+        val process = ProcessBuilder(listOf("git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main") + arguments).directory(directory).redirectErrorStream(true).start()
+        process.inputStream.readBytes()
+        check(process.waitFor() == 0)
+    }
+
+    private fun await(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 10_000_000_000
+        while (!condition() && System.nanoTime() < deadline) Thread.sleep(20)
+        assertTrue(condition(), what)
+    }
+
+    @Test
+    fun aTerminalKnowsTheBranchItsShellIsIn() {
+        val repo = kotlin.io.path.createTempDirectory("katty-registry").toRealPath().toFile()
+        try {
+            git(repo, "init")
+            store.addProject(repo.path)
+            val id = store.state.value.selection.terminal!!
+
+            sync()
+
+            await("the branch is read") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("main", app.katty.core.GitKind.BRANCH) }
+        } finally {
+            repo.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aTerminalOutsideARepositoryHasNoBranchAndOneThatGoesThereLosesIt() {
+        val repo = kotlin.io.path.createTempDirectory("katty-registry").toRealPath().toFile()
+        val plain = kotlin.io.path.createTempDirectory("katty-registry-plain").toRealPath().toFile()
+        try {
+            git(repo, "init")
+            // The shell goes to a folder that is not in a repository.
+            script = "printf '\\033]7;file://host${plain.path}\\007'; sleep 30"
+            store.addProject(repo.path)
+            val id = store.state.value.selection.terminal!!
+
+            sync()
+
+            await("the folder that the shell went to is the terminal's") { store.state.value.locate(id)!!.terminal.directory == plain.path }
+            await("it has no branch there") { registry.handles.value.getValue(id).git.value == null }
+        } finally {
+            repo.deleteRecursively()
+            plain.deleteRecursively()
+        }
+    }
+
     @Test
     fun restartingStartsAnotherShellInThePlaceOfTheFirst() {
         store.addProject("/tmp")
