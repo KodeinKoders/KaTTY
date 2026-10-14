@@ -1,5 +1,7 @@
 package app.katty.terminal.compose
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.focusable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -13,6 +15,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
@@ -26,19 +29,22 @@ import kotlin.math.roundToInt
 /**
  * Shows what [session] displays, and sends it what is typed.
  *
- * It takes the focus when it is shown. The terminal is resized to fill the space that it is given, with
+ * It takes the focus when it is shown, and when it is clicked. The terminal is resized to fill the space that it is given, with
  * as many cells as fit in it.
  *
  * The cursor shows whether the keys go to the terminal: it is a block that blinks when the program asks for it,
  * and an outline that does not blink when the window, or the terminal, does not have the focus.
  *
  * @param fontSize The size of the text, which gives the size of a cell. The font is always monospace.
+ * @param focusRequester Gives the focus to the terminal, for whatever else takes it, such as a menu that is
+ * closed, to give it back.
  */
 @Composable
 public fun Terminal(
     session: TerminalSession,
     modifier: Modifier = Modifier,
     fontSize: TextUnit = 13.sp,
+    focusRequester: FocusRequester = remember { FocusRequester() },
 ) {
     val frame by session.frames.collectAsState()
     val typography = rememberTerminalTypography(fontSize)
@@ -49,7 +55,6 @@ public fun Terminal(
     // keys to go to the terminal.
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val active = focused && windowFocused
-    val focusRequester = remember { FocusRequester() }
     val keys = remember { KeyTranslator() }
 
     // As many cells as fit. It is the number of them that matters, not the size in pixels: the terminal is
@@ -77,6 +82,13 @@ public fun Terminal(
             .onSizeChanged { size = it }
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
+            // A press is not consumed: what a program may do with the mouse comes later.
+            .pointerInput(focusRequester) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    focusRequester.requestFocus()
+                }
+            }
             .onPreviewKeyEvent { event ->
                 val input = keys.translate(event.toKeyInfo()) ?: return@onPreviewKeyEvent false
                 session.sendKey(input)

@@ -10,11 +10,37 @@ import app.katty.ghostty.GhosttyMods
 import app.katty.ghostty.GhosttyRenderCell
 import app.katty.ghostty.GhosttyRenderCursor
 import app.katty.ghostty.GhosttyRgb
+import app.katty.ghostty.GhosttyTerminal
 import app.katty.ghostty.GhosttyUnderline
 
 // What the terminal module's API hides of ghostty-vt: this file is where the two are converted.
 
 internal fun GhosttyRgb.toTerminal() = TerminalColor(rgb)
+
+private fun TerminalColor.toGhostty() = GhosttyRgb(rgb)
+
+/**
+ * Sets the colors of [theme] as the terminal's defaults, or libghostty's own colors for `null`.
+ */
+internal fun GhosttyTerminal.applyTheme(theme: TerminalTheme?) {
+    if (theme == null) {
+        // White on black is what libghostty starts with, but clearing the foreground and the background
+        // does not go back to it once they were set, so they are set.
+        setDefaultColors(
+            foreground = GhosttyRgb(0xFFFFFF),
+            background = GhosttyRgb(0x000000),
+            cursor = null,
+            palette = null,
+        )
+    } else {
+        setDefaultColors(
+            foreground = theme.foreground.toGhostty(),
+            background = theme.background.toGhostty(),
+            cursor = theme.cursor?.toGhostty(),
+            palette = generatePalette(theme).map { it.toGhostty() },
+        )
+    }
+}
 
 private fun GhosttyCellStyle.toTerminal(): TerminalStyle =
     if (this == GhosttyCellStyle.NONE) {

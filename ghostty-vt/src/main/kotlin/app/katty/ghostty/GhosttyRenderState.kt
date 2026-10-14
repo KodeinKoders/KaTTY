@@ -337,7 +337,6 @@ public class GhosttyRenderState : AutoCloseable {
         }
 
     private companion object {
-        const val PALETTE_SIZE = 256
         const val INITIAL_TEXT_CAPACITY = 256L
     }
 }

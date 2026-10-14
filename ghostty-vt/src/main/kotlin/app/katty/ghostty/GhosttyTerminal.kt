@@ -1,5 +1,6 @@
 package app.katty.ghostty
 
+import app.katty.ghostty.ffm.GhosttyColorRgb
 import app.katty.ghostty.ffm.GhosttyString
 import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
 import app.katty.ghostty.ffm.GhosttyTerminalWritePtyFn
@@ -146,6 +147,58 @@ public class GhosttyTerminal(
             )
             GhosttyTerminalModeConfig.value(config)
         }
+    }
+
+    /**
+     * Sets the colors that the terminal uses unless a program changes them (with OSC 4, 10, 11 or 12): the
+     * theme. A program's change wins over what is set here, and what it did not change takes the new value.
+     *
+     * A `null` clears the default. That brings back libghostty's own cursor color and palette, but not its
+     * own foreground and background: the render state only reads them when both are set, and it keeps what
+     * it last read when they are not. To go back to the original ones, which are white on black, set them.
+     *
+     * @param palette The 256 colors that a cell's palette index refers to.
+     */
+    public fun setDefaultColors(
+        foreground: GhosttyRgb?,
+        background: GhosttyRgb?,
+        cursor: GhosttyRgb?,
+        palette: List<GhosttyRgb>?,
+    ) {
+        require(palette == null || palette.size == PALETTE_SIZE) { "A palette has $PALETTE_SIZE colors, not ${palette?.size}" }
+        requireOpen()
+        Arena.ofConfined().use { arena ->
+            setColor(arena, GhosttyVt.GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND(), foreground, "COLOR_FOREGROUND")
+            setColor(arena, GhosttyVt.GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND(), background, "COLOR_BACKGROUND")
+            setColor(arena, GhosttyVt.GHOSTTY_TERMINAL_OPT_COLOR_CURSOR(), cursor, "COLOR_CURSOR")
+
+            val colors = if (palette == null) {
+                MemorySegment.NULL
+            } else {
+                val array = arena.allocate(GhosttyColorRgb.layout(), palette.size.toLong())
+                palette.forEachIndexed { i, color -> writeRgb(GhosttyColorRgb.asSlice(array, i.toLong()), color) }
+                array
+            }
+            checkResult(
+                GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_COLOR_PALETTE(), colors),
+                "ghostty_terminal_set(COLOR_PALETTE)",
+            )
+        }
+    }
+
+    private fun setColor(arena: Arena, option: Int, color: GhosttyRgb?, name: String) {
+        val value = if (color == null) {
+            MemorySegment.NULL
+        } else {
+            arena.allocate(GhosttyColorRgb.layout()).also { writeRgb(it, color) }
+        }
+        checkResult(GhosttyVt.ghostty_terminal_set(handle, option, value), "ghostty_terminal_set($name)")
+    }
+
+    private fun writeRgb(segment: MemorySegment, color: GhosttyRgb) {
+        GhosttyColorRgb.r(segment, color.r.toByte())
+        GhosttyColorRgb.g(segment, color.g.toByte())
+        GhosttyColorRgb.b(segment, color.b.toByte())
     }
 
     /**

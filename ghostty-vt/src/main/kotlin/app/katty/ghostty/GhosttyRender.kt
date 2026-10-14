@@ -1,5 +1,8 @@
 package app.katty.ghostty
 
+/** The number of colors in a palette. */
+internal const val PALETTE_SIZE = 256
+
 /**
  * An RGB color.
  */

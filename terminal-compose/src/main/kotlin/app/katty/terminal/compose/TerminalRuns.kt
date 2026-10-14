@@ -12,6 +12,8 @@ import app.katty.terminal.TerminalUnderline
 /**
  * The colors a cell is drawn with, once its attributes are applied: inverse swaps them, invisible hides the
  * text, and faint blends the text into the background. Both are `0xRRGGBB`.
+ *
+ * @param boldForeground What bold text that has the default foreground is drawn in, if not the foreground.
  */
 internal data class CellColors(val foreground: Int, val background: Int)
 
@@ -19,8 +21,11 @@ internal fun resolveColors(
     cell: TerminalCell,
     defaultForeground: TerminalColor,
     defaultBackground: TerminalColor,
+    boldForeground: TerminalColor? = null,
 ): CellColors {
-    var foreground = (cell.foreground ?: defaultForeground).rgb
+    // The bold color is for text that has the default foreground: a program's own color is not touched.
+    val defaultOfCell = if (cell.style.bold && boldForeground != null) boldForeground else defaultForeground
+    var foreground = (cell.foreground ?: defaultOfCell).rgb
     var background = (cell.background ?: defaultBackground).rgb
     if (cell.style.inverse) {
         foreground = background.also { background = foreground }
@@ -49,10 +54,11 @@ internal fun backgroundRuns(
     row: TerminalRow,
     defaultForeground: TerminalColor,
     defaultBackground: TerminalColor,
+    boldForeground: TerminalColor? = null,
 ): List<BackgroundRun> {
     val runs = ArrayList<BackgroundRun>()
     row.cells.forEachIndexed { col, cell ->
-        val background = resolveColors(cell, defaultForeground, defaultBackground).background
+        val background = resolveColors(cell, defaultForeground, defaultBackground, boldForeground).background
         if (background == defaultBackground.rgb) return@forEachIndexed
         val last = runs.lastOrNull()
         if (last != null && last.rgb == background && last.startCol + last.cols == col) {
@@ -92,13 +98,14 @@ internal fun textRuns(
     row: TerminalRow,
     defaultForeground: TerminalColor,
     defaultBackground: TerminalColor,
+    boldForeground: TerminalColor? = null,
 ): List<TextRun> {
     val runs = ArrayList<TextRun>()
     row.cells.forEachIndexed { col, cell ->
         if (cell.text.isEmpty() || cell.width == TerminalCellWidth.SPACER_TAIL || cell.width == TerminalCellWidth.SPACER_HEAD) {
             return@forEachIndexed
         }
-        val foreground = resolveColors(cell, defaultForeground, defaultBackground).foreground
+        val foreground = resolveColors(cell, defaultForeground, defaultBackground, boldForeground).foreground
         val style = cell.style
         val plain = cell.text.length == 1 && cell.text[0] in ' '..'~' && cell.width == TerminalCellWidth.NARROW
 

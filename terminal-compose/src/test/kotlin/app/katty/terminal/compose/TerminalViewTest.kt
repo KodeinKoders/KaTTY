@@ -273,6 +273,31 @@ class TerminalViewTest {
     }
 
     @Test
+    fun theCharacterUnderABlockCursorHasTheColorOfTheCursorText() {
+        val frame = frame(
+            30,
+            listOf(row(30, *text("█"))),
+            TerminalCursor(x = 0, y = 0, visible = true, blinking = false, shape = TerminalCursorShape.BLOCK),
+        ).copy(cursorColor = RED, cursorTextColor = GREEN)
+
+        val rendered = render("cursor-text-color", frame)
+
+        // The middle of a full block is entirely in the color of the character, which is not the cursor's.
+        assertEquals(GREEN.rgb, rendered.center(0, 0))
+    }
+
+    @Test
+    fun boldTextThatHasTheDefaultForegroundIsDrawnInTheBoldColor() {
+        val bold = TerminalStyle(bold = true)
+        val frame = frame(30, listOf(row(30, *text("████", style = bold), *text("████", foreground = RED, style = bold)))).copy(boldColor = GREEN)
+
+        val rendered = render("bold-color", frame)
+
+        assertEquals(GREEN.rgb, rendered.center(1, 0))
+        assertEquals(RED.rgb, rendered.center(5, 0), "The color of the program wins")
+    }
+
+    @Test
     fun keepsWhatItPreparedForTheRowsThatDidNotChange() {
         var layouts: RowLayouts? = null
         ImageComposeScene(width = 100, height = 100) {

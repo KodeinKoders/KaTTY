@@ -119,4 +119,8 @@ public data class TerminalFrame(
     /** `null` when the program did not set a cursor color: use the foreground. */
     public val cursorColor: TerminalColor?,
     public val cursor: TerminalCursor,
+    /** The color of the character under a block cursor, `null` for the [background]. */
+    public val cursorTextColor: TerminalColor? = null,
+    /** The color of bold text that has the default foreground, `null` for the [foreground]. */
+    public val boldColor: TerminalColor? = null,
 )

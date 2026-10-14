@@ -114,6 +114,17 @@ class TerminalRunsTest {
     }
 
     @Test
+    fun boldTextThatHasTheDefaultForegroundTakesTheBoldColor() {
+        val boldColor = TerminalColor(0xFFFFFF)
+        val bold = TerminalStyle(bold = true)
+
+        assertEquals(boldColor.rgb, resolveColors(cell("a", style = bold), FOREGROUND, BACKGROUND, boldColor).foreground)
+        assertEquals(RED.rgb, resolveColors(cell("a", foreground = RED, style = bold), FOREGROUND, BACKGROUND, boldColor).foreground, "A color that the program chose is its own")
+        assertEquals(FOREGROUND.rgb, resolveColors(cell("a"), FOREGROUND, BACKGROUND, boldColor).foreground, "Text that is not bold is not concerned")
+        assertEquals(FOREGROUND.rgb, resolveColors(cell("a", style = bold), FOREGROUND, BACKGROUND).foreground, "Without a bold color, it is the foreground")
+    }
+
+    @Test
     fun invisibleTextHasTheColorOfItsBackground() {
         val colors = resolveColors(cell("a", foreground = RED, style = TerminalStyle(invisible = true)), FOREGROUND, BACKGROUND)
 

@@ -32,8 +32,8 @@ internal class RowLayouts(private val typography: TerminalTypography) {
     }
 
     private fun prepareRow(row: TerminalRow, frame: TerminalFrame) = PreparedRow(
-        backgrounds = backgroundRuns(row, frame.foreground, frame.background),
-        texts = textRuns(row, frame.foreground, frame.background).map {
+        backgrounds = backgroundRuns(row, frame.foreground, frame.background, frame.boldColor),
+        texts = textRuns(row, frame.foreground, frame.background, frame.boldColor).map {
             PreparedText(it, typography.layout(it.text, it.bold, it.italic))
         },
     )

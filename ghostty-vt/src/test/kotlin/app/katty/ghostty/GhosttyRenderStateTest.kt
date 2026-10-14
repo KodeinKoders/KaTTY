@@ -4,6 +4,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -58,6 +59,82 @@ class GhosttyRenderStateTest {
         assertEquals(GhosttyRgb.of(255, 100, 0), cells[2].foreground)
         assertEquals(palette[4], cells[3].background, "SGR 44 is the palette's blue")
         assertEquals(256, palette.size)
+    }
+
+    @Test
+    fun usesTheDefaultColorsThatAreSet() {
+        val palette = List(256) { GhosttyRgb.of(it, 255 - it, 7) }
+        terminal.setDefaultColors(GhosttyRgb(0x112233), GhosttyRgb(0x445566), GhosttyRgb(0x778899), palette)
+
+        val rows = render("\u001b[31mx\u001b[44my")
+
+        val colors = state.colors
+        assertEquals(GhosttyRgb(0x112233), colors.foreground)
+        assertEquals(GhosttyRgb(0x445566), colors.background)
+        assertEquals(GhosttyRgb(0x778899), colors.cursor)
+        assertEquals(palette, state.palette)
+        assertEquals(palette[1], rows[0].cells!![0].foreground, "SGR 31 is the palette's color 1")
+        assertEquals(palette[4], rows[0].cells!![1].background, "SGR 44 is the palette's color 4")
+    }
+
+    @Test
+    fun aProgramsColorsWinOverTheDefaults() {
+        terminal.setDefaultColors(GhosttyRgb(0x112233), GhosttyRgb(0x445566), null, null)
+
+        // OSC 11 sets the background, OSC 4 the palette's color 2.
+        render("\u001b]11;rgb:ff/00/00\u001b\\\u001b]4;2;rgb:00/ff/00\u001b\\")
+
+        assertEquals(GhosttyRgb(0xff0000), state.colors.background)
+        assertEquals(GhosttyRgb(0x112233), state.colors.foreground, "What the program did not change")
+        assertEquals(GhosttyRgb(0x00ff00), state.palette[2])
+    }
+
+    @Test
+    fun clearingTheCursorColorAndThePaletteRestoresLibghosttysOwn() {
+        render("")
+        val palette = state.palette
+
+        terminal.setDefaultColors(GhosttyRgb(0x112233), GhosttyRgb(0x445566), GhosttyRgb(0x778899), List(256) { GhosttyRgb(0x010203) })
+        state.update(terminal)
+        state.clean()
+        terminal.setDefaultColors(GhosttyRgb(0x112233), GhosttyRgb(0x445566), null, null)
+        state.update(terminal)
+
+        assertNull(state.colors.cursor)
+        assertEquals(palette, state.palette)
+    }
+
+    @Test
+    fun theForegroundAndBackgroundCannotBeClearedOnceTheyWereRead() {
+        // libghostty's render state keeps the colors it has when the terminal has no foreground or no
+        // background: to go back to the original ones, they have to be set again.
+        render("")
+        terminal.setDefaultColors(GhosttyRgb(0x112233), GhosttyRgb(0x445566), null, null)
+        state.update(terminal)
+        terminal.setDefaultColors(null, null, null, null)
+        state.update(terminal)
+
+        assertEquals(GhosttyRgb(0x445566), state.colors.background)
+        assertEquals(GhosttyRgb(0x112233), state.colors.foreground)
+    }
+
+    @Test
+    fun changingTheDefaultColorsDirtiesEveryRow() {
+        render("hello")
+        state.clean()
+        state.update(terminal)
+        assertEquals(GhosttyDirty.CLEAN, state.dirty)
+
+        terminal.setDefaultColors(GhosttyRgb(0x112233), GhosttyRgb(0x445566), null, List(256) { GhosttyRgb(0x010203) })
+        state.update(terminal)
+
+        assertEquals(GhosttyDirty.FULL, state.dirty)
+        assertTrue(state.readRows().all { it.dirty }, "Every row has to be drawn again")
+    }
+
+    @Test
+    fun aPaletteHasExactly256Colors() {
+        assertFailsWith<IllegalArgumentException> { terminal.setDefaultColors(null, null, null, List(16) { GhosttyRgb(0) }) }
     }
 
     @Test

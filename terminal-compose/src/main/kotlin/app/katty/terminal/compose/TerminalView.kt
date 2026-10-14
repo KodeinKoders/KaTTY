@@ -39,7 +39,7 @@ internal fun TerminalView(
     modifier: Modifier = Modifier,
 ) {
     // What is kept for the rows depends on how they are drawn.
-    val layouts = remember(typography, frame.foreground, frame.background) { RowLayouts(typography) }
+    val layouts = remember(typography, frame.foreground, frame.background, frame.boldColor) { RowLayouts(typography) }
     val cursorShown = rememberCursorBlink(frame.cursor, focused)
 
     Canvas(modifier) {
@@ -163,10 +163,12 @@ private fun DrawScope.drawCursor(frame: TerminalFrame, typography: TerminalTypog
     when (shape) {
         TerminalCursorShape.BLOCK -> {
             drawRect(color, Offset(left, top), Size(width, typography.cellHeight))
-            // The character under it, in the color of the background: the other way round it would not show.
+            // The character under it, in the color that the theme gives it, or else the one of the background:
+            // the other way round it would not show.
             if (cell != null && cell.text.isNotEmpty()) {
                 val layout = typography.layout(cell.text, cell.style.bold, cell.style.italic)
-                drawText(layout, color = frame.background.rgb.toColor(), topLeft = Offset(col * typography.cellWidth, top))
+                val textColor = (frame.cursorTextColor ?: frame.background).rgb.toColor()
+                drawText(layout, color = textColor, topLeft = Offset(col * typography.cellWidth, top))
             }
         }
         TerminalCursorShape.BLOCK_HOLLOW -> drawRoundRect(

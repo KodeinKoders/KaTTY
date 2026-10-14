@@ -45,6 +45,7 @@ public class TerminalSession private constructor(
     private val terminal: GhosttyTerminal,
     private val renderState: GhosttyRenderState,
     private val keyEncoder: GhosttyKeyEncoder,
+    theme: TerminalTheme?,
 ) : AutoCloseable {
     // Guards the terminal, and the key encoder that reads it: the thread that feeds the terminal and the
     // ones that encode keys or resize it take turns. The render state is only ever used by the frame
@@ -52,6 +53,11 @@ public class TerminalSession private constructor(
     private val lock = ReentrantLock()
 
     private val closed = AtomicBoolean(false)
+
+    // The colors that a frame has besides the ones libghostty resolves. Written under the lock, with the
+    // colors of the terminal, and read by the producer.
+    @Volatile
+    private var theme: TerminalTheme? = theme
 
     // What goes to the program: the keys, and what the terminal answers to its queries.
     private val outgoing = LinkedBlockingQueue<ByteArray>()
@@ -150,6 +156,22 @@ public class TerminalSession private constructor(
             if (closed.get()) return
             terminal.vtWrite(text)
         }
+        frameRequests.trySend(Unit)
+    }
+
+    /**
+     * Changes the colors: what is on the screen is drawn again with them, and what programs write from now on
+     * uses them. A color that a program set itself, with an OSC sequence, stays.
+     *
+     * @param theme `null` goes back to libghostty's own colors.
+     */
+    public fun setTheme(theme: TerminalTheme?) {
+        lock.withLock {
+            if (closed.get()) return
+            terminal.applyTheme(theme)
+            this.theme = theme
+        }
+        // The terminal flags every row as changed, so the rows are read again, with their new colors.
         frameRequests.trySend(Unit)
     }
 
@@ -258,6 +280,8 @@ public class TerminalSession private constructor(
             foreground = colors.foreground.toTerminal(),
             cursorColor = colors.cursor?.toTerminal(),
             cursor = renderState.cursor.toTerminal(),
+            cursorTextColor = theme?.cursorText,
+            boldColor = theme?.bold,
         )
         renderState.clean()
         return frame
@@ -285,6 +309,7 @@ public class TerminalSession private constructor(
          * @param directory Where the program starts, by default the user's home.
          * @param cursorBlink Whether the cursor blinks unless the program says otherwise. It almost never does,
          * a shell included, and a terminal's cursor is expected to blink: without this it would not.
+         * @param theme The colors, libghostty's own by default. [setTheme] changes them.
          */
         public fun start(
             cols: Int,
@@ -293,6 +318,7 @@ public class TerminalSession private constructor(
             environment: Map<String, String> = emptyMap(),
             directory: String = System.getProperty("user.home"),
             cursorBlink: Boolean = true,
+            theme: TerminalTheme? = null,
         ): TerminalSession {
             val env = HashMap(System.getenv())
             env["TERM"] = TERM
@@ -312,9 +338,11 @@ public class TerminalSession private constructor(
             val toClose = ArrayDeque<AutoCloseable>()
             try {
                 val terminal = GhosttyTerminal(cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink).also { toClose.addFirst(it) }
+                // Before the session, so that the first frame already has the colors.
+                terminal.applyTheme(theme)
                 val renderState = GhosttyRenderState().also { toClose.addFirst(it) }
                 val keyEncoder = GhosttyKeyEncoder().also { toClose.addFirst(it) }
-                return TerminalSession(process, terminal, renderState, keyEncoder).also { it.launch() }
+                return TerminalSession(process, terminal, renderState, keyEncoder, theme).also { it.launch() }
             } catch (e: Throwable) {
                 logger.error("Could not start the session", e)
                 process.destroyForcibly()

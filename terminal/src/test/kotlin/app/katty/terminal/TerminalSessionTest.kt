@@ -142,6 +142,71 @@ class TerminalSessionTest {
         assertTrue(published <= bound, "$published frames in $elapsed, at most $bound are allowed")
     }
 
+    private val theme = TerminalTheme(
+        background = TerminalColor(0x102030),
+        foreground = TerminalColor(0xE0D0C0),
+        ansi = List(16) { TerminalColor(0x203040 + it * 0x050709) },
+        cursor = TerminalColor(0xFF8800),
+        cursorText = TerminalColor(0x001122),
+        bold = TerminalColor(0xFFFFFF),
+    )
+
+    @Test
+    fun startsWithTheColorsOfTheTheme() {
+        val session = TerminalSession.start(
+            80, 5, command = listOf("/bin/sh", "-c", """printf 'a\033[31mb\033[44mc'; sleep 30"""), theme = theme,
+        ).also { sessions += it }
+
+        val frame = session.awaitFrame { it.text(0) == "abc" }
+
+        assertEquals(theme.background, frame.background)
+        assertEquals(theme.foreground, frame.foreground)
+        assertEquals(theme.cursor, frame.cursorColor)
+        assertEquals(theme.cursorText, frame.cursorTextColor)
+        assertEquals(theme.bold, frame.boldColor)
+        val cells = frame.rows[0].cells
+        assertEquals(theme.ansi[1], cells[1].foreground, "SGR 31 is the theme's red")
+        assertEquals(theme.ansi[4], cells[2].background, "SGR 44 is the theme's blue")
+    }
+
+    @Test
+    fun changesTheColorsOfWhatIsOnTheScreen() {
+        val session = start("""printf '\033[31mx\033[0m'; sleep 30""")
+        val before = session.awaitFrame { it.text(0) == "x" }
+        assertNotEquals(theme.ansi[1], before.rows[0].cells[0].foreground)
+
+        session.setTheme(theme)
+
+        val after = session.awaitFrame { it.rows[0].cells[0].foreground == theme.ansi[1] }
+        assertEquals(theme.background, after.background)
+        assertEquals(theme.cursorText, after.cursorTextColor)
+    }
+
+    @Test
+    fun goesBackToTheDefaultColorsWithoutATheme() {
+        val session = start("""printf '\033[31mx\033[0m'; sleep 30""")
+        val before = session.awaitFrame { it.text(0) == "x" }
+        session.setTheme(theme)
+        session.awaitFrame { it.background == theme.background }
+
+        session.setTheme(null)
+
+        val after = session.awaitFrame { it.background == before.background }
+        assertEquals(before.rows[0].cells[0].foreground, after.rows[0].cells[0].foreground)
+        assertEquals(null, after.cursorTextColor)
+        assertEquals(null, after.boldColor)
+    }
+
+    @Test
+    fun aProgramsColorsWinOverTheTheme() {
+        val session = start("""printf '\033]11;rgb:ff/00/00\033\\'; sleep 30""")
+        session.setTheme(theme)
+
+        // Whichever of the two comes first, the program's background is the one that is used, and the theme's
+        // foreground, which the program did not change.
+        session.awaitFrame { it.background == TerminalColor(0xFF0000) && it.foreground == theme.foreground }
+    }
+
     @Test
     fun theCursorBlinksUnlessTheProgramOrTheCallerSaysOtherwise() {
         val session = start("sleep 30")

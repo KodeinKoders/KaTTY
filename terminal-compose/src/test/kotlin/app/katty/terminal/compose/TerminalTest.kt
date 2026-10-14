@@ -8,6 +8,10 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -122,6 +126,33 @@ class TerminalTest {
         val image = render(clock)
         clock += 16_000_000
         return Bitmap.makeFromImage(image).getColor(x, y) and 0xFFFFFF
+    }
+
+    @Test
+    fun clickingTheTerminalGivesItTheFocus() {
+        // A steady cursor: it is a filled block when the keys go to the terminal, and an outline when not.
+        val session = session("printf '\\033[2 q'; sleep 30", cols = 80, rows = 24)
+        var focusManager: FocusManager? = null
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            focusManager = LocalFocusManager.current
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true }) {
+                Terminal(session, Modifier.fillMaxSize())
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene") { session.frames.value.cols != 80 }
+        scene.settle()
+        val cursor = session.frames.value.foreground.rgb
+        val background = session.frames.value.background.rgb
+        val middle = (typography!!.cellWidth / 2).toInt() to (typography!!.cellHeight / 2).toInt()
+        scene.renderUntil("the cursor to be a filled block") { scene.cursorCell(middle.first, middle.second) == cursor }
+
+        focusManager!!.clearFocus()
+        scene.renderUntil("the cursor to be an outline") { scene.cursorCell(middle.first, middle.second) == background }
+
+        scene.sendPointerEvent(PointerEventType.Press, Offset(100f, 100f))
+        scene.sendPointerEvent(PointerEventType.Release, Offset(100f, 100f))
+        scene.renderUntil("the cursor to be a filled block again") { scene.cursorCell(middle.first, middle.second) == cursor }
     }
 
     @Test
