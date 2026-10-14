@@ -123,4 +123,8 @@ public data class TerminalFrame(
     public val cursorTextColor: TerminalColor? = null,
     /** The color of bold text that has the default foreground, `null` for the [foreground]. */
     public val boldColor: TerminalColor? = null,
+    /** Whether the program asked to be told about the mouse: whether to send it [MouseInput]s. */
+    public val mouseTracking: Boolean = false,
+    /** The shape of the pointer that the program asked for: the text cursor until it says otherwise. */
+    public val pointerShape: TerminalPointerShape = TerminalPointerShape.TEXT,
 )

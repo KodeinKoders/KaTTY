@@ -258,6 +258,101 @@ class TerminalSessionTest {
         assertTrue(seen.size >= 8, "Only ${seen.size} frames were published while the program wrote for 300ms")
     }
 
+    // A program in raw mode that asks for the mouse, then prints the bytes that it reads. The escape is removed
+    // so that what is left is text: the bytes of a report after it.
+    private fun mouseSession(modes: String, bytes: Int): TerminalSession {
+        val session = start("""printf '$modes'; stty raw -echo; echo ready; head -c$bytes | tr -d '\033' | od -An -c""", rows = 10)
+        session.resize(80, 10, 10, 20)
+        session.awaitFrame { "ready" in it.text() }
+        return session
+    }
+
+    private fun TerminalSession.awaitReports(expected: String): TerminalFrame =
+        awaitFrame { expected in it.text().replace(Regex("\\s+"), "") }
+
+    private fun MouseInput(action: TerminalMouseAction, button: TerminalMouseButton?, column: Float, row: Float, held: Boolean = false) =
+        MouseInput(action, button, column, row, anyButtonPressed = held)
+
+    @Test
+    fun sendsAClickToAProgramThatAskedForTheMouse() {
+        val session = mouseSession("\\033[?1000h\\033[?1006h", bytes = 9)
+
+        // The third column and the second row, in the middle of the cell: the program is told 4 and 3.
+        session.sendMouse(MouseInput(TerminalMouseAction.PRESS, TerminalMouseButton.LEFT, 3.5f, 2.5f))
+
+        session.awaitReports("[<0;4;3M")
+    }
+
+    @Test
+    fun convertsPositionsWithTheSizeOfACellThatTheTerminalWasGiven() {
+        val session = mouseSession("\\033[?1000h\\033[?1016h", bytes = 11)
+
+        // In pixels, with cells of 10 by 20: 3.5 columns are 35, 2.5 rows are 50.
+        session.sendMouse(MouseInput(TerminalMouseAction.PRESS, TerminalMouseButton.LEFT, 3.5f, 2.5f))
+
+        session.awaitReports("[<0;35;50M")
+    }
+
+    @Test
+    fun sendsADragAndTheWheelInOrder() {
+        val session = mouseSession("\\033[?1002h\\033[?1006h", bytes = 38)
+
+        session.sendMouse(MouseInput(TerminalMouseAction.PRESS, TerminalMouseButton.LEFT, 3.5f, 2.5f))
+        session.sendMouse(MouseInput(TerminalMouseAction.MOTION, TerminalMouseButton.LEFT, 4.5f, 2.5f, held = true))
+        session.sendMouse(MouseInput(TerminalMouseAction.RELEASE, TerminalMouseButton.LEFT, 4.5f, 2.5f))
+        session.sendMouse(MouseInput(TerminalMouseAction.PRESS, TerminalMouseButton.WHEEL_UP, 4.5f, 2.5f))
+
+        session.awaitReports("[<0;4;3M[<32;5;3M[<0;5;3m[<64;5;3M")
+    }
+
+    @Test
+    fun reportsAPositionOutsideTheScreenAtItsEdge() {
+        val session = mouseSession("\\033[?1000h\\033[?1006h", bytes = 10)
+
+        session.sendMouse(MouseInput(TerminalMouseAction.PRESS, TerminalMouseButton.LEFT, -5f, 900f))
+
+        // The first column, the last row of the 10.
+        session.awaitReports("[<0;1;10M")
+    }
+
+    @Test
+    fun sendsNothingToAProgramThatDidNotAskForTheMouse() {
+        val session = start("stty raw -echo; echo ready; head -c1 | od -An -c")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.sendMouse(MouseInput(TerminalMouseAction.PRESS, TerminalMouseButton.LEFT, 3.5f, 2.5f))
+        session.sendKey(KeyInput(TerminalKey.ENTER))
+
+        // The first byte that the program reads is the Enter: a report would have come before it.
+        session.awaitFrame { "\\r" in it.text() }
+    }
+
+    @Test
+    fun saysWhetherTheProgramAskedForTheMouse() {
+        val session = start("""printf '\033[?1000h'; sleep 0.5; printf '\033[?1000l'; sleep 30""")
+        assertEquals(false, session.frames.value.mouseTracking)
+
+        session.awaitFrame { it.mouseTracking }
+        session.awaitFrame { !it.mouseTracking }
+    }
+
+    @Test
+    fun followsThePointerShapeThatTheProgramAskedFor() {
+        val session = start("""printf '\033]22;pointer\033\\'; sleep 30""")
+        assertEquals(TerminalPointerShape.TEXT, session.frames.value.pointerShape, "The text cursor, until it is told otherwise")
+
+        session.awaitFrame { it.pointerShape == TerminalPointerShape.POINTER }
+    }
+
+    @Test
+    fun theTerminalsShapesAreTheOnesOfTheBinding() {
+        // They are converted by name.
+        for (shape in app.katty.ghostty.GhosttyMouseShape.entries) {
+            assertEquals(shape.name, shape.toTerminal().name)
+        }
+        assertEquals(app.katty.ghostty.GhosttyMouseShape.entries.size, TerminalPointerShape.entries.size)
+    }
+
     @Test
     fun theCursorBlinksUnlessTheProgramOrTheCallerSaysOtherwise() {
         val session = start("sleep 30")

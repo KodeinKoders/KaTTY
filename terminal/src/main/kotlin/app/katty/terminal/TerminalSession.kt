@@ -1,6 +1,8 @@
 package app.katty.terminal
 
 import app.katty.ghostty.GhosttyKeyEncoder
+import app.katty.ghostty.GhosttyMouseEncoder
+import app.katty.ghostty.GhosttyMouseShape
 import app.katty.ghostty.GhosttyRenderState
 import app.katty.ghostty.GhosttyRowId
 import app.katty.ghostty.GhosttyTerminal
@@ -48,14 +50,21 @@ public class TerminalSession private constructor(
     private val terminal: GhosttyTerminal,
     private val renderState: GhosttyRenderState,
     private val keyEncoder: GhosttyKeyEncoder,
+    private val mouseEncoder: GhosttyMouseEncoder,
     theme: TerminalTheme?,
 ) : AutoCloseable {
-    // Guards the terminal, and the key encoder that reads it: the thread that feeds the terminal and the
+    // Guards the terminal, and the key and mouse encoders that read it: the thread that feeds the terminal and the
     // ones that encode keys or resize it take turns. The render state is only ever used by the frame
     // producer, and only its update reads the terminal.
     private val lock = ReentrantLock()
 
     private val closed = AtomicBoolean(false)
+
+    // The size of a cell in pixels that the terminal was given, which is what positions of the mouse are
+    // converted with, and the geometry that the mouse encoder has. Under the lock.
+    private var cellWidthPx = INITIAL_CELL_WIDTH_PX
+    private var cellHeightPx = INITIAL_CELL_HEIGHT_PX
+    private var mouseGeometry: List<Int>? = null
 
     // The colors that a frame has besides the ones libghostty resolves. Written under the lock, with the
     // colors of the terminal, and read by the producer.
@@ -159,6 +168,29 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * Sends a mouse event to the program, in the protocol it chose, if it asked to be told about the mouse.
+     * Nothing is sent otherwise.
+     */
+    public fun sendMouse(input: MouseInput) {
+        val bytes = lock.withLock {
+            if (closed.get()) return
+            mouseEncoder.setOptionsFrom(terminal)
+            val cols = terminal.cols
+            val rows = terminal.rows
+            val geometry = listOf(cols, rows, cellWidthPx, cellHeightPx)
+            if (geometry != mouseGeometry) {
+                mouseEncoder.setSize(cols, rows, cellWidthPx, cellHeightPx)
+                mouseGeometry = geometry
+            }
+            // Inside the screen: a drag that goes out of the window is reported at its edge.
+            val x = (input.column * cellWidthPx).coerceIn(0f, cols * cellWidthPx - 1f)
+            val y = (input.row * cellHeightPx).coerceIn(0f, rows * cellHeightPx - 1f)
+            mouseEncoder.encode(input.toGhostty(x, y), input.anyButtonPressed)
+        }
+        if (bytes.isNotEmpty()) outgoing.put(bytes)
+    }
+
+    /**
      * Resizes the screen, reflowing what is on it, and tells the program.
      *
      * The size of a cell in pixels is what programs get when they query the size of the terminal in pixels.
@@ -167,6 +199,8 @@ public class TerminalSession private constructor(
         lock.withLock {
             if (closed.get()) return
             terminal.resize(cols, rows, cellWidthPx, cellHeightPx)
+            this.cellWidthPx = cellWidthPx
+            this.cellHeightPx = cellHeightPx
         }
         // pty4j only passes the size in cells to the program, not the one in pixels.
         process.winSize = WinSize(cols, rows)
@@ -230,6 +264,7 @@ public class TerminalSession private constructor(
         // What the reader still does with the terminal is under the lock, and checks it is not closed.
         lock.withLock {
             keyEncoder.close()
+            mouseEncoder.close()
             renderState.close()
             terminal.close()
         }
@@ -287,7 +322,13 @@ public class TerminalSession private constructor(
     // Only the update reads the terminal, so only it is under the lock: reading the rows, which is the
     // costly part, does not hold up the thread that feeds the terminal.
     private fun produceFrame(): TerminalFrame {
-        lock.withLock { renderState.update(terminal) }
+        val tracking: Boolean
+        val shape: GhosttyMouseShape
+        lock.withLock {
+            renderState.update(terminal)
+            tracking = terminal.mouseTracking
+            shape = terminal.mouseShape
+        }
 
         val previous = rowCache
         val rows = renderState.readRows { id, dirty -> dirty || id !in previous }
@@ -311,6 +352,8 @@ public class TerminalSession private constructor(
             cursor = renderState.cursor.toTerminal(),
             cursorTextColor = theme?.cursorText,
             boldColor = theme?.bold,
+            mouseTracking = tracking,
+            pointerShape = shape.toTerminal(),
         )
         renderState.clean()
         return frame
@@ -330,6 +373,10 @@ public class TerminalSession private constructor(
         // whole milliseconds, which is the resolution of delay on the producer's dispatcher.
         private val SETTLE_QUIET = 3.milliseconds
         private val SETTLE_MAX = 8.milliseconds
+
+        // What a cell is until the first resize tells it.
+        private const val INITIAL_CELL_WIDTH_PX = 8
+        private const val INITIAL_CELL_HEIGHT_PX = 16
 
         private const val READ_BUFFER_SIZE = 64 * 1024
         private const val DESTROY_TIMEOUT_MS = 1000L
@@ -378,7 +425,8 @@ public class TerminalSession private constructor(
                 terminal.applyTheme(theme)
                 val renderState = GhosttyRenderState().also { toClose.addFirst(it) }
                 val keyEncoder = GhosttyKeyEncoder().also { toClose.addFirst(it) }
-                return TerminalSession(process, terminal, renderState, keyEncoder, theme).also { it.launch() }
+                val mouseEncoder = GhosttyMouseEncoder().also { toClose.addFirst(it) }
+                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, theme).also { it.launch() }
             } catch (e: Throwable) {
                 logger.error("Could not start the session", e)
                 process.destroyForcibly()

@@ -69,11 +69,11 @@ Its `README.adoc` says which Ghostty commit it was built from, and how to update
 
 == Status
 
-The shell runs, with colors, text attributes, the 811 iTerm2 color schemes (chosen in the field next to the title), wide characters, a cursor, resizing with reflow, and the keyboard, including the Kitty keyboard protocol and dead keys, which are shown underlined while they are composed.
+The shell runs, with colors, text attributes, the 811 iTerm2 color schemes (chosen in the field next to the title), wide characters, a cursor, resizing with reflow, and the keyboard, including the Kitty keyboard protocol dead keys, which are shown underlined while they are composed, and the mouse, which is reported to the programs that ask for it (clicks, drags, motion and the wheel, in every protocol), with the pointer shape that they ask for.
 
 What is not done yet:
 
-* scrolling through the history, and the mouse;
+* scrolling through the history;
 * selecting, copying and pasting;
 * the window title, the bell, and the focus events;
 * input methods other than dead keys (the candidate windows of Chinese, Japanese and Korean input);

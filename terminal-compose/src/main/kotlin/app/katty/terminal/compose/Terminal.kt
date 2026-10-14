@@ -1,7 +1,5 @@
 package app.katty.terminal.compose
 
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.focusable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -11,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -19,6 +18,20 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.isAltPressed
+import androidx.compose.ui.input.pointer.isBackPressed
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isForwardPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.isTertiaryPressed
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -31,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import app.katty.terminal.KeyInput
 import app.katty.terminal.TerminalKey
 import app.katty.terminal.TerminalFrame
+import app.katty.terminal.TerminalMouseButton
 import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -73,6 +87,7 @@ public fun Terminal(
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val latestFrame = rememberUpdatedState(frame)
     val latestTypography = rememberUpdatedState(typography)
+    val mouse = remember(session) { MouseTranslator() }
     val caretRect = remember { { caretRectInRoot(latestFrame.value, latestTypography.value, coordinates) } }
 
     // As many cells as fit. It is the number of them that matters, not the size in pixels: the terminal is
@@ -102,11 +117,22 @@ public fun Terminal(
             .onGloballyPositioned { coordinates = it }
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
-            // A press is not consumed: what a program may do with the mouse comes later.
-            .pointerInput(focusRequester) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    focusRequester.requestFocus()
+            .pointerHoverIcon(pointerIconFor(frame.pointerShape))
+            .pointerInput(session, focusRequester) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        // The terminal takes the focus when it is pressed, and is told about it or not.
+                        if (event.type == PointerEventType.Press) focusRequester.requestFocus()
+                        if (!latestFrame.value.mouseTracking) continue
+
+                        val info = event.toPointerInfo() ?: continue
+                        val typography = latestTypography.value
+                        val inputs = mouse.translate(info, typography.cellWidth, typography.cellHeight)
+                        if (inputs.isEmpty()) continue
+                        inputs.forEach(session::sendMouse)
+                        event.changes.forEach { it.consume() }
+                    }
                 }
             }
             .onPreviewKeyEvent { event ->
@@ -137,4 +163,47 @@ private fun caretRectInRoot(frame: TerminalFrame, typography: TerminalTypography
         Offset(origin.x + x * typography.cellWidth, origin.y + y * typography.cellHeight),
         Size(typography.cellWidth, typography.cellHeight),
     )
+}
+
+// What matters of a pointer event of the mouse, or `null` for the ones that the terminal is not told about (the pointer
+// entering or leaving).
+@OptIn(ExperimentalComposeUiApi::class)
+private fun PointerEvent.toPointerInfo(): PointerInfo? {
+    val kind = when (type) {
+        PointerEventType.Press -> PointerInfo.Kind.PRESS
+        PointerEventType.Release -> PointerInfo.Kind.RELEASE
+        PointerEventType.Move -> PointerInfo.Kind.MOVE
+        PointerEventType.Scroll -> PointerInfo.Kind.SCROLL
+        else -> return null
+    }
+    val change = changes.firstOrNull() ?: return null
+    val held = buildSet {
+        if (buttons.isPrimaryPressed) add(TerminalMouseButton.LEFT)
+        if (buttons.isSecondaryPressed) add(TerminalMouseButton.RIGHT)
+        if (buttons.isTertiaryPressed) add(TerminalMouseButton.MIDDLE)
+        if (buttons.isBackPressed) add(TerminalMouseButton.BACK)
+        if (buttons.isForwardPressed) add(TerminalMouseButton.FORWARD)
+    }
+    return PointerInfo(
+        kind = kind,
+        x = change.position.x,
+        y = change.position.y,
+        button = button?.toTerminal(),
+        held = held,
+        shift = keyboardModifiers.isShiftPressed,
+        ctrl = keyboardModifiers.isCtrlPressed,
+        alt = keyboardModifiers.isAltPressed,
+        meta = keyboardModifiers.isMetaPressed,
+        scrollX = change.scrollDelta.x,
+        scrollY = change.scrollDelta.y,
+    )
+}
+
+private fun PointerButton.toTerminal(): TerminalMouseButton? = when (this) {
+    PointerButton.Primary -> TerminalMouseButton.LEFT
+    PointerButton.Secondary -> TerminalMouseButton.RIGHT
+    PointerButton.Tertiary -> TerminalMouseButton.MIDDLE
+    PointerButton.Back -> TerminalMouseButton.BACK
+    PointerButton.Forward -> TerminalMouseButton.FORWARD
+    else -> null
 }

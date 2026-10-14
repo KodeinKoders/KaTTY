@@ -239,4 +239,109 @@ class TerminalTest {
         val blue = bitmap.getColor((15.5f * typography.cellWidth).toInt(), 2) and 0xFFFFFF
         assertTrue((blue and 0xFF) > (blue shr 16 and 0xFF) + 60, "The background of 'on blue' is blue, it is ${"%06x".format(blue)}")
     }
+
+    // A program in raw mode that asks for the mouse, then prints what it reads without the escapes, so that what is
+    // left is text, in a terminal that fills the scene.
+    private fun mouseScene(modes: String, bytes: Int): Pair<ImageComposeScene, TerminalSession> {
+        val session = session("""printf '$modes'; stty raw -echo; echo ready; head -c$bytes | tr -d '\033' | od -An -c""", cols = 80, rows = 24)
+        val scene = show(session, windowFocused = true)
+        scene.renderUntil("the terminal to fit the scene") { session.frames.value.cols != 80 && "ready" in session.frames.value.text(0) }
+        scene.renderUntil("the mouse to be asked for") { session.frames.value.mouseTracking }
+        scene.settle()
+        return scene to session
+    }
+
+    private val primary get() = androidx.compose.ui.input.pointer.PointerButton.Primary
+
+    private fun ImageComposeScene.click(position: Offset, shift: Boolean = false) {
+        val modifiers = androidx.compose.ui.input.pointer.PointerKeyboardModifiers(isShiftPressed = shift)
+        sendPointerEvent(
+            PointerEventType.Press, position, keyboardModifiers = modifiers, button = primary,
+            buttons = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true),
+        )
+        sendPointerEvent(
+            PointerEventType.Release, position, keyboardModifiers = modifiers, button = primary,
+            buttons = androidx.compose.ui.input.pointer.PointerButtons(),
+        )
+    }
+
+    private fun TerminalSession.awaitReports(scene: ImageComposeScene, expected: String) {
+        scene.renderUntil("the program to have read $expected") { expected in frames.value.rows.indices.joinToString("") { frames.value.text(it) }.replace(Regex("\\s+"), "") }
+    }
+
+    // The position, in pixels, of the middle of a cell.
+    private fun cellCenter(col: Int, row: Int) = Offset((col + 0.5f) * typography!!.cellWidth, (row + 0.5f) * typography!!.cellHeight)
+
+    @Test
+    fun reportsAClickAtTheCellUnderThePointerEvenAtTheLastColumn() {
+        // The reports are ESC [ < 0 ; col ; row M, then m: 9 bytes with one digit for the column and 10 with two.
+        val (scene, session) = mouseScene("\\033[?1000h\\033[?1006h", bytes = 2 * 10)
+        val cols = session.frames.value.cols
+
+        // The last column, where the size of a cell that is rounded would be a few cells off.
+        scene.click(cellCenter(cols - 1, 1))
+
+        session.awaitReports(scene, "[<0;$cols;2M[<0;$cols;2m")
+    }
+
+    @Test
+    fun shiftSwallowsAClickWithItsRelease() {
+        val (scene, session) = mouseScene("\\033[?1000h\\033[?1006h", bytes = 2 * 9)
+
+        scene.click(cellCenter(4, 2), shift = true)
+        scene.click(cellCenter(0, 0))
+
+        // Only the click without Shift is read: it is the first thing that the program got.
+        session.awaitReports(scene, "[<0;1;1M[<0;1;1m")
+        assertTrue(";5;3" !in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) }.replace(Regex("\\s+"), ""))
+    }
+
+    @Test
+    fun reportsTheWheelAtTheCellUnderThePointer() {
+        val (scene, session) = mouseScene("\\033[?1000h\\033[?1006h", bytes = 2 * 10)
+
+        scene.sendPointerEvent(PointerEventType.Scroll, cellCenter(2, 1), scrollDelta = Offset(0f, 1f))
+        scene.sendPointerEvent(PointerEventType.Scroll, cellCenter(2, 1), scrollDelta = Offset(0f, -1f))
+
+        session.awaitReports(scene, "[<65;3;2M[<64;3;2M")
+    }
+
+    @Test
+    fun reportsHoveringOnlyToAProgramThatAskedForAllMotion() {
+        val (scene, session) = mouseScene("\\033[?1003h\\033[?1006h", bytes = 20)
+
+        // The first event of a pointer that comes in is its entering, which is not told: the ones after it are.
+        scene.sendPointerEvent(PointerEventType.Move, cellCenter(5, 3))
+        scene.sendPointerEvent(PointerEventType.Move, cellCenter(6, 3))
+        scene.sendPointerEvent(PointerEventType.Move, cellCenter(7, 3))
+
+        session.awaitReports(scene, "[<35;7;4M[<35;8;4M")
+    }
+
+    @Test
+    fun doesNotReportHoveringToAProgramThatDidNotAskForIt() {
+        val (scene, session) = mouseScene("\\033[?1000h\\033[?1006h", bytes = 9)
+
+        scene.sendPointerEvent(PointerEventType.Move, cellCenter(5, 3))
+        scene.sendPointerEvent(PointerEventType.Move, cellCenter(6, 3))
+        scene.click(cellCenter(0, 0))
+
+        // The click is the first thing that was read.
+        session.awaitReports(scene, "[<0;1;1M")
+    }
+
+    @Test
+    fun sendsNothingToAProgramThatDidNotAskForTheMouse() {
+        val session = session("stty raw -echo; echo ready; head -c1 | od -An -c", cols = 80, rows = 24)
+        val scene = show(session, windowFocused = true)
+        scene.renderUntil("the terminal to fit the scene") { session.frames.value.cols != 80 && "ready" in session.frames.value.text(0) }
+        scene.settle()
+
+        scene.click(cellCenter(3, 2))
+        scene.sendPointerEvent(PointerEventType.Scroll, cellCenter(2, 1), scrollDelta = Offset(0f, 1f))
+        session.sendKey(app.katty.terminal.KeyInput(app.katty.terminal.TerminalKey.ENTER))
+
+        // The first byte that the program read is the Enter.
+        scene.renderUntil("the Enter to be read") { "\\r" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) } }
+    }
 }

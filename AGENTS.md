@@ -59,7 +59,7 @@ The ones that are easy to break:
 - The producer waits for the output to pause (3 ms, at most 8) before it makes a frame. A program redraws in several writes that are read separately, and zsh moving the selection in its completion menu moves the cursor down to the menu, draws, and moves it back: a frame made after the first write shows the cursor in the menu for a frame. Do not make it publish at the first chunk of output.
 - The frame producer publishes at most 60 frames per second. A row that did not change is **the same object** in the next frame (the renderer's cache relies on it): do not break that by creating rows needlessly.
 
-## Keyboard
+## Keyboard and mouse
 
 - Printable text comes from AWT's `KEY_TYPED` events, so that dead keys, input methods and Option characters work. `KEY_PRESSED` is only used for keys without text and for Ctrl combinations.
 - While the terminal has the Compose focus it also has an input method session (`terminalTextInput`): that is what makes macOS report a dead key while it is composed, which is drawn underlined at the cursor (the preedit, kept in `TerminalTextInput`, drawn by `TerminalView`, never written to the terminal). The final character may then come as a `KEY_TYPED`, as committed text of the input method, or as both, depending on the platform: `TerminalTextInput.deliver` sends it **once**, so send text through it, not straight to the session. The `TerminalTextInput` DEBUG log tells which route delivered what.
@@ -87,6 +87,11 @@ Starting the app opens a window on the user's desktop, and the user may be worki
 
 `.mcp.json` registers the Compose Hot Reload MCP server (`hotMcpServer`): the app must be started with `hotRun`, not `run`, for it to connect.
 It is slow to start (`--no-daemon`), and its tools that work through semantics (`click`, `type_text`, `get_semantic_tree`) do nothing for the terminal, which is a `Canvas`.
+
+- The mouse goes `Terminal` → `MouseTranslator` → `TerminalSession.sendMouse` → libghostty's mouse encoder, and only while the program asked for it (`TerminalFrame.mouseTracking`). **Positions are in cells (fractional) from `Terminal` to the session**, which converts them with the whole-number cell size it gave the terminal in `resize`: what a program is told of the size of a cell and what SGR-Pixels reports must agree, and a rounded float cell width drifts by dozens of pixels at the last column.
+- Shift + button is **swallowed** (nothing sent, nothing done) to keep it for the selection, which does not exist yet; a swallowed press has its drag and release swallowed, and a press that was sent has its release sent whatever Shift does. Shift on the wheel is not a bypass: it is how AWT says that the scroll is horizontal.
+- A trackpad's wheel is fractions of a notch: they are added up, one report per whole notch, at most 10 per event.
+- The pointer's shape follows what the program asked for (`TerminalFrame.pointerShape`, OSC 22; the text cursor by default), through `pointerIconFor`.
 
 ## Pitfalls
 

@@ -136,6 +136,34 @@ public class GhosttyTerminal(
             }
         }
 
+    /** Whether the program asked to be told about the mouse (X10, normal, button or any-event tracking). */
+    public val mouseTracking: Boolean
+        get() {
+            requireOpen()
+            return Arena.ofConfined().use { arena ->
+                val out = arena.allocate(ValueLayout.JAVA_BOOLEAN)
+                checkResult(
+                    GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING(), out),
+                    "ghostty_terminal_get(MOUSE_TRACKING)",
+                )
+                out.get(ValueLayout.JAVA_BOOLEAN, 0)
+            }
+        }
+
+    /** The shape of the pointer that the program asked for (OSC 22): the text cursor until it says otherwise. */
+    public val mouseShape: GhosttyMouseShape
+        get() {
+            requireOpen()
+            return Arena.ofConfined().use { arena ->
+                val out = arena.allocate(ValueLayout.JAVA_INT)
+                checkResult(
+                    GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_MOUSE_SHAPE(), out),
+                    "ghostty_terminal_get(MOUSE_SHAPE)",
+                )
+                GhosttyMouseShape.entries.getOrElse(out.get(ValueLayout.JAVA_INT, 0)) { GhosttyMouseShape.DEFAULT }
+            }
+        }
+
     public fun isModeEnabled(mode: GhosttyMode): Boolean {
         requireOpen()
         return Arena.ofConfined().use { arena ->

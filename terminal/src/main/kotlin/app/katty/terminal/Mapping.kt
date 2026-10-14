@@ -7,6 +7,10 @@ import app.katty.ghostty.GhosttyKey
 import app.katty.ghostty.GhosttyKeyAction
 import app.katty.ghostty.GhosttyKeyEvent
 import app.katty.ghostty.GhosttyMods
+import app.katty.ghostty.GhosttyMouseAction
+import app.katty.ghostty.GhosttyMouseButton
+import app.katty.ghostty.GhosttyMouseEvent
+import app.katty.ghostty.GhosttyMouseShape
 import app.katty.ghostty.GhosttyRenderCell
 import app.katty.ghostty.GhosttyRenderCursor
 import app.katty.ghostty.GhosttyRgb
@@ -120,3 +124,30 @@ internal fun KeyInput.toGhostty() = GhosttyKeyEvent(
     text = text,
     unshiftedCodepoint = unshiftedCodepoint,
 )
+
+internal fun MouseInput.toGhostty(xPx: Float, yPx: Float) = GhosttyMouseEvent(
+    action = when (action) {
+        TerminalMouseAction.PRESS -> GhosttyMouseAction.PRESS
+        TerminalMouseAction.RELEASE -> GhosttyMouseAction.RELEASE
+        TerminalMouseAction.MOTION -> GhosttyMouseAction.MOTION
+    },
+    button = button?.let {
+        when (it) {
+            TerminalMouseButton.LEFT -> GhosttyMouseButton.LEFT
+            TerminalMouseButton.RIGHT -> GhosttyMouseButton.RIGHT
+            TerminalMouseButton.MIDDLE -> GhosttyMouseButton.MIDDLE
+            TerminalMouseButton.WHEEL_UP -> GhosttyMouseButton.WHEEL_UP
+            TerminalMouseButton.WHEEL_DOWN -> GhosttyMouseButton.WHEEL_DOWN
+            TerminalMouseButton.WHEEL_LEFT -> GhosttyMouseButton.WHEEL_LEFT
+            TerminalMouseButton.WHEEL_RIGHT -> GhosttyMouseButton.WHEEL_RIGHT
+            TerminalMouseButton.BACK -> GhosttyMouseButton.EIGHT
+            TerminalMouseButton.FORWARD -> GhosttyMouseButton.NINE
+        }
+    },
+    mods = mods.toGhostty(),
+    x = xPx,
+    y = yPx,
+)
+
+// Both enums have the same entries, in the same order, which a test checks: the names are enough.
+internal fun GhosttyMouseShape.toTerminal(): TerminalPointerShape = TerminalPointerShape.valueOf(name)
