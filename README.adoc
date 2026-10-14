@@ -74,7 +74,7 @@ Images of the Kitty graphics protocol are drawn (`chafa -f kitty` for chafa, whi
 Copy and paste are Command and C or V on macOS, and Control and Shift and C or V elsewhere.
 The session tells its host about the title, the working directory, the bell, notifications, progress, what a program writes in the clipboard (OSC 52, and reads of it if the host allows them), the commands that the shell starts and ends, and the alternate screen; zsh and bash are made to report their directory and their prompts, and Command and Up or Down jump between prompts.
 Programs that ask to be told about the focus (vim, tmux) are.
-A host can pause the terminals that it does not show.
+The font (a family of the system, or files), the shape of the cursor and the limits of the history and the images are parameters, and a host can pause the terminals that it does not show.
 Links, those that a program marks (OSC 8) and those that are written in the text, are underlined when Command is held over them (Control elsewhere) and opened with a click.
 
 What is not done yet:

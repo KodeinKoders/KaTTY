@@ -99,6 +99,13 @@ internal fun GhosttyRenderCursor.toTerminal() = TerminalCursor(
     },
 )
 
+internal fun TerminalCursorShape.toGhostty(): GhosttyCursorStyle = when (this) {
+    TerminalCursorShape.BAR -> GhosttyCursorStyle.BAR
+    TerminalCursorShape.BLOCK -> GhosttyCursorStyle.BLOCK
+    TerminalCursorShape.UNDERLINE -> GhosttyCursorStyle.UNDERLINE
+    TerminalCursorShape.BLOCK_HOLLOW -> GhosttyCursorStyle.BLOCK_HOLLOW
+}
+
 // Both enums have the same entries, in the same order, which a test checks: indexing is enough.
 private val ghosttyKeys: List<GhosttyKey> = TerminalKey.entries.map { GhosttyKey.valueOf(it.name) }
 

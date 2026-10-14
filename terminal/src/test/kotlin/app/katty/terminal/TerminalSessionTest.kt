@@ -1276,6 +1276,82 @@ class TerminalSessionTest {
         assertNotEquals(0, session.awaitExit())
     }
 
+    // A session with the options that are tested: the program writes what it is given by the test, in raw mode.
+    private fun startWith(
+        script: String,
+        rows: Int = 5,
+        cursorShape: TerminalCursorShape = TerminalCursorShape.BLOCK,
+        scrollbackMaxBytes: Long = 10_000_000L,
+        imageStorageLimitBytes: Long = 320_000_000L,
+    ): TerminalSession = TerminalSession.start(
+        80, rows, command = listOf("/bin/sh", "-c", script), cursorShape = cursorShape,
+        scrollbackMaxBytes = scrollbackMaxBytes, imageStorageLimitBytes = imageStorageLimitBytes,
+    ).also { sessions += it }
+
+    @Test
+    fun theCursorHasTheShapeThatWasAskedForUntilTheProgramSetsOne() {
+        val session = startWith("""stty raw -echo; echo ready; head -c1 >/dev/null; printf '\033[4 q'; head -c1 >/dev/null; printf '\033[0 q'; sleep 30""", cursorShape = TerminalCursorShape.BAR)
+
+        assertEquals(TerminalCursorShape.BAR, session.awaitFrame { "ready" in it.text() }.cursor.shape)
+
+        session.paste("x")
+        session.awaitFrame { it.cursor.shape == TerminalCursorShape.UNDERLINE }
+
+        session.paste("x")
+        session.awaitFrame { it.cursor.shape == TerminalCursorShape.BAR }
+    }
+
+    @Test
+    fun theHollowBlockIsNotACursorShapeToStartWith() {
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), cursorShape = TerminalCursorShape.BLOCK_HOLLOW)
+        }
+    }
+
+    @Test
+    fun theHistoryIsLimitedByWhatWasAskedForAtTheStart() {
+        val small = startWith("seq 1 30000; sleep 30", scrollbackMaxBytes = 1_000_000)
+        val large = startWith("seq 1 30000; sleep 30", scrollbackMaxBytes = 100_000_000)
+
+        val smallFrame = small.awaitFrame { frame -> frame.rows.indices.any { frame.text(it) == "30000" } }
+        val largeFrame = large.awaitFrame { frame -> frame.rows.indices.any { frame.text(it) == "30000" } }
+
+        assertTrue(smallFrame.scrollbar!!.total < largeFrame.scrollbar!!.total, "${smallFrame.scrollbar!!.total} rows against ${largeFrame.scrollbar!!.total}")
+    }
+
+    @Test
+    fun loweringTheScrollbackLimitTakesHistoryBack() {
+        val session = startWith("seq 1 30000; sleep 30", scrollbackMaxBytes = 100_000_000)
+        val before = session.awaitFrame { frame -> frame.rows.indices.any { frame.text(it) == "30000" } }.scrollbar!!.total
+
+        session.setScrollbackLimit(1_000_000)
+
+        val after = session.awaitFrame { (it.scrollbar?.total ?: Long.MAX_VALUE) < before }.scrollbar!!.total
+        assertTrue(after > 5, "Some history is kept: $after")
+    }
+
+    @Test
+    fun noImagesAreStoredWhenTheLimitIsZeroAndTheyGoWhenItIsLowered() {
+        val image = """printf '\033_Ga=T,f=32,s=2,v=2,i=1,q=2;/////////////////////w==\033\\'"""
+        val off = startWith("$image; sleep 30", imageStorageLimitBytes = 0)
+        Thread.sleep(500)
+        assertEquals(emptyList(), off.frames.value.images, "Images are off")
+
+        val on = startWith("$image; stty raw -echo; echo ready; head -c1 >/dev/null; sleep 30")
+        on.awaitFrame { it.images.isNotEmpty() }
+
+        on.setImageStorageLimit(0)
+
+        on.awaitFrame { it.images.isEmpty() }
+    }
+
+    @Test
+    fun aNegativeLimitIsRefused() {
+        val session = start("sleep 30")
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { session.setScrollbackLimit(-1) }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { session.setImageStorageLimit(-1) }
+    }
+
     private companion object {
         const val TIMEOUT_MS = 5_000L
     }

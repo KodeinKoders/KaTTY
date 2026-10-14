@@ -59,6 +59,8 @@ private val logger = LoggerFactory.getLogger(GhosttyTerminal::class.java)
  * somewhat more. `null` keeps libghostty's own limit.
  * @param imageStorageLimitBytes How much memory the images of the Kitty graphics protocol may take. Without a limit
  * the terminal does not store images: the protocol is off. `null` leaves it off.
+ * @param defaultCursorStyle The shape of the cursor until a program sets one (DECSCUSR), and when it resets it: libghostty's own is
+ * the block. Not [GhosttyCursorStyle.BLOCK_HOLLOW], which is how an unfocused block is drawn and not a style that a program sets.
  */
 public class GhosttyTerminal(
     cols: Int,
@@ -67,6 +69,7 @@ public class GhosttyTerminal(
     defaultCursorBlink: Boolean = false,
     scrollbackMaxBytes: Long? = null,
     imageStorageLimitBytes: Long? = null,
+    defaultCursorStyle: GhosttyCursorStyle? = null,
 ) : AutoCloseable {
     internal val handle: MemorySegment
 
@@ -208,24 +211,25 @@ public class GhosttyTerminal(
                 )
             }
 
-            if (scrollbackMaxBytes != null) {
-                Arena.ofConfined().use { arena ->
-                    val limit = arena.allocate(ValueLayout.JAVA_LONG)
-                    limit.set(ValueLayout.JAVA_LONG, 0, scrollbackMaxBytes)
-                    checkResult(
-                        GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES(), limit),
-                        "ghostty_terminal_set(SCROLLBACK_MAX_BYTES)",
-                    )
-                }
-            }
-
+            if (scrollbackMaxBytes != null) setLimit(GhosttyVt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES(), scrollbackMaxBytes, "SCROLLBACK_MAX_BYTES")
             if (imageStorageLimitBytes != null) {
+                setLimit(GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT(), imageStorageLimitBytes, "KITTY_IMAGE_STORAGE_LIMIT")
+            }
+            if (defaultCursorStyle != null) {
+                require(defaultCursorStyle != GhosttyCursorStyle.BLOCK_HOLLOW) { "A program does not set the hollow block" }
                 Arena.ofConfined().use { arena ->
-                    val limit = arena.allocate(ValueLayout.JAVA_LONG)
-                    limit.set(ValueLayout.JAVA_LONG, 0, imageStorageLimitBytes)
+                    val style = arena.allocate(ValueLayout.JAVA_INT)
+                    style.set(
+                        ValueLayout.JAVA_INT, 0,
+                        when (defaultCursorStyle) {
+                            GhosttyCursorStyle.BAR -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_BAR()
+                            GhosttyCursorStyle.UNDERLINE -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_UNDERLINE()
+                            else -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK()
+                        },
+                    )
                     checkResult(
-                        GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT(), limit),
-                        "ghostty_terminal_set(KITTY_IMAGE_STORAGE_LIMIT)",
+                        GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE(), style),
+                        "ghostty_terminal_set(DEFAULT_CURSOR_STYLE)",
                     )
                 }
             }
@@ -575,6 +579,34 @@ public class GhosttyTerminal(
             }
             checkResult(result, "ghostty_paste_encode")
             buffer.asSlice(0, written.get(ValueLayout.JAVA_LONG, 0)).toArray(ValueLayout.JAVA_BYTE)
+        }
+    }
+
+    /**
+     * Limits the memory that the history may take to [bytes], about: libghostty prunes by pages, so it is somewhat more, and only
+     * whole pages of history are removed, at once when the limit is lowered. `0` keeps no history.
+     */
+    public fun setScrollbackMaxBytes(bytes: Long) {
+        requireOpen()
+        require(bytes >= 0) { "A limit is not negative: $bytes" }
+        setLimit(GhosttyVt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES(), bytes, "SCROLLBACK_MAX_BYTES")
+    }
+
+    /**
+     * Limits the memory that the images of the Kitty graphics protocol may take to [bytes]. Lowering it removes the images that no
+     * longer fit, and `0` removes them all and turns the protocol off.
+     */
+    public fun setImageStorageLimit(bytes: Long) {
+        requireOpen()
+        require(bytes >= 0) { "A limit is not negative: $bytes" }
+        setLimit(GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT(), bytes, "KITTY_IMAGE_STORAGE_LIMIT")
+    }
+
+    private fun setLimit(option: Int, bytes: Long, name: String) {
+        Arena.ofConfined().use { arena ->
+            val limit = arena.allocate(ValueLayout.JAVA_LONG)
+            limit.set(ValueLayout.JAVA_LONG, 0, bytes)
+            checkResult(GhosttyVt.ghostty_terminal_set(handle, option, limit), "ghostty_terminal_set($name)")
         }
     }
 

@@ -585,6 +585,32 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * Limits the memory that the history may take to [bytes], about: libghostty removes whole pages of it, and does so at once
+     * when the limit is lowered, which is how a host takes memory back from a terminal that it does not use. `0` keeps no history.
+     */
+    public fun setScrollbackLimit(bytes: Long) {
+        require(bytes >= 0) { "A limit is not negative: $bytes" }
+        lock.withLock {
+            if (closed.get()) return
+            terminal.setScrollbackMaxBytes(bytes)
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    /**
+     * Limits the memory that the images of the Kitty graphics protocol may take to [bytes]. The images that no longer fit are
+     * removed at once, from the screen too, and `0` removes them all and turns the images off.
+     */
+    public fun setImageStorageLimit(bytes: Long) {
+        require(bytes >= 0) { "A limit is not negative: $bytes" }
+        lock.withLock {
+            if (closed.get()) return
+            terminal.setImageStorageLimit(bytes)
+        }
+        frameRequests.trySend(Unit)
+    }
+
+    /**
      * Tells the session whether the keys that are typed go to this terminal: a program that asked to know (mode 1004: vim, tmux)
      * is sent `ESC [ I` when it gains the focus and `ESC [ O` when it loses it. It is told when it changes, and only if it asked.
      * What is typed or selected is not touched.
@@ -914,6 +940,13 @@ public class TerminalSession private constructor(
          * @param directory Where the program starts, by default the user's home.
          * @param cursorBlink Whether the cursor blinks unless the program says otherwise. It almost never does,
          * a shell included, and a terminal's cursor is expected to blink: without this it would not.
+         * @param cursorShape The shape of the cursor until the program sets one (DECSCUSR), and when it resets it: a block by default.
+         * Only [TerminalCursorShape.BAR], [TerminalCursorShape.BLOCK] and [TerminalCursorShape.UNDERLINE]: the hollow block is how an
+         * unfocused block is drawn.
+         * @param scrollbackMaxBytes About how much memory the history may take, 10 MB by default (Ghostty's own). `0` keeps none.
+         * [setScrollbackLimit] changes it.
+         * @param imageStorageLimitBytes How much memory the images of the Kitty graphics protocol may take, 320 MB by default
+         * (Ghostty's own). `0` turns the images off. [setImageStorageLimit] changes it.
          * @param theme The colors, libghostty's own by default. [setTheme] changes them.
          * @param shellIntegration Whether to make zsh and bash report their prompts (OSC 133) and their directory (OSC 7), which they
          * do not on their own: the [workingDirectory] and the [TerminalEvent.PromptStarted], [TerminalEvent.CommandStarted] and
@@ -932,11 +965,17 @@ public class TerminalSession private constructor(
             environment: Map<String, String> = emptyMap(),
             directory: String = System.getProperty("user.home"),
             cursorBlink: Boolean = true,
+            cursorShape: TerminalCursorShape = TerminalCursorShape.BLOCK,
+            scrollbackMaxBytes: Long = SCROLLBACK_MAX_BYTES,
+            imageStorageLimitBytes: Long = IMAGE_STORAGE_LIMIT_BYTES,
             theme: TerminalTheme? = null,
             clipboardWrite: Boolean = true,
             clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
             shellIntegration: Boolean = true,
         ): TerminalSession {
+            require(cursorShape != TerminalCursorShape.BLOCK_HOLLOW) { "The hollow block is not a shape that a program sets" }
+            require(scrollbackMaxBytes >= 0) { "A limit is not negative: $scrollbackMaxBytes" }
+            require(imageStorageLimitBytes >= 0) { "A limit is not negative: $imageStorageLimitBytes" }
             val env = HashMap(System.getenv())
             env["TERM"] = TERM
             env["COLORTERM"] = "truecolor"
@@ -956,8 +995,8 @@ public class TerminalSession private constructor(
             val toClose = ArrayDeque<AutoCloseable>()
             try {
                 val terminal = GhosttyTerminal(
-                    cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink, scrollbackMaxBytes = SCROLLBACK_MAX_BYTES,
-                    imageStorageLimitBytes = IMAGE_STORAGE_LIMIT_BYTES,
+                    cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink, scrollbackMaxBytes = scrollbackMaxBytes,
+                    imageStorageLimitBytes = imageStorageLimitBytes, defaultCursorStyle = cursorShape.toGhostty(),
                 ).also { toClose.addFirst(it) }
                 // Before the session, so that the first frame already has the colors.
                 terminal.applyTheme(theme)

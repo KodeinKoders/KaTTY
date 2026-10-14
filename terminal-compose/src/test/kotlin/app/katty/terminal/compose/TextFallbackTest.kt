@@ -42,7 +42,7 @@ class TextFallbackTest {
     @Test
     fun findsATextFontForAnyFontThatLacksTheSymbol() {
         for (name in listOf("Menlo", "Courier New", "Apple Symbols", "Helvetica")) {
-            val font = TerminalFont.system(name) ?: continue
+            val font = anySystemFont(name) ?: continue
 
             assertNotNull(font.fallback.familyFor("\u23F8"), "The terminal's font is $name")
         }
@@ -51,7 +51,7 @@ class TextFallbackTest {
     @Test
     fun usesNoFallbackWhenTheTerminalsFontHasTheSymbol() {
         // STIX Two Math has the pause button as text.
-        val font = TerminalFont.system("STIX Two Math") ?: return
+        val font = anySystemFont("STIX Two Math") ?: return
 
         assertNull(font.fallback.familyFor("\u23F8"))
     }
@@ -59,7 +59,7 @@ class TextFallbackTest {
     @Test
     fun aFontIsHasWhatAnyOfItsFacesHas() {
         val regular = TerminalFont.bundled().faces
-        val symbols = TerminalFont.system("STIX Two Math")?.faces ?: return
+        val symbols = anySystemFont("STIX Two Math")?.faces ?: return
 
         assertNull(TextFallback(regular + symbols).familyFor("\u23F8"), "One of the faces has it")
         assertNotNull(TextFallback(regular).familyFor("\u23F8"), "None of them has it")

@@ -67,7 +67,7 @@ internal class TerminalTypography(
 }
 
 @Composable
-internal fun rememberTerminalTypography(fontSize: TextUnit, font: TerminalFont = remember { TerminalFont.bundled() }): TerminalTypography {
+internal fun rememberTerminalTypography(fontSize: TextUnit, font: TerminalFont = TerminalFont.bundled()): TerminalTypography {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     return remember(measurer, density, font, fontSize) { TerminalTypography(measurer, density, font, fontSize) }

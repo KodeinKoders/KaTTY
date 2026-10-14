@@ -44,11 +44,17 @@ internal class TextFallback(private val terminalFaces: List<SkiaTypeface>) {
     private val found = HashMap<Int, FontFamily?>()
 
     /** The font to draw [text] with, or `null` to leave it to the system, which is what is right for most. */
+    // The font is shared by the terminals, which may be on different threads.
     fun familyFor(text: String): FontFamily? {
         if (!wantsTextPresentation(text)) return null
         val codePoint = text.codePointAt(0)
-        if (codePoint in found) return found[codePoint]
-        return find(codePoint)?.let { FontFamily(Typeface(it)) }.also { found[codePoint] = it }
+        return synchronized(found) {
+            if (codePoint in found) {
+                found[codePoint]
+            } else {
+                find(codePoint)?.let { FontFamily(Typeface(it)) }.also { found[codePoint] = it }
+            }
+        }
     }
 
     private fun find(codePoint: Int): SkiaTypeface? {

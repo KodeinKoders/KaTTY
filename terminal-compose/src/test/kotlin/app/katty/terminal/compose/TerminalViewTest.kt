@@ -136,6 +136,88 @@ private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, 
 }
 
 class TerminalViewTest {
+    private fun Rendered.bytes() = image.encodeToData(EncodedImageFormat.PNG)!!.bytes
+
+    // The files of the bundled font, which are in the resources, as files.
+    private fun bundledFiles(): List<File> {
+        val directory = kotlin.io.path.createTempDirectory("katty-fonts").toFile().also { it.deleteOnExit() }
+        return listOf("Regular", "Bold", "Italic", "BoldItalic").map { name ->
+            val file = File(directory, "JetBrainsMono-$name.ttf").also { it.deleteOnExit() }
+            TerminalFont::class.java.classLoader.getResourceAsStream("app/katty/terminal/compose/fonts/JetBrainsMono-$name.ttf")!!.use { input ->
+                file.outputStream().use { input.copyTo(it) }
+            }
+            file
+        }
+    }
+
+    @Test
+    fun theBundledFontIsLoadedOnceAndSharedByEveryTerminal() {
+        assertSame(TerminalFont.bundled(), TerminalFont.bundled())
+    }
+
+    @Test
+    fun aFontFromFilesIsDrawnAsTheBundledOneIsWhenItIsTheSame() {
+        val (regular, bold, italic, boldItalic) = bundledFiles()
+        val frame = frame(30, listOf(row(30, *text("Hello, world"), cell("B", style = TerminalStyle(bold = true)), cell("I", style = TerminalStyle(italic = true)))))
+
+        val bundled = render("font-bundled", frame)
+        val files = render("font-files", frame, font = TerminalFont.files(regular, bold, italic, boldItalic))
+
+        assertEquals(bundled.typography.cellWidth, files.typography.cellWidth)
+        assertEquals(bundled.typography.cellHeight, files.typography.cellHeight)
+        assertTrue(bundled.bytes().contentEquals(files.bytes()), "The same font from files draws the same")
+    }
+
+    @Test
+    fun aFontFromFilesThatHasNoBoldFaceDrawsBoldTextWithTheRegularOne() {
+        val (regular) = bundledFiles()
+        val frame = frame(30, listOf(row(30, *text("Bold", style = TerminalStyle(bold = true)))))
+
+        val rendered = render("font-no-bold", frame, font = TerminalFont.files(regular))
+
+        for (col in 0..3) assertTrue(rendered.hasInk(col, 0), "The cell $col is drawn")
+    }
+
+    @Test
+    fun aFontThatIsNotAFileIsRefused() {
+        val directory = kotlin.io.path.createTempDirectory("katty-fonts").toFile().also { it.deleteOnExit() }
+        val text = File(directory, "not-a-font.ttf").also { it.writeText("not a font"); it.deleteOnExit() }
+
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { TerminalFont.files(text) }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { TerminalFont.files(File(directory, "missing.ttf")) }
+    }
+
+    @Test
+    fun aFontThatIsNotMonospacedIsRefused() {
+        val family = listOf("Helvetica", "Arial", "Times New Roman", "Times").firstOrNull { anySystemFont(it) != null } ?: return
+
+        val refused = org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { TerminalFont.system(family) }
+
+        assertTrue("not monospaced" in refused.message.orEmpty(), refused.message)
+    }
+
+    @Test
+    fun aSystemFontThatDoesNotExistIsNull() {
+        assertEquals(null, TerminalFont.system("No Such Font Family"))
+    }
+
+    @Test
+    fun aSystemFontHasItsRealBoldAndItalicFaces() {
+        val font = TerminalFont.system("Menlo") ?: return
+        val styles = font.faces.map { it.fontStyle }
+        assertTrue(styles.any { it.weight >= 600 }, "A bold face: $styles")
+        assertTrue(styles.any { it.slant != org.jetbrains.skia.FontSlant.UPRIGHT }, "An italic face: $styles")
+
+        val frame = frame(30, listOf(row(30, *text("WWWW"), *text("WWWW", style = TerminalStyle(bold = true)))))
+        val rendered = render("font-menlo-bold", frame, fontSize = 24f, font = font)
+
+        // The bold cells are not the regular ones: their pixels are not the same.
+        val regularCell = (0 until rendered.typography.cellHeight.toInt()).map { y -> (0 until rendered.typography.cellWidth.toInt()).map { x -> rendered.pixel(x, y) } }
+        val boldLeft = (4 * rendered.typography.cellWidth).toInt()
+        val boldCell = (0 until rendered.typography.cellHeight.toInt()).map { y -> (0 until rendered.typography.cellWidth.toInt()).map { x -> rendered.pixel(boldLeft + x, y) } }
+        assertNotEquals(regularCell, boldCell)
+    }
+
     @Test
     fun underlinesTheLinkThatIsHovered() {
         val frame = frame(20, listOf(row(20), row(20)))
@@ -413,7 +495,7 @@ class TerminalViewTest {
         // has it (STIX Two Math) draws it itself.
         val frame = frame(30, listOf(row(30, cell("\u23F8"), cell("\u2764"), cell("\u23FA"), cell("\u23F8\uFE0F"))))
         for (name in listOf("Menlo", "STIX Two Math", "Apple Symbols", "Courier New")) {
-            val font = TerminalFont.system(name) ?: continue
+            val font = anySystemFont(name) ?: continue
 
             val rendered = render("text-symbols-$name", frame, fontSize = 24f, font = font)
 

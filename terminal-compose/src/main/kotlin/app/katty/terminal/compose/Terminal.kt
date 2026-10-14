@@ -71,7 +71,9 @@ import kotlin.math.roundToInt
  * The cursor shows whether the keys go to the terminal: it is a block that blinks when the program asks for it,
  * and an outline that does not blink when the window, or the terminal, does not have the focus.
  *
- * @param fontSize The size of the text, which gives the size of a cell. The font is always monospace.
+ * @param fontSize The size of the text, which gives the size of a cell.
+ * @param font The font, which is monospaced: the bundled JetBrains Mono by default. The cells change with it, and so does the size of the
+ * terminal in cells, which is told to the session.
  * Links (an address that a program marked with OSC 8, or one that is written in the text) are opened with Command and a click on
  * macOS, and Control and a click elsewhere, even when the program asked for the mouse: the link is underlined while the modifier is
  * held over it.
@@ -93,11 +95,12 @@ public fun Terminal(
     session: TerminalSession,
     modifier: Modifier = Modifier,
     fontSize: TextUnit = 13.sp,
+    font: TerminalFont = TerminalFont.bundled(),
     focusRequester: FocusRequester = remember { FocusRequester() },
     onOpenLink: (String) -> Unit = ::openInBrowser,
 ) {
     val frame by session.frames.collectAsState()
-    val typography = rememberTerminalTypography(fontSize)
+    val typography = rememberTerminalTypography(fontSize, font)
 
     var size by remember { mutableStateOf(IntSize.Zero) }
     var focused by remember { mutableStateOf(false) }

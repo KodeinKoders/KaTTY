@@ -378,6 +378,24 @@ class TerminalTest {
     }
 
     @Test
+    fun resizesTheSessionWhenTheFontChanges() {
+        val other = TerminalFont.system("Menlo") ?: return
+        val session = session("sleep 30", cols = 10, rows = 3)
+        val font = androidx.compose.runtime.mutableStateOf(TerminalFont.bundled())
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp), font.value)
+            Terminal(session, Modifier.fillMaxSize(), fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp), font = font.value)
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene") { session.frames.value.cols != 10 }
+        val before = typography!!
+        assertEquals((HEIGHT / before.cellHeight).toInt(), session.frames.value.rows.size)
+
+        font.value = other
+
+        scene.renderUntil("the terminal to fit the new cells") { typography!!.cellHeight != before.cellHeight && session.frames.value.rows.size == (HEIGHT / typography!!.cellHeight).toInt() }
+    }
+
+    @Test
     fun sendsTheKeysThatEditTheLineAsWhatTheLineEditorBinds() {
         org.junit.Assume.assumeTrue("The line editing keys are the ones of macOS", isMac)
         // In raw mode, the program gets exactly the bytes that are sent.
