@@ -1198,6 +1198,84 @@ class TerminalSessionTest {
         session.awaitFrame { !it.alternateScreen }
     }
 
+    @Test
+    fun aHiddenSessionProducesNoFramesButIsStillFedAndPublishes() {
+        val session = startThatWaits("""printf '\033]2;hidden title\007hello'; sleep 30""")
+        // The frames that the first output asked for.
+        Thread.sleep(150)
+        val before = session.frames.value
+
+        session.setVisible(false)
+        session.paste("x")
+
+        await("the title that the program set while hidden") { session.title.value == "hidden title" }
+        Thread.sleep(200)
+        assertSame(before, session.frames.value, "No frame was produced")
+        assertEquals(false, session.visible.value)
+    }
+
+    @Test
+    fun showingASessionAgainProducesAFrameWithWhatHappenedWhileItWasHidden() {
+        val session = startThatWaits("""i=0; while [ ${'$'}i -lt 100 ]; do printf 'line %s\r\n' ${'$'}i; i=${'$'}((i+1)); done; sleep 30""", rows = 5)
+        Thread.sleep(150)
+
+        session.setVisible(false)
+        session.paste("x")
+        // The program printed a hundred lines, which the screen scrolled through: the last of them is a few rows, and the rest is history.
+        Thread.sleep(500)
+        session.setVisible(true)
+
+        val frame = session.awaitFrame { frame -> frame.rows.indices.any { frame.text(it) == "line 99" } }
+        assertEquals(listOf("line 96", "line 97", "line 98", "line 99"), (0 until 5).map { frame.text(it) }.filter { it.isNotEmpty() })
+        assertTrue(frame.scrollbar!!.total > frame.scrollbar!!.len, "The lines that scrolled out are in the history")
+    }
+
+    @Test
+    fun theKeysOfAHiddenSessionReachTheProgram() {
+        val session = startThatWaits("""head -c2 | od -An -c; sleep 30""")
+        Thread.sleep(150)
+
+        session.setVisible(false)
+        session.paste("x")
+        // The program that is waiting for it reads what is there, and drops what it does not keep: the next keys come after.
+        Thread.sleep(300)
+        session.sendText("ab")
+        Thread.sleep(300)
+        session.setVisible(true)
+
+        session.awaitFrame { "a b" in it.text().replace(Regex("\\s+"), " ") }
+    }
+
+    @Test
+    fun showingAVisibleSessionAndHidingAndShowingItAgainAreHarmless() {
+        val session = startThatWaits("""printf 'hello'; sleep 30""")
+        Thread.sleep(150)
+        val before = session.frames.value
+
+        session.setVisible(true)
+        Thread.sleep(150)
+        assertSame(before, session.frames.value, "It was visible: nothing changes")
+
+        session.setVisible(false)
+        session.setVisible(true)
+        session.setVisible(false)
+        session.setVisible(true)
+        session.paste("x")
+
+        session.awaitFrame { "hello" in it.text() }
+    }
+
+    @Test
+    fun aHiddenSessionCanBeClosed() {
+        val session = start("sleep 30")
+        session.awaitFrame { true }
+        session.setVisible(false)
+
+        session.close()
+
+        assertNotEquals(0, session.awaitExit())
+    }
+
     private companion object {
         const val TIMEOUT_MS = 5_000L
     }

@@ -76,6 +76,9 @@ import kotlin.math.roundToInt
  * macOS, and Control and a click elsewhere, even when the program asked for the mouse: the link is underlined while the modifier is
  * held over it.
  *
+ * A terminal that the host does not show should be paused with [TerminalSession.setVisible]: a session produces frames for as long as it
+ * is visible, whether or not this is composed.
+ *
  * What a program puts in the clipboard (OSC 52) is put there, unless the session was started without allowing it. The other
  * [TerminalEvent]s of the session are the host's.
  *

@@ -29,6 +29,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -116,6 +117,9 @@ public class TerminalSession private constructor(
 
     private val exitCode = MutableStateFlow<Int?>(null)
 
+    // Whether frames are produced: see [setVisible].
+    private val visibleState = MutableStateFlow(true)
+
     private val titleState = MutableStateFlow("")
     private val workingDirectoryState = MutableStateFlow<String?>(null)
     private val progressState = MutableStateFlow<TerminalProgress?>(null)
@@ -148,6 +152,27 @@ public class TerminalSession private constructor(
      */
     public val exited: StateFlow<Int?> get() = exitCode
 
+    /** Whether frames are produced: see [setVisible]. */
+    public val visible: StateFlow<Boolean> get() = visibleState
+
+    /**
+     * Tells the session whether anybody looks at it. A session that is not visible does not produce frames, which is the work that
+     * a hidden terminal has no use for (up to 60 times per second, reading every row that changed): its [frames] stay as they were,
+     * and so does what is derived from them, such as [linkAt].
+     *
+     * Everything else goes on: the program's output is read and fed to the terminal, keys, the mouse and the answers to the
+     * program's queries are sent, and [title], [workingDirectory], [progress], [events] and [exited] are published. Showing the session
+     * again produces one frame at once, with everything that happened. It is shown when it starts.
+     *
+     * A hidden session still holds its last frame and the images of it: this saves processor time, not memory.
+     */
+    public fun setVisible(visible: Boolean) {
+        if (visibleState.value == visible) return
+        visibleState.value = visible
+        // What happened while it was hidden is shown by the frame that this asks for, even if nothing asked for one since.
+        if (visible) frameRequests.trySend(Unit)
+    }
+
     /** The title that the program set (OSC 0 or 2), empty when it did not. */
     public val title: StateFlow<String> get() = titleState
 
@@ -172,6 +197,12 @@ public class TerminalSession private constructor(
 
         producerScope.launch {
             for (request in frameRequests) {
+                // A request that comes while the session is hidden waits here, and the ones after it merge into the next one: showing
+                // it again makes one frame, which is not followed by another for the request that was already served.
+                if (!visibleState.value) {
+                    visibleState.first { it }
+                    frameRequests.tryReceive()
+                }
                 val started = TimeSource.Monotonic.markNow()
                 settle(started)
                 try {
