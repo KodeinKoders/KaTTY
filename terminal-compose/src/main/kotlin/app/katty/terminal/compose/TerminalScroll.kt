@@ -46,6 +46,46 @@ internal class WheelScroller {
 }
 
 /**
+ * Gives a click of a mouse wheel the size of a click, which macOS does not.
+ *
+ * macOS reports a slow click of a wheel with a tiny amount (about 0.1 of a notch: it ramps the amounts up with the
+ * speed), and Java passes that on as the precise rotation. Added up to whole rows, as a trackpad's fractions are, such
+ * clicks only scroll one in three or four, and only one in ten when the program asked for the mouse. Java also gives a
+ * rounded rotation, which for a wheel is never zero: that is what tells a click.
+ *
+ * A click is an event with a rotation that comes alone, with no other scroll event before it for [CLICK_GAP_MS]: a
+ * trackpad's events come every few milliseconds, and a wheel that is spun is already above a notch. A click is at
+ * least a notch. The other events keep their precise amount, which a trackpad's fractions need.
+ *
+ * One for each axis. Not thread-safe: it is used from the UI thread.
+ */
+internal class WheelNormalizer {
+    private var lastMs: Long? = null
+
+    /**
+     * @param precise The amount of the event, in notches: down is positive.
+     * @param rotation The rounded rotation that Java gave, `0` when there is none (not an AWT event).
+     * @param timeMs When the event happened, in milliseconds.
+     */
+    fun normalize(precise: Float, rotation: Int, timeMs: Long): Float {
+        val previous = lastMs
+        lastMs = timeMs
+        val alone = previous == null || timeMs - previous > CLICK_GAP_MS
+        if (!alone || rotation == 0) return precise
+        val notches = max(abs(precise), abs(rotation.toFloat()))
+        return if (precise < 0f) -notches else notches
+    }
+
+    fun reset() {
+        lastMs = null
+    }
+
+    private companion object {
+        const val CLICK_GAP_MS = 100L
+    }
+}
+
+/**
  * Where the thumb of the scrollbar is on a track of [trackHeight] pixels, and the row that a position of it is.
  *
  * @param minThumbHeight The thumb is never shorter, however much history there is.

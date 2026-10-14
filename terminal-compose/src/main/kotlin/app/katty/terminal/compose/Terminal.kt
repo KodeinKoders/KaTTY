@@ -109,6 +109,8 @@ public fun Terminal(
         { text -> scope.launch { clipboard.setClipEntry(ClipEntry(StringSelection(text))) } }
     }
     val wheel = remember(session) { WheelScroller() }
+    val wheelX = remember(session) { WheelNormalizer() }
+    val wheelY = remember(session) { WheelNormalizer() }
     val scrollbarInteraction = remember(session) { ScrollbarInteraction() }
     val autoscroll = remember(session, scope) { SelectionAutoscroll(scope, session) }
     val density = LocalDensity.current
@@ -176,7 +178,7 @@ public fun Terminal(
                         if (event.type == PointerEventType.Press) focusRequester.requestFocus()
 
                         if (event.type == PointerEventType.Exit) scrollbarInteraction.exit()
-                        val info = event.toPointerInfo() ?: continue
+                        val info = event.toPointerInfo(wheelX, wheelY) ?: continue
                         selectionModifiers = SelectionModifiers(info.shift, info.alt, info.meta)
                         val typography = latestTypography.value
                         val tracking = latestFrame.value.mouseTracking
@@ -281,10 +283,12 @@ private fun caretRectInRoot(frame: TerminalFrame, typography: TerminalTypography
     )
 }
 
+private val logger = org.slf4j.LoggerFactory.getLogger("app.katty.terminal.compose.Terminal")
+
 // What matters of a pointer event of the mouse, or `null` for the ones that the terminal is not told about (the pointer
 // entering, or leaving with no button down).
 @OptIn(ExperimentalComposeUiApi::class)
-private fun PointerEvent.toPointerInfo(): PointerInfo? {
+private fun PointerEvent.toPointerInfo(wheelX: WheelNormalizer, wheelY: WheelNormalizer): PointerInfo? {
     val kind = when (type) {
         PointerEventType.Press -> PointerInfo.Kind.PRESS
         PointerEventType.Release -> PointerInfo.Kind.RELEASE
@@ -313,9 +317,19 @@ private fun PointerEvent.toPointerInfo(): PointerInfo? {
         ctrl = keyboardModifiers.isCtrlPressed,
         alt = keyboardModifiers.isAltPressed,
         meta = keyboardModifiers.isMetaPressed,
-        scrollX = change.scrollDelta.x,
-        scrollY = change.scrollDelta.y,
+        scrollX = if (kind == PointerInfo.Kind.SCROLL) normalized(wheelX, change.scrollDelta.x, change.uptimeMillis) else 0f,
+        scrollY = if (kind == PointerInfo.Kind.SCROLL) normalized(wheelY, change.scrollDelta.y, change.uptimeMillis) else 0f,
     )
+}
+
+// The amount of a scroll along an axis that has one, with the size of a click that a wheel's has. What the mouse really gives is in the
+// log, at the debug level.
+private fun PointerEvent.normalized(normalizer: WheelNormalizer, precise: Float, timeMs: Long): Float {
+    if (precise == 0f) return 0f
+    val rotation = (nativeEvent as? java.awt.event.MouseWheelEvent)?.wheelRotation ?: 0
+    val amount = normalizer.normalize(precise, rotation, timeMs)
+    logger.debug("Wheel: precise {}, rotation {}: {} notches", precise, rotation, amount)
+    return amount
 }
 
 private fun PointerButton.toTerminal(): TerminalMouseButton? = when (this) {

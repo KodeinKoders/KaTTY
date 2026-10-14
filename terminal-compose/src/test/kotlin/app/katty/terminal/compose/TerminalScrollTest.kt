@@ -52,6 +52,84 @@ class WheelScrollerTest {
     }
 }
 
+class WheelNormalizerTest {
+    private val wheel = WheelNormalizer()
+
+    @Test
+    fun aSlowClickOfAWheelIsAWholeNotch() {
+        // What macOS reports for a click that is slow: 0.1 of a notch, with a rotation of 1.
+        assertEquals(1f, wheel.normalize(0.1f, 1, 0))
+        assertEquals(1f, wheel.normalize(0.1f, 1, 300))
+        assertEquals(-1f, wheel.normalize(-0.1f, -1, 600))
+        assertEquals(-1f, wheel.normalize(-0.1f, -1, 900))
+    }
+
+    @Test
+    fun aTrackpadsFractionsAreKept() {
+        // Events every 10 ms, with no rotation until the accumulator of Java makes one.
+        var sum = 0f
+        for (i in 0 until 10) sum += wheel.normalize(0.2f, 0, i * 10L)
+
+        assertEquals(2f, sum, 0.0001f)
+    }
+
+    @Test
+    fun theRotationInTheMiddleOfATrackpadsStreamIsNotAddedAgain() {
+        wheel.normalize(0.2f, 0, 0)
+        wheel.normalize(0.2f, 0, 10)
+
+        // Java makes a rotation of 1 when it has accumulated half a notch: the event itself is still 0.2.
+        assertEquals(0.2f, wheel.normalize(0.2f, 1, 20))
+        assertEquals(0.2f, wheel.normalize(0.2f, 0, 30))
+    }
+
+    @Test
+    fun theFirstEventOfATrackpadGestureWithNoRotationIsKept() {
+        assertEquals(0.1f, wheel.normalize(0.1f, 0, 1000))
+    }
+
+    @Test
+    fun aFastClickIsNotMadeLarger() {
+        // macOS ramps the amount up when the wheel is fast.
+        assertEquals(3.4f, wheel.normalize(3.4f, 3, 0))
+        // Alone, it is at least what Java rounded it to.
+        assertEquals(-3f, wheel.normalize(-2.6f, -3, 500))
+    }
+
+    @Test
+    fun aClickIsAClickOnlyWhenItIsAlone() {
+        wheel.normalize(0.1f, 1, 0)
+
+        // 50 ms later is a stream, not another click.
+        assertEquals(0.1f, wheel.normalize(0.1f, 1, 50))
+        // And then again alone.
+        assertEquals(1f, wheel.normalize(0.1f, 1, 400))
+    }
+
+    @Test
+    fun theDirectionOfAClickIsThePreciseOnes() {
+        assertEquals(-1f, wheel.normalize(-0.1f, 1, 0))
+    }
+
+    @Test
+    fun theAxesDoNotShareTheirStreams() {
+        val x = WheelNormalizer()
+        val y = WheelNormalizer()
+        y.normalize(0.1f, 1, 0)
+
+        // The vertical scroll that was 10 ms ago does not make this horizontal click a part of a stream.
+        assertEquals(1f, x.normalize(0.1f, 1, 10))
+    }
+
+    @Test
+    fun resetForgetsTheLastEvent() {
+        wheel.normalize(0.1f, 1, 0)
+        wheel.reset()
+
+        assertEquals(1f, wheel.normalize(0.1f, 1, 10))
+    }
+}
+
 class ScrollbarGeometryTest {
     // 1000 rows, 10 of them in view, on a track of 500 pixels.
     private fun geometry(offset: Long, total: Long = 1000, len: Long = 10, minThumb: Float = 20f) =

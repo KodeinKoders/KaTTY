@@ -512,6 +512,40 @@ class TerminalTest {
         assertEquals(bottom.firstNumber() - 3, session.frames.value.firstNumber())
     }
 
+    // A click of a mouse wheel as macOS gives it when it is slow: 0.1 of a notch, with a rotation of 1.
+    private fun ImageComposeScene.slowWheelClick(timeMs: Long) {
+        val awt = java.awt.event.MouseWheelEvent(javax.swing.JPanel(), java.awt.event.MouseEvent.MOUSE_WHEEL, timeMs, 0, 100, 100, 100, 100, 0, false, java.awt.event.MouseWheelEvent.WHEEL_UNIT_SCROLL, 1, -1, -0.1)
+        sendPointerEvent(PointerEventType.Scroll, Offset(100f, 100f), scrollDelta = Offset(0f, -0.1f), timeMillis = timeMs, nativeEvent = awt)
+    }
+
+    @Test
+    fun eachSlowClickOfAMouseWheelScrollsANotch() {
+        val (scene, session) = historyScene()
+        val bottom = session.frames.value
+
+        // Three clicks, a third of a second apart.
+        scene.slowWheelClick(0)
+        scene.slowWheelClick(300)
+        scene.slowWheelClick(600)
+
+        scene.renderUntil("three notches of three rows") { session.frames.value.scrollbar!!.offset == bottom.scrollbar!!.offset - 9 }
+    }
+
+    @Test
+    fun fractionsOfANotchThatAreNotClicksAreAddedUpAsBefore() {
+        val (scene, session) = historyScene()
+        val bottom = session.frames.value
+
+        // A trackpad: no rotation. Three of 0.1 are 0.9 of a row.
+        repeat(3) { scene.sendPointerEvent(PointerEventType.Scroll, Offset(100f, 100f), scrollDelta = Offset(0f, -0.1f), timeMillis = it * 300L) }
+        scene.settle()
+        assertEquals(bottom.scrollbar!!.offset, session.frames.value.scrollbar!!.offset)
+
+        // And the fourth makes a row.
+        scene.sendPointerEvent(PointerEventType.Scroll, Offset(100f, 100f), scrollDelta = Offset(0f, -0.1f), timeMillis = 900)
+        scene.renderUntil("a row") { session.frames.value.scrollbar!!.offset == bottom.scrollbar!!.offset - 1 }
+    }
+
     @Test
     fun theWheelIsTheProgramsWhenItAskedForTheMouse() {
         val (scene, session) = historyScene(
