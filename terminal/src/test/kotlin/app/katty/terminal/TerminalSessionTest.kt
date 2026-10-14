@@ -658,6 +658,63 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun pastesTextToTheProgram() {
+        val session = start("""stty raw -echo; echo ready; head -c10 | tr -d '\033' | od -An -c""")
+        session.awaitFrame { "ready" in it.text() }
+
+        // Not asked for bracketed paste: the newline is what the Enter key sends.
+        session.paste("one\ntwo\nth")
+
+        session.awaitFrame { "one\\rtwo\\rth" in it.text().replace(Regex("\\s+"), "") }
+    }
+
+    @Test
+    fun pastesInTheMarkersWhenTheProgramAskedForThem() {
+        val session = start("""printf '\033[?2004h'; stty raw -echo; echo ready; head -c15 | tr -d '\033' | od -An -c""")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.paste("a\nb")
+
+        // ESC [ 2 0 0 ~, a, newline, b, ESC [ 2 0 1 ~: 14 bytes.
+        session.awaitFrame { "[200~a\\nb[201~" in it.text().replace(Regex("\\s+"), "") }
+    }
+
+    @Test
+    fun aPasteIsTypedSoItUnselectsAndBringsTheScreenBack() {
+        val session = historySession()
+        session.select(0.2f, 0.5f, 4.7f, 0.5f)
+        session.awaitFrame { it.selection.isNotEmpty() }
+        session.scrollBy(-20)
+        session.awaitFrame { !it.scrollbar!!.atBottom }
+
+        session.paste("x")
+
+        session.awaitFrame { it.selection.isEmpty() && it.scrollbar!!.atBottom }
+    }
+
+    @Test
+    fun anEmptyPasteSendsNothing() {
+        val session = start("stty raw -echo; echo ready; head -c1 | od -An -c")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.paste("")
+        session.sendKey(KeyInput(TerminalKey.ENTER))
+
+        // The first byte that the program read is the Enter.
+        session.awaitFrame { "\\r" in it.text() }
+    }
+
+    @Test
+    fun givesTheSelectedTextToCopy() {
+        val session = selectionSession()
+        assertEquals(null, session.selectedText())
+
+        session.select(0.2f, 0.5f, 4.7f, 0.5f)
+
+        assertEquals("hello", session.selectedText())
+    }
+
+    @Test
     fun theCursorBlinksUnlessTheProgramOrTheCallerSaysOtherwise() {
         val session = start("sleep 30")
         assertTrue(session.awaitFrame { true }.cursor.blinking, "A terminal's cursor blinks")

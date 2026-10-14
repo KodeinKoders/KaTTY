@@ -272,6 +272,36 @@ public class GhosttyTerminal(
         }
     }
 
+    /**
+     * What to write to the program for a paste of [text], according to the modes that it set: wrapped in the markers
+     * of bracketed paste (mode 2004) if it asked for them, else with its newlines as carriage returns, which is what the
+     * Enter key sends. The control bytes that could be taken for commands (escape, nul, delete...) become spaces.
+     */
+    public fun encodePaste(text: String): ByteArray {
+        requireOpen()
+        if (text.isEmpty()) return ByteArray(0)
+        val bracketed = isModeEnabled(GhosttyMode.BRACKETED_PASTE)
+        return Arena.ofConfined().use { arena ->
+            // The encoder works in place on its input: it is given a copy.
+            val bytes = text.toByteArray(Charsets.UTF_8)
+            val data = arena.allocate(bytes.size.toLong())
+            MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.size)
+
+            val written = arena.allocate(ValueLayout.JAVA_LONG)
+            // The markers of bracketed paste are a few bytes more than the text.
+            var buffer = arena.allocate(bytes.size + PASTE_MARKERS_CAPACITY)
+            var result = GhosttyVt.ghostty_paste_encode(data, bytes.size.toLong(), bracketed, buffer, buffer.byteSize(), written)
+            if (result == GhosttyVt.GHOSTTY_OUT_OF_SPACE()) {
+                // The length is the capacity that is needed, and the text was changed: encode a fresh copy.
+                MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.size)
+                buffer = arena.allocate(written.get(ValueLayout.JAVA_LONG, 0))
+                result = GhosttyVt.ghostty_paste_encode(data, bytes.size.toLong(), bracketed, buffer, buffer.byteSize(), written)
+            }
+            checkResult(result, "ghostty_paste_encode")
+            buffer.asSlice(0, written.get(ValueLayout.JAVA_LONG, 0)).toArray(ValueLayout.JAVA_BYTE)
+        }
+    }
+
     /** Unselects what is selected. */
     public fun clearSelection() {
         requireOpen()
@@ -306,6 +336,10 @@ public class GhosttyTerminal(
     }
 
     internal val isClosed: Boolean get() = closed
+
+    private companion object {
+        const val PASTE_MARKERS_CAPACITY = 32L
+    }
 
     public fun isModeEnabled(mode: GhosttyMode): Boolean {
         requireOpen()

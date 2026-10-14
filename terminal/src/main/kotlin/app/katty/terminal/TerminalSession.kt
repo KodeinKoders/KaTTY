@@ -391,6 +391,33 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * Pastes [text] into the program, as the modes it set ask for: in the markers of bracketed paste if it asked for them,
+     * else with the newlines as carriage returns, and without the control bytes that could be taken for commands. It is
+     * what is typed: the screen is brought back to the bottom, and what was selected is not any more.
+     */
+    public fun paste(text: String) {
+        if (text.isEmpty()) return
+        val bytes = lock.withLock {
+            if (closed.get()) return
+            val bytes = terminal.encodePaste(text)
+            if (bytes.isNotEmpty()) {
+                unselect()
+                snapToBottom()
+            }
+            bytes
+        }
+        if (bytes.isNotEmpty()) {
+            outgoing.put(bytes)
+            frameRequests.trySend(Unit)
+        }
+    }
+
+    /** The text that is selected, for the caller to copy, or `null` when nothing is. */
+    public fun selectedText(): String? = lock.withLock {
+        if (closed.get()) null else terminal.selectedText()?.takeIf { it.isNotEmpty() }
+    }
+
+    /**
      * Resizes the screen, reflowing what is on it, and tells the program.
      *
      * The size of a cell in pixels is what programs get when they query the size of the terminal in pixels.

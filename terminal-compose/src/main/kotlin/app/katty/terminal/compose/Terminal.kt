@@ -108,6 +108,7 @@ public fun Terminal(
     val copy: (String) -> Unit = remember(clipboard) {
         { text -> scope.launch { clipboard.setClipEntry(ClipEntry(StringSelection(text))) } }
     }
+    val primary = remember(session) { PrimarySelection() }
     val wheel = remember(session) { WheelScroller() }
     val wheelX = remember(session) { WheelNormalizer() }
     val wheelY = remember(session) { WheelNormalizer() }
@@ -170,7 +171,7 @@ public fun Terminal(
                     overScrollbar = frame.scrollbar != null && (scrollbarInteraction.hovered || scrollbarInteraction.dragging),
                 ),
             )
-            .pointerInput(session, focusRequester, copy) {
+            .pointerInput(session, focusRequester, primary) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -208,13 +209,20 @@ public fun Terminal(
                                     }
                                     // Past the top or the bottom, the history scrolls for as long as the pointer stays.
                                     is SelectionAction.Drag -> autoscroll.drag(action.column, action.row, action.rectangle) { scrolledAt++ }
-                                    // What is selected is copied as soon as the button is up.
+                                    // What is selected is kept for the middle button. It is the clipboard's only when the user copies.
                                     is SelectionAction.Release -> {
                                         autoscroll.stop()
-                                        session.selectionRelease(action.column, action.row)?.let(copy)
+                                        session.selectionRelease(action.column, action.row)?.let { primary.text = it }
                                     }
                                 }
                             }
+                            event.changes.forEach { it.consume() }
+                            continue
+                        }
+
+                        // The middle button pastes what was selected last, without the clipboard.
+                        if (middleClickPastes(info, tracking)) {
+                            primary.text?.let(session::paste)
                             event.changes.forEach { it.consume() }
                             continue
                         }
@@ -241,6 +249,16 @@ public fun Terminal(
             .onPreviewKeyEvent { event ->
                 val info = event.toKeyInfo()
                 selectionModifiers = SelectionModifiers(info.shift, info.alt, info.meta)
+                // Copying and pasting are the terminal's: Command and C or V on macOS, Control and Shift and C or V elsewhere.
+                clipboardShortcut(info)?.let { shortcut ->
+                    if (info.kind == KeyInfo.Kind.PRESSED) {
+                        when (shortcut) {
+                            ClipboardShortcut.COPY -> session.selectedText()?.let(copy)
+                            ClipboardShortcut.PASTE -> scope.launch { clipboard.readText()?.let(session::paste) }
+                        }
+                    }
+                    return@onPreviewKeyEvent true
+                }
                 // Shift and PageUp, PageDown, Home or End scroll the history, when there is some: the program gets nothing. On the
                 // alternate screen there is none, and they are the program's.
                 if (latestFrame.value.scrollbar != null && isHistoryKey(info)) {

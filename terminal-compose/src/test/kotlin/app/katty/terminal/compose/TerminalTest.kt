@@ -348,7 +348,11 @@ class TerminalTest {
     private class FakeClipboard : androidx.compose.ui.platform.Clipboard {
         val copied = java.util.concurrent.CopyOnWriteArrayList<String>()
 
-        override suspend fun getClipEntry(): androidx.compose.ui.platform.ClipEntry? = null
+        // What the user copied somewhere else, which a paste reads.
+        var content: String? = null
+
+        override suspend fun getClipEntry(): androidx.compose.ui.platform.ClipEntry? =
+            content?.let { androidx.compose.ui.platform.ClipEntry(java.awt.datatransfer.StringSelection(it)) }
 
         override suspend fun setClipEntry(clipEntry: androidx.compose.ui.platform.ClipEntry?) {
             val transferable = clipEntry?.nativeClipEntry as java.awt.datatransfer.Transferable
@@ -390,13 +394,39 @@ class TerminalTest {
         sendPointerEvent(PointerEventType.Release, to, keyboardModifiers = modifiers, button = primary, buttons = androidx.compose.ui.input.pointer.PointerButtons())
     }
 
-    private fun ImageComposeScene.awaitCopied(expected: String) =
+    // The keys that copy and that paste on this system: Command, or Control and Shift.
+    private fun ImageComposeScene.shortcut(code: Int) {
+        val mac = isMac
+        sendKeyEvent(KeyEvent(key = Key(code), type = KeyEventType.KeyDown, isMetaPressed = mac, isCtrlPressed = !mac, isShiftPressed = !mac))
+        sendKeyEvent(KeyEvent(key = Key(code), type = KeyEventType.KeyUp, isMetaPressed = mac, isCtrlPressed = !mac, isShiftPressed = !mac))
+    }
+
+    private fun ImageComposeScene.copyShortcut() = shortcut(AwtKeyEvent.VK_C)
+
+    private fun ImageComposeScene.pasteShortcut() = shortcut(AwtKeyEvent.VK_V)
+
+    // Copies what is selected, and waits for it to be on the clipboard.
+    private fun ImageComposeScene.awaitCopied(expected: String) {
+        copyShortcut()
         renderUntil("$expected to be copied") { expected in clipboard.copied }
+    }
+
+    private fun ImageComposeScene.middlePress(position: Offset, shift: Boolean = false) {
+        val modifiers = androidx.compose.ui.input.pointer.PointerKeyboardModifiers(isShiftPressed = shift)
+        sendPointerEvent(
+            PointerEventType.Press, position, keyboardModifiers = modifiers, button = androidx.compose.ui.input.pointer.PointerButton.Tertiary,
+            buttons = androidx.compose.ui.input.pointer.PointerButtons(isTertiaryPressed = true),
+        )
+        sendPointerEvent(
+            PointerEventType.Release, position, keyboardModifiers = modifiers, button = androidx.compose.ui.input.pointer.PointerButton.Tertiary,
+            buttons = androidx.compose.ui.input.pointer.PointerButtons(),
+        )
+    }
 
     private fun TerminalSession.selected() = frames.value.selection
 
     @Test
-    fun selectsWhatIsDraggedOverAndCopiesItWhenTheButtonIsUp() {
+    fun selectsWhatIsDraggedOverAndCopiesItWithTheShortcut() {
         val (scene, session) = selectionScene("printf 'hello world'; sleep 30")
 
         scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
@@ -404,6 +434,27 @@ class TerminalTest {
         scene.awaitCopied("hello")
         scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }
         assertEquals(0..4, session.selected()[0])
+    }
+
+    @Test
+    fun selectingDoesNotCopy() {
+        val (scene, session) = selectionScene("printf 'hello world'; sleep 30")
+
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+        scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }
+        scene.settle()
+
+        assertEquals(emptyList(), clipboard.copied.toList(), "The clipboard is the user's: selecting does not touch it")
+    }
+
+    @Test
+    fun theCopyShortcutWithNothingSelectedCopiesNothing() {
+        val (scene, session) = selectionScene("printf 'hello world'; sleep 30")
+
+        scene.copyShortcut()
+        scene.settle()
+
+        assertEquals(emptyList(), clipboard.copied.toList())
     }
 
     @Test
@@ -430,7 +481,9 @@ class TerminalTest {
         scene.click(at(2.5f, 2.5f))
 
         scene.renderUntil("the selection to go") { session.selected().isEmpty() }
-        assertEquals(copies, clipboard.copied.size)
+        scene.copyShortcut()
+        scene.settle()
+        assertEquals(copies, clipboard.copied.size, "Nothing is selected: nothing is copied")
     }
 
     @Test
@@ -455,7 +508,7 @@ class TerminalTest {
         assertEquals(emptyList(), session.selected())
         assertEquals(emptyList(), clipboard.copied.toList())
 
-        // With Shift the terminal selects, and copies.
+        // With Shift the terminal selects, and the shortcut copies.
         scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f), shift = true)
         scene.awaitCopied("hello")
         assertEquals(0..4, session.selected().let { scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }; session.selected()[0] })
@@ -656,8 +709,76 @@ class TerminalTest {
         scene.release(Offset(30f, HEIGHT + 40f))
 
         // What came in is selected: more lines than the screen has.
+        scene.copyShortcut()
         scene.renderUntil("the selection to be copied") { clipboard.copied.isNotEmpty() }
         val rows = start.rows.size
         assertTrue(clipboard.copied.last().lines().size > rows - 1, "The selection is ${clipboard.copied.last().lines().size} lines")
+    }
+
+    @Test
+    fun thePasteShortcutPastesTheClipboardToTheProgram() {
+        val (scene, session) = selectionScene("""printf 'hello world'; stty raw -echo; head -c3 | od -An -c""")
+        clipboard.content = "abc"
+
+        scene.pasteShortcut()
+
+        scene.renderUntil("the program to read the paste") { "abc" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) }.replace(Regex("\\s+"), "") }
+    }
+
+    @Test
+    fun aMiddleClickPastesTheLastSelectionWithoutTheClipboard() {
+        val (scene, session) = selectionScene("""printf 'hello world'; stty raw -echo; head -c5 | od -An -c""")
+        clipboard.content = "other"
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+        scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }
+
+        scene.middlePress(at(8.5f, 3.5f))
+
+        scene.renderUntil("the program to read the selection") { "hello" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) }.replace(Regex("\\s+"), "") }
+        assertEquals(emptyList(), clipboard.copied.toList(), "The clipboard was not written")
+    }
+
+    @Test
+    fun aMiddleClickPastesWhatWasSelectedLastEvenWhenItIsNotSelectedAnyMore() {
+        val (scene, session) = selectionScene("""printf 'hello world'; stty raw -echo; head -c5 | od -An -c""")
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+        // A click unselects.
+        scene.click(at(2.5f, 2.5f))
+        scene.renderUntil("the selection to go") { session.selected().isEmpty() }
+
+        scene.middlePress(at(8.5f, 3.5f))
+
+        scene.renderUntil("the program to read the selection") { "hello" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) }.replace(Regex("\\s+"), "") }
+    }
+
+    @Test
+    fun aMiddleClickWithNothingSelectedSentNothing() {
+        val (scene, session) = selectionScene("""printf 'hello world'; stty raw -echo; head -c1 | od -An -c""")
+        clipboard.content = "other"
+
+        scene.middlePress(at(8.5f, 3.5f))
+        session.sendKey(app.katty.terminal.KeyInput(app.katty.terminal.TerminalKey.ENTER))
+
+        // The first byte that the program read is the Enter.
+        scene.renderUntil("the Enter to be read") { "\\r" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) } }
+    }
+
+    @Test
+    fun aProgramThatHasTheMouseGetsTheMiddleClickAndShiftPastes() {
+        val (scene, session) = selectionScene(
+            """printf '\033[?1000h\033[?1006h'; printf 'hello world'; stty raw -echo; head -c14 | tr -d '\033' | od -An -c""",
+        )
+        scene.renderUntil("the mouse to be asked for") { session.frames.value.mouseTracking }
+        // Select with Shift, which is the terminal's.
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f), shift = true)
+        scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }
+
+        // The middle button is the program's: it is reported (9 bytes, with the escape).
+        scene.middlePress(at(2.5f, 3.5f))
+        // With Shift it pastes the selection (5 bytes).
+        scene.middlePress(at(2.5f, 3.5f), shift = true)
+
+        session.awaitReports(scene, "[<1;3;4M")
+        session.awaitReports(scene, "hello")
     }
 }
