@@ -1,77 +1,62 @@
 package app.katty
 
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import app.katty.terminal.TerminalSession
-import app.katty.terminal.compose.Terminal
-import app.katty.terminal.themes.ITermColorSchemes
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
-import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
-import org.jetbrains.jewel.intui.standalone.theme.default
-import org.jetbrains.jewel.intui.standalone.theme.lightThemeDefinition
-import org.jetbrains.jewel.intui.window.decoratedWindow
-import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
-import org.jetbrains.jewel.ui.ComponentStyling
-import org.jetbrains.jewel.ui.component.Text
+import app.katty.core.KattyDirectories
+import app.katty.core.KattyStore
+import app.katty.core.StateFile
+import app.katty.core.StatePersistence
+import app.katty.core.ThemeMode
+import app.katty.ui.KattyTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.jetbrains.jewel.window.DecoratedWindow
-import org.jetbrains.jewel.window.TitleBar
-import org.jetbrains.jewel.window.styling.TitleBarStyle
 
 fun main() {
     // Before the first key is typed.
     disablePressAndHold()
-    application { Katty() }
+    val directories = KattyDirectories.default()
+    val file = StateFile(directories.stateFile)
+    val store = KattyStore(file.load())
+    application { Katty(store, file) }
 }
 
 @Composable
-private fun ApplicationScope.Katty() {
-    IntUiTheme(
-        theme = JewelTheme.lightThemeDefinition(),
-        styling = ComponentStyling.default().decoratedWindow(titleBarStyle = TitleBarStyle.lightWithLightHeader()),
-    ) {
+private fun ApplicationScope.Katty(store: KattyStore, file: StateFile) {
+    // What the store holds is written to the file as it changes, and a last time when the application quits.
+    val writer = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    val persistence = remember { StatePersistence(store, file, writer) }
+    DisposableEffect(Unit) { onDispose { writer.cancel() } }
+    val quit = {
+        persistence.flush()
+        exitApplication()
+    }
+
+    val settings by store.state.collectAsState().let { state -> derivedStateOf { state.value.settings } }
+    val dark = when (settings.theme) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+    KattyTheme(dark) {
         DecoratedWindow(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = quit,
             title = "KaTTY",
             state = rememberWindowState(size = DpSize(1440.dp, 900.dp)),
         ) {
-            TitleBar { Text("KaTTY") }
-            // Until the workspaces are there, the window is one shell.
-            Shell(Modifier.fillMaxSize().padding(8.dp))
+            KattyWindowContent(store)
         }
     }
-}
-
-/**
- * The user's login shell, in a terminal.
- */
-@Composable
-private fun Shell(modifier: Modifier) {
-    val started = remember { runCatching { TerminalSession.start(cols = 80, rows = 24, theme = ITermColorSchemes.load("Alabaster")) } }
-    val session = started.getOrNull()
-    if (session == null) {
-        Text("Could not start the terminal: ${started.exceptionOrNull()}", modifier)
-        return
-    }
-
-    DisposableEffect(session) { onDispose { session.close() } }
-
-    // The window stays open, with what the shell wrote: it may be what explains why it exited.
-    LaunchedEffect(session) {
-        val code = session.exited.filterNotNull().first()
-        session.writeToScreen("\r\n[process exited with code $code]\r\n")
-    }
-
-    Terminal(session, modifier)
 }

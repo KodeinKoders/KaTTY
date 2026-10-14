@@ -40,6 +40,7 @@ dependencies {
     runtimeOnly(libs.slf4j.simple)
 
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(compose.desktop.uiTestJUnit4)
 }
 
 tasks.test {
