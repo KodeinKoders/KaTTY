@@ -29,6 +29,11 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
 }
 
+tasks.test {
+    // The FFM API is restricted: without this flag, the JVM warns on the first native call.
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}
+
 compose {
     desktop.application {
         mainClass = "app.katty.MainKt"

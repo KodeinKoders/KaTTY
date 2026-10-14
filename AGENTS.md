@@ -61,6 +61,9 @@ The ones that are easy to break:
 ## Keyboard
 
 - Printable text comes from AWT's `KEY_TYPED` events, so that dead keys, input methods and Option characters work. `KEY_PRESSED` is only used for keys without text and for Ctrl combinations.
+- While the terminal has the Compose focus it also has an input method session (`terminalTextInput`): that is what makes macOS report a dead key while it is composed, which is drawn underlined at the cursor (the preedit, kept in `TerminalTextInput`, drawn by `TerminalView`, never written to the terminal). The final character may then come as a `KEY_TYPED`, as committed text of the input method, or as both, depending on the platform: `TerminalTextInput.deliver` sends it **once**, so send text through it, not straight to the session. The `TerminalTextInput` DEBUG log tells which route delivered what.
+- The session follows the **Compose** focus, not the window's: opening or closing one moves the AWT focus for a moment, which would close and open it again.
+- An open session makes macOS show the accents menu when a letter is held: `app` registers `ApplePressAndHoldEnabled=false` at startup (`disablePressAndHold`, FFM calls to the Objective-C runtime). Any other program that shows the `Terminal` has to do the same.
 - Compose's `KeyEvent` does **not** expose the AWT event: read it with Compose's public API (`Key.nativeKeyCode`, `utf16CodePoint`, `type`). Typed characters have the type `Unknown`.
 - Option is not the program's Alt. Command shortcuts are not sent to the program.
 - The text of a key event given to the encoder is the character as typed, before any Ctrl transformation (`"c"` for Ctrl+C). libghostty's encoder is not xterm's: Shift+Enter and Ctrl+I are distinct sequences even without the Kitty protocol.

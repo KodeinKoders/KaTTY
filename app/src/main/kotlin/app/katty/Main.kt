@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import app.katty.terminal.TerminalSession
@@ -38,7 +39,14 @@ private val logger = LoggerFactory.getLogger("app.katty.Main")
 
 private const val DEFAULT_THEME = "Alabaster"
 
-fun main() = application {
+fun main() {
+    // Before the first key is typed.
+    disablePressAndHold()
+    application { Katty() }
+}
+
+@Composable
+private fun ApplicationScope.Katty() {
     Window(onCloseRequest = ::exitApplication, title = "KaTTY") {
         MaterialTheme {
             var themeName by remember { mutableStateOf(DEFAULT_THEME) }
