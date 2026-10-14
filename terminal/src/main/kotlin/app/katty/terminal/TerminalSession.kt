@@ -1,5 +1,6 @@
 package app.katty.terminal
 
+import app.katty.ghostty.GhosttyBuildInfo
 import app.katty.ghostty.GhosttyCompressionMode
 import app.katty.ghostty.GhosttyCompressionResult
 import app.katty.ghostty.GhosttyImage
@@ -12,6 +13,7 @@ import app.katty.ghostty.GhosttyProgressState
 import app.katty.ghostty.GhosttyPromptEventKind
 import app.katty.ghostty.GhosttyScreen
 import app.katty.ghostty.GhosttyScrollViewport
+import app.katty.ghostty.GhosttySnapshotException
 import app.katty.ghostty.GhosttySearch
 import app.katty.ghostty.GhosttySearchStatus
 import app.katty.ghostty.GhosttyViewportMatch
@@ -215,6 +217,11 @@ public class TerminalSession private constructor(
         // the lock: it only enqueues.
         terminal.onWritePty = { outgoing.put(it) }
         installEffects()
+        // A terminal that was restored has them, and says nothing of it: nothing was listening.
+        lock.withLock {
+            titleState.value = terminal.title
+            workingDirectoryState.value = decodeWorkingDirectory(terminal.pwd)
+        }
 
         producerScope.launch {
             for (request in frameRequests) {
@@ -761,6 +768,39 @@ public class TerminalSession private constructor(
         frameRequests.trySend(Unit)
     }
 
+    /**
+     * What the terminal is now, to be restored as a new session ([start] with `snapshot`): its screens and its history, the cursor, the modes,
+     * the title and the directory. See [TerminalSnapshot] for what is not in it.
+     *
+     * It blocks the program's output for as long as it takes to encode the history, which is as long as the history is: call it off the UI
+     * thread. A session that is hidden has its history compressed, which makes it cheaper. If the program happens to be in the middle of a
+     * very long escape sequence (more than 64 KiB: the transfer of an image) it tries again a few times.
+     *
+     * @throws TerminalSnapshotException If it could not be done.
+     */
+    public fun snapshot(): TerminalSnapshot {
+        var attempt = 0
+        while (true) {
+            try {
+                return lock.withLock {
+                    if (closed.get()) throw TerminalSnapshotException("The session is closed")
+                    TerminalSnapshot(
+                        cols = terminal.cols,
+                        rows = terminal.rows,
+                        title = titleState.value,
+                        workingDirectory = workingDirectoryState.value,
+                        createdAt = System.currentTimeMillis(),
+                        fingerprint = GhosttyBuildInfo.fingerprint(),
+                        data = terminal.snapshot(),
+                    )
+                }
+            } catch (e: GhosttySnapshotException) {
+                if (++attempt >= SNAPSHOT_ATTEMPTS) throw TerminalSnapshotException("Could not take a snapshot: ${e.message}", e)
+                Thread.sleep(SNAPSHOT_RETRY_MS)
+            }
+        }
+    }
+
     /** How many rows there are in the history and the screen. */
     public fun rowCount(): Long = lock.withLock {
         if (closed.get()) 0 else terminal.totalRows
@@ -1147,6 +1187,21 @@ public class TerminalSession private constructor(
         private val HIDDEN_POLL = 1.seconds
         private val COMPRESSION_STEP_PAUSE = 5.milliseconds
 
+        // A snapshot that fails because the program is in the middle of a long sequence is tried again this many times, this far apart.
+        private const val SNAPSHOT_ATTEMPTS = 5
+        private const val SNAPSHOT_RETRY_MS = 20L
+
+        // What takes the old program's state off a restored terminal, so that the new one finds what a new terminal is: the scrolling region reset (which moves the cursor home, so the cursor is saved and put back), the modes that a program sets
+        // and a shell does not know about off (the mouse in every protocol and format, focus reports, bracketed paste, synchronized output,
+        // application cursor keys and keypad, insert mode, autowrap on, the cursor shown), the character sets ASCII, the Kitty
+        // keyboard flags popped, the cursor style the default, the attributes cleared, and a new row to start on. Not a soft reset (DECSTR):
+        // it homes the cursor, and the new program would write over what the old one showed.
+        private const val RESTORE_RESET =
+            "\u001b7\u001b[r\u001b8" +
+                "\u001b[?9l\u001b[?1000l\u001b[?1001l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?1016l" +
+                "\u001b[?2004l\u001b[?2026l\u001b[?1l\u001b>\u001b[?66l\u001b[4l\u001b[?7h\u001b[?25h\u001b[?69l" +
+                "\u001b(B\u001b)B\u000f\u001b[<99u\u001b[0 q\u001b[0m\r\n"
+
         // How many events may wait for a collector that is slow.
         private const val EVENT_BUFFER = 64
 
@@ -1182,6 +1237,12 @@ public class TerminalSession private constructor(
          * do not on their own: the [workingDirectory] and the [TerminalEvent.PromptStarted], [TerminalEvent.CommandStarted] and
          * [TerminalEvent.CommandFinished] events, and [scrollToPrompt], depend on it. The user's own startup files are still read.
          * Any other shell, and anything but a login or an interactive shell, is started as it is.
+         * @param directory Where the program starts: the directory of [snapshot] if it has one that is still there, else the user's home.
+         * @param snapshot What the terminal was ([TerminalSession.snapshot]): the new session starts with its screen and its history, the
+         * title and the directory, and [command] runs below them: a **new** program, since a process cannot be saved. The size is [cols] by
+         * [rows], to which the old content is reflowed, and the old program's modes are taken off, so that a snapshot of an editor gives a
+         * shell with a plain mouse. Not restored: the images of the Kitty protocol, the selection, the viewport.
+         * @throws TerminalSnapshotException If [snapshot] was made by another build of libghostty, or is damaged.
          * @param clipboardWrite Whether a program may put text in the clipboard (OSC 52), which then comes as a
          * [TerminalEvent.ClipboardWrite]. It is refused when `false`.
          * @param clipboardReader What a program that reads the clipboard (OSC 52) gets: the text it returns, or a refusal for
@@ -1193,7 +1254,7 @@ public class TerminalSession private constructor(
             rows: Int,
             command: List<String> = listOf(System.getenv("SHELL") ?: "/bin/zsh", "-l"),
             environment: Map<String, String> = emptyMap(),
-            directory: String = System.getProperty("user.home"),
+            directory: String? = null,
             cursorBlink: Boolean = true,
             cursorShape: TerminalCursorShape = TerminalCursorShape.BLOCK,
             scrollbackMaxBytes: Long = SCROLLBACK_MAX_BYTES,
@@ -1202,7 +1263,12 @@ public class TerminalSession private constructor(
             clipboardWrite: Boolean = true,
             clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
             shellIntegration: Boolean = true,
+            snapshot: TerminalSnapshot? = null,
         ): TerminalSession {
+            if (snapshot != null && !snapshot.isRestorable) {
+                throw TerminalSnapshotException("The snapshot was made by another build of libghostty, which cannot read it: start a new session")
+            }
+            val startIn = directory ?: snapshot?.workingDirectory?.takeIf { java.io.File(it).isDirectory } ?: System.getProperty("user.home")
             require(cursorShape != TerminalCursorShape.BLOCK_HOLLOW) { "The hollow block is not a shape that a program sets" }
             require(scrollbackMaxBytes >= 0) { "A limit is not negative: $scrollbackMaxBytes" }
             require(imageStorageLimitBytes >= 0) { "A limit is not negative: $imageStorageLimitBytes" }
@@ -1212,10 +1278,10 @@ public class TerminalSession private constructor(
             env.putAll(environment)
             val argv = if (shellIntegration) ShellIntegration.apply(command, env) else command
 
-            logger.info("Starting {} in a {}x{} terminal, in {}", argv, cols, rows, directory)
+            logger.info("Starting {} in a {}x{} terminal, in {}{}", argv, cols, rows, startIn, if (snapshot != null) ", from a snapshot" else "")
             val process = PtyProcessBuilder(argv.toTypedArray())
                 .setEnvironment(env)
-                .setDirectory(directory)
+                .setDirectory(startIn)
                 .setConsole(false)
                 .setInitialColumns(cols)
                 .setInitialRows(rows)
@@ -1224,15 +1290,38 @@ public class TerminalSession private constructor(
             // Whatever fails after the program started must not leave it, or the native objects, behind.
             val toClose = ArrayDeque<AutoCloseable>()
             try {
-                val terminal = GhosttyTerminal(
-                    cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink, scrollbackMaxBytes = scrollbackMaxBytes,
-                    imageStorageLimitBytes = imageStorageLimitBytes, defaultCursorStyle = cursorShape.toGhostty(),
-                ).also { toClose.addFirst(it) }
+                val terminal = if (snapshot == null) {
+                    GhosttyTerminal(
+                        cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink, scrollbackMaxBytes = scrollbackMaxBytes,
+                        imageStorageLimitBytes = imageStorageLimitBytes, defaultCursorStyle = cursorShape.toGhostty(),
+                    )
+                } else {
+                    try {
+                        GhosttyTerminal.restore(
+                            snapshot.data, terminfoName = TERM, defaultCursorBlink = cursorBlink, scrollbackMaxBytes = scrollbackMaxBytes,
+                            imageStorageLimitBytes = imageStorageLimitBytes, defaultCursorStyle = cursorShape.toGhostty(),
+                        )
+                    } catch (e: GhosttySnapshotException) {
+                        throw TerminalSnapshotException("Could not restore the snapshot: ${e.message}", e)
+                    }
+                }.also { toClose.addFirst(it) }
                 // Before the session, so that the first frame already has the colors.
                 terminal.applyTheme(theme)
                 // The terminal does not know how big a cell is until it is told, and an image that a program sends before the first
                 // resize would be placed on cells of no size.
                 terminal.resize(cols, rows, INITIAL_CELL_WIDTH_PX, INITIAL_CELL_HEIGHT_PX)
+                // The size is the host's, and the content was reflowed to it just now. The old program is gone, and what it had set with it.
+                if (snapshot != null) {
+                    // Only if it is there: leaving the alternate screen from the primary one puts the cursor back where it never was saved, at home.
+                    if (terminal.activeScreen == GhosttyScreen.ALTERNATE) terminal.vtWrite("\u001b[?1049l")
+                    // Origin mode is only reset if it is set, and the cursor put back: resetting it moves the cursor home.
+                    if (terminal.isModeEnabled(GhosttyMode.ORIGIN)) {
+                        val column = terminal.cursorColumn
+                        val row = terminal.cursorRow
+                        terminal.vtWrite("\u001b[?6l\u001b[${row + 1};${column + 1}H")
+                    }
+                    terminal.vtWrite(RESTORE_RESET)
+                }
                 val renderState = GhosttyRenderState().also { toClose.addFirst(it) }
                 val keyEncoder = GhosttyKeyEncoder().also { toClose.addFirst(it) }
                 val mouseEncoder = GhosttyMouseEncoder().also { toClose.addFirst(it) }

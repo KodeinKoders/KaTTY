@@ -28,6 +28,26 @@ internal object NativeLibrary {
         load()
     }
 
+    // The file that the library was loaded from.
+    private lateinit var libraryFile: java.nio.file.Path
+
+    /**
+     * What identifies the library that is loaded: a hash of the file. Nothing in the library does, since it records neither its commit nor a
+     * version that changes, and the snapshots that it makes are only good for the same one.
+     */
+    val fingerprint: String by lazy {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(libraryFile).use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     fun ensureLoaded() {
         // Referencing the object runs its initializer, which is all there is to do.
     }
@@ -53,6 +73,7 @@ internal object NativeLibrary {
         file.toFile().deleteOnExit()
         directory.toFile().deleteOnExit()
 
+        libraryFile = file
         System.load(file.toAbsolutePath().toString())
         logger.debug("Loaded libghostty-vt for {}-{} from {}", os, arch, file)
 

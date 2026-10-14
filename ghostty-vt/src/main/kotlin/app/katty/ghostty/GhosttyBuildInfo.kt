@@ -25,6 +25,15 @@ public data class GhosttyBuildInfo(
     public val tmuxControlMode: Boolean,
 ) {
     public companion object {
+        /**
+         * Which library this is: a hash of the file that was loaded. The library does not say which commit it was built from, and the
+         * snapshots that it makes are only good for the same build.
+         */
+        public fun fingerprint(): String {
+            NativeLibrary.ensureLoaded()
+            return NativeLibrary.fingerprint
+        }
+
         public fun current(): GhosttyBuildInfo {
             NativeLibrary.ensureLoaded()
             return Arena.ofConfined().use { arena ->

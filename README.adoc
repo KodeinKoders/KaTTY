@@ -76,6 +76,7 @@ The session tells its host about the title, the working directory, the bell, not
 Programs that ask to be told about the focus (vim, tmux) are.
 The font (a family of the system, or files), the shape of the cursor and the limits of the history and the images are parameters, and a host can pause the terminals that it does not show.
 A host can search the scrollback (the matches are highlighted, and a position such as "3 of 12" is published), read the screen, the history and the output of the last command as text, and see how much memory each terminal holds: hidden terminals drop what they show and compress their history.
+A terminal can be saved and restored: the snapshot has the screen, the whole history, the title and the directory, and a restored session is a new shell that starts below them (the program cannot be saved, and the snapshot is only good for the build that made it).
 Links, those that a program marks (OSC 8) and those that are written in the text, are underlined when Command is held over them (Control elsewhere) and opened with a click.
 
 What is not done yet:

@@ -64,15 +64,27 @@ private val logger = LoggerFactory.getLogger(GhosttyTerminal::class.java)
  * @param defaultCursorStyle The shape of the cursor until a program sets one (DECSCUSR), and when it resets it: libghostty's own is
  * the block. Not [GhosttyCursorStyle.BLOCK_HOLLOW], which is how an unfocused block is drawn and not a style that a program sets.
  */
-public class GhosttyTerminal(
+public class GhosttyTerminal private constructor(
+    // A terminal that was decoded from a snapshot, which is set up as a new one is, or `null` to make one.
+    adopted: MemorySegment?,
     cols: Int,
     rows: Int,
-    terminfoName: String? = null,
-    defaultCursorBlink: Boolean = false,
-    scrollbackMaxBytes: Long? = null,
-    imageStorageLimitBytes: Long? = null,
-    defaultCursorStyle: GhosttyCursorStyle? = null,
+    terminfoName: String?,
+    defaultCursorBlink: Boolean,
+    scrollbackMaxBytes: Long?,
+    imageStorageLimitBytes: Long?,
+    defaultCursorStyle: GhosttyCursorStyle?,
 ) : AutoCloseable {
+    public constructor(
+        cols: Int,
+        rows: Int,
+        terminfoName: String? = null,
+        defaultCursorBlink: Boolean = false,
+        scrollbackMaxBytes: Long? = null,
+        imageStorageLimitBytes: Long? = null,
+        defaultCursorStyle: GhosttyCursorStyle? = null,
+    ) : this(null, cols, rows, terminfoName, defaultCursorBlink, scrollbackMaxBytes, imageStorageLimitBytes, defaultCursorStyle)
+
     internal val handle: MemorySegment
 
     // Holds the upcall stubs: native code calls them for as long as the terminal lives.
@@ -144,7 +156,7 @@ public class GhosttyTerminal(
     init {
         NativeLibrary.ensureLoaded()
 
-        handle = Arena.ofConfined().use { arena ->
+        handle = adopted ?: Arena.ofConfined().use { arena ->
             val out = arena.allocate(ValueLayout.ADDRESS)
             checkResult(
                 GhosttyVt.ghostty_terminal_new(
@@ -217,6 +229,9 @@ public class GhosttyTerminal(
             if (imageStorageLimitBytes != null) {
                 setLimit(GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT(), imageStorageLimitBytes, "KITTY_IMAGE_STORAGE_LIMIT")
             }
+            // So that a snapshot can be taken in the middle of an escape sequence: what is unfinished is kept, up to this much, and past it the
+            // terminal goes on as it did and only a snapshot is refused, until the sequence ends.
+            setContinuationMaxBytes(CONTINUATION_MAX_BYTES)
             if (defaultCursorStyle != null) {
                 require(defaultCursorStyle != GhosttyCursorStyle.BLOCK_HOLLOW) { "A program does not set the hollow block" }
                 Arena.ofConfined().use { arena ->
@@ -570,6 +585,12 @@ public class GhosttyTerminal(
         }
     }
 
+    /** The column of the cursor on the screen, from 0. */
+    public val cursorColumn: Int get() = getUInt16(GhosttyVt.GHOSTTY_TERMINAL_DATA_CURSOR_X())
+
+    /** The row of the cursor on the screen, from 0. */
+    public val cursorRow: Int get() = getUInt16(GhosttyVt.GHOSTTY_TERMINAL_DATA_CURSOR_Y())
+
     /** How many rows there are in the history and the screen. */
     public val totalRows: Long
         get() {
@@ -675,6 +696,12 @@ public class GhosttyTerminal(
         }
     }
 
+    // How much of an unfinished escape sequence is kept, so that a snapshot taken in the middle of one can be restored. 0 keeps none.
+    internal fun setContinuationMaxBytes(bytes: Long) {
+        requireOpen()
+        setLimit(GhosttyVt.GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES(), bytes, "CONTINUATION_MAX_BYTES")
+    }
+
     /**
      * Limits the memory that the history may take to [bytes], about: libghostty prunes by pages, so it is somewhat more, and only
      * whole pages of history are removed, at once when the limit is lowered. `0` keeps no history.
@@ -752,6 +779,33 @@ public class GhosttyTerminal(
                 compressedBytes = GhosttyTerminalMemoryUsage.primary_compressed_bytes(usage) + GhosttyTerminalMemoryUsage.alternate_compressed_bytes(usage),
                 imageBytes = GhosttyTerminalMemoryUsage.primary_image_bytes(usage) + GhosttyTerminalMemoryUsage.alternate_image_bytes(usage),
             )
+        }
+    }
+
+    /**
+     * Everything that the terminal is, as bytes that [restore] makes a terminal of: both screens and their history, the cursor, the modes,
+     * the colors, the title and the directory. Not the images of the Kitty protocol, the selection, the viewport, nor what the
+     * wrapper sets (the callbacks and the options).
+     *
+     * It must not run while the terminal is written to or used: the caller serializes it, as it does every call. It takes as long as the
+     * history is large. It is [GhosttySnapshotException] if the program is in the middle of an escape sequence, which is for a few
+     * microseconds at a time: it can be tried again.
+     */
+    public fun snapshot(): ByteArray {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val pointer = arena.allocate(ValueLayout.ADDRESS)
+            val length = arena.allocate(ValueLayout.JAVA_LONG)
+            val result = GhosttyVt.ghostty_snapshot_encode_alloc(handle, MemorySegment.NULL, pointer, length)
+            if (result == GhosttyVt.GHOSTTY_INVALID_VALUE()) throw GhosttySnapshotException("the program is in the middle of an escape sequence")
+            snapshotResult(result, "encode it")
+            val size = length.get(ValueLayout.JAVA_LONG, 0)
+            val buffer = pointer.get(ValueLayout.ADDRESS, 0)
+            try {
+                buffer.reinterpret(size).toArray(ValueLayout.JAVA_BYTE)
+            } finally {
+                GhosttyVt.ghostty_free(MemorySegment.NULL, buffer, size)
+            }
         }
     }
 
@@ -1026,10 +1080,65 @@ public class GhosttyTerminal(
 
     internal val isClosed: Boolean get() = closed
 
-    private companion object {
-        const val PASTE_MARKERS_CAPACITY = 32L
-        const val FOCUS_REPORT_CAPACITY = 8L
-        const val HYPERLINK_INITIAL_CAPACITY = 512L
+    public companion object {
+        private const val PASTE_MARKERS_CAPACITY = 32L
+        private const val FOCUS_REPORT_CAPACITY = 8L
+        private const val CONTINUATION_MAX_BYTES = 64L * 1024
+        private const val HYPERLINK_INITIAL_CAPACITY = 512L
+
+        /**
+         * A terminal that is what [snapshot] saved: its screens and their history, the cursor, the modes, the colors, the title and the
+         * directory. Its size is the snapshot's, and it is set up as a new terminal is with what is given here, which the snapshot does
+         * not carry (the callbacks, the Kitty images, the terminfo name) or which the caller decides (the other options). The history is
+         * kept compressed, as it is restored.
+         *
+         * The format has no promise of compatibility: a snapshot is only good for the build of the library that made it.
+         *
+         * @throws GhosttySnapshotException If [snapshot] is not one, is cut or is damaged.
+         */
+        public fun restore(
+            snapshot: ByteArray,
+            terminfoName: String? = null,
+            defaultCursorBlink: Boolean = false,
+            scrollbackMaxBytes: Long? = null,
+            imageStorageLimitBytes: Long? = null,
+            defaultCursorStyle: GhosttyCursorStyle? = null,
+        ): GhosttyTerminal {
+            NativeLibrary.ensureLoaded()
+            val handle = decodeSnapshot(snapshot)
+            val (cols, rows) = Arena.ofConfined().use { arena ->
+                val out = arena.allocate(ValueLayout.JAVA_SHORT)
+                checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_COLS(), out), "ghostty_terminal_get(COLS)")
+                val cols = out.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF
+                checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_ROWS(), out), "ghostty_terminal_get(ROWS)")
+                cols to (out.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF)
+            }
+            // The terminal frees the handle itself if it cannot be set up.
+            return GhosttyTerminal(handle, cols, rows, terminfoName, defaultCursorBlink, scrollbackMaxBytes, imageStorageLimitBytes, defaultCursorStyle)
+        }
+
+        private fun decodeSnapshot(snapshot: ByteArray): MemorySegment =
+            Arena.ofConfined().use { arena ->
+                // The decoder reads the buffer until it is freed: it is not copied.
+                val data = arena.allocate(maxOf(snapshot.size.toLong(), 1L))
+                MemorySegment.copy(snapshot, 0, data, ValueLayout.JAVA_BYTE, 0, snapshot.size)
+                val decoderOut = arena.allocate(ValueLayout.ADDRESS)
+                snapshotResult(GhosttyVt.ghostty_snapshot_decoder_new_buf(MemorySegment.NULL, decoderOut, data, snapshot.size.toLong()), "create the decoder")
+                val decoder = decoderOut.get(ValueLayout.ADDRESS, 0)
+                try {
+                    val compress = arena.allocate(ValueLayout.JAVA_BOOLEAN)
+                    compress.set(ValueLayout.JAVA_BOOLEAN, 0, true)
+                    snapshotResult(
+                        GhosttyVt.ghostty_snapshot_decoder_set(decoder, GhosttyVt.GHOSTTY_SNAPSHOT_DECODER_OPT_COMPRESS_HISTORY(), compress),
+                        "compress the history",
+                    )
+                    val terminalOut = arena.allocate(ValueLayout.ADDRESS)
+                    snapshotResult(GhosttyVt.ghostty_snapshot_decoder_decode(decoder, terminalOut), "decode it")
+                    terminalOut.get(ValueLayout.ADDRESS, 0)
+                } finally {
+                    GhosttyVt.ghostty_snapshot_decoder_free(decoder)
+                }
+            }
     }
 
     public fun isModeEnabled(mode: GhosttyMode): Boolean {

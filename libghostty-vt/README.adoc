@@ -23,6 +23,7 @@ The dylib does not record the commit it was built from (`GHOSTTY_BUILD_INFO_VERS
 The library has no releases of its own, and its version is a placeholder.
 The API is whatever the Ghostty commit above exports, and it is expected to change.
 Always record the commit when updating.
+Updating the dylib also invalidates every saved terminal snapshot: their format has no compatibility promise, so KaTTY stamps them with a hash of the dylib and refuses the ones of another.
 
 
 == Layout

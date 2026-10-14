@@ -396,6 +396,34 @@ class TerminalTest {
     }
 
     @Test
+    fun showsWhatARestoredSessionHadAndWhatItsNewProgramWrites() {
+        val old = session("printf 'old text here'; sleep 30", cols = 40, rows = 5)
+        old.awaitSnapshotText("old text here")
+        val snapshot = old.snapshot()
+
+        val restored = TerminalSession.start(
+            40, 5, command = listOf("/bin/sh", "-c", "echo new text; sleep 30"), snapshot = snapshot, shellIntegration = false,
+        ).also { sessions += it }
+        val scene = show(restored)
+
+        scene.renderUntil("the terminal to fit the scene and show both") {
+            val frame = restored.frames.value
+            frame.cols != 40 && frame.rows.indices.any { frame.text(it) == "old text here" } && frame.rows.indices.any { frame.text(it) == "new text" }
+        }
+        scene.settle()
+        val image = scene.render(clock)
+        File("build/renders").apply { mkdirs() }.resolve("restored.png").writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
+    }
+
+    private fun TerminalSession.awaitSnapshotText(text: String) {
+        val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000
+        while (text !in readText()) {
+            check(System.nanoTime() < deadline) { "Still waiting for $text" }
+            Thread.sleep(10)
+        }
+    }
+
+    @Test
     fun sendsTheKeysThatEditTheLineAsWhatTheLineEditorBinds() {
         org.junit.Assume.assumeTrue("The line editing keys are the ones of macOS", isMac)
         // In raw mode, the program gets exactly the bytes that are sent.
