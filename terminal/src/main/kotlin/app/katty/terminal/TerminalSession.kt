@@ -176,11 +176,29 @@ public class TerminalSession private constructor(
      * Sends a key to the program, as the terminal's current modes ask for it to be encoded.
      */
     public fun sendKey(input: KeyInput) {
+        sendTyped {
+            keyEncoder.setOptionsFrom(terminal)
+            keyEncoder.encode(input.toGhostty())
+        }
+    }
+
+    /**
+     * Sends [text] to the program as it is, with none of the terminal's modes applied: what a shortcut stands for, such as
+     * the escape sequence of the line editor that a key is mapped to. It is what is typed, like a key.
+     */
+    public fun sendText(text: String) {
+        if (text.isEmpty()) return
+        sendTyped { text.encodeToByteArray() }
+    }
+
+    /**
+     * Sends to the program what [encode] makes, under the lock. It is what is typed: what was selected is not any more, since
+     * the selection is of what was on the screen before, and the screen is brought back to the bottom.
+     */
+    private inline fun sendTyped(encode: () -> ByteArray) {
         val bytes = lock.withLock {
             if (closed.get()) return
-            keyEncoder.setOptionsFrom(terminal)
-            val bytes = keyEncoder.encode(input.toGhostty())
-            // What is typed for the program unselects: the selection is of what was on the screen before.
+            val bytes = encode()
             if (bytes.isNotEmpty()) {
                 unselect()
                 snapToBottom()
@@ -404,19 +422,7 @@ public class TerminalSession private constructor(
      */
     public fun paste(text: String) {
         if (text.isEmpty()) return
-        val bytes = lock.withLock {
-            if (closed.get()) return
-            val bytes = terminal.encodePaste(text)
-            if (bytes.isNotEmpty()) {
-                unselect()
-                snapToBottom()
-            }
-            bytes
-        }
-        if (bytes.isNotEmpty()) {
-            outgoing.put(bytes)
-            frameRequests.trySend(Unit)
-        }
+        sendTyped { terminal.encodePaste(text) }
     }
 
     /** The text that is selected, for the caller to copy, or `null` when nothing is. */

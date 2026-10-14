@@ -225,6 +225,31 @@ class TerminalTest {
     }
 
     @Test
+    fun sendsTheKeysThatEditTheLineAsWhatTheLineEditorBinds() {
+        org.junit.Assume.assumeTrue("The line editing keys are the ones of macOS", isMac)
+        // In raw mode, the program gets exactly the bytes that are sent.
+        val session = session("stty raw -echo; echo ready; head -c4 | od -An -tx1")
+        val scene = show(session)
+        scene.renderUntil("the terminal to fit the scene") { session.frames.value.cols != 10 }
+        scene.renderUntil("the program to be ready") { session.frames.value.rows.indices.any { session.frames.value.text(it) == "ready" } }
+        scene.settle()
+
+        // Option and Left, then Command and Right, each pressed and released.
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_LEFT), type = KeyEventType.KeyDown, isAltPressed = true))
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_LEFT), type = KeyEventType.KeyUp, isAltPressed = true))
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_RIGHT), type = KeyEventType.KeyDown, isMetaPressed = true))
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_RIGHT), type = KeyEventType.KeyUp, isMetaPressed = true))
+        // The program was not told of the releases: what follows is the fourth byte.
+        scene.type('x')
+
+        // ESC b, ^E, x.
+        scene.renderUntil("the bytes of the keys") {
+            val frame = session.frames.value
+            frame.rows.indices.any { frame.text(it).replace(Regex("\\s+"), " ").trim() == "1b 62 05 78" }
+        }
+    }
+
+    @Test
     fun drawsWhatTheProgramWrites() {
         val session = session("printf 'hello \\033[1;32mgreen\\033[0m \\033[44mon blue\\033[0m\\r\\n\\033[4munderlined\\033[0m\\r\\n> '; sleep 30", cols = 80, rows = 24)
         val scene = show(session)

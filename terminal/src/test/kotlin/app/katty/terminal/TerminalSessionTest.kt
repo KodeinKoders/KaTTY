@@ -124,6 +124,16 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun sendsTextToTheProgramAsItIs() {
+        val session = start("stty raw -echo; echo ready; head -c3 | od -An -tx1")
+        session.awaitFrame { "ready" in it.text() }
+
+        session.sendText("\u001bb\u0001")
+
+        session.awaitFrame { "1b 62 01" in it.text().replace(Regex("\\s+"), " ") }
+    }
+
+    @Test
     fun sendsEnterAsACarriageReturn() {
         // In raw mode, the program gets exactly the bytes that are sent. "ready" means it is in raw mode.
         val session = start("stty raw -echo; echo ready; head -c1 | od -An -tx1")

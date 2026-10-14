@@ -66,7 +66,7 @@ The ones that are easy to break:
 - The session follows the **Compose** focus, not the window's: opening or closing one moves the AWT focus for a moment, which would close and open it again.
 - An open session makes macOS show the accents menu when a letter is held: `app` registers `ApplePressAndHoldEnabled=false` at startup (`disablePressAndHold`, FFM calls to the Objective-C runtime). Any other program that shows the `Terminal` has to do the same.
 - Compose's `KeyEvent` does **not** expose the AWT event: read it with Compose's public API (`Key.nativeKeyCode`, `utf16CodePoint`, `type`). Typed characters have the type `Unknown`.
-- Option is not the program's Alt. Command shortcuts are not sent to the program.
+- Option is not the program's Alt. Command shortcuts are not sent to the program. The exception is the **line editing keys of macOS** (`lineEditingText`, taken in `Terminal` before `KeyTranslator`): Option + Left / Right is `ESC b` / `ESC f`, Command + Left / Right / Backspace is `^A` / `^E` / `^U`, which is what Ghostty and iTerm2 send. Encoded as keys (`CSI 1;3 D`…) a shell does not know them and prints the end of the sequence. They go through `TerminalSession.sendText`, whatever keyboard mode the program is in, and with Shift or Control held they stay the program's.
 - The text of a key event given to the encoder is the character as typed, before any Ctrl transformation (`"c"` for Ctrl+C). libghostty's encoder is not xterm's: Shift+Enter and Ctrl+I are distinct sequences even without the Kitty protocol.
 
 ## Tests

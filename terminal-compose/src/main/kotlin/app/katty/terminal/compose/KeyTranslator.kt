@@ -61,7 +61,8 @@ internal fun KeyEvent.toKeyInfo() = KeyInfo(
  * input methods and Option characters (`å`) work. The former is only used for keys that have no text
  * (arrows, Enter, Escape, function keys, modifiers) and for Ctrl combinations. Option is the key that
  * produces the characters: it is not the Alt of the program, so Option+key is not sent as Alt+key. Command
- * shortcuts are not sent either.
+ * shortcuts are not sent either. The keys that edit the line (Option or Command and the arrows) are the terminal's
+ * shortcuts, taken before: see [lineEditingText].
  *
  * Not thread-safe: it is used from the UI thread.
  */

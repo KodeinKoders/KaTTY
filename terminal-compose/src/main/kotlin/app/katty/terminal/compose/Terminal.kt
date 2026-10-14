@@ -259,6 +259,12 @@ public fun Terminal(
                     }
                     return@onPreviewKeyEvent true
                 }
+                // Option and Left or Right, Command and Left, Right or Backspace are the line editor's: see lineEditingText.
+                lineEditingText(info)?.let { text ->
+                    // A repeat is a press too: holding the keys goes on moving.
+                    if (info.kind == KeyInfo.Kind.PRESSED) session.sendText(text)
+                    return@onPreviewKeyEvent true
+                }
                 // Shift and PageUp, PageDown, Home or End scroll the history, when there is some: the program gets nothing. On the
                 // alternate screen there is none, and they are the program's.
                 if (latestFrame.value.scrollbar != null && isHistoryKey(info)) {
