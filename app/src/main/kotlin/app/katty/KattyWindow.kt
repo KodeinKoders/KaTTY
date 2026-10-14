@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,22 +20,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import app.katty.core.Direction
 import app.katty.core.KattyStore
 import app.katty.core.Project
 import app.katty.core.ProjectId
+import app.katty.core.SplitDirection
 import app.katty.core.WorkspaceId
+import app.katty.core.neighbour
 import app.katty.core.terminals
 import app.katty.screens.Sidebar
 import app.katty.screens.TitleBarContent
 import app.katty.screens.Welcome
+import app.katty.screens.WorkspaceArea
+import app.katty.terminals.SessionRegistry
 import app.katty.ui.ConfirmDialog
 import app.katty.ui.Katty
+import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.DecoratedWindowScope
 import org.jetbrains.jewel.window.TitleBar
@@ -44,11 +53,17 @@ import java.io.File
  * What is in the window: the title bar, and under it the sidebar and the workspace, or the welcome of an application that has no project.
  */
 @Composable
-fun DecoratedWindowScope.KattyWindowContent(store: KattyStore) {
+fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: SessionRegistry) {
     val state by store.state.collectAsState()
     val settings = state.settings
     var renamingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var removing by remember { mutableStateOf<ProjectId?>(null) }
+    val handles by registry.handles.collectAsState()
+
+    // The sessions follow the terminals of the store, and the ones that are not on the screen are paused.
+    LaunchedEffect(state.projects, state.settings.colorScheme) { registry.sync(state) }
+    val shown = state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty()
+    LaunchedEffect(shown, handles.keys) { registry.setVisible(shown) }
 
     val addProject = {
         val folder = chooseFolder(window, "Add project folder", state.selectedProject?.directory)
@@ -62,6 +77,14 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore) {
         Unit
     }
     val closeSelectedWorkspace = { state.selection.workspace?.let(store::closeWorkspace); Unit }
+    // Whether every split is drawn turned, which the vertical layout does: decided with the layout mode, later.
+    val flipped = false
+    val focusNeighbour = { direction: Direction ->
+        val workspace = state.selectedWorkspace
+        val from = state.selection.terminal
+        if (workspace != null && from != null) workspace.layout.neighbour(from, direction, flipped)?.let(store::focus)
+        Unit
+    }
 
     TitleBar {
         TitleBarContent(state, onToggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } })
@@ -70,10 +93,18 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore) {
     Box(
         Modifier.fillMaxSize().background(Katty.colors.bg).onPreviewKeyEvent { event ->
             val shortcut = event.windowShortcut() ?: return@onPreviewKeyEvent false
+            val terminal = state.selection.terminal
             when (shortcut) {
                 WindowShortcut.ADD_PROJECT -> addProject()
                 WindowShortcut.NEW_WORKSPACE -> newWorkspace()
                 WindowShortcut.CLOSE_WORKSPACE -> closeSelectedWorkspace()
+                WindowShortcut.SPLIT_RIGHT -> terminal?.let { store.split(it, SplitDirection.ROW) }
+                WindowShortcut.SPLIT_DOWN -> terminal?.let { store.split(it, SplitDirection.COLUMN) }
+                WindowShortcut.CLOSE_TERMINAL -> terminal?.let { store.closeTerminal(it) }
+                WindowShortcut.FOCUS_LEFT -> focusNeighbour(Direction.LEFT)
+                WindowShortcut.FOCUS_RIGHT -> focusNeighbour(Direction.RIGHT)
+                WindowShortcut.FOCUS_UP -> focusNeighbour(Direction.UP)
+                WindowShortcut.FOCUS_DOWN -> focusNeighbour(Direction.DOWN)
             }
             true
         },
@@ -94,7 +125,21 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore) {
                         onRenamingWorkspace = { renamingWorkspace = it },
                     )
                 }
-                WorkspaceStub(store, Modifier.weight(1f))
+                val workspace = state.selectedWorkspace
+                if (workspace == null) {
+                    EmptyProject(Modifier.weight(1f), onNewWorkspace = newWorkspace)
+                } else {
+                    WorkspaceArea(
+                        workspace = workspace,
+                        selectedTerminal = state.selection.terminal,
+                        handles = handles,
+                        settings = settings,
+                        store = store,
+                        flipped = flipped,
+                        focusTerminals = renamingWorkspace == null && removing == null,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
             }
         }
 
@@ -106,30 +151,39 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore) {
 }
 
 /** The window's own shortcuts, which the terminal does not see. */
-private enum class WindowShortcut { ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE }
+private enum class WindowShortcut {
+    ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE, SPLIT_RIGHT, SPLIT_DOWN, CLOSE_TERMINAL, FOCUS_LEFT, FOCUS_RIGHT, FOCUS_UP, FOCUS_DOWN,
+}
 
 private fun KeyEvent.windowShortcut(): WindowShortcut? {
     if (type != KeyEventType.KeyDown || !isMetaPressed) return null
+    if (isAltPressed) {
+        // Command and Option and an arrow: the neighbouring pane.
+        return when (key) {
+            Key.DirectionLeft -> WindowShortcut.FOCUS_LEFT
+            Key.DirectionRight -> WindowShortcut.FOCUS_RIGHT
+            Key.DirectionUp -> WindowShortcut.FOCUS_UP
+            Key.DirectionDown -> WindowShortcut.FOCUS_DOWN
+            else -> null
+        }
+    }
     return when {
         key == Key.O && !isShiftPressed -> WindowShortcut.ADD_PROJECT
         key == Key.N && !isShiftPressed -> WindowShortcut.NEW_WORKSPACE
         key == Key.W && isShiftPressed -> WindowShortcut.CLOSE_WORKSPACE
+        key == Key.W -> WindowShortcut.CLOSE_TERMINAL
+        key == Key.D && isShiftPressed -> WindowShortcut.SPLIT_DOWN
+        key == Key.D -> WindowShortcut.SPLIT_RIGHT
         else -> null
     }
 }
 
-// Until the workspace has its panes.
+/** What a project without workspaces shows. */
 @Composable
-private fun WorkspaceStub(store: KattyStore, modifier: Modifier) {
-    val state by store.state.collectAsState()
-    Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.Start) {
-        val workspace = state.selectedWorkspace
-        if (workspace == null) {
-            Text("This project has no workspace: add one with the sidebar, or with ⌘N.", color = Katty.colors.muted)
-        } else {
-            Text(workspace.name, color = Katty.colors.text)
-            Text("${workspace.layout.terminals().size} terminals", color = Katty.colors.muted)
-        }
+private fun EmptyProject(modifier: Modifier, onNewWorkspace: () -> Unit) {
+    Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("This project has no workspace.", color = Katty.colors.muted)
+        DefaultButton(onClick = onNewWorkspace) { Text("New workspace") }
     }
 }
 

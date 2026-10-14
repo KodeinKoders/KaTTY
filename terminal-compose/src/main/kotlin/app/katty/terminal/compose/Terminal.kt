@@ -91,6 +91,8 @@ import kotlin.math.roundToInt
  * @param onOpenLink Opens the address of a link that was clicked. By default the system opens the ones that start with `http`, `https`,
  * `ftp`, `file` and `mailto`, and the others are refused.
  * @param ligatures Whether the font joins sequences such as `=>` and `!=` into one glyph. Most programmers' fonts do, and it is on by default.
+ * @param focusOnStart Whether the terminal takes the keyboard focus when it is first shown. A host that shows several terminals decides which
+ * one has it, and turns this off.
  * @param onContextMenu Called with the position of a right press (in pixels, from the top left of the terminal) that is not the program's:
  * the program did not ask for the mouse, or Shift is held. The host shows its menu there. Without it the press is handled as before.
  */
@@ -105,6 +107,7 @@ public fun Terminal(
     onOpenLink: (String) -> Unit = ::openInBrowser,
     primarySelection: TerminalPrimarySelection = remember(session) { TerminalPrimarySelection() },
     ligatures: Boolean = true,
+    focusOnStart: Boolean = true,
     onContextMenu: ((Offset) -> Unit)? = null,
 ) {
     val frame by session.frames.collectAsState()
@@ -172,7 +175,7 @@ public fun Terminal(
         }
     }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    if (focusOnStart) LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     // What a program puts in the clipboard (OSC 52): the system's goes there, and what a middle click pastes is kept here.
     LaunchedEffect(session) {
