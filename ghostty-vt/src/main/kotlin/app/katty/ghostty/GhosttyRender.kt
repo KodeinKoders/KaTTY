@@ -113,6 +113,8 @@ public data class GhosttyRenderCell(
     public val width: GhosttyCellWidth,
     /** Whether the cell is part of a hyperlink (OSC 8). The address is [GhosttyTerminal.hyperlinkAt]. */
     public val hyperlink: Boolean = false,
+    /** What the cell says of a part of an image, if it is a unicode placeholder of the Kitty graphics protocol. */
+    public val placeholder: GhosttyPlaceholderCell? = null,
 )
 
 /**
@@ -134,4 +136,8 @@ public data class GhosttyRenderRow(
     public val selection: IntRange?,
     /** `null` when the cells of this row were not asked for, see [GhosttyRenderState.readRows]. */
     public val cells: List<GhosttyRenderCell>?,
+    /** Whether the row soft-wraps onto the next one: a line that was too long for it goes on there. */
+    public val wrap: Boolean = false,
+    /** Whether there are unicode placeholders of the Kitty graphics protocol in the row. */
+    public val hasPlaceholder: Boolean = false,
 )

@@ -15,6 +15,7 @@ import app.katty.terminal.TerminalCursor
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalLink
+import app.katty.terminal.TerminalLinkSegment
 import app.katty.terminal.TerminalRow
 import app.katty.terminal.TerminalRowId
 import app.katty.terminal.TerminalSearchMatch
@@ -265,6 +266,21 @@ class TerminalViewTest {
         assertTrue(!hovered.hasLine(1, 1, FOREGROUND), "The cell before it is not")
         assertTrue(!hovered.hasLine(6, 1, FOREGROUND), "Nor the one after it")
         assertTrue(!hovered.hasLine(3, 0, FOREGROUND), "Nor the same columns of another row")
+    }
+
+    @Test
+    fun underlinesALinkThatWrapsOnEachRowThatItIsOn() {
+        val frame = frame(20, listOf(row(20), row(20), row(20)))
+        val link = TerminalLink("https://example.com", listOf(TerminalLinkSegment(0, 14..19), TerminalLinkSegment(1, 0..3)))
+
+        val hovered = render("link-wrapped", frame, hoveredLink = link)
+
+        for (col in 14..19) assertTrue(hovered.hasLine(col, 0, FOREGROUND), "The cell $col of the first row")
+        for (col in 0..3) assertTrue(hovered.hasLine(col, 1, FOREGROUND), "The cell $col of the second row")
+        assertTrue(!hovered.hasLine(13, 0, FOREGROUND), "Not before it")
+        assertTrue(!hovered.hasLine(4, 1, FOREGROUND), "Nor after it")
+        assertTrue(!hovered.hasLine(0, 0, FOREGROUND), "Nor the start of the first row")
+        assertTrue(!hovered.hasLine(2, 2, FOREGROUND), "Nor another row")
     }
 
     @Test

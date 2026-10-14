@@ -38,6 +38,13 @@ public sealed interface TerminalEvent {
 
     /** The command ended. [exitCode] is its exit code when the shell said it. */
     public data class CommandFinished(val exitCode: Int?) : TerminalEvent
+
+    /**
+     * A program asked to resize the window's text area (CSI 8 ; rows ; columns t), to [columns] by [rows] cells, `null` for the one it
+     * asked to keep. Nothing was resized: the host decides, and if it does it resizes its window, and the terminal follows it. Any program
+     * can ask, so letting it is the host's choice to offer.
+     */
+    public data class ResizeRequested(val columns: Int?, val rows: Int?) : TerminalEvent
 }
 
 public enum class TerminalProgressState {
@@ -53,10 +60,23 @@ public data class TerminalProgress(val state: TerminalProgressState, val percent
 /**
  * A link in the screen: an address that a program marked (OSC 8) or that is written in the text.
  *
- * @param row The row of the viewport.
+ * @param segments Where it is: one for each row of the viewport that it is on, from the top (a link that goes on onto the next row,
+ * which its line was too long for, has several). They are never empty.
+ */
+public data class TerminalLink(val url: String, val segments: List<TerminalLinkSegment>) {
+    /** A link that is on one row. */
+    public constructor(url: String, row: Int, columns: IntRange) : this(url, listOf(TerminalLinkSegment(row, columns)))
+
+    /** Whether the cell at [column] and [row] is part of it. */
+    public fun contains(column: Int, row: Int): Boolean = segments.any { it.row == row && column in it.columns }
+}
+
+/**
+ * The part of a link that is on one [row] of the viewport.
+ *
  * @param columns The cells it covers on that row, both ends included.
  */
-public data class TerminalLink(val url: String, val row: Int, val columns: IntRange)
+public data class TerminalLinkSegment(val row: Int, val columns: IntRange)
 
 /**
  * The directory that the shell reported (OSC 7), as a path: a `file://host/path` URI is turned into its path, with the

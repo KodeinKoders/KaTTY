@@ -122,12 +122,14 @@ private fun DrawScope.drawCells(startCol: Int, cols: Int, top: Float, typography
 }
 
 // The link that a click would open, underlined along the bottom of its cells, in the color of the text: what is written in it is
-// underlined or not, as the program wrote it.
+// underlined or not, as the program wrote it. One that wraps is underlined on each row that it is on.
 private fun DrawScope.drawLinkUnderline(link: TerminalLink, color: Color, typography: TerminalTypography) {
-    val left = round(link.columns.first * typography.cellWidth)
-    val right = round((link.columns.last + 1) * typography.cellWidth)
-    val bottom = (link.row + 1) * typography.cellHeight
-    drawRect(color, topLeft = Offset(left, round(bottom) - LINK_UNDERLINE_PX), size = Size(right - left, LINK_UNDERLINE_PX))
+    for (segment in link.segments) {
+        val left = round(segment.columns.first * typography.cellWidth)
+        val right = round((segment.columns.last + 1) * typography.cellWidth)
+        val bottom = (segment.row + 1) * typography.cellHeight
+        drawRect(color, topLeft = Offset(left, round(bottom) - LINK_UNDERLINE_PX), size = Size(right - left, LINK_UNDERLINE_PX))
+    }
 }
 
 private const val LINK_UNDERLINE_PX = 1f

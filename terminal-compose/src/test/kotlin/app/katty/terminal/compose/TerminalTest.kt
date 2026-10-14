@@ -424,6 +424,53 @@ class TerminalTest {
     }
 
     @Test
+    fun drawsASixelImageOnTheCellsThatItTakes() {
+        // 16 by 12 pixels of green, at the top left: two cells wide and one high.
+        val session = session("""printf '\033P0;1;0q"1;1;16;12#1;2;0;255;0!16~-!16~\033\\'; printf 'X'; sleep 30""", cols = 40, rows = 5)
+        val scene = show(session)
+        scene.renderUntil("the terminal to fit the scene and show the image") { session.frames.value.cols != 40 && session.frames.value.images.isNotEmpty() }
+        scene.settle()
+
+        val image = scene.render(clock)
+        File("build/renders").apply { mkdirs() }.resolve("sixel.png").writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
+        val bitmap = Bitmap.makeFromImage(image)
+        val typography = typography!!
+        val inside = bitmap.getColor((typography.cellWidth * 0.5f).toInt(), (typography.cellHeight * 0.5f).toInt())
+        val outside = bitmap.getColor((typography.cellWidth * 6f).toInt(), (typography.cellHeight * 0.5f).toInt())
+
+        assertTrue((inside shr 8 and 0xFF) > 200 && (inside shr 16 and 0xFF) < 60, "Green where the image is: ${inside.toString(16)}")
+        assertTrue((outside shr 8 and 0xFF) < 200 || (outside shr 16 and 0xFF) > 60, "And not past it: ${outside.toString(16)}")
+    }
+
+    @Test
+    fun drawsTheImageOfAUnicodePlaceholderOnItsCells() {
+        // 16 by 16 pixels of green, a virtual placement of 2 by 1 cells, and two placeholders (row 0, columns 0 and 1) of it in color 3.
+        val pixels = ByteArray(16 * 16 * 4) { if (it % 4 == 1 || it % 4 == 3) 0xFF.toByte() else 0 }
+        val base64 = java.util.Base64.getEncoder().encodeToString(pixels)
+        val placeholder = """\364\216\273\256\314\205\314\205"""
+        val next = """\364\216\273\256"""
+        val session = session(
+            """printf '\033_Ga=T,U=1,i=3,c=2,r=1,f=32,s=16,v=16,q=2;$base64\033\\'; printf '\033[38;5;3m$placeholder$next\033[0mX'; sleep 30""",
+            cols = 40,
+            rows = 5,
+        )
+        val scene = show(session)
+        scene.renderUntil("the terminal to fit the scene and show the image") { session.frames.value.cols != 40 && session.frames.value.images.isNotEmpty() }
+        scene.settle()
+
+        val image = scene.render(clock)
+        File("build/renders").apply { mkdirs() }.resolve("placeholder.png").writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
+        val bitmap = Bitmap.makeFromImage(image)
+        val typography = typography!!
+        // Where a missing glyph would be, if the cell were not blank: the middle of the second cell.
+        val inside = bitmap.getColor((typography.cellWidth * 1.5f).toInt(), (typography.cellHeight * 0.5f).toInt())
+        val outside = bitmap.getColor((typography.cellWidth * 6f).toInt(), (typography.cellHeight * 0.5f).toInt())
+
+        assertTrue((inside shr 8 and 0xFF) > 200 && (inside shr 16 and 0xFF) < 60, "Green where the cells are: ${inside.toString(16)}")
+        assertTrue((outside shr 8 and 0xFF) < 200 || (outside shr 16 and 0xFF) > 60, "And not past them: ${outside.toString(16)}")
+    }
+
+    @Test
     fun sendsTheKeysThatEditTheLineAsWhatTheLineEditorBinds() {
         org.junit.Assume.assumeTrue("The line editing keys are the ones of macOS", isMac)
         // In raw mode, the program gets exactly the bytes that are sent.

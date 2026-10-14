@@ -6,6 +6,8 @@ import app.katty.ghostty.ffm.GhosttyRenderStateColors
 import app.katty.ghostty.ffm.GhosttyRenderStateCursor
 import app.katty.ghostty.ffm.GhosttyRenderStateRowSelection
 import app.katty.ghostty.ffm.GhosttyStyle
+import app.katty.ghostty.ffm.GhosttyStyleColor
+import app.katty.ghostty.ffm.GhosttyStyleColorValue
 import app.katty.ghostty.ffm.GhosttyVt
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
@@ -200,8 +202,18 @@ public class GhosttyRenderState : AutoCloseable {
                 }
             }
 
+            checkResult(
+                GhosttyVt.ghostty_render_state_row_get(rowIterator, GhosttyVt.GHOSTTY_RENDER_STATE_ROW_DATA_RAW(), scratch),
+                "ghostty_render_state_row_get(RAW)",
+            )
+            val raw = scratch.get(ValueLayout.JAVA_LONG, 0)
+            checkResult(GhosttyVt.ghostty_row_get(raw, GhosttyVt.GHOSTTY_ROW_DATA_WRAP(), scratch), "ghostty_row_get(WRAP)")
+            val wrap = scratch.get(ValueLayout.JAVA_BOOLEAN, 0)
+            checkResult(GhosttyVt.ghostty_row_get(raw, GhosttyVt.GHOSTTY_ROW_DATA_KITTY_VIRTUAL_PLACEHOLDER(), scratch), "ghostty_row_get(KITTY_VIRTUAL_PLACEHOLDER)")
+            val hasPlaceholder = scratch.get(ValueLayout.JAVA_BOOLEAN, 0)
+
             val cells = if (readCellsOf(id, dirty)) readCells() else null
-            rows += GhosttyRenderRow(y, id, dirty, selection, cells)
+            rows += GhosttyRenderRow(y, id, dirty, selection, cells, wrap, hasPlaceholder)
         }
         return rows
     }
@@ -255,7 +267,31 @@ public class GhosttyRenderState : AutoCloseable {
             else -> GhosttyCellWidth.NARROW
         }
 
-        return GhosttyRenderCell(text, foreground, background, style, width, hyperlink)
+        // A placeholder says what it is by its colors, which have to be the ones that the cell has, not the ones that it is drawn with.
+        val placeholder = if (text.isNotEmpty() && text.codePointAt(0) == PLACEHOLDER_CODEPOINT) {
+            if (hasStyling) {
+                decodePlaceholder(text, styleColorId(GhosttyStyle.fg_color(scratchStyle)), styleColorId(GhosttyStyle.underline_color(scratchStyle)))
+            } else {
+                decodePlaceholder(text, 0, 0)
+            }
+        } else {
+            null
+        }
+
+        return GhosttyRenderCell(text, foreground, background, style, width, hyperlink, placeholder)
+    }
+
+    // The id that a color of a style stands for: a palette index as it is, a color as its 24 bits, nothing as 0.
+    private fun styleColorId(color: MemorySegment): Int {
+        val value = GhosttyStyleColor.value(color)
+        return when (GhosttyStyleColor.tag(color)) {
+            GhosttyVt.GHOSTTY_STYLE_COLOR_PALETTE() -> GhosttyStyleColorValue.palette(value).toInt() and 0xFF
+            GhosttyVt.GHOSTTY_STYLE_COLOR_RGB() -> {
+                val rgb = GhosttyStyleColorValue.rgb(value)
+                ((GhosttyColorRgb.r(rgb).toInt() and 0xFF) shl 16) or ((GhosttyColorRgb.g(rgb).toInt() and 0xFF) shl 8) or (GhosttyColorRgb.b(rgb).toInt() and 0xFF)
+            }
+            else -> 0
+        }
     }
 
     private fun readCellText(): String {

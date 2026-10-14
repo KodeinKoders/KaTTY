@@ -93,6 +93,31 @@ class ShellIntegrationTest {
     @Test
     fun bashGivesTheOutputOfTheLastCommand() = givesTheOutputOfTheLastCommand("/bin/bash")
 
+    private fun theCursorIsBackAtThePromptAfterACommandThatChangedIt(shell: String) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+        val events = session.collectEvents()
+
+        // A program that leaves a bar and no cursor, as one that crashes does.
+        session.sendText("printf '\\033[5 q\\033[?25l'\r")
+        await("the end of the command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
+
+        // The cursor of the prompt, which is what it was before the command.
+        val frame = session.frames.value
+        await("the cursor to be back") {
+            val cursor = session.frames.value.cursor
+            cursor.visible && cursor.shape == TerminalCursorShape.BLOCK
+        }
+        assertTrue(frame.rows.isNotEmpty())
+    }
+
+    @Test
+    fun zshGivesTheCursorBackAtThePrompt() = theCursorIsBackAtThePromptAfterACommandThatChangedIt("/bin/zsh")
+
+    @Test
+    fun bashGivesTheCursorBackAtThePrompt() = theCursorIsBackAtThePromptAfterACommandThatChangedIt("/bin/bash")
+
     @Test
     fun zshReportsItsDirectoryAndItsCommands() = reportsItsDirectoryAndItsCommands("/bin/zsh")
 
@@ -142,6 +167,81 @@ class ShellIntegrationTest {
         assertEquals(listOf("/bin/zsh", "-c", "ls"), ShellIntegration.apply(listOf("/bin/zsh", "-c", "ls"), environment))
         assertEquals(listOf("/bin/bash", "script.sh"), ShellIntegration.apply(listOf("/bin/bash", "script.sh"), environment))
         assertEquals(emptyMap(), environment)
+    }
+
+    @Test
+    fun fishIsStartedWithTheDirectoryOfTheIntegrationInFrontOfTheDataDirectories() {
+        val environment = mutableMapOf("XDG_DATA_DIRS" to "/opt/share:/usr/share")
+
+        val command = ShellIntegration.apply(listOf("/opt/homebrew/bin/fish", "-l"), environment)
+
+        // The command is the same: fish reads the directory by itself.
+        assertEquals(listOf("/opt/homebrew/bin/fish", "-l"), command)
+        val root = environment.getValue("KATTY_SHELL_INTEGRATION_XDG_DIR")
+        assertEquals("$root:/opt/share:/usr/share", environment["XDG_DATA_DIRS"])
+        val script = Path.of(root, "fish", "vendor_conf.d", "katty-shell-integration.fish")
+        assertTrue(Files.isRegularFile(script), "fish reads the files of vendor_conf.d of the directories in XDG_DATA_DIRS")
+        val text = Files.readString(script)
+        for (mark in listOf("133;A", "133;C", "133;D", "]7;file://")) assertTrue(mark in text, "The script says $mark")
+    }
+
+    @Test
+    fun fishGetsTheDefaultDataDirectoriesBehindOursWhenThereAreNone() {
+        val environment = mutableMapOf<String, String>()
+
+        ShellIntegration.apply(listOf("fish", "-l"), environment)
+
+        assertEquals("${environment.getValue("KATTY_SHELL_INTEGRATION_XDG_DIR")}:/usr/local/share:/usr/share", environment["XDG_DATA_DIRS"])
+    }
+
+    @Test
+    fun fishThatIsNotStartedToBeTypedInIsLeftAsItIs() {
+        val environment = mutableMapOf<String, String>()
+
+        assertEquals(listOf("fish", "-c", "echo"), ShellIntegration.apply(listOf("fish", "-c", "echo"), environment))
+        assertEquals(emptyMap(), environment)
+    }
+
+    // fish is not on every machine: the tests that run it are skipped where it is not.
+    private fun fish(): String? = listOf("/opt/homebrew/bin/fish", "/usr/local/bin/fish", "/usr/bin/fish", "/bin/fish").firstOrNull { java.io.File(it).canExecute() }
+
+    @Test
+    fun fishReportsItsDirectoryAndItsCommands() {
+        val fish = fish()
+        org.junit.Assume.assumeTrue("fish is not installed", fish != null)
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(fish!!, emptyHome(), directory)
+
+        await("the directory of the first prompt") { session.workingDirectory.value == directory.toRealPath().toString() }
+
+        val events = session.collectEvents()
+        session.sendText("cd /tmp\r")
+        await("the directory to follow the shell") { session.workingDirectory.value == "/tmp" }
+
+        session.sendText("false\r")
+        await("the end of the command") { TerminalEvent.CommandFinished(1) in events }
+        await("the next prompt") { events.lastOrNull() == TerminalEvent.PromptStarted }
+        assertTrue(
+            events.indexOf(TerminalEvent.CommandStarted(null)) < events.indexOf(TerminalEvent.CommandFinished(1)),
+            "The command starts before it ends: $events",
+        )
+    }
+
+    @Test
+    fun fishDoesNotLeaveTheDirectoryOfTheIntegrationInWhatItsProgramsSee() {
+        val fish = fish()
+        org.junit.Assume.assumeTrue("fish is not installed", fish != null)
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(fish!!, emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+
+        session.sendText("echo \"[\$KATTY_SHELL_INTEGRATION_XDG_DIR][\$XDG_DATA_DIRS]\"\r")
+
+        await("the output") {
+            session.frames.value.rows.any { row -> row.cells.joinToString("") { it.text }.trim().startsWith("[][") }
+        }
+        val line = session.frames.value.rows.map { r -> r.cells.joinToString("") { it.text }.trim() }.first { it.startsWith("[][") }
+        assertTrue("katty-shell-integration" !in line && "katty" !in line.substringAfter("]["), line)
     }
 
     private companion object {

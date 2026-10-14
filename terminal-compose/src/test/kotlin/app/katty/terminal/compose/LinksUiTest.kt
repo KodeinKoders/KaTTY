@@ -2,6 +2,7 @@ package app.katty.terminal.compose
 
 import androidx.compose.ui.input.pointer.PointerIcon
 import app.katty.terminal.TerminalLink
+import app.katty.terminal.TerminalLinkSegment
 import app.katty.terminal.TerminalMouseButton
 import app.katty.terminal.TerminalPointerShape
 import java.awt.event.KeyEvent as AwtKeyEvent
@@ -20,8 +21,8 @@ class LinksUiTest {
 
     private val linkAt: (Int, Int) -> TerminalLink? = { column, row ->
         when {
-            row == 0 && column in first.columns -> first
-            row == 1 && column in second.columns -> second
+            first.contains(column, row) -> first
+            second.contains(column, row) -> second
             else -> null
         }
     }
@@ -35,6 +36,25 @@ class LinksUiTest {
         PointerInfo(kind, (column + 0.5f) * cellWidth, (row + 0.5f) * cellHeight, button = button, meta = modifier && mac, ctrl = modifier && !mac),
         cellWidth, cellHeight, linkAt, { opened += it }, mac,
     )
+
+    @Test
+    fun aLinkThatWrapsIsHoveredAndOpenedFromAnyOfItsRows() {
+        val wrapped = TerminalLink("https://wrapped.example", listOf(TerminalLinkSegment(2, 5..9), TerminalLinkSegment(3, 0..2)))
+        val links = LinkInteraction()
+        val wrappedLinkAt: (Int, Int) -> TerminalLink? = { column, row -> if (wrapped.contains(column, row)) wrapped else null }
+        fun event(kind: PointerInfo.Kind, column: Int, row: Int) = links.handle(
+            PointerInfo(kind, (column + 0.5f) * cellWidth, (row + 0.5f) * cellHeight, button = TerminalMouseButton.LEFT.takeIf { kind != PointerInfo.Kind.MOVE }, meta = true),
+            cellWidth, cellHeight, wrappedLinkAt, { opened += it }, true,
+        )
+
+        event(PointerInfo.Kind.MOVE, 1, 3)
+        assertEquals(wrapped, links.hovered)
+        // Pressed on the second row, released on the first: it is still the same address.
+        assertTrue(event(PointerInfo.Kind.PRESS, 1, 3))
+        assertTrue(event(PointerInfo.Kind.RELEASE, 6, 2))
+
+        assertEquals(listOf("https://wrapped.example"), opened)
+    }
 
     @Test
     fun commandOnMacOSAndControlElsewhereAreTheModifier() {

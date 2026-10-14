@@ -7,6 +7,10 @@ import app.katty.ghostty.ffm.GhosttyClipboardReadReplyFn
 import app.katty.ghostty.ffm.GhosttyClipboardWrite
 import app.katty.ghostty.ffm.GhosttyClipboardWriteReply
 import app.katty.ghostty.ffm.GhosttyClipboardWriteReplyFn
+import app.katty.ghostty.ffm.GhosttyDeviceAttributes
+import app.katty.ghostty.ffm.GhosttyDeviceAttributesPrimary
+import app.katty.ghostty.ffm.GhosttyDeviceAttributesSecondary
+import app.katty.ghostty.ffm.GhosttyDeviceAttributesTertiary
 import app.katty.ghostty.ffm.GhosttyColorRgb
 import app.katty.ghostty.ffm.GhosttyGridRef
 import app.katty.ghostty.ffm.GhosttyKittyGraphicsPlacementRenderInfo
@@ -21,9 +25,16 @@ import app.katty.ghostty.ffm.GhosttyTerminalClipboardReadFn
 import app.katty.ghostty.ffm.GhosttyTerminalClipboardWriteFn
 import app.katty.ghostty.ffm.GhosttyTerminalDesktopNotification
 import app.katty.ghostty.ffm.GhosttyTerminalDesktopNotificationFn
+import app.katty.ghostty.ffm.GhosttyTerminalDeviceAttributesFn
 import app.katty.ghostty.ffm.GhosttyTerminalMemoryUsage
 import app.katty.ghostty.ffm.GhosttyTerminalModeConfig
 import app.katty.ghostty.ffm.GhosttyTerminalProgressReport
+import app.katty.ghostty.ffm.GhosttyTerminalProgramStatus
+import app.katty.ghostty.ffm.GhosttyTerminalProgramStatusFn
+import app.katty.ghostty.ffm.GhosttyTerminalResizeWindow
+import app.katty.ghostty.ffm.GhosttyTerminalResizeWindowFn
+import app.katty.ghostty.ffm.GhosttyTerminalResizeWindowGrid
+import app.katty.ghostty.ffm.GhosttyTerminalResizeWindowValue
 import app.katty.ghostty.ffm.GhosttyTerminalProgressReportFn
 import app.katty.ghostty.ffm.GhosttyTerminalPwdChangedFn
 import app.katty.ghostty.ffm.GhosttyTerminalResetFn
@@ -138,6 +149,17 @@ public class GhosttyTerminal private constructor(
     @Volatile
     public var onProgress: ((GhosttyProgress) -> Unit)? = null
 
+    /**
+     * A program reported what it is doing (OSC 7501). The terminal keeps no record of them: the application does. With a handler the
+     * terminal also answers the program's query of its status, and it reports a reset (RIS) as a [GhosttyProgramState.CLEAR] with no id.
+     */
+    @Volatile
+    public var onProgramStatus: ((GhosttyProgramStatus) -> Unit)? = null
+
+    /** A program asked to resize the window (CSI 8 t). The terminal is not resized: the application decides. */
+    @Volatile
+    public var onResizeRequest: ((GhosttyResizeRequest) -> Unit)? = null
+
     /** The shell reported a step of the prompt (OSC 133). */
     @Volatile
     public var onSemanticPrompt: ((GhosttySemanticPrompt) -> Unit)? = null
@@ -148,6 +170,13 @@ public class GhosttyTerminal private constructor(
      */
     @Volatile
     public var onClipboardWrite: ((GhosttyClipboardLocation, String) -> Boolean)? = null
+
+    /**
+     * Whether the answer to a device attributes query (DA1) says that the terminal draws Sixel images (feature 4). Programs that probe
+     * pick their image format by it. Read when the query is answered.
+     */
+    @Volatile
+    public var advertiseSixel: Boolean = false
 
     // Not installed until a reader is set: having one also makes the terminal send the program paste events (mode 5522).
     private var clipboardReader: ((GhosttyClipboardLocation) -> String?)? = null
@@ -451,6 +480,8 @@ public class GhosttyTerminal private constructor(
             sourceY = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.source_y(info) else 0,
             sourceWidth = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.source_width(info) else 0,
             sourceHeight = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.source_height(info) else 0,
+            columns = int(GhosttyVt.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_COLUMNS()),
+            rows = int(GhosttyVt.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_ROWS()),
         )
     }
 
@@ -984,6 +1015,23 @@ public class GhosttyTerminal private constructor(
         }
     }
 
+    // What the terminal says that it is, to the programs that ask (CSI c, CSI > c, CSI = c): a VT220 that has ANSI color, and Sixel if
+    // it draws it, the way Ghostty answers.
+    private fun fillDeviceAttributes(out: MemorySegment) {
+        val primary = GhosttyDeviceAttributes.primary(out)
+        GhosttyDeviceAttributesPrimary.conformance_level(primary, 62)
+        val features = if (advertiseSixel) shortArrayOf(4, 22) else shortArrayOf(22)
+        for ((i, feature) in features.withIndex()) {
+            primary.set(ValueLayout.JAVA_SHORT, GhosttyDeviceAttributesPrimary.`features$offset`() + i * 2L, feature)
+        }
+        GhosttyDeviceAttributesPrimary.num_features(primary, features.size.toLong())
+        val secondary = GhosttyDeviceAttributes.secondary(out)
+        GhosttyDeviceAttributesSecondary.device_type(secondary, 1)
+        GhosttyDeviceAttributesSecondary.firmware_version(secondary, 10)
+        GhosttyDeviceAttributesSecondary.rom_cartridge(secondary, 0)
+        GhosttyDeviceAttributesTertiary.unit_id(GhosttyDeviceAttributes.tertiary(out), 0)
+    }
+
     private fun installEffects() {
         val effects = listOf(
             GhosttyVt.GHOSTTY_TERMINAL_OPT_BELL() to GhosttyTerminalBellFn.allocate(
@@ -1044,6 +1092,71 @@ public class GhosttyTerminal private constructor(
                         }
                         val exitCode = GhosttyTerminalSemanticPrompt.exit_code(struct).takeIf { GhosttyTerminalSemanticPrompt.has_exit_code(struct) }
                         onSemanticPrompt?.invoke(GhosttySemanticPrompt(kind, exitCode, copyString(GhosttyTerminalSemanticPrompt.command(struct))))
+                    }
+                },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS() to GhosttyTerminalProgramStatusFn.allocate(
+                GhosttyTerminalProgramStatusFn.Function { _, _, report ->
+                    guarded("onProgramStatus") {
+                        val struct = report.reinterpret(GhosttyTerminalProgramStatus.layout().byteSize())
+                        val state = when (GhosttyTerminalProgramStatus.state(struct)) {
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_STATE_IDLE() -> GhosttyProgramState.IDLE
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_STATE_WORKING() -> GhosttyProgramState.WORKING
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_STATE_DONE() -> GhosttyProgramState.DONE
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED() -> GhosttyProgramState.BLOCKED
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_STATE_ERROR() -> GhosttyProgramState.ERROR
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_STATE_CLEAR() -> GhosttyProgramState.CLEAR
+                            // A state of a later version of the library: nothing to say about it.
+                            else -> return@guarded
+                        }
+                        val kind = when (GhosttyTerminalProgramStatus.kind(struct)) {
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_KIND_PERMISSION() -> GhosttyProgramKind.PERMISSION
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_KIND_QUESTION() -> GhosttyProgramKind.QUESTION
+                            GhosttyVt.GHOSTTY_PROGRAM_STATUS_KIND_AUTH() -> GhosttyProgramKind.AUTH
+                            else -> GhosttyProgramKind.NONE
+                        }
+                        onProgramStatus?.invoke(
+                            GhosttyProgramStatus(
+                                state = state,
+                                kind = kind,
+                                progress = GhosttyTerminalProgramStatus.progress(struct).toInt().takeIf { it >= 0 },
+                                id = copyString(GhosttyTerminalProgramStatus.id(struct)),
+                                app = copyString(GhosttyTerminalProgramStatus.app(struct)),
+                                title = copyString(GhosttyTerminalProgramStatus.title(struct)),
+                                message = copyString(GhosttyTerminalProgramStatus.message(struct)),
+                            ),
+                        )
+                    }
+                },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_RESIZE_WINDOW() to GhosttyTerminalResizeWindowFn.allocate(
+                GhosttyTerminalResizeWindowFn.Function { _, _, request ->
+                    guarded("onResizeRequest") {
+                        val struct = request.reinterpret(GhosttyTerminalResizeWindow.layout().byteSize())
+                        // The kinds of request that a later version adds are not for this one to handle.
+                        if (GhosttyTerminalResizeWindow.tag(struct) != GhosttyVt.GHOSTTY_TERMINAL_RESIZE_WINDOW_GRID()) return@guarded
+                        val grid = GhosttyTerminalResizeWindowValue.grid(GhosttyTerminalResizeWindow.value(struct))
+                        onResizeRequest?.invoke(
+                            GhosttyResizeRequest(
+                                columns = (GhosttyTerminalResizeWindowGrid.columns(grid).toInt() and 0xFFFF).takeIf { it > 0 },
+                                rows = (GhosttyTerminalResizeWindowGrid.rows(grid).toInt() and 0xFFFF).takeIf { it > 0 },
+                            ),
+                        )
+                    }
+                },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES() to GhosttyTerminalDeviceAttributesFn.allocate(
+                GhosttyTerminalDeviceAttributesFn.Function { _, _, out ->
+                    // An exception must never cross into native code: it would take the JVM down.
+                    try {
+                        fillDeviceAttributes(out.reinterpret(GhosttyDeviceAttributes.layout().byteSize()))
+                        true
+                    } catch (e: Throwable) {
+                        logger.error("The device attributes failed", e)
+                        false
                     }
                 },
                 callbacks,

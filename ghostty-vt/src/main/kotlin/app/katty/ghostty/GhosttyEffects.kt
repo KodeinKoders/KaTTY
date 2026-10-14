@@ -46,3 +46,40 @@ public enum class GhosttyPromptEventKind {
  * @param command The command line, for [GhosttyPromptEventKind.OUTPUT_START] when the shell said it, else empty.
  */
 public data class GhosttySemanticPrompt(val kind: GhosttyPromptEventKind, val exitCode: Int?, val command: String)
+
+/** What a program says it is doing, in a program status report (OSC 7501). */
+public enum class GhosttyProgramState {
+    IDLE,
+    WORKING,
+    DONE,
+    BLOCKED,
+    ERROR,
+
+    /** Not a state: the report asks to remove the record with its id, and the ones beneath it. With no id, all of them. */
+    CLEAR,
+}
+
+/** What a blocked program needs from the user. */
+public enum class GhosttyProgramKind {
+    NONE,
+    PERMISSION,
+    QUESTION,
+    AUTH,
+}
+
+/**
+ * A program status report (OSC 7501), as libghostty validated it. [progress] is from 0 to 100, `null` when the program did not say.
+ * [id] is empty for the program itself, and a `/` makes a record the child of another. The strings are empty when the report left them out.
+ */
+public data class GhosttyProgramStatus(
+    val state: GhosttyProgramState,
+    val kind: GhosttyProgramKind,
+    val progress: Int?,
+    val id: String,
+    val app: String,
+    val title: String,
+    val message: String,
+)
+
+/** A program asked to resize the window's text area (CSI 8 ; rows ; columns t): `null` for what it asked to keep. */
+public data class GhosttyResizeRequest(val columns: Int?, val rows: Int?)

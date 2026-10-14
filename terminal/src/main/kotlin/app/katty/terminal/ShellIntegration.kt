@@ -19,13 +19,15 @@ private val logger = LoggerFactory.getLogger(ShellIntegration::class.java)
  * - bash: it is started with `--rcfile`, which an interactive shell reads instead of `~/.bashrc`. The script reads the files that
  *   bash would have read, those of a login shell if one was asked for, and then installs its hooks. (`--posix` with `ENV`, which
  *   other terminals use, is not read by the bash 3.2 of macOS.)
+ * - fish: KaTTY's directory is put in front of `XDG_DATA_DIRS`, and fish reads the `vendor_conf.d` of the directories in it before
+ *   the user's configuration. The script takes the directory out again, and sets itself up at the first prompt.
  *
  * Other shells, and a shell that is started with other arguments than a login or an interactive one (a `-c` command, a
  * script), are left as they are.
  */
 internal object ShellIntegration {
     private const val RESOURCES = "/app/katty/terminal/shell-integration"
-    private val FILES = listOf("zsh/.zshenv", "zsh/katty-integration.zsh", "bash/katty.bash")
+    private val FILES = listOf("zsh/.zshenv", "zsh/katty-integration.zsh", "bash/katty.bash", "fish/vendor_conf.d/katty-shell-integration.fish")
 
     // Written once for the process, and removed when it ends.
     private val directory: Path? by lazy {
@@ -72,6 +74,16 @@ internal object ShellIntegration {
                 // It is not a login shell any more: the script reads the files of one.
                 if (arguments.any { it == "-l" || it == "--login" }) environment["KATTY_BASH_LOGIN"] = "1" else environment.remove("KATTY_BASH_LOGIN")
                 listOf(program, "--rcfile", root.resolve("bash/katty.bash").toString(), "-i")
+            }
+
+            "fish" -> {
+                val root = directory ?: return command
+                // What KaTTY, running in a terminal of its own, may have inherited is not the user's: the script takes its own out.
+                environment["KATTY_SHELL_INTEGRATION_XDG_DIR"] = root.toString()
+                // The directories that fish and the system use when it is not set.
+                val existing = environment["XDG_DATA_DIRS"]?.takeIf { it.isNotEmpty() } ?: "/usr/local/share:/usr/share"
+                environment["XDG_DATA_DIRS"] = "$root:$existing"
+                command
             }
 
             else -> command

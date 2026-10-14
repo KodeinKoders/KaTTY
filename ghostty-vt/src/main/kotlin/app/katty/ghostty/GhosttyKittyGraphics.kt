@@ -92,4 +92,8 @@ public data class GhosttyImagePlacement(
     val sourceY: Int,
     val sourceWidth: Int,
     val sourceHeight: Int,
+    /** The columns that the program asked for (`c=`), `0` when it did not: for a virtual placement, the size of the grid that the image is fitted in. */
+    val columns: Int = 0,
+    /** The rows that it asked for (`r=`). */
+    val rows: Int = 0,
 )

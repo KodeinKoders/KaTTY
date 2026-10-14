@@ -65,6 +65,23 @@ public data class TerminalCell(
     public val width: TerminalCellWidth,
     /** Whether the cell is part of a hyperlink that a program marked (OSC 8): [TerminalSession.linkAt] has its address. */
     public val hyperlink: Boolean = false,
+    /**
+     * What the cell says of a part of an image, if it is a unicode placeholder of the Kitty graphics protocol. Its [text] is then empty:
+     * the image is [TerminalFrame.images], drawn under the text, and the character is not for anyone to see.
+     */
+    public val placeholder: TerminalPlaceholder? = null,
+)
+
+/**
+ * A unicode placeholder of the Kitty graphics protocol, as the cell has it: the ids that its colors give and the row and column that its marks
+ * give, `null` where it does not say (it continues the cell before it).
+ */
+public data class TerminalPlaceholder(
+    public val imageIdLow: Int,
+    public val placementId: Int,
+    public val row: Int?,
+    public val col: Int?,
+    public val high: Int?,
 )
 
 /**
@@ -90,6 +107,10 @@ public data class TerminalRowId(
 public class TerminalRow(
     public val id: TerminalRowId,
     public val cells: List<TerminalCell>,
+    /** Whether the line that is in this row goes on in the next one, which it was too long for. */
+    public val wrapped: Boolean = false,
+    /** Whether any cell of it is a placeholder of the Kitty graphics protocol. */
+    public val hasPlaceholder: Boolean = false,
 ) {
     override fun toString(): String = "TerminalRow($id, ${cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd()})"
 }

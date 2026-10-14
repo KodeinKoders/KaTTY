@@ -70,19 +70,24 @@ Its `README.adoc` says which Ghostty commit it was built from, and how to update
 == Status
 
 The shell runs, with colors, text attributes, the 811 iTerm2 color schemes (chosen in the field next to the title), wide characters, a cursor, resizing with reflow, and the keyboard, including the Kitty keyboard protocol dead keys, which are shown underlined while they are composed, and the mouse, which is reported to the programs that ask for it (clicks, drags, motion and the wheel, in every protocol), with the pointer shape that they ask for, and the history scrolls (with the wheel, Shift and PageUp, PageDown, Home or End, and a scrollbar that fades out), and text is selected with the mouse (words with a double click, lines with a triple click, blocks with Option and Command; with Shift when a program has the mouse) and kept for a middle click, which pastes it.
-Images of the Kitty graphics protocol are drawn (`chafa -f kitty` for chafa, which does not detect it).
+Images are drawn: those of the Kitty graphics protocol (`chafa -f kitty`), with unicode placeholders (tmux), Sixel and the inline images of iTerm2, which are turned into the Kitty protocol as they are read.
+The terminal answers device attributes, and says that it draws Sixel (a plain `chafa` picks it), unless the host turns that off.
 Copy and paste are Command and C or V on macOS, and Control and Shift and C or V elsewhere.
-The session tells its host about the title, the working directory, the bell, notifications, progress, what a program writes in the clipboard (OSC 52, and reads of it if the host allows them), the commands that the shell starts and ends, and the alternate screen; zsh and bash are made to report their directory and their prompts, and Command and Up or Down jump between prompts.
+The session tells its host about the title, the working directory, the bell, notifications, progress, what a program writes in the clipboard (OSC 52, and reads of it if the host allows them), the commands that the shell starts and ends, and the alternate screen; zsh, bash and fish are made to report their directory and their prompts (the fish script was written without a fish to run it on), and Command and Up or Down jump between prompts.
+The cursor comes back to what the shell had at the next prompt when a program left another one (a bar, or none).
+Programs can report what they are doing (OSC 7501: `programStatus`) and ask for the window to be resized (`ResizeRequested`, which nothing acts on until the host does).
 Programs that ask to be told about the focus (vim, tmux) are.
 The font (a family of the system, or files), the shape of the cursor and the limits of the history and the images are parameters, and a host can pause the terminals that it does not show.
 A host can search the scrollback (the matches are highlighted, and a position such as "3 of 12" is published), read the screen, the history and the output of the last command as text, and see how much memory each terminal holds: hidden terminals drop what they show and compress their history.
 A terminal can be saved and restored: the snapshot has the screen, the whole history, the title and the directory, and a restored session is a new shell that starts below them (the program cannot be saved, and the snapshot is only good for the build that made it).
-Links, those that a program marks (OSC 8) and those that are written in the text, are underlined when Command is held over them (Control elsewhere) and opened with a click.
+Links, those that a program marks (OSC 8) and those that are written in the text, even when they wrap onto the next row, are underlined when Command is held over them (Control elsewhere) and opened with a click.
 
 What is not done yet:
 
 * input methods other than dead keys (the candidate windows of Chinese, Japanese and Korean input);
-* unicode placeholders for images, Sixel and the inline images of iTerm2;
+* the multipart inline images of iTerm2, and Sixel through tmux's passthrough;
+* the `id=` of OSC 8 links, which libghostty does not give;
+* shell integration for nushell and elvish;
 * other platforms than macOS on Apple Silicon.
 
 

@@ -73,7 +73,8 @@ private fun GhosttyCellStyle.toTerminal(): TerminalStyle =
     }
 
 internal fun GhosttyRenderCell.toTerminal() = TerminalCell(
-    text = text,
+    // A placeholder is not text to anyone: the image that it says is drawn under it.
+    text = if (placeholder != null) "" else text,
     foreground = foreground?.toTerminal(),
     background = background?.toTerminal(),
     style = style.toTerminal(),
@@ -84,6 +85,7 @@ internal fun GhosttyRenderCell.toTerminal() = TerminalCell(
         GhosttyCellWidth.SPACER_HEAD -> TerminalCellWidth.SPACER_HEAD
     },
     hyperlink = hyperlink,
+    placeholder = placeholder?.let { TerminalPlaceholder(it.imageIdLow, it.placementId, it.row, it.col, it.high) },
 )
 
 internal fun GhosttyRenderCursor.toTerminal() = TerminalCursor(

@@ -9,6 +9,8 @@ import app.katty.ghostty.GhosttyKeyEncoder
 import app.katty.ghostty.GhosttyMode
 import app.katty.ghostty.GhosttyMouseEncoder
 import app.katty.ghostty.GhosttyMouseShape
+import app.katty.ghostty.GhosttyProgramKind
+import app.katty.ghostty.GhosttyProgramState
 import app.katty.ghostty.GhosttyProgressState
 import app.katty.ghostty.GhosttyPromptEventKind
 import app.katty.ghostty.GhosttyScreen
@@ -105,6 +107,10 @@ public class TerminalSession private constructor(
 
     private val searchStateFlow = MutableStateFlow(TerminalSearchState())
 
+    // How big a cell is and how many there are, for what the stream of the program says in cells or percent: read by the reader.
+    @Volatile
+    private var geometry = CellGeometry(INITIAL_CELL_WIDTH_PX, INITIAL_CELL_HEIGHT_PX, 80, 24)
+
     // Where the output of the last command starts, as the shell reported it: it follows its row as the terminal scrolls and prunes.
     // Under the lock.
     private var outputStart: GhosttyTrackedRef? = null
@@ -142,6 +148,8 @@ public class TerminalSession private constructor(
     private val titleState = MutableStateFlow("")
     private val workingDirectoryState = MutableStateFlow<String?>(null)
     private val progressState = MutableStateFlow<TerminalProgress?>(null)
+    private val programStatusStore = ProgramStatusStore()
+    private val programStatusState = MutableStateFlow<List<TerminalProgramStatus>>(emptyList())
 
     // Events are for whoever is collecting at the time: one that nobody collects is dropped, and a collector that is slow loses
     // the oldest. The terminal calls back on the thread that reads the output, which must never wait for a collector.
@@ -208,6 +216,20 @@ public class TerminalSession private constructor(
     /** What the program reports of its progress (OSC 9;4), `null` when it does not. */
     public val progress: StateFlow<TerminalProgress?> get() = progressState
 
+    /**
+     * What programs report of what they do (OSC 7501), by id. It is what they said: the title and the message are theirs. A shell that
+     * starts a new prompt, or a program that exits, ends what was `working` or `blocked`; what is `done` or `error` stays until the program
+     * or the host (see [clearProgramStatus]) removes it.
+     */
+    public val programStatus: StateFlow<List<TerminalProgramStatus>> get() = programStatusState
+
+    /** Removes the program status records that [id] and the ones beneath it have, all of them for an empty [id]: the host saw them. */
+    public fun clearProgramStatus(id: String = "") {
+        if (programStatusStore.report(id, true, TerminalProgramState.IDLE, TerminalProgramKind.NONE, null, "", "", "")) {
+            programStatusState.value = programStatusStore.snapshot()
+        }
+    }
+
     /** What happens besides the screen: see [TerminalEvent]. Nothing is replayed to a collector that comes late. */
     public val events: SharedFlow<TerminalEvent> get() = eventFlow
 
@@ -219,6 +241,7 @@ public class TerminalSession private constructor(
         installEffects()
         // A terminal that was restored has them, and says nothing of it: nothing was listening.
         lock.withLock {
+            geometry = CellGeometry(cellWidthPx, cellHeightPx, terminal.cols, terminal.rows)
             titleState.value = terminal.title
             workingDirectoryState.value = decodeWorkingDirectory(terminal.pwd)
         }
@@ -446,6 +469,31 @@ public class TerminalSession private constructor(
             workingDirectoryChanged = true
             progressState.value = null
         }
+        terminal.onProgramStatus = { report ->
+            val changed = programStatusStore.report(
+                id = report.id,
+                clear = report.state == GhosttyProgramState.CLEAR,
+                state = when (report.state) {
+                    GhosttyProgramState.WORKING -> TerminalProgramState.WORKING
+                    GhosttyProgramState.DONE -> TerminalProgramState.DONE
+                    GhosttyProgramState.BLOCKED -> TerminalProgramState.BLOCKED
+                    GhosttyProgramState.ERROR -> TerminalProgramState.ERROR
+                    else -> TerminalProgramState.IDLE
+                },
+                kind = when (report.kind) {
+                    GhosttyProgramKind.PERMISSION -> TerminalProgramKind.PERMISSION
+                    GhosttyProgramKind.QUESTION -> TerminalProgramKind.QUESTION
+                    GhosttyProgramKind.AUTH -> TerminalProgramKind.AUTH
+                    GhosttyProgramKind.NONE -> TerminalProgramKind.NONE
+                },
+                progress = report.progress,
+                app = report.app,
+                title = report.title,
+                message = report.message,
+            )
+            if (changed) programStatusState.value = programStatusStore.snapshot()
+        }
+        terminal.onResizeRequest = { eventFlow.tryEmit(TerminalEvent.ResizeRequested(it.columns, it.rows)) }
         terminal.onNotification = { title, body -> eventFlow.tryEmit(TerminalEvent.Notification(title, body)) }
         terminal.onProgress = { report ->
             progressState.value = when (report.state) {
@@ -458,7 +506,11 @@ public class TerminalSession private constructor(
         }
         terminal.onSemanticPrompt = { step ->
             when (step.kind) {
-                GhosttyPromptEventKind.PROMPT_START -> eventFlow.tryEmit(TerminalEvent.PromptStarted)
+                GhosttyPromptEventKind.PROMPT_START -> {
+                    // What was being worked on is over: the shell is asking for the next thing.
+                    if (programStatusStore.promptStarted()) programStatusState.value = programStatusStore.snapshot()
+                    eventFlow.tryEmit(TerminalEvent.PromptStarted)
+                }
                 GhosttyPromptEventKind.OUTPUT_START -> {
                     // Here, where the screen is up to date: it is where the output starts, which it would not be after the write.
                     outputStart?.close()
@@ -489,44 +541,109 @@ public class TerminalSession private constructor(
 
     /**
      * The link at [column] and [row] of the screen as the last frame shows it, or `null` when there is none. It is an address that
-     * a program marked (OSC 8), or one written in the text, which is looked for in the row (one that goes on onto the next row is
-     * not found).
+     * a program marked (OSC 8), or one written in the text. One that goes on onto the next row, or comes from the one before it,
+     * which its line was too long for, is found whole, on its [TerminalLink.segments], up to [LINK_ROWS] rows from the one that was
+     * asked. A marked link is the cells around the one that have the same address, since libghostty does not say which link is which
+     * (its `id=` is not readable): two links of the same address that touch are one.
      */
     public fun linkAt(column: Int, row: Int): TerminalLink? {
-        val cells = frameState.value.rows.getOrNull(row)?.cells ?: return null
+        val rows = frameState.value.rows
+        val cells = rows.getOrNull(row)?.cells ?: return null
         if (column !in cells.indices) return null
         return lock.withLock {
             if (closed.get()) return null
-            marked(cells, column, row) ?: written(cells, column, row)
+            marked(rows, column, row) ?: written(rows, column, row)
         }
     }
 
-    // A link that the program marked: the cells around the one that have the same address.
-    private fun marked(cells: List<TerminalCell>, column: Int, row: Int): TerminalLink? {
-        if (!cells[column].hyperlink) return null
+    // The last cell of a row that is a character of it: a wide character that did not fit leaves a blank one at the end.
+    private fun lastColumn(cells: List<TerminalCell>) =
+        if (cells.last().width == TerminalCellWidth.SPACER_HEAD) cells.lastIndex - 1 else cells.lastIndex
+
+    // A link that the program marked: the cells around the one that have the same address, and the rows that it goes on onto.
+    private fun marked(rows: List<TerminalRow>, column: Int, row: Int): TerminalLink? {
+        if (!rows[row].cells[column].hyperlink) return null
         val url = terminal.hyperlinkAt(column, row) ?: return null
-        fun same(c: Int) = cells[c].hyperlink && terminal.hyperlinkAt(c, row) == url
-        var start = column
-        while (start > 0 && same(start - 1)) start--
-        var end = column
-        while (end < cells.lastIndex && same(end + 1)) end++
-        return TerminalLink(url, row, start..end)
+        fun same(r: Int, c: Int) = rows[r].cells[c].hyperlink && terminal.hyperlinkAt(c, r) == url
+        fun left(r: Int, from: Int): Int {
+            var start = from
+            while (start > 0 && same(r, start - 1)) start--
+            return start
+        }
+        fun right(r: Int, from: Int): Int {
+            val last = lastColumn(rows[r].cells)
+            var end = from
+            while (end < last && same(r, end + 1)) end++
+            return end
+        }
+
+        var start = left(row, column)
+        var end = right(row, column)
+        val segments = ArrayDeque<TerminalLinkSegment>()
+        segments += TerminalLinkSegment(row, start..end)
+        // It starts at the left edge, and the row above goes on into this one, and ends in the link: the link is there too.
+        var top = row
+        while (start == 0 && top > 0 && top > row - LINK_ROWS && rows[top - 1].wrapped) {
+            val above = top - 1
+            val last = lastColumn(rows[above].cells)
+            if (!same(above, last)) break
+            start = left(above, last)
+            segments.addFirst(TerminalLinkSegment(above, start..last))
+            top = above
+        }
+        // And the same the other way.
+        var bottom = row
+        while (end == lastColumn(rows[bottom].cells) && rows[bottom].wrapped && bottom + 1 < rows.size && bottom < row + LINK_ROWS) {
+            val below = bottom + 1
+            if (!same(below, 0)) break
+            end = right(below, 0)
+            segments += TerminalLinkSegment(below, 0..end)
+            bottom = below
+        }
+        return TerminalLink(url, segments.toList())
     }
 
-    // A link that is written in the text of the row.
-    private fun written(cells: List<TerminalCell>, column: Int, row: Int): TerminalLink? {
+    // A link that is written in the text: of the row, and of the rows that it wraps onto, which are one line.
+    private fun written(rows: List<TerminalRow>, column: Int, row: Int): TerminalLink? {
+        var first = row
+        while (first > 0 && first > row - LINK_ROWS && rows[first - 1].wrapped) first--
+        var last = row
+        while (last + 1 < rows.size && last < row + LINK_ROWS && rows[last].wrapped) last++
+
         val text = StringBuilder()
-        // The column of each character: the second half of a wide character has none of its own.
-        val columns = ArrayList<Int>()
-        for ((c, cell) in cells.withIndex()) {
-            if (cell.width == TerminalCellWidth.SPACER_TAIL || cell.width == TerminalCellWidth.SPACER_HEAD) continue
-            val part = cell.text.ifEmpty { " " }
-            text.append(part)
-            repeat(part.length) { columns += c }
+        // The row and the column of each character: the second half of a wide character has none of its own.
+        val rowOf = ArrayList<Int>()
+        val columnOf = ArrayList<Int>()
+        for (r in first..last) {
+            for ((c, cell) in rows[r].cells.withIndex()) {
+                if (cell.width == TerminalCellWidth.SPACER_TAIL || cell.width == TerminalCellWidth.SPACER_HEAD) continue
+                val part = cell.text.ifEmpty { " " }
+                text.append(part)
+                repeat(part.length) {
+                    rowOf += r
+                    columnOf += c
+                }
+            }
         }
-        val index = columns.indexOf(column).takeIf { it >= 0 } ?: return null
+        var index = -1
+        for (i in rowOf.indices) if (rowOf[i] == row && columnOf[i] == column) { index = i; break }
+        if (index < 0) return null
         val range = findUrl(text.toString(), index) ?: return null
-        return TerminalLink(text.substring(range.first, range.last + 1), row, columns[range.first]..columns[range.last])
+
+        // The cells of each row that the characters of the address are on.
+        val segments = ArrayList<TerminalLinkSegment>()
+        var i = range.first
+        while (i <= range.last) {
+            val segmentRow = rowOf[i]
+            val startColumn = columnOf[i]
+            var endColumn = startColumn
+            while (i <= range.last && rowOf[i] == segmentRow) {
+                endColumn = columnOf[i]
+                i++
+            }
+            segments += TerminalLinkSegment(segmentRow, startColumn..endColumn)
+        }
+        return TerminalLink(text.substring(range.first, range.last + 1), segments)
     }
 
     private fun scroll(to: GhosttyScrollViewport) {
@@ -862,6 +979,7 @@ public class TerminalSession private constructor(
             terminal.resize(cols, rows, cellWidthPx, cellHeightPx)
             this.cellWidthPx = cellWidthPx
             this.cellHeightPx = cellHeightPx
+            geometry = CellGeometry(cellWidthPx, cellHeightPx, cols, rows)
         }
         // pty4j only passes the size in cells to the program, not the one in pixels: the session sets the whole size,
         // and leaves pty4j's way for what is not a Unix pty or what the ioctl refused.
@@ -942,19 +1060,19 @@ public class TerminalSession private constructor(
     private fun readOutput() {
         val buffer = ByteArray(READ_BUFFER_SIZE)
         // Only this thread uses it.
-        val cursorBlinkFilter = CursorBlinkModeFilter()
+        val translator = OutputTranslator(geometry = { geometry })
         try {
             val input = process.inputStream
             while (true) {
                 val read = input.read(buffer)
                 if (read < 0) break
-                // What the program says about the blinking of the cursor is not for the terminal: see CursorBlinkModeFilter.
-                val length = cursorBlinkFilter.filter(buffer, read)
+                // What the program says about the blinking of the cursor is not for the terminal: see OutputTranslator.
+                val length = translator.filter(buffer, read)
                 val fed = lock.withLock {
                     if (closed.get()) {
                         false
                     } else {
-                        if (length > 0) terminal.vtWrite(cursorBlinkFilter.output, 0, length)
+                        if (length > 0) terminal.vtWrite(translator.output, 0, length)
                         publishAfterWrite()
                         true
                     }
@@ -973,6 +1091,7 @@ public class TerminalSession private constructor(
             return
         }
         logger.info("The program exited with code {}", code)
+        if (programStatusStore.programExited()) programStatusState.value = programStatusStore.snapshot()
         frameRequests.trySend(Unit)
         exitCode.value = code
     }
@@ -1020,13 +1139,14 @@ public class TerminalSession private constructor(
             placements = if (terminal.kittyGeneration == 0L) emptyList() else terminal.kittyPlacements()
             // The pixels are the terminal's, valid until it changes: what is new is copied here, and made into RGBA after.
             for (placement in placements) {
-                if (!placement.visible || placement.isVirtual || placement.imageId in fresh) continue
+                // The image of a virtual placement is drawn where placeholder cells are, so it is needed whether or not it is visible.
+                if ((!placement.visible && !placement.isVirtual) || placement.imageId in fresh) continue
                 val known = imageCache[placement.imageId]
                 if (known != null && known.generation == placement.imageGeneration) continue
                 terminal.kittyImage(placement.imageId)?.let { fresh[placement.imageId] = it }
             }
         }
-        val images = imagePlacements(placements, fresh, cellWidth, cellHeight)
+        val realImages = imagePlacements(placements, fresh, cellWidth, cellHeight)
 
         val previous = rowCache
         val rows = renderState.readRows { id, dirty -> dirty || id !in previous }
@@ -1036,7 +1156,11 @@ public class TerminalSession private constructor(
             // The dirty flag is conservative: libghostty also flags the row that the cursor leaves. A row
             // that did not change keeps its identity, which is what a renderer's cache relies on.
             val old = previous[row.id]
-            if (old != null && old.cells == rebuilt) old else TerminalRow(TerminalRowId(row.id.bits0, row.id.bits1), rebuilt)
+            if (old != null && old.cells == rebuilt && old.wrapped == row.wrap && old.hasPlaceholder == row.hasPlaceholder) {
+                old
+            } else {
+                TerminalRow(TerminalRowId(row.id.bits0, row.id.bits1), rebuilt, row.wrap, row.hasPlaceholder)
+            }
         }
         rowCache = rows.indices.associate { rows[it].id to terminalRows[it] }
 
@@ -1052,6 +1176,13 @@ public class TerminalSession private constructor(
             frameRequests.trySend(Unit)
         }
         val selection = if (written || rows.all { it.selection == null }) emptyList() else rows.map { it.selection }
+
+        // What the placeholder cells show, under the text; with the images that programs placed, by layer.
+        val images = if (terminalRows.any { it.hasPlaceholder }) {
+            (realImages + placeholderPlacements(terminalRows, placements, cellWidth, cellHeight)).sortedBy { it.layer.ordinal }
+        } else {
+            realImages
+        }
 
         val colors = renderState.colors
         val frame = TerminalFrame(
@@ -1154,6 +1285,43 @@ public class TerminalSession private constructor(
             }
     }
 
+    // The parts of images that unicode placeholders show: one image for each run of them, where the cells are. The grid that an image is fitted
+    // in is the one of its virtual placement.
+    private fun placeholderPlacements(
+        rows: List<TerminalRow>,
+        placements: List<GhosttyImagePlacement>,
+        cellWidth: Int,
+        cellHeight: Int,
+    ): List<TerminalImagePlacement> {
+        val virtual = placements.filter { it.isVirtual }
+        return placeholderRuns(rows).mapNotNull { run ->
+            val image = imageCache[run.imageId] ?: return@mapNotNull null
+            // The exact placement if the cells name one, else the image's own, which is the lowest of its placements.
+            val target = if (run.placementId > 0) {
+                virtual.firstOrNull { it.imageId == run.imageId && it.placementId == run.placementId }
+            } else {
+                virtual.filter { it.imageId == run.imageId }.minByOrNull { it.placementId }
+            } ?: return@mapNotNull null
+            val gridRows = if (target.rows > 0) target.rows else (image.height + cellHeight - 1) / cellHeight
+            val gridColumns = if (target.columns > 0) target.columns else (image.width + cellWidth - 1) / cellWidth
+            if (gridRows <= 0 || gridColumns <= 0) return@mapNotNull null
+            val place = placeholderPlacement(run, image.width, image.height, gridColumns, gridRows, cellWidth, cellHeight) ?: return@mapNotNull null
+            TerminalImagePlacement(
+                image = image,
+                left = run.startColumn + (place.offsetXPx / cellWidth).toFloat(),
+                top = run.row + (place.offsetYPx / cellHeight).toFloat(),
+                width = (place.widthPx / cellWidth).toFloat(),
+                height = (place.heightPx / cellHeight).toFloat(),
+                sourceX = place.sourceX,
+                sourceY = place.sourceY,
+                sourceWidth = place.sourceWidth,
+                sourceHeight = place.sourceHeight,
+                // Ghostty draws them under the text.
+                layer = TerminalImageLayer.BELOW_TEXT,
+            )
+        }
+    }
+
     public companion object {
         /** What the terminal tells programs it is, and what they look up to know what it can do. */
         private const val TERM = "xterm-256color"
@@ -1205,6 +1373,10 @@ public class TerminalSession private constructor(
         // How many events may wait for a collector that is slow.
         private const val EVENT_BUFFER = 64
 
+        // How many rows from the one that is asked a link is looked for on: a line that wraps onto thousands of rows is not read for each
+        // move of the pointer.
+        private const val LINK_ROWS = 16
+
         // What a cell is until the first resize tells it.
         private const val INITIAL_CELL_WIDTH_PX = 8
         private const val INITIAL_CELL_HEIGHT_PX = 16
@@ -1243,6 +1415,8 @@ public class TerminalSession private constructor(
          * [rows], to which the old content is reflowed, and the old program's modes are taken off, so that a snapshot of an editor gives a
          * shell with a plain mouse. Not restored: the images of the Kitty protocol, the selection, the viewport.
          * @throws TerminalSnapshotException If [snapshot] was made by another build of libghostty, or is damaged.
+         * @param advertiseSixel Whether the answer to a device attributes query says that the terminal draws Sixel images, which is how
+         * programs that probe (chafa, img2sixel) choose it by themselves.
          * @param clipboardWrite Whether a program may put text in the clipboard (OSC 52), which then comes as a
          * [TerminalEvent.ClipboardWrite]. It is refused when `false`.
          * @param clipboardReader What a program that reads the clipboard (OSC 52) gets: the text it returns, or a refusal for
@@ -1264,6 +1438,7 @@ public class TerminalSession private constructor(
             clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
             shellIntegration: Boolean = true,
             snapshot: TerminalSnapshot? = null,
+            advertiseSixel: Boolean = true,
         ): TerminalSession {
             if (snapshot != null && !snapshot.isRestorable) {
                 throw TerminalSnapshotException("The snapshot was made by another build of libghostty, which cannot read it: start a new session")
@@ -1304,7 +1479,10 @@ public class TerminalSession private constructor(
                     } catch (e: GhosttySnapshotException) {
                         throw TerminalSnapshotException("Could not restore the snapshot: ${e.message}", e)
                     }
-                }.also { toClose.addFirst(it) }
+                }.also {
+                    it.advertiseSixel = advertiseSixel
+                    toClose.addFirst(it)
+                }
                 // Before the session, so that the first frame already has the colors.
                 terminal.applyTheme(theme)
                 // The terminal does not know how big a cell is until it is told, and an image that a program sends before the first
