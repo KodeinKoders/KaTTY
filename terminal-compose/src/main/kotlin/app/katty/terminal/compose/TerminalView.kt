@@ -11,17 +11,21 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.katty.terminal.TerminalCellWidth
 import app.katty.terminal.TerminalCursor
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalFrame
+import app.katty.terminal.TerminalImageLayer
 import app.katty.terminal.TerminalScrollbar
 import app.katty.terminal.TerminalUnderline
 import kotlinx.coroutines.delay
@@ -48,8 +52,14 @@ internal fun TerminalView(
     val layouts = remember(typography, frame.foreground, frame.background, frame.boldColor) { RowLayouts(typography) }
     val cursorShown = rememberCursorBlink(frame.cursor, focused)
 
+    val bitmaps = remember { ImageBitmapCache() }
+
     Canvas(modifier) {
         drawRect(frame.background.rgb.toColor())
+
+        bitmaps.retain(frame.images.map { it.image })
+        // The layers of the images are between what the cells are drawn with, as the protocol says.
+        drawImages(frame, TerminalImageLayer.BELOW_BACKGROUND, bitmaps, typography)
 
         val rows = layouts.prepare(frame)
         rows.forEachIndexed { y, row ->
@@ -57,10 +67,15 @@ internal fun TerminalView(
             for (background in row.backgrounds) {
                 drawCells(background.startCol, background.cols, top, typography, background.rgb.toColor())
             }
+        }
+        drawImages(frame, TerminalImageLayer.BELOW_TEXT, bitmaps, typography)
+        rows.forEachIndexed { y, row ->
+            val top = y * typography.cellHeight
             for (text in row.texts) {
                 drawPreparedText(text, top, typography)
             }
         }
+        drawImages(frame, TerminalImageLayer.ABOVE_TEXT, bitmaps, typography)
 
         if (frame.selection.isNotEmpty()) drawSelection(frame, rows, typography)
 
@@ -100,6 +115,37 @@ private fun DrawScope.drawCells(startCol: Int, cols: Int, top: Float, typography
     val left = round(startCol * typography.cellWidth)
     val right = round((startCol + cols) * typography.cellWidth)
     drawRect(color, topLeft = Offset(left, top), size = Size(right - left, typography.cellHeight))
+}
+
+/**
+ * The images of a layer, on the cells that they cover. They are **clipped to the terminal**: one that is partly scrolled out
+ * at the top must not be drawn over what is above it.
+ *
+ * The edges are on whole pixels, as the cells' are, or the image would shimmer as the window is resized.
+ */
+private fun DrawScope.drawImages(frame: TerminalFrame, layer: TerminalImageLayer, bitmaps: ImageBitmapCache, typography: TerminalTypography) {
+    if (frame.images.none { it.layer == layer }) return
+    clipRect(0f, 0f, size.width, size.height) {
+        for (placement in frame.images) {
+            if (placement.layer != layer) continue
+            val image = placement.image
+            val left = round(placement.left * typography.cellWidth)
+            val top = round(placement.top * typography.cellHeight)
+            val right = round((placement.left + placement.width) * typography.cellWidth)
+            val bottom = round((placement.top + placement.height) * typography.cellHeight)
+            if (right <= left || bottom <= top) continue
+            val sourceWidth = if (placement.sourceWidth > 0) placement.sourceWidth else image.width
+            val sourceHeight = if (placement.sourceHeight > 0) placement.sourceHeight else image.height
+            drawImage(
+                image = bitmaps.bitmapFor(image),
+                srcOffset = IntOffset(placement.sourceX, placement.sourceY),
+                srcSize = IntSize(sourceWidth, sourceHeight),
+                dstOffset = IntOffset(left.toInt(), top.toInt()),
+                dstSize = IntSize((right - left).toInt(), (bottom - top).toInt()),
+                filterQuality = FilterQuality.Medium,
+            )
+        }
+    }
 }
 
 /** The width of the strip along the right edge where the scrollbar is, and what the pointer in it is for. */

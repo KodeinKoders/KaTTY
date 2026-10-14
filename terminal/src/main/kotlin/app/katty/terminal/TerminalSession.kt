@@ -1,5 +1,7 @@
 package app.katty.terminal
 
+import app.katty.ghostty.GhosttyImage
+import app.katty.ghostty.GhosttyImagePlacement
 import app.katty.ghostty.GhosttyKeyEncoder
 import app.katty.ghostty.GhosttyMode
 import app.katty.ghostty.GhosttyMouseEncoder
@@ -94,6 +96,10 @@ public class TerminalSession private constructor(
     // The rows of the last frame, to hand the same ones out again when they did not change. Only used by
     // the producer, once it runs.
     private var rowCache: Map<GhosttyRowId, TerminalRow> = emptyMap()
+
+    // The images of the last frames, by id, which are only the ones whose placements exist: what is deleted frees its memory.
+    // Only the frame producer uses it, once it runs. It is before the first frame, which uses it.
+    private val imageCache = HashMap<Int, TerminalImage>()
 
     private val frameState = MutableStateFlow(produceFrame())
 
@@ -553,12 +559,29 @@ public class TerminalSession private constructor(
         val tracking: Boolean
         val shape: GhosttyMouseShape
         val position: GhosttyScrollbar
+        val placements: List<GhosttyImagePlacement>
+        val fresh = HashMap<Int, GhosttyImage>()
+        val cellWidth: Int
+        val cellHeight: Int
         lock.withLock {
             renderState.update(terminal)
             tracking = terminal.mouseTracking
             shape = terminal.mouseShape
             position = terminal.scrollbar
+            cellWidth = cellWidthPx
+            cellHeight = cellHeightPx
+
+            // Where the images are changes when the screen scrolls, so it is read for every frame, but only while there are any.
+            placements = if (terminal.kittyGeneration == 0L) emptyList() else terminal.kittyPlacements()
+            // The pixels are the terminal's, valid until it changes: what is new is copied here, and made into RGBA after.
+            for (placement in placements) {
+                if (!placement.visible || placement.isVirtual || placement.imageId in fresh) continue
+                val known = imageCache[placement.imageId]
+                if (known != null && known.generation == placement.imageGeneration) continue
+                terminal.kittyImage(placement.imageId)?.let { fresh[placement.imageId] = it }
+            }
         }
+        val images = imagePlacements(placements, fresh, cellWidth, cellHeight)
 
         val previous = rowCache
         val rows = renderState.readRows { id, dirty -> dirty || id !in previous }
@@ -602,9 +625,46 @@ public class TerminalSession private constructor(
             selectedTextColor = theme?.selectedText,
             // Nothing to scroll when everything is on the screen: no scrollbar.
             scrollbar = if (position.total > position.len) TerminalScrollbar(position.total, position.offset, position.len) else null,
+            images = images,
         )
         renderState.clean()
         return frame
+    }
+
+    // What is shown of the images, in cells, in the order that it is drawn in.
+    private fun imagePlacements(
+        placements: List<GhosttyImagePlacement>,
+        fresh: Map<Int, GhosttyImage>,
+        cellWidth: Int,
+        cellHeight: Int,
+    ): List<TerminalImagePlacement> {
+        imageCache.keys.retainAll(placements.mapTo(HashSet()) { it.imageId })
+        for ((id, image) in fresh) {
+            imageCache[id] = TerminalImage(id, image.generation, image.width, image.height, image.toRgba())
+        }
+        if (placements.isEmpty()) return emptyList()
+
+        return placements
+            .filter { it.visible && !it.isVirtual && it.imageId in imageCache }
+            .sortedBy { it.z }
+            .map {
+                TerminalImagePlacement(
+                    image = imageCache.getValue(it.imageId),
+                    left = it.viewportCol + it.xOffset / cellWidth.toFloat(),
+                    top = it.viewportRow + it.yOffset / cellHeight.toFloat(),
+                    width = it.pixelWidth / cellWidth.toFloat(),
+                    height = it.pixelHeight / cellHeight.toFloat(),
+                    sourceX = it.sourceX,
+                    sourceY = it.sourceY,
+                    sourceWidth = it.sourceWidth,
+                    sourceHeight = it.sourceHeight,
+                    layer = when {
+                        it.z < Int.MIN_VALUE / 2 -> TerminalImageLayer.BELOW_BACKGROUND
+                        it.z < 0 -> TerminalImageLayer.BELOW_TEXT
+                        else -> TerminalImageLayer.ABOVE_TEXT
+                    },
+                )
+            }
     }
 
     public companion object {
@@ -626,6 +686,10 @@ public class TerminalSession private constructor(
         // system gives for it, or half a second.
         private const val REPEAT_CLICK_DISTANCE_PX = 5.0
         private val REPEAT_CLICK_INTERVAL_NS = ((java.awt.Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval") as? Int) ?: 500) * 1_000_000L
+
+        // How much memory the images of the Kitty graphics protocol may take: the terminal does not store any without a limit.
+        // It is Ghostty's own default.
+        private const val IMAGE_STORAGE_LIMIT_BYTES = 320_000_000L
 
         // How much memory the history may take, which is Ghostty's own default.
         private const val SCROLLBACK_MAX_BYTES = 10_000_000L
@@ -678,9 +742,13 @@ public class TerminalSession private constructor(
             try {
                 val terminal = GhosttyTerminal(
                     cols, rows, terminfoName = TERM, defaultCursorBlink = cursorBlink, scrollbackMaxBytes = SCROLLBACK_MAX_BYTES,
+                    imageStorageLimitBytes = IMAGE_STORAGE_LIMIT_BYTES,
                 ).also { toClose.addFirst(it) }
                 // Before the session, so that the first frame already has the colors.
                 terminal.applyTheme(theme)
+                // The terminal does not know how big a cell is until it is told, and an image that a program sends before the first
+                // resize would be placed on cells of no size.
+                terminal.resize(cols, rows, INITIAL_CELL_WIDTH_PX, INITIAL_CELL_HEIGHT_PX)
                 val renderState = GhosttyRenderState().also { toClose.addFirst(it) }
                 val keyEncoder = GhosttyKeyEncoder().also { toClose.addFirst(it) }
                 val mouseEncoder = GhosttyMouseEncoder().also { toClose.addFirst(it) }

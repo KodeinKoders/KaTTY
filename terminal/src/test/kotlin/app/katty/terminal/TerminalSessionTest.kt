@@ -13,6 +13,7 @@ import kotlinx.coroutines.withTimeout
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -712,6 +713,137 @@ class TerminalSessionTest {
         session.select(0.2f, 0.5f, 4.7f, 0.5f)
 
         assertEquals("hello", session.selectedText())
+    }
+
+    // Two pixels, red and green, as a program sends them with the Kitty graphics protocol.
+    private val twoPixels = java.util.Base64.getEncoder().encodeToString(byteArrayOf(-1, 0, 0, -1, 0, -1, 0, -1))
+
+    // ESC _ G control ; payload ESC \ for a shell script: the escapes are for printf.
+    private fun kittyPrintf(control: String, payload: String = twoPixels) = """printf '\033_G$control;%s\033\\' '$payload'"""
+
+    // A program that waits for a key before it does what it is given, so that the terminal has its size when it does.
+    private fun imageSession(script: String, rows: Int = 6): TerminalSession {
+        val session = start("stty raw -echo; echo ready; head -c1 >/dev/null; $script; sleep 30", rows = rows)
+        session.resize(80, rows, 10, 20)
+        session.awaitFrame { "ready" in it.text() }
+        session.sendKey(KeyInput(TerminalKey.ENTER))
+        return session
+    }
+
+    @Test
+    fun hasNoImagesUntilAProgramSendsOne() {
+        val session = start("echo hi; sleep 30")
+
+        assertTrue(session.awaitFrame { it.text(0) == "hi" }.images.isEmpty())
+    }
+
+    @Test
+    fun showsAnImageThatAProgramSent() {
+        val session = imageSession(kittyPrintf("a=T,f=32,s=2,v=1,i=1,c=2,r=1"))
+
+        val placement = session.awaitFrame { it.images.isNotEmpty() }.images.single()
+
+        // The cursor was on the second row, under "ready": the terminal is in raw mode, where a newline does not go back to
+        // the first column.
+        assertEquals(5f, placement.left)
+        assertEquals(1f, placement.top)
+        // 2 columns by one row, whatever the pixels of the image are.
+        assertEquals(2f, placement.width)
+        assertEquals(1f, placement.height)
+        assertEquals(2, placement.image.width)
+        assertEquals(1, placement.image.height)
+        assertContentEquals(byteArrayOf(-1, 0, 0, -1, 0, -1, 0, -1), placement.image.rgba)
+        assertEquals(TerminalImageLayer.ABOVE_TEXT, placement.layer)
+    }
+
+    @Test
+    fun anImageIsInTheLayerThatItsZSays() {
+        val session = imageSession(
+            kittyPrintf("a=T,f=32,s=2,v=1,i=1,z=5") + "; " + kittyPrintf("a=T,f=32,s=2,v=1,i=2,z=-1") + "; " +
+                kittyPrintf("a=T,f=32,s=2,v=1,i=3,z=-2000000000"),
+        )
+
+        val images = session.awaitFrame { it.images.size == 3 }.images
+
+        // In the order that they are drawn in: the lowest first.
+        assertEquals(listOf(3, 2, 1), images.map { it.image.id })
+        assertEquals(
+            listOf(TerminalImageLayer.BELOW_BACKGROUND, TerminalImageLayer.BELOW_TEXT, TerminalImageLayer.ABOVE_TEXT),
+            images.map { it.layer },
+        )
+    }
+
+    @Test
+    fun theSameImageIsTheSameObjectInTheFramesAfter() {
+        val session = imageSession(kittyPrintf("a=T,f=32,s=2,v=1,i=1"))
+        val first = session.awaitFrame { it.images.isNotEmpty() }.images.single().image
+
+        session.writeToScreen("\u001b[6;1Hmore text")
+        val after = session.awaitFrame { it.text(5).startsWith("more text") }
+
+        assertSame(first, after.images.single().image, "A renderer keeps what it made of it, keyed by the object")
+    }
+
+    @Test
+    fun anImageThatIsSentAgainIsANewObject() {
+        val session = imageSession(kittyPrintf("a=T,f=32,s=2,v=1,i=1"))
+        val first = session.awaitFrame { it.images.isNotEmpty() }.images.single().image
+
+        // The same id, with the pixels the other way round.
+        session.writeToScreen("\u001b_Ga=T,f=32,s=2,v=1,i=1;" + java.util.Base64.getEncoder().encodeToString(byteArrayOf(0, -1, 0, -1, -1, 0, 0, -1)) + "\u001b\\")
+
+        val replaced = session.awaitFrame { frame -> frame.images.any { it.image !== first } }.images.last().image
+        assertNotEquals(first.generation, replaced.generation)
+        assertContentEquals(byteArrayOf(0, -1, 0, -1, -1, 0, 0, -1), replaced.rgba)
+    }
+
+    @Test
+    fun anImageThatWasDeletedIsNotInTheFramesAnyMore() {
+        val session = imageSession(kittyPrintf("a=T,f=32,s=2,v=1,i=1"))
+        session.awaitFrame { it.images.isNotEmpty() }
+
+        session.writeToScreen("\u001b_Ga=d,d=I,i=1\u001b\\")
+
+        session.awaitFrame { it.images.isEmpty() }
+    }
+
+    @Test
+    fun anImageScrollsWithTheTextAndGoesWhenItIsOutOfTheView() {
+        val session = imageSession(kittyPrintf("a=T,f=32,s=2,v=1,i=1"))
+        val first = session.awaitFrame { it.images.isNotEmpty() }.images.single()
+
+        // The screen has 6 rows: the image is on the second, and the cursor is on the third. Four lines go to the last row and
+        // the fifth scrolls the screen by one.
+        session.writeToScreen("\r\n".repeat(5))
+        val scrolled = session.awaitFrame { frame -> frame.images.singleOrNull()?.let { it.top < first.top } == true }
+        assertSame(first.image, scrolled.images.single().image)
+
+        session.writeToScreen("\r\n".repeat(10))
+        session.awaitFrame { it.images.isEmpty() }
+    }
+
+    @Test
+    fun anImageIsBackWhenTheHistoryIsScrolledBackToIt() {
+        val session = imageSession(kittyPrintf("a=T,f=32,s=2,v=1,i=1"))
+        val first = session.awaitFrame { it.images.isNotEmpty() }.images.single().image
+        session.writeToScreen("\r\n".repeat(20))
+        session.awaitFrame { it.images.isEmpty() }
+
+        session.scrollToTop()
+
+        assertSame(first, session.awaitFrame { it.images.isNotEmpty() }.images.single().image, "The pixels were kept")
+    }
+
+    @Test
+    fun theAlternateScreenHasItsOwnImages() {
+        val session = imageSession(kittyPrintf("a=T,f=32,s=2,v=1,i=1"))
+        session.awaitFrame { it.images.isNotEmpty() }
+
+        session.writeToScreen("\u001b[?1049h")
+        session.awaitFrame { it.images.isEmpty() }
+        session.writeToScreen("\u001b[?1049l")
+
+        assertEquals(1, session.awaitFrame { it.images.isNotEmpty() }.images.single().image.id)
     }
 
     @Test

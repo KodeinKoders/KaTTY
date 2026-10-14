@@ -139,6 +139,11 @@ public data class TerminalFrame(
     public val selectedTextColor: TerminalColor? = null,
     /** Where the viewport is in the history and the screen, or `null` when there is no history to scroll. */
     public val scrollbar: TerminalScrollbar? = null,
+    /**
+     * The images of the Kitty graphics protocol that are on the screen, in the order that they are drawn in: by layer, then
+     * as the program placed them. Empty when there are none.
+     */
+    public val images: List<TerminalImagePlacement> = emptyList(),
 )
 
 /**

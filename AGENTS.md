@@ -99,6 +99,16 @@ It is slow to start (`--no-daemon`), and its tools that work through semantics (
 - **The scrollbar** is drawn by `TerminalView` over the right edge, but its pointer is handled in `Terminal`'s own pointer loop (`ScrollbarInteraction`), not by a sibling composable, which would take the wheel events of its strip from the terminal. It fades out after a second.
 - **Autoscroll while selecting:** a drag that is past the top or the bottom makes `selectionDrag` answer `UP` or `DOWN`, and `SelectionAutoscroll` ticks `selectionAutoscroll` every 50 ms with the last position. libghostty's tick scrolls the viewport itself: do not scroll in addition. A pointer that leaves with a button down is an `Exit` event: it is a drag that goes on.
 
+## Images
+
+- The **Kitty graphics protocol** is implemented by libghostty (parsing, chunks, zlib, raw RGB/RGBA/gray, placements, deletion, animation): KaTTY gives it what it asks of the embedder and draws what it keeps. The **PNG decoder** is a process-global setting (`ghostty_sys_set`) that `NativeLibrary` installs once with `javax.imageio` (it never throws into native code), and each terminal has a **storage limit** (`TerminalSession.start` gives 320 MB): without it nothing is stored.
+- `TerminalSession.produceFrame` reads the placements for **every frame while the storage is not empty** (scrolling moves them with no change of the storage), copies an image's pixels once per generation under the lock, converts them to RGBA outside it, and keeps them in a cache that is pruned to the ids that have a placement. `TerminalFrame.images` has them in **cells** (fractional, positive or negative), not pixels, since libghostty sizes them with the whole-number cell size that the session gave it and the renderer measured another. A `TerminalImage` is the same object while it does not change: `ImageBitmapCache` keys on it.
+- The renderer draws the layers (`z`) around the text: below the cell backgrounds, below the text, above the text, clipped to the terminal, with the edges on whole pixels.
+- The session gives the terminal a cell size (8 × 16) at start: an image sent before the first `resize` would otherwise be placed on cells of no size.
+- **chafa needs `-f kitty`**: it does not probe for Kitty graphics, it picks the format from `TERM` / `TERM_PROGRAM` and from the sixel flag of the device attributes answer, so with `TERM=xterm-256color` it draws characters. KaTTY does not change its identity for that, on purpose (Orca advertises Sixel, which libghostty does not have). Programs that query the terminal (`kitten icat`) work by themselves.
+- An answer of the terminal (`ESC _ G i=1;OK ESC \`) is **input** of the program: a test whose program reads a key must use `q=2`, which turns the answers off, as chafa does.
+- Not drawn: unicode placeholders (virtual placements), Sixel, iTerm2 inline images.
+
 ## Pitfalls
 
 - **Concurrent Gradle builds in the same directory corrupt each other**: IntelliJ, the MCP server and a hot-reloading app all build in `build/`. Missing class files, `FileNotFoundException` in the Kotlin compiler or a `NoClassDefFoundError` after a successful build mean that happened: `./gradlew :<module>:clean` and run again.

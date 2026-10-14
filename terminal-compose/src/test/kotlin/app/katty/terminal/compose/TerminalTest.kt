@@ -27,6 +27,7 @@ import java.awt.event.KeyEvent as AwtKeyEvent
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 private const val WIDTH = 640
@@ -780,5 +781,35 @@ class TerminalTest {
 
         session.awaitReports(scene, "[<1;3;4M")
         session.awaitReports(scene, "hello")
+    }
+
+    // Red and green, two pixels, as a program sends them with the Kitty graphics protocol.
+    private val twoPixels = java.util.Base64.getEncoder().encodeToString(byteArrayOf(-1, 0, 0, -1, 0, -1, 0, -1))
+
+    private fun ImageComposeScene.pixelOfCell(col: Int, row: Int): Int =
+        cursorCell(((col + 0.5f) * typography!!.cellWidth).toInt(), ((row + 0.5f) * typography!!.cellHeight).toInt())
+
+    @Test
+    fun drawsAnImageThatTheProgramSentAndRemovesItWhenItIsDeleted() {
+        // The program waits for a key before it deletes the image. q=2 tells the terminal not to answer: the answer is input, which the program
+        // would take for the key.
+        val session = session(
+            """printf '\033_Ga=T,f=32,s=2,v=1,i=1,c=4,r=2,q=2;$twoPixels\033\\'; stty raw -echo; head -c1 >/dev/null; printf '\033_Ga=d,d=I,i=1\033\\'; sleep 30""",
+            cols = 80, rows = 24,
+        )
+        val scene = show(session)
+        scene.renderUntil("the terminal to fit the scene and show the image") { session.frames.value.cols != 80 && session.frames.value.images.isNotEmpty() }
+        scene.settle()
+
+        // 4 columns by 2 rows at the top left: red on the left, green on the right.
+        scene.renderUntil("the left of the image to be red") { scene.pixelOfCell(0, 0) == 0xFF0000 }
+        assertEquals(0xFF0000, scene.pixelOfCell(0, 1))
+        assertEquals(0x00FF00, scene.pixelOfCell(3, 0))
+        assertEquals(0x00FF00, scene.pixelOfCell(3, 1))
+        assertNotEquals(0x00FF00, scene.pixelOfCell(4, 0), "Not beyond it")
+
+        session.sendKey(app.katty.terminal.KeyInput(app.katty.terminal.TerminalKey.ENTER))
+
+        scene.renderUntil("the image to be gone") { scene.pixelOfCell(0, 0) != 0xFF0000 }
     }
 }

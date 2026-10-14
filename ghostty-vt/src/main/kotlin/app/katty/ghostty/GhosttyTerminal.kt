@@ -2,6 +2,7 @@ package app.katty.ghostty
 
 import app.katty.ghostty.ffm.GhosttyColorRgb
 import app.katty.ghostty.ffm.GhosttyGridRef
+import app.katty.ghostty.ffm.GhosttyKittyGraphicsPlacementRenderInfo
 import app.katty.ghostty.ffm.GhosttyPoint
 import app.katty.ghostty.ffm.GhosttyPointCoordinate
 import app.katty.ghostty.ffm.GhosttyPointValue
@@ -35,6 +36,8 @@ private val logger = LoggerFactory.getLogger(GhosttyTerminal::class.java)
  * default is that it does not, and most programs, shells included, never ask for it.
  * @param scrollbackMaxBytes How much memory the history may take, about: libghostty prunes by pages, so it is
  * somewhat more. `null` keeps libghostty's own limit.
+ * @param imageStorageLimitBytes How much memory the images of the Kitty graphics protocol may take. Without a limit
+ * the terminal does not store images: the protocol is off. `null` leaves it off.
  */
 public class GhosttyTerminal(
     cols: Int,
@@ -42,6 +45,7 @@ public class GhosttyTerminal(
     terminfoName: String? = null,
     defaultCursorBlink: Boolean = false,
     scrollbackMaxBytes: Long? = null,
+    imageStorageLimitBytes: Long? = null,
 ) : AutoCloseable {
     internal val handle: MemorySegment
 
@@ -111,6 +115,17 @@ public class GhosttyTerminal(
                     checkResult(
                         GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES(), limit),
                         "ghostty_terminal_set(SCROLLBACK_MAX_BYTES)",
+                    )
+                }
+            }
+
+            if (imageStorageLimitBytes != null) {
+                Arena.ofConfined().use { arena ->
+                    val limit = arena.allocate(ValueLayout.JAVA_LONG)
+                    limit.set(ValueLayout.JAVA_LONG, 0, imageStorageLimitBytes)
+                    checkResult(
+                        GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT(), limit),
+                        "ghostty_terminal_set(KITTY_IMAGE_STORAGE_LIMIT)",
                     )
                 }
             }
@@ -211,6 +226,163 @@ public class GhosttyTerminal(
                 if (out.get(ValueLayout.JAVA_INT, 0) == GhosttyVt.GHOSTTY_TERMINAL_SCREEN_ALTERNATE()) GhosttyScreen.ALTERNATE else GhosttyScreen.PRIMARY
             }
         }
+
+    // The storage of the images of the active screen, which is borrowed from the terminal: it is valid until the next call that
+    // changes the terminal. `null` when the protocol is off.
+    private fun kittyGraphics(): MemorySegment? {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val out = arena.allocate(ValueLayout.ADDRESS)
+            val result = GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS(), out)
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use null
+            checkResult(result, "ghostty_terminal_get(KITTY_GRAPHICS)")
+            out.get(ValueLayout.ADDRESS, 0).takeIf { it != MemorySegment.NULL }
+        }
+    }
+
+    /**
+     * Which version of the images the terminal has, which changes whenever an image is sent, placed or deleted: `0` if
+     * none ever was. Where the images are shown also changes when the screen scrolls, with no change of this.
+     */
+    public val kittyGeneration: Long
+        get() {
+            val graphics = kittyGraphics() ?: return 0
+            return Arena.ofConfined().use { arena ->
+                val out = arena.allocate(ValueLayout.JAVA_LONG)
+                val result = GhosttyVt.ghostty_kitty_graphics_get(graphics, GhosttyVt.GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION(), out)
+                if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use 0L
+                checkResult(result, "ghostty_kitty_graphics_get(GENERATION)")
+                out.get(ValueLayout.JAVA_LONG, 0)
+            }
+        }
+
+    /**
+     * Where the images are shown on the active screen, with the geometry that the terminal worked out for the size of a
+     * cell it was given. The virtual ones (placed by characters) and the ones that are not in the viewport are in it,
+     * flagged: it is for the caller to skip them.
+     */
+    public fun kittyPlacements(): List<GhosttyImagePlacement> {
+        val graphics = kittyGraphics() ?: return emptyList()
+        return Arena.ofConfined().use { arena ->
+            val slot = arena.allocate(ValueLayout.ADDRESS)
+            checkResult(GhosttyVt.ghostty_kitty_graphics_placement_iterator_new(MemorySegment.NULL, slot), "ghostty_kitty_graphics_placement_iterator_new")
+            val iterator = slot.get(ValueLayout.ADDRESS, 0)
+            try {
+                val result = GhosttyVt.ghostty_kitty_graphics_get(graphics, GhosttyVt.GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR(), slot)
+                if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use emptyList()
+                checkResult(result, "ghostty_kitty_graphics_get(PLACEMENT_ITERATOR)")
+
+                val placements = ArrayList<GhosttyImagePlacement>()
+                while (GhosttyVt.ghostty_kitty_graphics_placement_next(iterator)) {
+                    readPlacement(arena, graphics, iterator)?.let { placements += it }
+                }
+                placements
+            } finally {
+                GhosttyVt.ghostty_kitty_graphics_placement_iterator_free(iterator)
+            }
+        }
+    }
+
+    private fun readPlacement(arena: Arena, graphics: MemorySegment, iterator: MemorySegment): GhosttyImagePlacement? {
+        fun int(data: Int): Int {
+            val out = arena.allocate(ValueLayout.JAVA_INT)
+            checkResult(GhosttyVt.ghostty_kitty_graphics_placement_get(iterator, data, out), "ghostty_kitty_graphics_placement_get($data)")
+            return out.get(ValueLayout.JAVA_INT, 0)
+        }
+
+        val imageId = int(GhosttyVt.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID())
+        val image = GhosttyVt.ghostty_kitty_graphics_image(graphics, imageId)
+        // Its image is gone, or still arriving: there is nothing to show.
+        if (image == MemorySegment.NULL) return null
+
+        val virtual = arena.allocate(ValueLayout.JAVA_BOOLEAN)
+        checkResult(
+            GhosttyVt.ghostty_kitty_graphics_placement_get(iterator, GhosttyVt.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IS_VIRTUAL(), virtual),
+            "ghostty_kitty_graphics_placement_get(IS_VIRTUAL)",
+        )
+        val info = arena.allocate(GhosttyKittyGraphicsPlacementRenderInfo.layout())
+        GhosttyKittyGraphicsPlacementRenderInfo.size(info, GhosttyKittyGraphicsPlacementRenderInfo.layout().byteSize())
+        val isVirtual = virtual.get(ValueLayout.JAVA_BOOLEAN, 0)
+        // A virtual placement has no position to give.
+        val hasInfo = !isVirtual &&
+            GhosttyVt.ghostty_kitty_graphics_placement_render_info(iterator, image, handle, info) == GhosttyVt.GHOSTTY_SUCCESS()
+
+        return GhosttyImagePlacement(
+            imageId = imageId,
+            placementId = int(GhosttyVt.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_PLACEMENT_ID()),
+            z = int(GhosttyVt.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Z()),
+            isVirtual = isVirtual,
+            imageGeneration = imageGeneration(arena, image),
+            viewportCol = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.viewport_col(info) else 0,
+            viewportRow = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.viewport_row(info) else 0,
+            visible = hasInfo && GhosttyKittyGraphicsPlacementRenderInfo.viewport_visible(info),
+            xOffset = int(GhosttyVt.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_X_OFFSET()),
+            yOffset = int(GhosttyVt.GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Y_OFFSET()),
+            pixelWidth = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.pixel_width(info) else 0,
+            pixelHeight = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.pixel_height(info) else 0,
+            gridCols = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.grid_cols(info) else 0,
+            gridRows = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.grid_rows(info) else 0,
+            sourceX = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.source_x(info) else 0,
+            sourceY = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.source_y(info) else 0,
+            sourceWidth = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.source_width(info) else 0,
+            sourceHeight = if (hasInfo) GhosttyKittyGraphicsPlacementRenderInfo.source_height(info) else 0,
+        )
+    }
+
+    private fun imageGeneration(arena: Arena, image: MemorySegment): Long {
+        val out = arena.allocate(ValueLayout.JAVA_LONG)
+        checkResult(
+            GhosttyVt.ghostty_kitty_graphics_image_get(image, GhosttyVt.GHOSTTY_KITTY_IMAGE_DATA_GENERATION(), out),
+            "ghostty_kitty_graphics_image_get(GENERATION)",
+        )
+        return out.get(ValueLayout.JAVA_LONG, 0)
+    }
+
+    /**
+     * A copy of the image with the id [id], or `null` if there is none or its pixels have not all arrived: the terminal's
+     * own copy is only valid until it changes.
+     */
+    public fun kittyImage(id: Int): GhosttyImage? {
+        val graphics = kittyGraphics() ?: return null
+        return Arena.ofConfined().use { arena ->
+            val image = GhosttyVt.ghostty_kitty_graphics_image(graphics, id)
+            if (image == MemorySegment.NULL) return@use null
+
+            fun int(data: Int): Int {
+                val out = arena.allocate(ValueLayout.JAVA_INT)
+                checkResult(GhosttyVt.ghostty_kitty_graphics_image_get(image, data, out), "ghostty_kitty_graphics_image_get($data)")
+                return out.get(ValueLayout.JAVA_INT, 0)
+            }
+
+            val pointer = arena.allocate(ValueLayout.ADDRESS)
+            val result = GhosttyVt.ghostty_kitty_graphics_image_get(image, GhosttyVt.GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR(), pointer)
+            // The pixels are pending.
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use null
+            checkResult(result, "ghostty_kitty_graphics_image_get(DATA_PTR)")
+            val length = arena.allocate(ValueLayout.JAVA_LONG)
+            checkResult(
+                GhosttyVt.ghostty_kitty_graphics_image_get(image, GhosttyVt.GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN(), length),
+                "ghostty_kitty_graphics_image_get(DATA_LEN)",
+            )
+            val size = length.get(ValueLayout.JAVA_LONG, 0)
+            val bytes = pointer.get(ValueLayout.ADDRESS, 0).reinterpret(size).toArray(ValueLayout.JAVA_BYTE)
+
+            GhosttyImage(
+                id = id,
+                generation = imageGeneration(arena, image),
+                width = int(GhosttyVt.GHOSTTY_KITTY_IMAGE_DATA_WIDTH()),
+                height = int(GhosttyVt.GHOSTTY_KITTY_IMAGE_DATA_HEIGHT()),
+                format = when (int(GhosttyVt.GHOSTTY_KITTY_IMAGE_DATA_FORMAT())) {
+                    GhosttyVt.GHOSTTY_KITTY_IMAGE_FORMAT_RGB() -> GhosttyImageFormat.RGB
+                    GhosttyVt.GHOSTTY_KITTY_IMAGE_FORMAT_GRAY_ALPHA() -> GhosttyImageFormat.GRAY_ALPHA
+                    GhosttyVt.GHOSTTY_KITTY_IMAGE_FORMAT_GRAY() -> GhosttyImageFormat.GRAY
+                    GhosttyVt.GHOSTTY_KITTY_IMAGE_FORMAT_PNG() -> GhosttyImageFormat.PNG
+                    else -> GhosttyImageFormat.RGBA
+                },
+                bytes = bytes,
+            )
+        }
+    }
 
     /** Whether the program asked to be told about the mouse (X10, normal, button or any-event tracking). */
     public val mouseTracking: Boolean

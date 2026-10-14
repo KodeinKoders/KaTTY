@@ -485,6 +485,125 @@ class TerminalViewTest {
         assertEquals(BACKGROUND.rgb, rendered.pixel(640 - 12, 10))
     }
 
+    // An image of 2 by 1 pixels, red and green, which is what the images of these tests are, and a placement of it.
+    private val redGreen = byteArrayOf(-1, 0, 0, -1, 0, -1, 0, -1)
+
+    private fun image(rgba: ByteArray = redGreen, width: Int = 2, height: Int = 1) = app.katty.terminal.TerminalImage(1, 1, width, height, rgba)
+
+    private fun placement(
+        image: app.katty.terminal.TerminalImage = image(),
+        left: Float = 2f, top: Float = 1f, width: Float = 4f, height: Float = 2f,
+        layer: app.katty.terminal.TerminalImageLayer = app.katty.terminal.TerminalImageLayer.ABOVE_TEXT,
+        sourceX: Int = 0, sourceWidth: Int = image.width,
+    ) = app.katty.terminal.TerminalImagePlacement(image, left, top, width, height, sourceX, 0, sourceWidth, image.height, layer)
+
+    private val red = TerminalColor(0xFF0000)
+    private val green = TerminalColor(0x00FF00)
+
+    @Test
+    fun anImageIsDrawnOnTheCellsItCovers() {
+        val frame = frame(30, listOf(row(30), row(30), row(30), row(30))).copy(images = listOf(placement()))
+
+        for (fontSize in listOf(14f, 22f)) {
+            val rendered = render("image-$fontSize", frame, fontSize = fontSize)
+
+            // 4 columns and 2 rows from the third column and the second row: red on the left, green on the right, and the
+            // two pixels are blended in between, since it is scaled up smoothly.
+            assertEquals(red.rgb, rendered.center(2, 1), "Red at $fontSize")
+            assertEquals(red.rgb, rendered.center(2, 2))
+            assertEquals(green.rgb, rendered.center(5, 1))
+            assertEquals(green.rgb, rendered.center(5, 2))
+            assertNotEquals(BACKGROUND.rgb, rendered.center(3, 1))
+            assertNotEquals(BACKGROUND.rgb, rendered.center(4, 2))
+            assertEquals(BACKGROUND.rgb, rendered.center(1, 1), "Not before it")
+            assertEquals(BACKGROUND.rgb, rendered.center(6, 1), "Not after it")
+            assertEquals(BACKGROUND.rgb, rendered.center(3, 0), "Not above it")
+            assertEquals(BACKGROUND.rgb, rendered.center(3, 3), "Not under it")
+        }
+    }
+
+    @Test
+    fun anImageIsDrawnAtAFractionOfACell() {
+        // From the middle of the third column to the middle of the fifth.
+        val frame = frame(30, listOf(row(30), row(30))).copy(images = listOf(placement(left = 2.5f, top = 0f, width = 2f, height = 1f)))
+
+        val rendered = render("image-fraction", frame)
+
+        assertEquals(BACKGROUND.rgb, rendered.pixel((2.2f * rendered.typography.cellWidth).toInt(), 5), "Before it starts")
+        assertEquals(red.rgb, rendered.pixel((3.0f * rendered.typography.cellWidth).toInt(), 5))
+        assertEquals(green.rgb, rendered.pixel((4.0f * rendered.typography.cellWidth).toInt(), 5))
+        assertEquals(BACKGROUND.rgb, rendered.pixel((4.8f * rendered.typography.cellWidth).toInt(), 5), "After it ends")
+    }
+
+    @Test
+    fun theLayersOfImagesAreAroundTheTextAndTheBackgrounds() {
+        // Full blocks of text, with a green background on one cell, under the images.
+        val cells = arrayOf(cell("\u2588", foreground = BLUE), cell("\u2588", foreground = BLUE), cell(" ", background = GREEN), cell(" ", background = GREEN))
+        val onTop = placement(left = 0f, top = 0f, width = 2f, height = 1f, layer = app.katty.terminal.TerminalImageLayer.ABOVE_TEXT)
+        val underText = placement(left = 0f, top = 1f, width = 2f, height = 1f, layer = app.katty.terminal.TerminalImageLayer.BELOW_TEXT)
+        val underBackground = placement(left = 2f, top = 0f, width = 2f, height = 1f, layer = app.katty.terminal.TerminalImageLayer.BELOW_BACKGROUND)
+        val frame = frame(30, listOf(row(30, *cells), row(30, *cells))).copy(images = listOf(onTop, underText, underBackground))
+
+        val rendered = render("image-layers", frame)
+
+        assertEquals(red.rgb, rendered.center(0, 0), "Above the text: the image covers it")
+        assertEquals(BLUE.rgb, rendered.center(0, 1), "Below the text: the text is on the image")
+        assertEquals(GREEN.rgb, rendered.center(2, 0), "Below the background: the cell's background covers it")
+    }
+
+    @Test
+    fun onlyTheSourceRectangleOfAnImageIsShown() {
+        // The right pixel of the image only.
+        val frame = frame(30, listOf(row(30), row(30))).copy(images = listOf(placement(left = 0f, top = 0f, width = 2f, height = 1f, sourceX = 1, sourceWidth = 1)))
+
+        val rendered = render("image-source", frame)
+
+        assertEquals(green.rgb, rendered.center(0, 0))
+        assertEquals(green.rgb, rendered.center(1, 0))
+    }
+
+    @Test
+    fun anImageThatIsPartlyAboveTheTerminalIsClipped() {
+        // Starts one row above the first, and is two rows tall: it covers the first row only.
+        val frame = frame(30, listOf(row(30), row(30), row(30))).copy(images = listOf(placement(left = 0f, top = -1f, width = 2f, height = 2f)))
+
+        val rendered = render("image-clipped", frame)
+
+        assertEquals(red.rgb, rendered.center(0, 0))
+        assertEquals(BACKGROUND.rgb, rendered.center(0, 1))
+    }
+
+    @Test
+    fun theTransparencyOfAnImageLetsWhatIsUnderItShow() {
+        val half = image(byteArrayOf(-1, 0, 0, 128.toByte()), width = 1)
+        val frame = frame(30, listOf(row(30), row(30))).copy(images = listOf(placement(half, left = 0f, top = 0f, width = 2f, height = 1f)))
+
+        val rendered = render("image-alpha", frame)
+
+        val pixel = rendered.center(0, 0)
+        val red = pixel shr 16 and 0xFF
+        val blue = pixel and 0xFF
+        // Half red over the dark background: more red than it, less than pure red.
+        assertTrue(red in 120..160, "Half red: ${"%06x".format(pixel)}")
+        assertTrue(blue in 0x0E..0x20, "A bit of the background: ${"%06x".format(pixel)}")
+    }
+
+    @Test
+    fun theBitmapsOfImagesAreMadeOnceAndForgottenWithTheImage() {
+        val cache = ImageBitmapCache()
+        val first = image()
+        val second = app.katty.terminal.TerminalImage(2, 1, 2, 1, redGreen)
+
+        val bitmap = cache.bitmapFor(first)
+
+        assertSame(bitmap, cache.bitmapFor(first))
+        cache.bitmapFor(second)
+        assertEquals(2, cache.size)
+        cache.retain(listOf(second))
+        assertEquals(1, cache.size)
+        assertNotEquals(bitmap, cache.bitmapFor(first), "A new bitmap once it was forgotten")
+    }
+
     @Test
     fun keepsWhatItPreparedForTheRowsThatDidNotChange() {
         var layouts: RowLayouts? = null
