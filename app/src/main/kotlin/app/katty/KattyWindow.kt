@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +34,15 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import app.katty.core.AgentState
+import app.katty.core.Agent
+import app.katty.core.AgentDetection
 import app.katty.core.AgentStates
 import app.katty.core.AttentionItem
 import app.katty.core.CloseDecision
 import app.katty.core.Direction
+import app.katty.core.KattyDirectories
+import app.katty.core.UsageService
+import app.katty.core.usageSources
 import app.katty.core.KattyStore
 import app.katty.core.MainView
 import app.katty.core.Orientation
@@ -59,6 +66,11 @@ import app.katty.screens.AttentionPopover
 import app.katty.screens.BoardSidebar
 import app.katty.screens.BoardTabs
 import app.katty.screens.CloseLastTerminalDialog
+import app.katty.screens.DetectedAgents
+import app.katty.screens.UsageBarRow
+import app.katty.screens.UsageList
+import app.katty.screens.UsageSection
+import app.katty.screens.UsageVariant
 import app.katty.screens.ColorSchemePicker
 import app.katty.screens.MainMenu
 import app.katty.screens.CloseWorkspaceDialog
@@ -95,7 +107,7 @@ import java.io.File
  * What is in the window: the title bar, and under it the sidebar and the workspace, or the welcome of an application that has no project.
  */
 @Composable
-fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: SessionRegistry, tracker: AgentTracker) {
+fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: SessionRegistry, tracker: AgentTracker, directories: KattyDirectories) {
     val state by store.state.collectAsState()
     val settings = state.settings
     var renamingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
@@ -126,6 +138,23 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
     val stateOf: (TerminalId) -> AgentState = agentStates::stateOf
     LaunchedEffect(handles) { tracker.sync(handles) }
+    // The agents that are installed: looked for on the PATH of the user's login shell, which is read once, and again when the window gets
+    // the focus, so that what is installed meanwhile appears.
+    val loginPath by produceState<String?>(null) { value = withContext(Dispatchers.IO) { AgentDetection.loginShellPath() } }
+    var detectTick by remember { mutableStateOf(0) }
+    val detected by produceState(emptyMap<Agent, java.nio.file.Path>(), loginPath, detectTick) {
+        value = withContext(Dispatchers.IO) { AgentDetection.detect(loginPath ?: System.getenv("PATH").orEmpty()) }
+    }
+    val detectedAgents = Agent.entries.filter { it in detected }
+    val usageScope = rememberCoroutineScope()
+    val usage = remember(detected) { UsageService(usageScope, usageSources(detected, directories.usageDirectory)) }
+    DisposableEffect(usage) { onDispose { usage.stop() } }
+    LaunchedEffect(usage, settings.usageShown) { usage.want(detectedAgents.filter { it.id in settings.usageShown }.toSet()) }
+    val readings by usage.readings.collectAsState()
+    val setShown: (Agent, Boolean) -> Unit = { agent, on ->
+        store.updateSettings { it.copy(usageShown = if (on) it.usageShown + agent.id else it.usageShown - agent.id) }
+    }
+    val setCompact: (Boolean) -> Unit = { on -> store.updateSettings { it.copy(compactUsage = on) } }
     val attention = remember(state.projects, infos) { state.attention(infos) }
     // The time that ages are told from moves on by itself.
     val now by produceState(System.currentTimeMillis()) {
@@ -134,9 +163,11 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
             value = System.currentTimeMillis()
         }
     }
+    val usageNow = java.time.Instant.ofEpochMilli(now)
     // Seen: what a terminal finished or failed at stays until the user has it in front of them, in a window that has the focus.
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val selectedState = state.selection.terminal?.let { infos[it]?.state }
+    LaunchedEffect(windowFocused) { if (windowFocused) detectTick++ }
     LaunchedEffect(selectedState, windowFocused, state.selection.terminal, settings.view) {
         val id = state.selection.terminal
         if (id != null && windowFocused && settings.view == MainView.TERMINALS && (selectedState == AgentState.DONE || selectedState == AgentState.ERROR)) {
@@ -284,7 +315,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
         },
     ) {
         if (state.projects.isEmpty()) {
-            Welcome(onAddProject = addProject)
+            Welcome(onAddProject = addProject, detected = { DetectedAgents(detected) })
         } else {
             val workspace = state.selectedWorkspace
             val area: @Composable (Modifier, Boolean) -> Unit = { areaModifier, header ->
@@ -324,6 +355,12 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                     )
                 }
             }
+            val usageSection: @Composable () -> Unit = {
+                UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown)
+            }
+            val usageBar: @Composable () -> Unit = {
+                UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown)
+            }
             val reveal: (ProjectId) -> Unit = { id -> state.projects.firstOrNull { it.id == id }?.let { revealInFileManager(it.directory) } }
             if (settings.view == MainView.BOARD) {
                 // A project that was removed is not a filter any more.
@@ -336,10 +373,11 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                     Column(Modifier.fillMaxSize()) {
                         BoardTabs(state, filter, { boardFilter = it }, states = agentStates)
                         board(Modifier.weight(1f))
+                        usageBar()
                     }
                 } else {
                     Row(Modifier.fillMaxSize()) {
-                        BoardSidebar(state, filter, { boardFilter = it }, states = agentStates)
+                        BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() })
                         board(Modifier.weight(1f))
                     }
                 }
@@ -367,11 +405,15 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                         states = agentStates,
                     )
                     area(Modifier.weight(1f).fillMaxWidth(), false)
+                    usageBar()
                 }
             } else {
                 Row(Modifier.fillMaxSize()) {
                     if (settings.sidebarCollapsed) {
-                        Rail(state, store, onAddProject = addProject, states = agentStates)
+                        Rail(
+                            state, store, onAddProject = addProject, states = agentStates,
+                            usage = { UsageList(detectedAgents.filter { it.id in settings.usageShown }, readings, usageNow, UsageVariant.RAIL, Modifier.padding(vertical = 8.dp)) },
+                        )
                     } else {
                         Sidebar(
                             state = state,
@@ -385,6 +427,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                             renamingWorkspace = renamingWorkspace,
                             onRenamingWorkspace = { renamingWorkspace = it },
                             states = agentStates,
+                            usage = { usageSection() },
                         )
                     }
                     area(Modifier.weight(1f).fillMaxHeight(), true)

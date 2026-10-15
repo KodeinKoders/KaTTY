@@ -50,11 +50,18 @@ internal fun agentCount(count: Int): String = if (count == 1) "1 agent" else "$c
  * @param filter The project that is shown, `null` for all of them.
  */
 @Composable
-fun BoardSidebar(state: KattyState, filter: ProjectId?, onFilter: (ProjectId?) -> Unit, modifier: Modifier = Modifier, states: AgentStates = NoAgentStates) {
+fun BoardSidebar(
+    state: KattyState,
+    filter: ProjectId?,
+    onFilter: (ProjectId?) -> Unit,
+    modifier: Modifier = Modifier,
+    states: AgentStates = NoAgentStates,
+    usage: @Composable () -> Unit = {},
+) {
     val colors = Katty.colors
-    Column(modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(colors.side).border(1.dp, colors.line).padding(top = 8.dp, start = 6.dp, end = 6.dp)) {
-        SectionLabel("PROJECTS", Modifier.padding(start = 6.dp, bottom = 6.dp))
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
+        SectionLabel("PROJECTS", Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val total = state.allTerminals().size
             FilterRow("All projects", filter == null, { onFilter(null) }) { Text(agentCount(total), color = colors.muted, fontSize = 11.sp) }
             for (project in state.projects) {
@@ -63,6 +70,7 @@ fun BoardSidebar(state: KattyState, filter: ProjectId?, onFilter: (ProjectId?) -
                 }
             }
         }
+        usage()
     }
 }
 

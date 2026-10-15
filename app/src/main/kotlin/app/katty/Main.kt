@@ -32,11 +32,11 @@ fun main() {
     val directories = KattyDirectories.default()
     val file = StateFile(directories.stateFile)
     val store = KattyStore(file.load())
-    application { Katty(store, file) }
+    application { Katty(store, file, directories) }
 }
 
 @Composable
-private fun ApplicationScope.Katty(store: KattyStore, file: StateFile) {
+private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directories: KattyDirectories) {
     // What the store holds is written to the file as it changes, and a last time when the application quits.
     val writer = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     val persistence = remember { StatePersistence(store, file, writer) }
@@ -64,7 +64,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile) {
             title = "KaTTY",
             state = rememberWindowState(size = DpSize(1440.dp, 900.dp)),
         ) {
-            KattyWindowContent(store, registry, tracker)
+            KattyWindowContent(store, registry, tracker, directories)
         }
     }
 }
