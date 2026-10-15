@@ -78,6 +78,42 @@ class UsageServiceTest {
     }
 
     @Test
+    fun refreshingNowReadsAgainAtOnceAndSaysSoWhileItReads() {
+        val count = AtomicInteger()
+        val gate = java.util.concurrent.Semaphore(1)
+        val service = UsageService(
+            scope,
+            mapOf(Agent.CLAUDE to UsageSource { gate.acquire(); try { reading(Agent.CLAUDE, count.incrementAndGet()) } finally { gate.release() } }),
+            interval = 60_000.milliseconds,
+        )
+        service.want(setOf(Agent.CLAUDE))
+        await("the first reading") { service.readings.value[Agent.CLAUDE] != null && !service.refreshing.value }
+
+        // Held in the middle of a reading: it is refreshing, and asking again changes nothing.
+        gate.acquire()
+        service.refreshNow()
+        await("it is refreshing") { service.refreshing.value }
+        service.refreshNow()
+        gate.release()
+        await("the second reading, and no more") { count.get() == 2 && !service.refreshing.value }
+
+        Thread.sleep(100)
+        assertEquals(2, count.get())
+        service.stop()
+    }
+
+    @Test
+    fun withNothingWantedThereIsNothingToRefresh() {
+        val service = UsageService(scope, mapOf(Agent.CLAUDE to UsageSource { reading(Agent.CLAUDE, 1) }), interval = 60_000.milliseconds)
+
+        service.refreshNow()
+        Thread.sleep(100)
+
+        assertEquals(false, service.refreshing.value)
+        assertEquals(emptyMap(), service.readings.value)
+    }
+
+    @Test
     fun aSourceThatFailsLeavesNoReadingAndDoesNotStopTheOthers() {
         val service = UsageService(
             scope,

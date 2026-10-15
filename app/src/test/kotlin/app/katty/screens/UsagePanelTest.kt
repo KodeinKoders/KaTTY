@@ -2,6 +2,10 @@
 
 package app.katty.screens
 
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
+import app.katty.core.usageKey
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
@@ -44,6 +48,11 @@ class UsagePanelTest {
         onNodeWithText("Claude Code").assertExists()
         onNodeWithText("82% used").assertExists()
         onNodeWithText("Resets in 53 minutes").assertExists()
+        // Both allowances of Claude Code have their bar, not only the most used one.
+        assertEquals(2, onAllNodesWithText("Session").fetchSemanticsNodes().size)
+        onNodeWithText("Week").assertExists()
+        onNodeWithText("40% used").assertExists()
+        onNodeWithText("Resets in 3 days").assertExists()
         onNodeWithText("41% used").assertExists()
         onNodeWithText("Resets in 2 hours 10 minutes").assertExists()
     }
@@ -61,6 +70,7 @@ class UsagePanelTest {
         setContent { KattyTheme(false) { UsageList(agents, readings, now, UsageVariant.COMPACT, Modifier.width(240.dp)) } }
 
         onNodeWithText("82%").assertExists()
+        onNodeWithText("40%").assertExists()
         onNodeWithContentDescription("Session: 82% used, resets in 53 minutes; Week: 40% used, resets in 3 days").assertExists()
         onNodeWithContentDescription("Gemini CLI: usage not available").assertExists()
     }
@@ -69,6 +79,8 @@ class UsagePanelTest {
     fun theRailHasThePercentUnderTheTile() = runComposeUiTest {
         setContent { KattyTheme(false) { UsageList(agents, readings, now, UsageVariant.RAIL) } }
 
+        onNodeWithText("82%").assertExists()
+        onNodeWithText("40%").assertExists()
         onNodeWithText("41%").assertExists()
         onNodeWithText("–").assertExists()
     }
@@ -96,6 +108,92 @@ class UsagePanelTest {
         waitForIdle()
         onNodeWithText("82%").assertExists()
         onNodeWithText("82% used").assertDoesNotExist()
+    }
+
+    @Test
+    fun aLimitThatIsHiddenIsNotDrawnAndAnAgentWithNoneLeftSaysSo() = runComposeUiTest {
+        setContent {
+            KattyTheme(false) {
+                Column(Modifier.width(240.dp)) {
+                    UsageList(listOf(Agent.CLAUDE), readings, now, UsageVariant.FULL, hidden = setOf(usageKey(Agent.CLAUDE, "Week")))
+                    UsageList(listOf(Agent.CODEX), readings, now, UsageVariant.FULL, hidden = setOf(usageKey(Agent.CODEX, "Session")))
+                }
+            }
+        }
+
+        onNodeWithText("82% used").assertExists()
+        onNodeWithText("40% used").assertDoesNotExist()
+        onNodeWithText("No limit shown").assertExists()
+        onNodeWithText("41% used").assertDoesNotExist()
+    }
+
+    @Test
+    fun theChooserListsTheLimitsOfTheAgentsThatAreChosenAndHidesOrShowsThem() = runComposeUiTest {
+        val calls = mutableListOf<String>()
+        setContent {
+            KattyTheme(false) {
+                UsageSection(
+                    agents, readings, shown = setOf("claude"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> },
+                    hidden = setOf(usageKey(Agent.CLAUDE, "Session")), onHidden = { a, label, hide -> calls += "${a.id} $label $hide" },
+                )
+            }
+        }
+
+        onNodeWithContentDescription("Choose agents to show").performClick()
+        // The popover is the last tree: its checkboxes for the two limits of Claude Code, and none under Codex, which is not chosen.
+        onAllNodesWithText("Week").onLast().performClick()
+        onAllNodesWithText("Session").onLast().performClick()
+
+        assertEquals(listOf("claude Week true", "claude Session false"), calls)
+    }
+
+    @Test
+    fun theRefreshButtonRefreshesAndIsDisabledWhileTheAgentsAreRead() = runComposeUiTest {
+        var refreshes = 0
+        var refreshing by androidx.compose.runtime.mutableStateOf(false)
+        setContent {
+            KattyTheme(false) {
+                UsageSection(agents, readings, shown = setOf("claude"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> }, refreshing = refreshing, onRefresh = { refreshes++ })
+            }
+        }
+
+        onNodeWithContentDescription("Refresh usage").assertIsEnabled().performClick()
+        assertEquals(1, refreshes)
+        refreshing = true
+        waitForIdle()
+        onNodeWithContentDescription("Refresh usage").assertIsNotEnabled()
+    }
+
+    @Test
+    fun withNoAgentChosenThereIsNothingToRefresh() = runComposeUiTest {
+        setContent { KattyTheme(false) { UsageSection(agents, readings, shown = emptySet(), compact = false, now = now, onCompact = {}, onShown = { _, _ -> }) } }
+
+        onNodeWithContentDescription("Refresh usage").assertIsNotEnabled()
+    }
+
+    @Test
+    fun theBarOfTheVerticalLayoutHasItsLabelOnTwoLinesWhenFullAndNoneWhenCompact() = runComposeUiTest {
+        var compact by androidx.compose.runtime.mutableStateOf(false)
+        setContent {
+            KattyTheme(false) { UsageBarRow(agents, readings, shown = setOf("claude"), compact = compact, now = now, onCompact = {}, onShown = { _, _ -> }) }
+        }
+
+        onNodeWithText("AGENT").assertExists()
+        onNodeWithText("USAGE").assertExists()
+        // The menu button, then the refresh one under it.
+        val menu = onNodeWithContentDescription("Choose agents to show").fetchSemanticsNode().boundsInRoot
+        val refresh = onNodeWithContentDescription("Refresh usage").fetchSemanticsNode().boundsInRoot
+        assertTrue(refresh.top >= menu.bottom && refresh.left == menu.left, "$menu $refresh")
+
+        compact = true
+        waitForIdle()
+        onNodeWithText("AGENT").assertDoesNotExist()
+        onNodeWithText("USAGE").assertDoesNotExist()
+        onNodeWithText("AGENT USAGE").assertDoesNotExist()
+        // Side by side again.
+        val menuCompact = onNodeWithContentDescription("Choose agents to show").fetchSemanticsNode().boundsInRoot
+        val refreshCompact = onNodeWithContentDescription("Refresh usage").fetchSemanticsNode().boundsInRoot
+        assertTrue(refreshCompact.top == menuCompact.top, "$menuCompact $refreshCompact")
     }
 
     @Test

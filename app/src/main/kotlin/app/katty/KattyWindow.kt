@@ -33,6 +33,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import app.katty.core.usageKey
 import app.katty.core.AgentState
 import app.katty.core.Agent
 import app.katty.core.AgentDetection
@@ -156,8 +157,13 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     DisposableEffect(usage) { onDispose { usage.stop() } }
     LaunchedEffect(usage, settings.usageShown) { usage.want(detectedAgents.filter { it.id in settings.usageShown }.toSet()) }
     val readings by usage.readings.collectAsState()
+    val refreshingUsage by usage.refreshing.collectAsState()
     val setShown: (Agent, Boolean) -> Unit = { agent, on ->
         store.updateSettings { it.copy(usageShown = if (on) it.usageShown + agent.id else it.usageShown - agent.id) }
+    }
+    val setHidden: (Agent, String, Boolean) -> Unit = { agent, label, hide ->
+        val key = usageKey(agent, label)
+        store.updateSettings { it.copy(usageHidden = if (hide) it.usageHidden + key else it.usageHidden - key) }
     }
     val setCompact: (Boolean) -> Unit = { on -> store.updateSettings { it.copy(compactUsage = on) } }
     val attention = remember(state.projects, infos) { state.attention(infos) }
@@ -385,10 +391,10 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                 }
             }
             val usageSection: @Composable () -> Unit = {
-                UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown)
+                UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow)
             }
             val usageBar: @Composable () -> Unit = {
-                UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown)
+                UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow)
             }
             val reveal: (ProjectId) -> Unit = { id -> state.projects.firstOrNull { it.id == id }?.let { revealInFileManager(it.directory) } }
             if (settings.view == MainView.BOARD) {
@@ -441,7 +447,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                     if (settings.sidebarCollapsed) {
                         Rail(
                             state, store, onAddProject = addProject, states = agentStates,
-                            usage = { UsageList(detectedAgents.filter { it.id in settings.usageShown }, readings, usageNow, UsageVariant.RAIL, Modifier.padding(vertical = 8.dp)) },
+                            usage = { UsageList(detectedAgents.filter { it.id in settings.usageShown }, readings, usageNow, UsageVariant.RAIL, Modifier.padding(vertical = 8.dp), settings.usageHidden) },
                         )
                     } else {
                         Sidebar(

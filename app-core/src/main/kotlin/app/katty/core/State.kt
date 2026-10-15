@@ -34,6 +34,8 @@ public enum class MainView {
  * @param fontFamily The family of the terminals' font; `null` for the bundled JetBrains Mono.
  * @param fontSize In pixels.
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
+ * @param usageHidden The limits of those agents that are not shown, each made by [usageKey]. It is the hidden ones that are kept, so that a
+ * limit that an agent starts to report later is shown.
  */
 @Serializable
 public data class Settings(
@@ -44,6 +46,7 @@ public data class Settings(
     val fontSize: Float = DEFAULT_FONT_SIZE,
     val ligatures: Boolean = true,
     val usageShown: Set<String> = setOf("claude", "codex", "antigravity"),
+    val usageHidden: Set<String> = emptySet(),
     val compactUsage: Boolean = false,
     val sidebarCollapsed: Boolean = false,
     val view: MainView = MainView.TERMINALS,
@@ -55,6 +58,9 @@ public data class Settings(
         public const val MAX_FONT_SIZE: Float = 32f
     }
 }
+
+/** What [Settings.usageHidden] keeps for the limit that [agent] calls [label] (`Week (Sonnet only)`, `Session`…). */
+public fun usageKey(agent: Agent, label: String): String = "${agent.id}/$label"
 
 /**
  * What is selected: one project, one workspace of it and one terminal of that has the focus. A terminal can be maximized over the

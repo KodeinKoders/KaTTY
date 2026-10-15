@@ -1,5 +1,9 @@
 package app.katty.screens
 
+import app.katty.core.usageKey
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -76,43 +80,72 @@ private fun UsageReading.summary(now: Instant): String = windows.joinToString(";
  *
  * @param agents The agents to show, in order.
  * @param readings What was read.
+ * @param hidden The limits that are not shown, made by [usageKey].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun UsageList(agents: List<Agent>, readings: Map<Agent, UsageReading>, now: Instant, variant: UsageVariant, modifier: Modifier = Modifier) {
+fun UsageList(
+    agents: List<Agent>,
+    readings: Map<Agent, UsageReading>,
+    now: Instant,
+    variant: UsageVariant,
+    modifier: Modifier = Modifier,
+    hidden: Set<String> = emptySet(),
+) {
     val colors = Katty.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(if (variant == UsageVariant.FULL) 10.dp else 6.dp)) {
         for (agent in agents) {
             val reading = readings[agent]
-            val primary = reading?.primary
-            val description = reading?.summary(now) ?: "${agent.displayName}: usage not available"
+            val reported = reading?.windows.orEmpty()
+            val windows = reported.filter { usageKey(agent, it.label) !in hidden }
+            // What it says when there is nothing to draw: the agent said nothing, or the user chose to see none of what it said.
+            val none = if (reported.isEmpty()) "No meter" else "No limit shown"
+            val description = reading?.copy(windows = windows)?.takeIf { windows.isNotEmpty() }?.summary(now)
+                ?: if (reading == null) "${agent.displayName}: usage not available" else "${agent.displayName}: $none"
             when (variant) {
                 UsageVariant.FULL -> Column(Modifier.semantics { contentDescription = "${agent.displayName} usage" }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AgentTile(agent.glyph(), size = TileSize.LIST)
                         Text(agent.displayName, Modifier.weight(1f), color = colors.text)
-                        Text(
-                            if (primary != null) "${primary.percentUsed}% used" else "No meter",
-                            color = if (primary != null && primary.percentUsed >= USAGE_WARNING_PERCENT) colors.input else colors.muted,
-                            fontSize = 12.sp,
-                        )
+                        if (windows.isEmpty()) Text(none, color = colors.muted, fontSize = 12.sp)
                     }
-                    if (primary != null) {
-                        UsageBar(primary.percentUsed, Modifier.fillMaxWidth())
-                        resetsIn(now, primary.resetsAt)?.let { Text("Resets in $it", color = colors.muted, fontSize = 11.sp) }
+                    // Every allowance has its bar: a session and a week are both what the user runs out of.
+                    for (window in windows) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(window.label, Modifier.weight(1f), color = colors.muted, fontSize = 12.sp, maxLines = 1)
+                            Text(
+                                "${window.percentUsed}% used",
+                                color = if (window.percentUsed >= USAGE_WARNING_PERCENT) colors.input else colors.muted,
+                                fontSize = 12.sp,
+                            )
+                        }
+                        UsageBar(window.percentUsed, Modifier.fillMaxWidth())
+                        resetsIn(now, window.resetsAt)?.let { Text("Resets in $it", color = colors.muted, fontSize = 11.sp) }
                     }
                 }
                 UsageVariant.COMPACT -> Tooltip(tooltip = { Text(description) }) {
                     Row(Modifier.semantics { contentDescription = description }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AgentTile(agent.glyph(), size = TileSize.HEADER)
-                        if (primary != null) UsageBar(primary.percentUsed, Modifier.weight(1f)) else Text("No meter", Modifier.weight(1f), color = colors.muted, fontSize = 11.sp)
-                        if (primary != null) Text("${primary.percentUsed}%", color = colors.text, fontSize = 11.sp)
+                        if (windows.isEmpty()) {
+                            Text(none, Modifier.weight(1f), color = colors.muted, fontSize = 11.sp)
+                        } else {
+                            // A thin bar with its percent for each allowance, one under the other.
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                for (window in windows) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        UsageBar(window.percentUsed, Modifier.weight(1f), height = 3.dp)
+                                        Text("${window.percentUsed}%", color = colors.text, fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 UsageVariant.RAIL -> Tooltip(tooltip = { Text(description) }) {
                     Column(Modifier.semantics { contentDescription = description }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         AgentTile(agent.glyph(), size = TileSize.RAIL)
-                        Text(primary?.let { "${it.percentUsed}%" } ?: "–", color = colors.muted, fontSize = 10.sp)
+                        if (windows.isEmpty()) Text("–", color = colors.muted, fontSize = 10.sp)
+                        for (window in windows) Text("${window.percentUsed}%", color = colors.muted, fontSize = 10.sp)
                     }
                 }
             }
@@ -130,20 +163,42 @@ private object AboveEnd : PopupPositionProvider {
  * The popover that chooses what the usage shows: compact mode, and the agents, which are the ones that are installed.
  *
  * @param detected The agents that are on the machine: the ones that can be chosen.
+ * @param readings What the agents reported: under each agent that is chosen, the limits that it reported can be chosen too.
+ * @param hidden The limits that are not shown, made by [usageKey]; [onHidden] is told which one is hidden (`true`) or shown again.
  */
 @Composable
-fun UsageChooser(compact: Boolean, onCompact: (Boolean) -> Unit, detected: List<Agent>, shown: Set<String>, onShown: (Agent, Boolean) -> Unit, onDismiss: () -> Unit) {
+fun UsageChooser(
+    compact: Boolean,
+    onCompact: (Boolean) -> Unit,
+    detected: List<Agent>,
+    shown: Set<String>,
+    onShown: (Agent, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    readings: Map<Agent, UsageReading> = emptyMap(),
+    hidden: Set<String> = emptySet(),
+    onHidden: (Agent, String, Boolean) -> Unit = { _, _, _ -> },
+) {
     val colors = Katty.colors
     Popup(popupPositionProvider = AboveEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
             Modifier.width(248.dp).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
-                .border(1.dp, colors.line, RoundedCornerShape(8.dp)).padding(6.dp).semantics { contentDescription = "Agents to show" },
+                .border(1.dp, colors.line, RoundedCornerShape(8.dp)).heightIn(max = 460.dp).verticalScroll(rememberScrollState()).padding(6.dp)
+                .semantics { contentDescription = "Agents to show" },
         ) {
             CheckSetting("Compact mode", compact, onCompact, Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             Divider(org.jetbrains.jewel.ui.Orientation.Horizontal, Modifier.padding(vertical = 6.dp, horizontal = 4.dp))
             SectionLabel("SHOW USAGE FOR", Modifier.padding(start = 10.dp, top = 2.dp, bottom = 4.dp))
             for (agent in detected) {
                 CheckSetting(agent.displayName, agent.id in shown, { onShown(agent, it) }, Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                // The limits that it reported, each of which can be left out: a limit for one model is told by the agent in its label.
+                if (agent.id in shown) {
+                    for (window in readings[agent]?.windows.orEmpty()) {
+                        CheckSetting(
+                            window.label, usageKey(agent, window.label) !in hidden, { onHidden(agent, window.label, !it) },
+                            Modifier.padding(start = 28.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+                        )
+                    }
+                }
             }
             Divider(org.jetbrains.jewel.ui.Orientation.Horizontal, Modifier.padding(vertical = 6.dp, horizontal = 4.dp))
             Text("Agents are detected from the CLIs installed on this machine.", Modifier.padding(horizontal = 8.dp, vertical = 2.dp), color = colors.muted, fontSize = 11.sp)
@@ -164,6 +219,10 @@ fun UsageSection(
     onCompact: (Boolean) -> Unit,
     onShown: (Agent, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    hidden: Set<String> = emptySet(),
+    onHidden: (Agent, String, Boolean) -> Unit = { _, _, _ -> },
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
 ) {
     val colors = Katty.colors
     var choosing by remember { mutableStateOf(false) }
@@ -171,15 +230,16 @@ fun UsageSection(
     Column(modifier.fillMaxWidth().border(1.dp, colors.line).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionLabel("AGENT USAGE", Modifier.weight(1f))
+            RefreshButton(refreshing, onRefresh, enabled = agents.isNotEmpty())
             androidx.compose.foundation.layout.Box {
                 KattyIconButton(KattyIcons.Kebab, "Choose agents to show", { choosing = true }, size = ButtonSize.COMPACT)
-                if (choosing) UsageChooser(compact, onCompact, detected, shown, onShown, onDismiss = { choosing = false })
+                if (choosing) UsageChooser(compact, onCompact, detected, shown, onShown, onDismiss = { choosing = false }, readings = readings, hidden = hidden, onHidden = onHidden)
             }
         }
         if (agents.isEmpty()) {
             Text("No agents selected.", color = colors.muted, fontSize = 11.sp)
         } else {
-            UsageList(agents, readings, now, if (compact) UsageVariant.COMPACT else UsageVariant.FULL)
+            UsageList(agents, readings, now, if (compact) UsageVariant.COMPACT else UsageVariant.FULL, hidden = hidden)
         }
     }
 }
@@ -195,22 +255,59 @@ fun UsageBarRow(
     onCompact: (Boolean) -> Unit,
     onShown: (Agent, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    hidden: Set<String> = emptySet(),
+    onHidden: (Agent, String, Boolean) -> Unit = { _, _, _ -> },
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
 ) {
     val colors = Katty.colors
     var choosing by remember { mutableStateOf(false) }
     val agents = detected.filter { it.id in shown }
     Row(modifier.fillMaxWidth().background(colors.side).border(1.dp, colors.line).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        SectionLabel("AGENT USAGE")
+        // The full items are tall, so the label is on two lines and takes less of the width; the compact ones are a line and need no label.
+        if (!compact) {
+            Column {
+                SectionLabel("AGENT")
+                SectionLabel("USAGE")
+            }
+        }
         if (agents.isEmpty()) {
             Text("No agents selected.", Modifier.weight(1f), color = colors.muted, fontSize = 11.sp)
         } else {
-            for (agent in agents) UsageList(listOf(agent), readings, now, if (compact) UsageVariant.COMPACT else UsageVariant.FULL, Modifier.weight(1f))
+            for (agent in agents) UsageList(listOf(agent), readings, now, if (compact) UsageVariant.COMPACT else UsageVariant.FULL, Modifier.weight(1f), hidden)
         }
-        androidx.compose.foundation.layout.Box {
-            KattyIconButton(KattyIcons.Kebab, "Choose agents to show", { choosing = true }, size = ButtonSize.COMPACT)
-            if (choosing) UsageChooser(compact, onCompact, detected, shown, onShown, onDismiss = { choosing = false })
+        // The buttons are one under the other for the full items, which are tall, and side by side for the compact ones, which are not.
+        val buttons: @Composable () -> Unit = {
+            val menu: @Composable () -> Unit = {
+                androidx.compose.foundation.layout.Box {
+                    KattyIconButton(KattyIcons.Kebab, "Choose agents to show", { choosing = true }, size = ButtonSize.COMPACT)
+                    if (choosing) UsageChooser(compact, onCompact, detected, shown, onShown, onDismiss = { choosing = false }, readings = readings, hidden = hidden, onHidden = onHidden)
+                }
+            }
+            val refresh: @Composable () -> Unit = { RefreshButton(refreshing, onRefresh, enabled = agents.isNotEmpty()) }
+            if (compact) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    refresh()
+                    menu()
+                }
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    menu()
+                    refresh()
+                }
+            }
         }
+        buttons()
     }
+}
+
+/**
+ * Reads the usage of every agent again. It is disabled, grayed out, while they are being read, and does not move: an animation would draw
+ * the eye to something that the user has no use for.
+ */
+@Composable
+private fun RefreshButton(refreshing: Boolean, onRefresh: () -> Unit, enabled: Boolean) {
+    KattyIconButton(KattyIcons.Restart, "Refresh usage", onRefresh, size = ButtonSize.COMPACT, enabled = enabled && !refreshing)
 }
 
 /**

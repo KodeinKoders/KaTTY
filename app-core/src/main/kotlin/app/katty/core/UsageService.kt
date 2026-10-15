@@ -180,6 +180,11 @@ public class UsageService(
     /** What the agents say of their usage, for the ones that were read. */
     public val readings: StateFlow<Map<Agent, UsageReading>> get() = mutableReadings
 
+    private val mutableRefreshing = MutableStateFlow(false)
+
+    /** Whether the agents are being read: the host shows that the refresh is not available while it is. */
+    public val refreshing: StateFlow<Boolean> get() = mutableRefreshing
+
     private var wanted: Set<Agent> = emptySet()
     private var loop: Job? = null
     private val reading = Mutex()
@@ -191,8 +196,23 @@ public class UsageService(
         if (relevant == wanted && loop != null) return
         wanted = relevant
         mutableReadings.value = mutableReadings.value.filterKeys { it in relevant }
+        restart()
+    }
+
+    /**
+     * Reads the wanted agents now, which is the same as the loop doing it, and then every [interval] from this reading. Nothing happens while
+     * they are being read: a second request would only queue the commands behind the first.
+     */
+    @Synchronized
+    public fun refreshNow() {
+        if (wanted.isEmpty() || mutableRefreshing.value) return
+        restart()
+    }
+
+    // The loop is made again so that the next reading is an interval after this one, wherever the last one was.
+    private fun restart() {
         loop?.cancel()
-        loop = if (relevant.isEmpty()) null else scope.launch {
+        loop = if (wanted.isEmpty()) null else scope.launch {
             while (true) {
                 refresh()
                 delay(interval)
@@ -203,16 +223,26 @@ public class UsageService(
     /** Reads the wanted agents again, one after the other: they are slow, and each is a program that starts. */
     public suspend fun refresh() {
         reading.withLock {
-            for (agent in wanted) {
-                val source = sources[agent] ?: continue
-                val reading = try {
-                    source.read()
-                } catch (e: Exception) {
-                    logger.debug("Could not read the usage of {}", agent, e)
-                    null
-                }
-                mutableReadings.value = if (reading == null) mutableReadings.value - agent else mutableReadings.value + (agent to reading)
+            if (wanted.isEmpty()) return
+            mutableRefreshing.value = true
+            try {
+                readWanted()
+            } finally {
+                mutableRefreshing.value = false
             }
+        }
+    }
+
+    private suspend fun readWanted() {
+        for (agent in wanted) {
+            val source = sources[agent] ?: continue
+            val reading = try {
+                source.read()
+            } catch (e: Exception) {
+                logger.debug("Could not read the usage of {}", agent, e)
+                null
+            }
+            mutableReadings.value = if (reading == null) mutableReadings.value - agent else mutableReadings.value + (agent to reading)
         }
     }
 

@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
 public data class UsageWindow(val label: String, val percentUsed: Int, val resetsAt: Instant?)
 
 /**
- * What an agent says of its usage. The bar shows [primary], the most used of its allowances, and the others are told in the tooltip.
+ * What an agent says of its usage: each of its allowances, which the widget shows with a bar of its own. [primary] is the one that is the nearest to being used up.
  */
 public data class UsageReading(val agent: Agent, val windows: List<UsageWindow>) {
     /** The allowance that is the nearest to being used up. */

@@ -47,10 +47,13 @@ fun KattyIconButton(
             modifier = modifier.size(size.dp).semantics { contentDescription = description; role = Role.Button },
             enabled = enabled,
         ) {
-            Icon(icon, tint)
+            // A button that is disabled is grayed out: the icon says it does too.
+            Icon(icon, if (enabled) tint else tint.copy(alpha = DISABLED_ICON_ALPHA))
         }
     }
 }
+
+private const val DISABLED_ICON_ALPHA = 0.4f
 
 /** One of the choices of a [Choice]. */
 class ChoiceOption<T>(val value: T, val label: String)

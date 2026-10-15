@@ -141,6 +141,10 @@ After any change, the selection is made to point at something: a project, worksp
 | Claude Code, Codex, Antigravity
 | Any of the agents.
 
+| Usage hidden
+| None
+| Any of the limits that an agent reported (by agent and label); the ones that are not hidden are shown, including a limit that an agent starts to report later.
+
 | Compact usage
 | Off
 | On, off.
@@ -616,20 +620,22 @@ This was not tried against a real Codex.
 | None: no command reports it without a turn.
 |===
 
-* An agent is read only while it is installed and shown, every 2 minutes, one after the other.
+* An agent is read only while it is installed and shown, every 2 minutes (or when the user asks for it, see Presentation), one after the other.
 * A command that fails, takes too long, or prints something that is not understood gives no reading; the agent then has no meter.
 
 
 === Presentation
 
-* The bar of an agent shows its most used allowance; it is amber from 80 %.
-* Full: the tile, the name, "N% used", the bar, "Resets in …" ("53 minutes", "2 hours 10 minutes", "3 days 4 hours", "11 days").
-* Compact: the tile, the bar and the percent; the tooltip says every allowance with its reset.
+* Each allowance of an agent (Claude Code's session and week, for instance) has a bar of its own, in the order the agent says them; a bar is amber from 80 %.
+* Full: the tile and the name, then for each allowance its label, "N% used", the bar, "Resets in …" ("53 minutes", "2 hours 10 minutes", "3 days 4 hours", "11 days").
+* Compact: the tile, and a thin bar with its percent for each allowance, one under the other; the tooltip says every allowance with its reset.
 * The bar at the bottom of the vertical layout follows the same choice: one full item for each agent, side by side, or compact ones when compact mode is checked.
-* In the rail: the tile and the percent.
+In it the label is on two lines ("AGENT", "USAGE") when the items are full, with the refresh button under the "…" button, and there is no label when they are compact, with the two buttons side by side.
+* A button next to the "…" of the usage (in the sidebar and in the bar of the vertical layout) reads every chosen agent again now, and the next automatic reading is 2 minutes after it. While the agents are being read it is disabled, grayed out, and does not move (an animation would draw the eye); it is disabled too when no agent is chosen. The rail has no such button.
+* In the rail: the tile and the percent of each allowance, one under the other.
 * An agent that is shown without a reading says "No meter" (or "–" in the rail).
 * With no agent chosen: "No agents selected."
-* The chooser (the "…" of the usage) has "Compact mode", SHOW USAGE FOR with a checkbox for each installed agent, and "Agents are detected from the CLIs installed on this machine."
+* The chooser (the "…" of the usage) has "Compact mode", SHOW USAGE FOR with a checkbox for each installed agent and, under each one that is checked and has a reading, a checkbox for each limit that it reported ("Session", "Week (Sonnet only)"…): a limit that is unchecked is left out of the sidebar, the rail and the bar of the vertical layout; an agent whose limits are all left out says "No limit shown"; and "Agents are detected from the CLIs installed on this machine."
 
 
 == Command palette

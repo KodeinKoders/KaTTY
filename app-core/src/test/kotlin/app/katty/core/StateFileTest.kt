@@ -38,7 +38,7 @@ class StateFileTest {
         store.setColorScheme(second, "Nord")
         store.addWorkspace(project, "release-notes")
         store.setProjectOpen(project, false)
-        store.updateSettings { it.copy(theme = ThemeMode.DARK, layout = LayoutMode.VERTICAL, fontSize = 14f, ligatures = false, view = MainView.BOARD) }
+        store.updateSettings { it.copy(theme = ThemeMode.DARK, layout = LayoutMode.VERTICAL, fontSize = 14f, ligatures = false, view = MainView.BOARD, usageHidden = setOf(usageKey(Agent.CLAUDE, "Week (Sonnet only)"))) }
         return store.state.value
     }
 
@@ -110,6 +110,16 @@ class StateFileTest {
 
         assertEquals("one", directory.resolve("state.json.damaged").readText())
         assertEquals("two", directory.resolve("state.json.damaged.1").readText())
+    }
+
+    @Test
+    fun aFileFromBeforeTheLimitsCouldBeHiddenShowsAllOfThem() {
+        val state = built().let { it.copy(settings = it.settings.copy(usageHidden = emptySet())) }
+        file.save(state)
+        path.writeText(path.readText().replace(Regex(""","?\s*"usageHidden"\s*:\s*\[\s*\]"""), ""))
+        check("usageHidden" !in path.readText())
+
+        assertEquals(state, file.load())
     }
 
     @Test
