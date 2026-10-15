@@ -15,14 +15,15 @@ import androidx.compose.ui.unit.dp
 import app.katty.core.Agent
 
 /**
- * What an agent is drawn as. The glyphs are placeholders of the design, until the logos of the agents are supplied: swap them here.
+ * What an agent is drawn as: its logo ([AgentLogos]) in a color of its own, which is the brand's where the brand has one (Claude's orange,
+ * Gemini's blue) and the design's otherwise.
  */
 enum class AgentGlyph(val icon: KattyIcon, val tint: Color) {
-    CLAUDE(KattyIcons.Claude, Color(0xFFD97757)),
-    CODEX(KattyIcons.Codex, Color(0xFF2E9E6B)),
-    ANTIGRAVITY(KattyIcons.Antigravity, Color(0xFF8A63D2)),
-    GEMINI(KattyIcons.Gemini, Color(0xFF3574F0)),
-    COPILOT(KattyIcons.Copilot, Color(0xFF0E8A9A)),
+    CLAUDE(AgentLogos.Claude, Color(0xFFD97757)),
+    CODEX(AgentLogos.Codex, Color(0xFF2E9E6B)),
+    ANTIGRAVITY(AgentLogos.Antigravity, Color(0xFF8A63D2)),
+    GEMINI(AgentLogos.Gemini, Color(0xFF3574F0)),
+    COPILOT(AgentLogos.Copilot, Color(0xFF0E8A9A)),
 
     /** A shell, and a program that is not one of the agents. */
     SHELL(KattyIcons.Prompt, Color(0xFF6E7280)),

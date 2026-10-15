@@ -109,7 +109,7 @@ What is not done yet:
 * shell integration for nushell and elvish;
 * other platforms than macOS on Apple Silicon (so the Windows buttons of the title bar cannot be tried);
 * hooks that make an agent send `OSC 7501`, for the agents that do not send it on their own: they show as shells until they do;
-* the official logos of the agents, which are placeholders.
+* the logos of the agents in their original colors (they are drawn in one color each).
 
 
 == License

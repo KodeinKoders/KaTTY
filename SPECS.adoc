@@ -420,7 +420,9 @@ Seeing it removes its `done` and `error` records, and the terminal is at rest.
 
 A report's `app` is an agent when it contains the agent's name, without regard for the case and the punctuation (`claude-code` is Claude Code), or is `agy`.
 Another program keeps its own name and the neutral tile (tint `#6E7280`).
-The tiles are placeholders until the agents' logos are supplied.
+The tile of an agent shows its logo as a single-color shape in a color of its own (Claude Code's orange, Gemini's blue; the design's colors for the others).
+The logos are the trademarks of their owners and are only there to tell which agent a terminal runs; their path data comes from Simple Icons (CC0 1.0) and Lobe Icons (MIT), see `AgentLogos.kt`.
+Some of the originals are gradients or have several colors: the tiles draw them in one.
 
 
 == Layouts
@@ -764,4 +766,4 @@ Everything that can be clicked in a list (the rows of the sidebar and its "New w
 * Gemini CLI and Copilot CLI have no usage meter.
 * The scrollback and the programs of the terminals are not kept across launches.
 * Panes cannot be moved within a workspace, only to another one.
-* The agents' tiles are placeholders, and the application has no icon.
+* The agents' logos are drawn in one color, even where the original has gradients, and the application has no icon.

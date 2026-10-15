@@ -24,8 +24,15 @@ import androidx.compose.ui.unit.dp
  * @param strokes The outlines, as SVG path data.
  * @param fills The shapes that are filled, as SVG path data.
  * @param grid The side of the grid the shapes are on.
+ * @param fillType How the filled shapes are filled where they overlap: the logos of some agents are drawn with holes by the even-odd rule.
  */
-class KattyIcon(val strokes: List<String>, val fills: List<String> = emptyList(), val grid: Float = 16f, val strokeWidth: Float = 1.3f)
+class KattyIcon(
+    val strokes: List<String>,
+    val fills: List<String> = emptyList(),
+    val grid: Float = 16f,
+    val strokeWidth: Float = 1.3f,
+    val fillType: androidx.compose.ui.graphics.PathFillType = androidx.compose.ui.graphics.PathFillType.NonZero,
+)
 
 // The SVG of a rectangle and of a circle, as path data.
 private fun rect(x: Float, y: Float, w: Float, h: Float, r: Float): String =
@@ -63,20 +70,13 @@ object KattyIcons {
     val WindowMinimize = KattyIcon(listOf("M1.5 6h9"), grid = 12f, strokeWidth = 1f)
     val WindowMaximize = KattyIcon(listOf("M2 2h8v8H2z"), grid = 12f, strokeWidth = 1f)
     val WindowClose = KattyIcon(listOf("M2 2l8 8M10 2l-8 8"), grid = 12f, strokeWidth = 1f)
-
-    // What agents are drawn with.
-    val Claude = KattyIcon(listOf("M8 2v12M2 8h12M3.8 3.8l8.4 8.4M12.2 3.8l-8.4 8.4"), strokeWidth = 1.5f)
-    val Codex = KattyIcon(listOf("M8 2l5 3v6l-5 3-5-3V5z"), strokeWidth = 1.5f)
-    val Antigravity = KattyIcon(listOf("M3 13L8 3l5 10M5.5 9.5h5"), strokeWidth = 1.5f)
-    val Gemini = KattyIcon(listOf("M8 2c.5 3.5 2.5 5.5 6 6-3.5.5-5.5 2.5-6 6-.5-3.5-2.5-5.5-6-6 3.5-.5 5.5-2.5 6-6z"), strokeWidth = 1.5f)
-    val Copilot = KattyIcon(listOf("M3 6a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM6 7.5v1M10 7.5v1"), strokeWidth = 1.5f)
 }
 
 /** Draws [icon] in [size], in [tint]. It has no description of its own: a button that holds it says what it does. */
 @Composable
 fun Icon(icon: KattyIcon, tint: Color, modifier: Modifier = Modifier, size: Dp = 16.dp) {
     val strokes = remember(icon) { icon.strokes.map { PathParser().parsePathString(it).toPath() } }
-    val fills = remember(icon) { icon.fills.map { PathParser().parsePathString(it).toPath() } }
+    val fills = remember(icon) { icon.fills.map { PathParser().parsePathString(it).toPath().also { path -> path.fillType = icon.fillType } } }
     Canvas(modifier.size(size).clipToBounds()) {
         val factor = this.size.width / icon.grid
         scale(factor, factor, pivot = Offset.Zero) {
