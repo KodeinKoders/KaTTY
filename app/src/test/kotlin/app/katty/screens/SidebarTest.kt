@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.moveBy
 import androidx.compose.ui.test.moveTo
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.graphics.toPixelMap
@@ -62,6 +63,46 @@ class SidebarTest {
                 onRenamingWorkspace = { renaming = it },
             )
         }
+    }
+
+    @Test
+    fun aProjectIsDraggedToAnotherPlaceInTheList() = runComposeUiTest {
+        val a = plainProject("/dev/a")
+        val b = plainProject("/dev/b")
+        val c = plainProject("/dev/c")
+        for (id in listOf(a, b, c)) store.setProjectOpen(id, false)
+        setContent { Content() }
+
+        // Dragged by its row, down past the next one: it is dropped after it, and clicking it did not select it.
+        val selected = store.state.value.selection
+        onNodeWithContentDescription("a").performMouseInput {
+            moveTo(center)
+            press()
+            moveBy(androidx.compose.ui.geometry.Offset(0f, 20f))
+            moveBy(androidx.compose.ui.geometry.Offset(0f, 40f))
+            release()
+        }
+        waitForIdle()
+        assertEquals(listOf(b, a, c), store.state.value.projects.map { it.id })
+        assertEquals(selected, store.state.value.selection)
+    }
+
+    @Test
+    fun aWorkspaceIsDraggedAmongTheOnesOfItsProject() = runComposeUiTest {
+        val a = plainProject("/dev/a")
+        val first = store.state.value.projects.single().workspaces.single().id
+        val second = store.addWorkspace(a, "second")!!
+        setContent { Content() }
+
+        onNodeWithContentDescription("workspace").performMouseInput {
+            moveTo(center)
+            press()
+            moveBy(androidx.compose.ui.geometry.Offset(0f, 20f))
+            moveBy(androidx.compose.ui.geometry.Offset(0f, 40f))
+            release()
+        }
+        waitForIdle()
+        assertEquals(listOf(second, first), store.state.value.projects.single().workspaces.map { it.id })
     }
 
     @Test

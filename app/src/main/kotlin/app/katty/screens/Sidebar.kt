@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,6 +63,9 @@ import app.katty.ui.InlineRename
 import app.katty.ui.OneLine
 import app.katty.ui.SectionLabel
 import app.katty.ui.hoverHighlight
+import app.katty.ui.reorderHandle
+import app.katty.ui.reorderItem
+import app.katty.ui.rememberReorderState
 import app.katty.ui.onDoubleClick
 import app.katty.ui.onSecondaryClick
 import org.jetbrains.jewel.ui.component.Text
@@ -106,69 +110,77 @@ fun Sidebar(
             KattyIconButton(KattyIcons.Plus, "Add project", onAddProject)
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            for (project in state.projects) {
-                val selected = project.id == state.selection.project
-                val open = project.open
-                ProjectRow(
-                    project = project,
-                    selected = selected,
-                    open = open,
-                    counts = states.counts(project),
-                    renaming = renamingProject == project.id,
-                    onToggle = { store.setProjectOpen(project.id, !open) },
-                    // A click opens a closed project, and selects it; on one that is open it closes it. The arrow does the same without selecting.
-                    onSelect = {
-                        if (open) {
-                            store.setProjectOpen(project.id, false)
-                        } else {
-                            store.setProjectOpen(project.id, true)
-                            store.selectProject(project.id)
-                        }
-                    },
-                    onRename = { onRenamingProject(project.id) },
-                    onRenamed = { name ->
-                        onRenamingProject(null)
-                        if (!name.isNullOrBlank()) store.renameProject(project.id, name)
-                    },
-                    onNewWorkspace = { onRenamingWorkspace(store.addWorkspace(project.id)) },
-                    onRemove = { onRemoveProject(project.id) },
-                    onReveal = { onReveal(project.id) },
-                )
-                if (open) {
-                    Text(
-                        project.directory.abbreviatedHome(),
-                        Modifier.padding(start = 36.dp, end = 10.dp, bottom = 2.dp),
-                        color = colors.muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    )
-                    for (workspace in project.workspaces) {
-                        WorkspaceRow(
-                            workspace = workspace,
-                            selected = workspace.id == state.selection.workspace,
-                            strip = states.strip(workspace),
-                            renaming = renamingWorkspace == workspace.id,
-                            onSelect = { store.selectWorkspace(workspace.id) },
-                            onRename = { onRenamingWorkspace(workspace.id) },
-                            onRenamed = { name ->
-                                onRenamingWorkspace(null)
-                                if (!name.isNullOrBlank()) store.renameWorkspace(workspace.id, name)
-                            },
-                            onClose = { onCloseWorkspace(workspace.id) },
-                        )
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().height(30.dp).padding(start = 22.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
-                            .clickable(role = Role.Button) {
-                                onRenamingWorkspace(store.addWorkspace(project.id))
+            // The projects are dragged by their row, and the workspaces of the open one by theirs, each among its own.
+            val projects = rememberReorderState(state.projects.map { it.id }) { id, index -> store.moveProject(id, index) }
+            for (project in state.projects) key(project.id) {
+                Column(Modifier.reorderItem(projects, project.id), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    val selected = project.id == state.selection.project
+                    val open = project.open
+                    ProjectRow(
+                        drag = Modifier.reorderHandle(projects, project.id, enabled = renamingProject != project.id),
+                        project = project,
+                        selected = selected,
+                        open = open,
+                        counts = states.counts(project),
+                        renaming = renamingProject == project.id,
+                        onToggle = { store.setProjectOpen(project.id, !open) },
+                        // A click opens a closed project, and selects it; on one that is open it closes it. The arrow does the same without selecting.
+                        onSelect = {
+                            if (open) {
+                                store.setProjectOpen(project.id, false)
+                            } else {
+                                store.setProjectOpen(project.id, true)
+                                store.selectProject(project.id)
                             }
-                            .padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(KattyIcons.Plus, colors.muted, size = 14.dp)
-                        Text("New workspace", color = colors.muted)
+                        },
+                        onRename = { onRenamingProject(project.id) },
+                        onRenamed = { name ->
+                            onRenamingProject(null)
+                            if (!name.isNullOrBlank()) store.renameProject(project.id, name)
+                        },
+                        onNewWorkspace = { onRenamingWorkspace(store.addWorkspace(project.id)) },
+                        onRemove = { onRemoveProject(project.id) },
+                        onReveal = { onReveal(project.id) },
+                    )
+                    if (open) {
+                        Text(
+                            project.directory.abbreviatedHome(),
+                            Modifier.padding(start = 36.dp, end = 10.dp, bottom = 2.dp),
+                            color = colors.muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        val workspaces = rememberReorderState(project.workspaces.map { it.id }) { id, index -> store.moveWorkspace(id, index) }
+                        for (workspace in project.workspaces) {
+                            WorkspaceRow(
+                                modifier = Modifier.reorderItem(workspaces, workspace.id),
+                                drag = Modifier.reorderHandle(workspaces, workspace.id, enabled = renamingWorkspace != workspace.id),
+                                workspace = workspace,
+                                selected = workspace.id == state.selection.workspace,
+                                strip = states.strip(workspace),
+                                renaming = renamingWorkspace == workspace.id,
+                                onSelect = { store.selectWorkspace(workspace.id) },
+                                onRename = { onRenamingWorkspace(workspace.id) },
+                                onRenamed = { name ->
+                                    onRenamingWorkspace(null)
+                                    if (!name.isNullOrBlank()) store.renameWorkspace(workspace.id, name)
+                                },
+                                onClose = { onCloseWorkspace(workspace.id) },
+                            )
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().height(30.dp).padding(start = 22.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
+                                .clickable(role = Role.Button) {
+                                    onRenamingWorkspace(store.addWorkspace(project.id))
+                                }
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(KattyIcons.Plus, colors.muted, size = 14.dp)
+                            Text("New workspace", color = colors.muted)
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
-                    Spacer(Modifier.height(6.dp))
                 }
             }
         }
@@ -178,6 +190,7 @@ fun Sidebar(
 
 @Composable
 private fun ProjectRow(
+    drag: Modifier,
     project: Project,
     selected: Boolean,
     open: Boolean,
@@ -209,6 +222,7 @@ private fun ProjectRow(
                 }
                 .onSecondaryClick { menuAt = IntOffset(it.x.toInt(), it.y.toInt()) }
                 .onDoubleClick { if (!renaming) onRename() }
+                .then(drag)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -235,6 +249,8 @@ private fun ProjectRow(
 
 @Composable
 private fun WorkspaceRow(
+    modifier: Modifier,
+    drag: Modifier,
     workspace: Workspace,
     selected: Boolean,
     strip: List<AgentState>,
@@ -246,7 +262,7 @@ private fun WorkspaceRow(
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
-    Box(Modifier.padding(start = 22.dp)) {
+    Box(modifier.padding(start = 22.dp)) {
         Row(
             Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight(enabled = !selected)
                 .background(if (selected) colors.sel else androidx.compose.ui.graphics.Color.Transparent)
@@ -262,6 +278,7 @@ private fun WorkspaceRow(
                 }
                 .onSecondaryClick { menuAt = IntOffset(it.x.toInt(), it.y.toInt()) }
                 .onDoubleClick { if (!renaming) onRename() }
+                .then(drag)
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),

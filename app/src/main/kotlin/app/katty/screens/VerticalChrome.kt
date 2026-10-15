@@ -1,5 +1,8 @@
 package app.katty.screens
 
+import app.katty.ui.rememberReorderState
+import app.katty.ui.reorderItem
+import app.katty.ui.reorderHandle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,8 +86,10 @@ fun ProjectTabs(
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().height(TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+            val projects = rememberReorderState(state.projects.map { it.id }, horizontal = true) { id, index -> store.moveProject(id, index) }
             for (project in state.projects) {
                 ProjectTab(
+                    Modifier.reorderItem(projects, project.id), Modifier.reorderHandle(projects, project.id, enabled = renamingProject != project.id),
                     project, project.id == state.selection.project, states.counts(project), renamingProject == project.id,
                     onSelect = { store.selectProject(project.id) },
                     onRename = { onRenamingProject(project.id) },
@@ -104,6 +109,8 @@ fun ProjectTabs(
 
 @Composable
 private fun ProjectTab(
+    modifier: Modifier,
+    drag: Modifier,
     project: Project,
     selected: Boolean,
     counts: List<Pair<AgentState, Int>>,
@@ -117,7 +124,7 @@ private fun ProjectTab(
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
-    Box {
+    Box(modifier) {
         Row(
             Modifier.height(TAB_BAR_HEIGHT)
                 .hoverHighlight(enabled = !selected)
@@ -134,6 +141,7 @@ private fun ProjectTab(
                 }
                 .onSecondaryClick { menuAt = IntOffset(it.x.toInt(), it.y.toInt()) }
                 .onDoubleClick { if (!renaming) onRename() }
+                .then(drag)
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -169,8 +177,10 @@ fun WorkspaceTabs(
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().height(TAB_BAR_HEIGHT).background(colors.panel).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+            val workspaces = rememberReorderState(project?.workspaces.orEmpty().map { it.id }, horizontal = true) { id, index -> store.moveWorkspace(id, index) }
             for (workspace in project?.workspaces.orEmpty()) {
                 WorkspaceTab(
+                    Modifier.reorderItem(workspaces, workspace.id), Modifier.reorderHandle(workspaces, workspace.id, enabled = renamingWorkspace != workspace.id),
                     workspace, workspace.id == selectedWorkspace, states.strip(workspace), renamingWorkspace == workspace.id,
                     onSelect = { store.selectWorkspace(workspace.id) },
                     onRename = { onRenamingWorkspace(workspace.id) },
@@ -191,6 +201,8 @@ fun WorkspaceTabs(
 
 @Composable
 private fun WorkspaceTab(
+    modifier: Modifier,
+    drag: Modifier,
     workspace: Workspace,
     selected: Boolean,
     strip: List<AgentState>,
@@ -202,7 +214,7 @@ private fun WorkspaceTab(
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
-    Box {
+    Box(modifier) {
         Row(
             Modifier.height(TAB_BAR_HEIGHT)
                 .hoverHighlight(enabled = !selected)
@@ -218,6 +230,7 @@ private fun WorkspaceTab(
                 }
                 .onSecondaryClick { menuAt = IntOffset(it.x.toInt(), it.y.toInt()) }
                 .onDoubleClick { if (!renaming) onRename() }
+                .then(drag)
                 // The selected tab has a line of the accent color under it, 2 px thick.
                 .drawBehind {
                     if (selected) {

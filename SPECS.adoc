@@ -169,6 +169,10 @@ The project is named after the folder, gets a workspace named like it (so the fi
 The name of that workspace opens for editing, as for any new workspace; a folder that already is a project does not.
 A folder that already is a project is selected instead.
 
+| Reorder projects
+| By dragging a project (its row in the sidebar, its tile in the rail, its tab in the vertical layout) to another place among the projects; the order is kept.
+The selection does not change, and a click that does not move is a click.
+
 | Rename a project
 | A blank name is refused; the name is trimmed.
 
@@ -180,6 +184,9 @@ The next project is selected, else the previous one.
 | New workspace
 | A workspace with one terminal in the project's folder, selected, named like the project when it has no workspace, else "workspace", "workspace 2", "workspace 3"… (the lowest number that is free).
 Its name opens for editing.
+
+| Reorder workspaces
+| By dragging a workspace (in the sidebar, in the panel of the rail or among the tabs) to another place among the workspaces of its project, never to another project; the order is kept.
 
 | Rename a workspace
 | A blank name is refused; the name is trimmed.
@@ -443,6 +450,9 @@ The title bar is 40 px high and holds:
 * Folded, it is a rail (56 px): a 36 px tile for each project with two letters (the first letters of its first two words, `api-gateway` is `AG`) and a badge of its most urgent state, a dashed tile to add a project, and the usage as percentages at the bottom.
 A click on a tile selects the project and opens a panel (264 px) with its folder, its workspaces and "New workspace".
 * The workspace, on the right: a 40 px header (its name, "N terminals", Split right, Split down) above the tree of panes, with 8 px between panes.
+
+While an item is dragged it follows the pointer and a 2 px line of the accent color shows between which two it would be dropped; nothing is moved until it is dropped.
+The list does not scroll by itself while an item is dragged.
 
 
 === Vertical layout

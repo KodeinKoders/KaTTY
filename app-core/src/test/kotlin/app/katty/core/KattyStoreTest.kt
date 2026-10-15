@@ -78,6 +78,37 @@ class KattyStoreTest {
     }
 
     @Test
+    fun aProjectCanBeMovedWithoutChangingTheSelection() {
+        val a = addProject("/a")
+        val b = addProject("/b")
+        val c = addProject("/c")
+        val selection = state.selection
+
+        store.moveProject(c, 0)
+        assertEquals(listOf(c, a, b), state.projects.map { it.id })
+        store.moveProject(c, 99)
+        assertEquals(listOf(a, b, c), state.projects.map { it.id })
+        store.moveProject(a, 1)
+        assertEquals(listOf(b, a, c), state.projects.map { it.id })
+        assertEquals(selection, state.selection)
+    }
+
+    @Test
+    fun aWorkspaceIsMovedAmongTheOnesOfItsProjectOnly() {
+        val a = addProject("/a")
+        addProject("/b")
+        val first = state.projects.first { it.id == a }.workspaces.single().id
+        val second = store.addWorkspace(a)!!
+        val third = store.addWorkspace(a)!!
+
+        store.moveWorkspace(third, 0)
+        assertEquals(listOf(third, first, second), state.projects.first { it.id == a }.workspaces.map { it.id })
+        store.moveWorkspace(third, -5)
+        assertEquals(third, state.projects.first { it.id == a }.workspaces.first().id)
+        assertEquals(1, state.projects.last().workspaces.size)
+    }
+
+    @Test
     fun theFirstWorkspaceOfAProjectWithNoneIsNamedLikeTheProject() {
         val a = addProject("/code/alpha")
         store.closeWorkspace(state.selection.workspace!!)

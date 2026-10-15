@@ -80,6 +80,18 @@ public class KattyStore(
         }
     }
 
+    /**
+     * Moves the project to [index] in the list of the projects, the other ones keeping their order: the index is the one it has afterwards.
+     * The selection does not change.
+     */
+    public fun moveProject(id: ProjectId, index: Int) {
+        edit { state ->
+            val from = state.projects.indexOfFirst { it.id == id }
+            if (from < 0) return@edit state
+            state.copy(projects = state.projects.moved(from, index))
+        }
+    }
+
     /** Opens or closes the project in the sidebar: closed, its workspaces are not listed. Nothing else changes. */
     public fun setProjectOpen(id: ProjectId, open: Boolean) {
         edit { state -> state.copy(projects = state.projects.map { if (it.id == id && it.open != open) it.copy(open = open) else it }) }
@@ -104,6 +116,15 @@ public class KattyStore(
             )
         }
         return workspace.id
+    }
+
+    /** Moves the workspace to [index] among the ones of its project, which is the index it has afterwards. Never to another project. */
+    public fun moveWorkspace(id: WorkspaceId, index: Int) {
+        edit { state ->
+            val project = state.projects.firstOrNull { p -> p.workspaces.any { it.id == id } } ?: return@edit state
+            val moved = project.workspaces.moved(project.workspaces.indexOfFirst { it.id == id }, index)
+            state.copy(projects = state.projects.map { if (it.id == project.id) it.copy(workspaces = moved) else it })
+        }
     }
 
     public fun renameWorkspace(id: WorkspaceId, name: String) {
@@ -268,6 +289,13 @@ public class KattyStore(
     private companion object {
         const val MIN_RATIO = 0.05f
     }
+}
+
+// The list with the element at [from] taken out and put back so that it is at [to] (kept between 0 and the last index).
+private fun <T> List<T>.moved(from: Int, to: Int): List<T> {
+    val target = to.coerceIn(0, lastIndex)
+    if (from == target) return this
+    return toMutableList().also { it.add(target, it.removeAt(from)) }
 }
 
 // The next free name of a workspace among [existing]: "workspace", "workspace 2", "workspace 3"…

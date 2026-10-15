@@ -1,5 +1,8 @@
 package app.katty.screens
 
+import app.katty.ui.rememberReorderState
+import app.katty.ui.reorderItem
+import app.katty.ui.reorderHandle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -98,9 +101,10 @@ fun Rail(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            val projects = rememberReorderState(state.projects.map { it.id }) { id, index -> store.moveProject(id, index) }
             for (project in state.projects) {
-                Box {
-                    RailTile(project, project.id == state.selection.project, states.urgent(project)) {
+                Box(Modifier.reorderItem(projects, project.id)) {
+                    RailTile(project, project.id == state.selection.project, states.urgent(project), Modifier.reorderHandle(projects, project.id)) {
                         store.selectProject(project.id)
                         open = if (open == project.id) null else project.id
                     }
@@ -116,7 +120,7 @@ fun Rail(
 }
 
 @Composable
-private fun RailTile(project: Project, selected: Boolean, urgent: AgentState, onClick: () -> Unit) {
+private fun RailTile(project: Project, selected: Boolean, urgent: AgentState, drag: Modifier, onClick: () -> Unit) {
     val colors = Katty.colors
     Box(Modifier.size(TILE_SIZE)) {
         Box(
@@ -124,7 +128,8 @@ private fun RailTile(project: Project, selected: Boolean, urgent: AgentState, on
                 .background(if (selected) colors.sel else colors.hover)
                 .hoverHighlight(enabled = !selected, color = colors.line)
                 .semantics { contentDescription = project.name; this.selected = selected }
-                .clickable(role = Role.Button, onClick = onClick),
+                .clickable(role = Role.Button, onClick = onClick)
+                .then(drag),
             contentAlignment = Alignment.Center,
         ) {
             Text(initialsOf(project.name), color = colors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -180,10 +185,11 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
                 project.directory.abbreviatedHome(), Modifier.padding(horizontal = 10.dp).padding(bottom = 4.dp),
                 color = colors.muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1,
             )
+            val workspaces = rememberReorderState(project.workspaces.map { it.id }) { id, index -> store.moveWorkspace(id, index) }
             for (workspace in project.workspaces) {
                 val selected = workspace.id == state.selection.workspace
                 Row(
-                    Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
+                    Modifier.reorderItem(workspaces, workspace.id).fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
                         .hoverHighlight(enabled = !selected)
                         .background(if (selected) colors.sel else Color.Transparent)
                         .semantics { contentDescription = workspace.name; this.selected = selected }
@@ -191,6 +197,7 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
                             store.selectWorkspace(workspace.id)
                             onDismiss()
                         }
+                        .reorderHandle(workspaces, workspace.id)
                         .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
