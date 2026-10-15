@@ -448,7 +448,7 @@ The title bar is 40 px high and holds:
 ** the usage of the agents at its bottom;
 ** it scrolls when the list is long.
 * Folded, it is a rail (56 px): a 36 px tile for each project with two letters (the first letters of its first two words, `api-gateway` is `AG`) and a badge of its most urgent state, a dashed tile to add a project, and the usage as percentages at the bottom.
-A click on a tile selects the project and opens a panel (264 px) with its folder, its workspaces and "New workspace".
+A click on a tile selects the project, which takes the user to its first workspace only when it was another project (on the project of the selection nothing changes), and opens a panel (264 px) with its folder, its workspaces and "New workspace".
 * The workspace, on the right: a 40 px header (its name, "N terminals", Split right, Split down) above the tree of panes, with 8 px between panes.
 
 While an item is dragged it follows the pointer and a 2 px line of the accent color shows between which two it would be dropped; nothing is moved until it is dropped.
