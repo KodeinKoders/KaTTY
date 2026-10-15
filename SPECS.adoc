@@ -247,6 +247,12 @@ It is written to `state.json.tmp`, then moved over `state.json`.
 ** a file of a later version is moved to `state.json.version-<n>` and the state is empty;
 ** fields that the application does not know are ignored.
 * The application never writes over a file that it could not read.
+* The window is kept apart, in `window.json` of the same folder (never in `state.json`, which it would make change at every move):
+** its position and size as a floating window, in dp, and its mode: floating, maximized or full screen; a window that is minimized is not kept;
+** while the window is maximized or full screen the position and size that are kept are the floating ones from before, which it goes back to when it is restored;
+** it is written 500 ms after the last change, and once more when the application quits, through `window.json.tmp`;
+** at launch a size under 480 × 320 is raised to it, and a position at which less than 120 × 60 of the window is on a screen (one that was unplugged, a resolution that changed) is replaced by the platform's own;
+** a file that is missing, cannot be read or is of a later version means the default window (1440 × 900, at the platform's position), and the next write replaces it.
 
 
 == Terminals

@@ -4,13 +4,16 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * Where KaTTY keeps what it writes: the state of the application, and the directory that the usage commands of the agents run in.
+ * Where KaTTY keeps what it writes: the state of the application, the geometry of its window, and the directory that the usage commands of the agents run in.
  *
  * @param support The directory of the application's files. It is created when something is written in it.
  */
 public class KattyDirectories(public val support: Path) {
     /** What is saved of the projects, the workspaces and the settings. */
     public val stateFile: Path get() = support.resolve("state.json")
+
+    /** Where the window was, how big and in which mode: not in the state file, which it would make change at every move. */
+    public val windowFile: Path get() = support.resolve("window.json")
 
     /**
      * The directory that the commands of the agents that report their usage run in. `claude -p` records a session for the directory it
