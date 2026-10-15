@@ -44,6 +44,7 @@ class ContextMenuActions(
     val copy: () -> Unit,
     val paste: () -> Unit,
     val selectAll: () -> Unit,
+    val find: () -> Unit,
     val clearScrollback: () -> Unit,
     val splitRight: () -> Unit,
     val splitDown: () -> Unit,
@@ -58,6 +59,7 @@ fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions): Lis
     action("Paste", "⌘V", onClick = actions.paste)
     action("Select all", "⌘A", onClick = actions.selectAll)
     divider()
+    action("Find…", "⌘F", onClick = actions.find)
     action("Clear scrollback", "⌘L", onClick = actions.clearScrollback)
     divider()
     action("Split right", "⌘D", onClick = actions.splitRight)

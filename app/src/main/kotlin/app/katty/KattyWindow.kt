@@ -71,6 +71,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     var renamingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var removing by remember { mutableStateOf<ProjectId?>(null) }
     var renamingTerminal by remember { mutableStateOf<TerminalId?>(null) }
+    var findingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     // What the user has to confirm before it is closed.
     var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
@@ -137,6 +138,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                 WindowShortcut.SPLIT_RIGHT -> terminal?.let { store.split(it, SplitDirection.ROW) }
                 WindowShortcut.SPLIT_DOWN -> terminal?.let { store.split(it, SplitDirection.COLUMN) }
                 WindowShortcut.CLOSE_TERMINAL -> terminal?.let(closeTerminal)
+                WindowShortcut.RESTART_TERMINAL -> terminal?.let(registry::restart)
                 WindowShortcut.FOCUS_LEFT -> focusNeighbour(Direction.LEFT)
                 WindowShortcut.FOCUS_RIGHT -> focusNeighbour(Direction.RIGHT)
                 WindowShortcut.FOCUS_UP -> focusNeighbour(Direction.UP)
@@ -184,7 +186,12 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                             onClose = closeTerminal,
                             destinations = state.selection.terminal?.let(destinationsOf).orEmpty(),
                             onMove = { id, to -> store.moveTerminal(id, to) },
+                            finding = findingTerminal,
+                            onFind = { findingTerminal = it },
+                            onFindClosed = { findingTerminal = null },
+                            onReopen = registry::restart,
                         ),
+                        maximized = state.selection.maximized,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
@@ -226,7 +233,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
 
 /** The window's own shortcuts, which the terminal does not see. */
 private enum class WindowShortcut {
-    ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE, SPLIT_RIGHT, SPLIT_DOWN, CLOSE_TERMINAL, FOCUS_LEFT, FOCUS_RIGHT, FOCUS_UP, FOCUS_DOWN,
+    ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE, SPLIT_RIGHT, SPLIT_DOWN, CLOSE_TERMINAL, RESTART_TERMINAL, FOCUS_LEFT, FOCUS_RIGHT, FOCUS_UP, FOCUS_DOWN,
 }
 
 private fun KeyEvent.windowShortcut(): WindowShortcut? {
@@ -246,6 +253,7 @@ private fun KeyEvent.windowShortcut(): WindowShortcut? {
         key == Key.N && !isShiftPressed -> WindowShortcut.NEW_WORKSPACE
         key == Key.W && isShiftPressed -> WindowShortcut.CLOSE_WORKSPACE
         key == Key.W -> WindowShortcut.CLOSE_TERMINAL
+        key == Key.R && !isShiftPressed -> WindowShortcut.RESTART_TERMINAL
         key == Key.D && isShiftPressed -> WindowShortcut.SPLIT_DOWN
         key == Key.D -> WindowShortcut.SPLIT_RIGHT
         else -> null

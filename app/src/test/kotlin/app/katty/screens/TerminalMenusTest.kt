@@ -26,6 +26,7 @@ class TerminalMenusTest {
         copy = { calls += "copy" },
         paste = { calls += "paste" },
         selectAll = { calls += "selectAll" },
+        find = { calls += "find" },
         clearScrollback = { calls += "clear" },
         splitRight = { calls += "splitRight" },
         splitDown = { calls += "splitDown" },
@@ -91,7 +92,7 @@ class TerminalMenusTest {
         val entries = terminalContextMenu(hasSelection = true, actions = contextActions)
 
         assertEquals(
-            listOf("Copy", "Paste", "Select all", "---", "Clear scrollback", "---", "Split right", "Split down", "---", "Close terminal"),
+            listOf("Copy", "Paste", "Select all", "---", "Find…", "Clear scrollback", "---", "Split right", "Split down", "---", "Close terminal"),
             entries.labels(),
         )
     }
@@ -107,7 +108,7 @@ class TerminalMenusTest {
         val entries = terminalContextMenu(true, contextActions)
 
         assertEquals(
-            mapOf("Copy" to "⌘C", "Paste" to "⌘V", "Select all" to "⌘A", "Clear scrollback" to "⌘L", "Split right" to "⌘D", "Split down" to "⌘⇧D", "Close terminal" to "⌘W"),
+            mapOf("Copy" to "⌘C", "Paste" to "⌘V", "Select all" to "⌘A", "Find…" to "⌘F", "Clear scrollback" to "⌘L", "Split right" to "⌘D", "Split down" to "⌘⇧D", "Close terminal" to "⌘W"),
             entries.filterIsInstance<MenuAction>().associate { it.label to it.shortcut },
         )
     }

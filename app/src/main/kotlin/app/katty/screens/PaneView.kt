@@ -61,6 +61,7 @@ import app.katty.ui.StateGlyph
 import app.katty.ui.TileSize
 import app.katty.ui.OneLine
 import androidx.compose.runtime.withFrameNanos
+import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 
 /** The height of the header of a pane. */
@@ -71,18 +72,23 @@ private val PANE_RADIUS = 6.dp
 /**
  * A terminal in its pane: a header, and the terminal. The focused pane has the accent ring; a click in a terminal, or anything that gives it
  * the keyboard focus, makes it the focused one.
+ *
+ * @param floating Whether it is the maximized one, over the others: it has the button to put it back.
+ * @param hollow Whether it only holds the place of a terminal that is shown floating: its session has one view only.
  */
 @Composable
-internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
+internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolean = false, hollow: Boolean = false) {
     val colors = Katty.colors
     val focused = context.selected == spec.id
     val handle = context.handles[spec.id]
     val shape = RoundedCornerShape(PANE_RADIUS)
     var contextAt by remember { mutableStateOf<IntOffset?>(null) }
+    // The exit code of the shell once it has ended: `null` while it runs.
+    val exitCode = handle?.session?.exited?.collectAsState()?.value
 
     // The focused terminal has the keyboard, unless something else is being typed in. The terminal may not be composed yet.
-    LaunchedEffect(handle, focused, context.focusTerminals) {
-        if (focused && context.focusTerminals && handle != null) {
+    LaunchedEffect(handle, focused, context.focusTerminals, hollow) {
+        if (focused && context.focusTerminals && handle != null && !hollow) {
             withFrameNanos { }
             runCatching { handle.focus.requestFocus() }
         }
@@ -102,6 +108,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
                 when (event.key) {
                     Key.A -> session.selectAll()
                     Key.L -> session.clearScrollback()
+                    Key.F -> context.actions.onFind(spec.id)
                     else -> return@onPreviewKeyEvent false
                 }
                 true
@@ -114,10 +121,16 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
             glyph = AgentGlyph.SHELL,
             // What an agent says about itself comes with the states of the agents.
             state = AgentState.IDLE,
+            stateLabel = if (exitCode != null) "Exited" else null,
             git = handle?.git?.collectAsState()?.value,
             renaming = context.actions.renaming == spec.id,
             onRenamed = { context.actions.onRenamed(spec.id, it) },
             trailing = {
+                if (floating) {
+                    KattyIconButton(KattyIcons.Restore, "Restore pane", { context.store.maximize(null) }, size = ButtonSize.COMPACT)
+                } else {
+                    KattyIconButton(KattyIcons.Maximize, "Maximize pane", { context.store.maximize(spec.id) }, size = ButtonSize.COMPACT)
+                }
                 Box {
                     KattyIconButton(KattyIcons.Kebab, "Pane menu", { paneMenu = true }, size = ButtonSize.COMPACT)
                     if (paneMenu) {
@@ -141,7 +154,10 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val session = handle?.session
-            if (session != null) {
+            if (hollow) {
+                // Under the scrim, where the terminal that floats came from.
+                Box(Modifier.fillMaxSize().background(colors.bg))
+            } else if (session != null) {
                 // A shell that was started again is another session: what shows it is made again.
                 key(handle.generation) {
                     Terminal(
@@ -162,6 +178,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
                                 copy = { session.selectedText()?.let(::copyToClipboard) },
                                 paste = { readClipboard()?.let(session::paste) },
                                 selectAll = session::selectAll,
+                                find = { context.actions.onFind(spec.id) },
                                 clearScrollback = session::clearScrollback,
                                 splitRight = { context.store.split(spec.id, SplitDirection.ROW) },
                                 splitDown = { context.store.split(spec.id, SplitDirection.COLUMN) },
@@ -172,10 +189,44 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
                         offset = at,
                     )
                 }
+                if (context.actions.finding == spec.id) {
+                    FindBar(
+                        session,
+                        onClose = {
+                            context.actions.onFindClosed(spec.id)
+                            runCatching { handle.focus.requestFocus() }
+                        },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                    )
+                }
             } else if (handle?.failure != null) {
                 Text("Could not start the shell: ${handle.failure}", Modifier.padding(12.dp), color = colors.err)
             }
         }
+        if (exitCode != null && !hollow) {
+            EndedStrip(exitCode, onReopen = { context.actions.onReopen(spec.id) }, onClose = { context.actions.onClose(spec.id) })
+        }
+    }
+}
+
+/** The bar under a terminal whose shell ended: what happened, and the two things that can be done about it. */
+@Composable
+internal fun EndedStrip(exitCode: Int, onReopen: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = Katty.colors
+    Row(
+        modifier.fillMaxWidth().background(colors.side).border(1.dp, colors.line).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(KattyIcons.Prompt, colors.muted, size = 14.dp)
+        Text("Shell exited with code $exitCode", Modifier.weight(1f), color = colors.text)
+        OutlinedButton(onClick = onReopen) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(KattyIcons.Restart, colors.text, size = 14.dp)
+                Text("Reopen shell")
+            }
+        }
+        OutlinedButton(onClick = onClose) { Text("Close") }
     }
 }
 
@@ -198,6 +249,8 @@ internal fun PaneHeader(
     state: AgentState,
     git: GitInfo?,
     modifier: Modifier = Modifier,
+    /** What the state is called when it is not the usual word: a shell that ended is "Exited". */
+    stateLabel: String? = null,
     renaming: Boolean = false,
     onRenamed: (String?) -> Unit = {},
     trailing: @Composable () -> Unit = {},
@@ -230,7 +283,7 @@ internal fun PaneHeader(
             }
         }
         Text(
-            state.label(), color = if (state == AgentState.NEEDS_INPUT || state == AgentState.ERROR) colors.input else colors.muted,
+            stateLabel ?: state.label(), color = if (state == AgentState.NEEDS_INPUT || state == AgentState.ERROR) colors.input else colors.muted,
             fontSize = 12.sp, fontWeight = if (state == AgentState.NEEDS_INPUT || state == AgentState.ERROR) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1,
         )
         trailing()

@@ -58,7 +58,7 @@ class WorkspaceAreaTest {
                 val workspace = state.selectedWorkspace
                 if (workspace != null) {
                     WorkspaceArea(
-                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = true,
+                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = true, maximized = state.selection.maximized,
                         actions = PaneActions(
                             renaming = renaming,
                             onRename = { renaming = it },
@@ -131,6 +131,24 @@ class WorkspaceAreaTest {
 
         assertEquals("build", store.state.value.locate(terminal)!!.terminal.name)
         onNodeWithContentDescription("Terminal build").assertExists()
+    }
+
+    @Test
+    fun aMaximizedTerminalFloatsOverTheOthersAndCanBePutBack() = runComposeUiTest {
+        store.addProject("/tmp")
+        val first = store.state.value.selection.terminal!!
+        store.split(first, SplitDirection.ROW)
+        show()
+
+        // Two panes, each with the button to maximize it.
+        onAllNodesWithContentDescription("Maximize pane")[0].performClick()
+        waitForIdle()
+
+        assertEquals(first, store.state.value.selection.maximized)
+        onNodeWithContentDescription("Restore pane").performClick()
+        waitForIdle()
+        assertEquals(null, store.state.value.selection.maximized)
+        assertEquals(2, onAllNodesWithContentDescription("Maximize pane").fetchSemanticsNodes().size)
     }
 
     @Test

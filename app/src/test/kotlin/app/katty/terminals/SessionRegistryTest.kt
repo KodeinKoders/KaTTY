@@ -183,6 +183,19 @@ class SessionRegistryTest {
     }
 
     @Test
+    fun aShellThatEndsLeavesItsOutputAndSaysThatItIsOver() {
+        script = "printf hello"
+        store.addProject("/tmp")
+        val id = store.state.value.selection.terminal!!
+
+        sync()
+
+        val session = registry.handles.value.getValue(id).session!!
+        await("the end is on the screen") { session.screenText().let { "hello" in it && "[Process completed]" in it } }
+        assertEquals(0, session.exited.value)
+    }
+
+    @Test
     fun restartingStartsAnotherShellInThePlaceOfTheFirst() {
         store.addProject("/tmp")
         val id = store.state.value.selection.terminal!!

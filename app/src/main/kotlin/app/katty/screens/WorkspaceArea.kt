@@ -2,6 +2,8 @@ package app.katty.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.katty.core.KattyStore
@@ -49,6 +53,7 @@ val PANE_GAP = 8.dp
  * @param flipped Whether every split is turned, as the vertical layout draws the tree.
  * @param focusTerminals Whether the focused terminal may take the keyboard focus: not while something else is being typed in.
  * @param actions What the window does for the panes.
+ * @param maximized The terminal that floats over the area of the workspace, with the others under a scrim.
  */
 @Composable
 fun WorkspaceArea(
@@ -61,15 +66,27 @@ fun WorkspaceArea(
     focusTerminals: Boolean,
     actions: PaneActions,
     modifier: Modifier = Modifier,
+    maximized: TerminalId? = null,
 ) {
     val colors = Katty.colors
+    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, maximized)
     Column(modifier.background(colors.bg)) {
         WorkspaceHeader(workspace, selectedTerminal, store)
-        Column(Modifier.weight(1f).fillMaxWidth().padding(PANE_GAP / 2)) {
-            PaneTree(
-                node = workspace.layout,
-                context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions),
-            )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            Column(Modifier.fillMaxSize().padding(PANE_GAP / 2)) {
+                PaneTree(node = workspace.layout, context = context)
+            }
+            val floating = workspace.layout.terminals().firstOrNull { it.id == maximized }
+            if (floating != null) {
+                // Over the area of the workspace only: the title bar, the sidebar and the header of the workspace stay as they are. A click
+                // outside the terminal puts it back; Escape does not, since the programs in a terminal use it.
+                Box(
+                    Modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f)).clickable(interactionSource = null, indication = null) { store.maximize(null) },
+                )
+                Box(Modifier.fillMaxSize().padding(24.dp).shadow(24.dp, RoundedCornerShape(8.dp))) {
+                    PaneView(floating, context, floating = true)
+                }
+            }
         }
     }
 }
@@ -84,6 +101,7 @@ internal class PaneContext(
     val flipped: Boolean,
     val focusTerminals: Boolean,
     val actions: PaneActions,
+    val maximized: TerminalId? = null,
 )
 
 /**
@@ -100,6 +118,12 @@ class PaneActions(
     val onClose: (TerminalId) -> Unit,
     val destinations: List<WorkspaceChoice>,
     val onMove: (TerminalId, app.katty.core.WorkspaceId) -> Unit,
+    /** The terminal whose find bar is open. */
+    val finding: TerminalId? = null,
+    val onFind: (TerminalId) -> Unit = {},
+    val onFindClosed: (TerminalId) -> Unit = {},
+    /** Starts the shell of a terminal again, in the place of the one that ended. */
+    val onReopen: (TerminalId) -> Unit = {},
 )
 
 @Composable
@@ -129,7 +153,8 @@ private val MIN_PANE_SIZE = 160.dp
 private fun PaneTree(node: PaneNode, context: PaneContext) {
     when (node) {
         is PaneNode.Leaf -> Column(Modifier.padding(PANE_GAP / 2).fillMaxSize()) {
-            PaneView(node.terminal, context)
+            // The terminal that is maximized is shown in its floating pane: a second view of its session would fight that one over its size.
+            PaneView(node.terminal, context, hollow = context.maximized == node.terminal.id)
         }
         is PaneNode.Split -> {
             val direction = if (context.flipped) node.direction.turned() else node.direction

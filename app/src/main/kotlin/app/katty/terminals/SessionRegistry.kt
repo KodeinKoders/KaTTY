@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
@@ -148,6 +149,11 @@ class SessionRegistry(
         // Where the shell goes is where it starts the next time, and what repository it is in is read again then, and when a command ends.
         followers[spec.id] = scope.launch {
             launch { session.workingDirectory.filterNotNull().collect { store.setDirectory(spec.id, it) } }
+            // What the shell wrote stays on the screen, and says that it is over.
+            launch {
+                session.exited.filterNotNull().first()
+                session.writeToScreen("\r\n[Process completed]\r\n")
+            }
             merge(session.workingDirectory.map { }, session.events.filterIsInstance<TerminalEvent.CommandFinished>().map { }).conflate().collect {
                 val directory = session.workingDirectory.value ?: spec.directory
                 handle.gitState.value = withContext(Dispatchers.IO) { GitReader.read(Path.of(directory)) }
