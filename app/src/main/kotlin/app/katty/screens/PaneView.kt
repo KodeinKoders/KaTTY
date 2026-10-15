@@ -137,7 +137,9 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         KattyMenu(
                             terminalMenu(
                                 context.actions.destinations,
+                                spec.colorScheme ?: "Default",
                                 TerminalMenuActions(
+                                    colorScheme = { context.actions.onColorScheme(spec.id) },
                                     rename = { context.actions.onRename(spec.id) },
                                     splitRight = { context.store.split(spec.id, SplitDirection.ROW) },
                                     splitDown = { context.store.split(spec.id, SplitDirection.COLUMN) },
@@ -164,6 +166,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         session,
                         Modifier.fillMaxSize(),
                         fontSize = context.settings.fontSize.sp,
+                        font = context.font,
                         ligatures = context.settings.ligatures,
                         focusRequester = handle.focus,
                         focusOnStart = false,

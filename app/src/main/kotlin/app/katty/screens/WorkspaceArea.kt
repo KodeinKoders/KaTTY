@@ -28,6 +28,7 @@ import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.Workspace
 import app.katty.core.terminals
+import app.katty.terminal.compose.TerminalFont
 import app.katty.terminals.TerminalHandle
 import app.katty.ui.Katty
 import app.katty.ui.KattyIconButton
@@ -67,9 +68,10 @@ fun WorkspaceArea(
     actions: PaneActions,
     modifier: Modifier = Modifier,
     maximized: TerminalId? = null,
+    font: TerminalFont = TerminalFont.bundled(),
 ) {
     val colors = Katty.colors
-    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, maximized)
+    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, maximized, font)
     Column(modifier.background(colors.bg)) {
         WorkspaceHeader(workspace, selectedTerminal, store)
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -102,6 +104,7 @@ internal class PaneContext(
     val focusTerminals: Boolean,
     val actions: PaneActions,
     val maximized: TerminalId? = null,
+    val font: TerminalFont = TerminalFont.bundled(),
 )
 
 /**
@@ -124,6 +127,8 @@ class PaneActions(
     val onFindClosed: (TerminalId) -> Unit = {},
     /** Starts the shell of a terminal again, in the place of the one that ended. */
     val onReopen: (TerminalId) -> Unit = {},
+    /** Opens the picker of the color scheme of a terminal. */
+    val onColorScheme: (TerminalId) -> Unit = {},
 )
 
 @Composable

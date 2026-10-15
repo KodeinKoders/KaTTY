@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,8 @@ import app.katty.core.WorkspaceId
 import app.katty.core.neighbour
 import app.katty.core.terminals
 import app.katty.screens.CloseLastTerminalDialog
+import app.katty.screens.ColorSchemePicker
+import app.katty.screens.MainMenu
 import app.katty.screens.CloseWorkspaceDialog
 import app.katty.screens.PaneActions
 import app.katty.screens.Sidebar
@@ -52,7 +55,13 @@ import app.katty.screens.Welcome
 import app.katty.screens.WorkspaceArea
 import app.katty.terminals.SessionRegistry
 import app.katty.ui.AgentGlyph
+import app.katty.terminal.compose.TerminalFont
+import app.katty.terminal.themes.ITermColorSchemes
 import app.katty.ui.ConfirmDialog
+import app.katty.ui.KattyIconButton
+import app.katty.ui.KattyIcons
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import app.katty.ui.Katty
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Text
@@ -72,6 +81,16 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     var removing by remember { mutableStateOf<ProjectId?>(null) }
     var renamingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     var findingTerminal by remember { mutableStateOf<TerminalId?>(null) }
+    var menuOpen by remember { mutableStateOf(false) }
+    // Whose color scheme is being chosen: the default of the settings (`null` target with the flag), or a terminal's.
+    var picking by remember { mutableStateOf<SchemeTarget?>(null) }
+    val families by produceState(emptyList<String>()) { value = withContext(Dispatchers.IO) { SystemFonts.monospacedFamilies() } }
+    // The font of the terminals: the family that the user chose, or the bundled one when there is none or it cannot be used.
+    val font by produceState(TerminalFont.bundled(), settings.fontFamily) {
+        value = withContext(Dispatchers.Default) {
+            settings.fontFamily?.let { family -> runCatching { TerminalFont.system(family) }.getOrNull() } ?: TerminalFont.bundled()
+        }
+    }
     // What the user has to confirm before it is closed.
     var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
@@ -124,7 +143,25 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     }
 
     TitleBar {
-        TitleBarContent(state, onToggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } })
+        TitleBarContent(
+            state,
+            onToggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
+            trailing = {
+                Box {
+                    KattyIconButton(KattyIcons.Menu, "Main menu", { menuOpen = !menuOpen })
+                    if (menuOpen) {
+                        MainMenu(
+                            settings = settings,
+                            onChange = store::updateSettings,
+                            colorScheme = ITermColorSchemes.entries.firstOrNull { it.name == settings.colorScheme },
+                            fontFamilies = families,
+                            onPickColorScheme = { menuOpen = false; picking = SchemeTarget.Default },
+                            onDismiss = { menuOpen = false },
+                        )
+                    }
+                }
+            },
+        )
     }
 
     Box(
@@ -174,7 +211,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                         settings = settings,
                         store = store,
                         flipped = flipped,
-                        focusTerminals = renamingWorkspace == null && removing == null && closingWorkspace == null && closingTerminal == null && renamingTerminal == null,
+                        focusTerminals = renamingWorkspace == null && removing == null && closingWorkspace == null && closingTerminal == null && renamingTerminal == null && picking == null,
                         actions = PaneActions(
                             renaming = renamingTerminal,
                             onRename = { renamingTerminal = it },
@@ -190,14 +227,34 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                             onFind = { findingTerminal = it },
                             onFindClosed = { findingTerminal = null },
                             onReopen = registry::restart,
+                            onColorScheme = { picking = SchemeTarget.Terminal(it) },
                         ),
                         maximized = state.selection.maximized,
+                        font = font,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
             }
         }
 
+        picking?.let { target ->
+            val chosen = when (target) {
+                SchemeTarget.Default -> settings.colorScheme
+                is SchemeTarget.Terminal -> state.locate(target.id)?.terminal?.colorScheme
+            }
+            ColorSchemePicker(
+                entries = ITermColorSchemes.entries,
+                selected = chosen,
+                defaultName = if (target is SchemeTarget.Terminal) settings.colorScheme else null,
+                onSelect = { name ->
+                    when (target) {
+                        SchemeTarget.Default -> if (name != null) store.updateSettings { it.copy(colorScheme = name) }
+                        is SchemeTarget.Terminal -> store.setColorScheme(target.id, name)
+                    }
+                },
+                onClose = { picking = null },
+            )
+        }
         closingWorkspace?.let { id ->
             val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == id }
             if (workspace == null) {
@@ -229,6 +286,14 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
             if (project == null) removing = null else RemoveProjectDialog(project, onConfirm = { store.removeProject(id); removing = null }, onCancel = { removing = null })
         }
     }
+}
+
+/** Whose color scheme the picker chooses. */
+private sealed interface SchemeTarget {
+    /** The default of the settings, which the terminals that have no scheme of their own follow. */
+    data object Default : SchemeTarget
+
+    data class Terminal(val id: TerminalId) : SchemeTarget
 }
 
 /** The window's own shortcuts, which the terminal does not see. */

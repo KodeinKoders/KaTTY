@@ -13,6 +13,7 @@ class TerminalMenuActions(
     val splitRight: () -> Unit,
     val splitDown: () -> Unit,
     val moveTo: (WorkspaceId) -> Unit,
+    val colorScheme: () -> Unit,
     val copyDirectory: () -> Unit,
     val close: () -> Unit,
 )
@@ -21,8 +22,9 @@ class TerminalMenuActions(
  * The menu that the header of a pane opens: renaming, splitting, moving to another workspace, copying where the shell is, closing.
  *
  * @param destinations The other workspaces of every project. There is no entry to move to when there are none.
+ * @param colorSchemeHint What the terminal's color scheme is: `Default`, or the name of the one that it has.
  */
-fun terminalMenu(destinations: List<WorkspaceChoice>, actions: TerminalMenuActions): List<MenuEntry> = menu {
+fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, actions: TerminalMenuActions): List<MenuEntry> = menu {
     action("Rename terminal", onClick = actions.rename)
     divider()
     action("Split right", "⌘D", onClick = actions.splitRight)
@@ -33,6 +35,7 @@ fun terminalMenu(destinations: List<WorkspaceChoice>, actions: TerminalMenuActio
             for (destination in destinations) action(destination.label) { actions.moveTo(destination.id) }
         }
     }
+    action("Color scheme", hint = colorSchemeHint, onClick = actions.colorScheme)
     divider()
     action("Copy working directory", onClick = actions.copyDirectory)
     divider()

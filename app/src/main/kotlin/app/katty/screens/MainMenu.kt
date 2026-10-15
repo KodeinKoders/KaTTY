@@ -1,0 +1,211 @@
+package app.katty.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import app.katty.core.LayoutMode
+import app.katty.core.Settings
+import app.katty.core.ThemeMode
+import app.katty.terminal.themes.ITermColorSchemeInfo
+import app.katty.ui.CheckSetting
+import app.katty.ui.Choice
+import app.katty.ui.ChoiceOption
+import app.katty.ui.Icon
+import app.katty.ui.Katty
+import app.katty.ui.KattyIcons
+import app.katty.ui.KattyMenu
+import app.katty.ui.OneLine
+import app.katty.ui.SectionLabel
+import app.katty.ui.menu
+import org.jetbrains.jewel.ui.component.Divider
+import org.jetbrains.jewel.ui.component.Text
+
+/** The width of the main menu. */
+private val MAIN_MENU_WIDTH = 264.dp
+
+/** The name of the font that is bundled, which is what the font family is when the user has not chosen one. */
+const val BUNDLED_FONT_NAME = "JetBrains Mono"
+
+/**
+ * The main menu: the only place where the application is set up. It opens under the button that [onDismiss] closes it from.
+ *
+ * @param colorScheme The entry of the default color scheme, for its swatch.
+ * @param fontFamilies The monospaced families of the system, which may still be being listed.
+ * @param onPickColorScheme Opens the picker of the default color scheme.
+ */
+@Composable
+fun MainMenu(
+    settings: Settings,
+    onChange: ((Settings) -> Settings) -> Unit,
+    colorScheme: ITermColorSchemeInfo?,
+    fontFamilies: List<String>,
+    onPickColorScheme: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = Katty.colors
+    Popup(popupPositionProvider = BelowEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        Column(
+            Modifier.width(MAIN_MENU_WIDTH).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
+                .border(1.dp, colors.line, RoundedCornerShape(8.dp)).padding(6.dp).semantics { contentDescription = "Settings" },
+        ) {
+            Section("LAYOUT") {
+                Choice(
+                    listOf(ChoiceOption(LayoutMode.AUTO, "Auto"), ChoiceOption(LayoutMode.HORIZONTAL, "Horizontal"), ChoiceOption(LayoutMode.VERTICAL, "Vertical")),
+                    settings.layout, { value -> onChange { it.copy(layout = value) } },
+                    Modifier.padding(horizontal = 4.dp),
+                )
+                Caption("Auto uses Vertical when the window is taller than it is wide.")
+            }
+            Separator()
+            Section("THEME") {
+                Choice(
+                    listOf(ChoiceOption(ThemeMode.LIGHT, "Light"), ChoiceOption(ThemeMode.DARK, "Dark"), ChoiceOption(ThemeMode.SYSTEM, "System")),
+                    settings.theme, { value -> onChange { it.copy(theme = value) } },
+                    Modifier.padding(horizontal = 4.dp),
+                )
+            }
+            Separator()
+            Section("TERMINAL COLOR SCHEME") {
+                Field(settings.colorScheme, "Terminal color scheme: ${settings.colorScheme}", onPickColorScheme) {
+                    if (colorScheme != null) Swatches(colorScheme)
+                }
+            }
+            Separator()
+            Section("FONT FAMILY") {
+                FontField(settings.fontFamily, fontFamilies) { family -> onChange { it.copy(fontFamily = family) } }
+                FontSizeStepper(settings.fontSize) { size -> onChange { it.copy(fontSize = size) } }
+                CheckSetting("Font ligatures", settings.ligatures, { value -> onChange { it.copy(ligatures = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                Caption("Shows sequences like => and != as single glyphs.")
+            }
+        }
+    }
+}
+
+// Under the button that opens it, with its right edge on the button's.
+private object BelowEnd : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset =
+        IntOffset((anchorBounds.right - popupContentSize.width).coerceAtLeast(0), anchorBounds.bottom + 4)
+}
+
+@Composable
+private fun Section(label: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        SectionLabel(label, Modifier.padding(start = 10.dp, top = 8.dp, bottom = 4.dp))
+        content()
+    }
+}
+
+@Composable
+private fun Separator() {
+    Divider(org.jetbrains.jewel.ui.Orientation.Horizontal, Modifier.padding(vertical = 6.dp, horizontal = 4.dp))
+}
+
+@Composable
+private fun Caption(text: String) {
+    Text(text, Modifier.padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 2.dp), color = Katty.colors.muted, fontSize = 11.sp)
+}
+
+/** A field that opens a choice: its value, and a chevron. */
+@Composable
+internal fun Field(value: String, description: String, onClick: () -> Unit, leading: @Composable () -> Unit = {}) {
+    val colors = Katty.colors
+    Row(
+        Modifier.padding(horizontal = 4.dp).fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).border(1.dp, colors.line, RoundedCornerShape(5.dp))
+            .semantics { contentDescription = description }
+            .clickable(role = Role.DropdownList, onClick = onClick)
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        leading()
+        OneLine(value, Modifier.weight(1f), color = colors.text)
+        Icon(KattyIcons.ChevronDown, colors.muted, size = 14.dp)
+    }
+}
+
+/** Four colors of a scheme side by side: its background and three of its colors. */
+@Composable
+private fun Swatches(scheme: ITermColorSchemeInfo) {
+    val swatch = listOf(scheme.background, scheme.accents[0], scheme.accents[1], scheme.accents[3])
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (color in swatch) Box(Modifier.size(width = 8.dp, height = 14.dp).clip(RoundedCornerShape(2.dp)).background(color.toColor()))
+    }
+}
+
+@Composable
+private fun FontField(family: String?, families: List<String>, onChoose: (String?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val name = family ?: BUNDLED_FONT_NAME
+    Box {
+        Field(name, "Font family: $name", { open = true })
+        if (open) {
+            KattyMenu(
+                menu {
+                    action("$BUNDLED_FONT_NAME (bundled)") { onChoose(null) }
+                    divider()
+                    for (candidate in families.filter { it != BUNDLED_FONT_NAME }) action(candidate) { onChoose(candidate) }
+                },
+                onDismiss = { open = false },
+            )
+        }
+    }
+}
+
+/** The size of the font: a stepper by half a pixel, which keeps to the range that can be used. */
+@Composable
+internal fun FontSizeStepper(size: Float, onChange: (Float) -> Unit) {
+    val colors = Katty.colors
+    Row(Modifier.padding(horizontal = 8.dp).fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Font size", Modifier.weight(1f).semantics { contentDescription = "Font size" }, color = colors.text)
+        Row(Modifier.clip(RoundedCornerShape(5.dp)).border(1.dp, colors.line, RoundedCornerShape(5.dp)), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(26.dp).clickable(role = Role.Button) { onChange(size - FONT_STEP) }.semantics { contentDescription = "Decrease font size" },
+                contentAlignment = Alignment.Center,
+            ) { Text("−", fontSize = 15.sp, color = colors.text) }
+            Box(Modifier.width(1.dp).height(26.dp).background(colors.line))
+            Text(formatSize(size), Modifier.width(56.dp), color = colors.text, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Box(Modifier.width(1.dp).height(26.dp).background(colors.line))
+            Box(
+                Modifier.size(26.dp).clickable(role = Role.Button) { onChange(size + FONT_STEP) }.semantics { contentDescription = "Increase font size" },
+                contentAlignment = Alignment.Center,
+            ) { Text("+", fontSize = 15.sp, color = colors.text) }
+        }
+    }
+}
+
+private const val FONT_STEP = 0.5f
+
+/** The size as the stepper shows it: `12.5 px`, and `13 px` for a whole number. */
+internal fun formatSize(size: Float): String = (if (size % 1f == 0f) size.toInt().toString() else size.toString()) + " px"
+

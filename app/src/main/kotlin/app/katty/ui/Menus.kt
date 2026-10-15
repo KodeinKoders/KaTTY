@@ -33,6 +33,8 @@ data class MenuAction(
     val shortcut: String? = null,
     val danger: Boolean = false,
     val enabled: Boolean = true,
+    /** A value after the label, muted: what the item is set to now. */
+    val hint: String? = null,
     val onClick: () -> Unit,
 ) : MenuEntry
 
@@ -46,8 +48,8 @@ data class MenuSubmenu(val label: String, val entries: List<MenuEntry>, val hint
 class MenuBuilder {
     private val entries = ArrayList<MenuEntry>()
 
-    fun action(label: String, shortcut: String? = null, danger: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
-        entries += MenuAction(label, shortcut, danger, enabled, onClick)
+    fun action(label: String, shortcut: String? = null, danger: Boolean = false, enabled: Boolean = true, hint: String? = null, onClick: () -> Unit) {
+        entries += MenuAction(label, shortcut, danger, enabled, hint, onClick)
     }
 
     fun divider() {
@@ -87,7 +89,15 @@ private fun MenuScope.entries(entries: List<MenuEntry>, close: () -> Unit) {
                 onClick = { close(); entry.onClick() },
                 enabled = entry.enabled,
             ) {
-                Text(entry.label, color = if (entry.danger) Katty.colors.err else androidx.compose.ui.graphics.Color.Unspecified)
+                if (entry.hint == null) {
+                    Text(entry.label, color = if (entry.danger) Katty.colors.err else androidx.compose.ui.graphics.Color.Unspecified)
+                } else {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(entry.label)
+                        Spacer(Modifier.width(12.dp))
+                        Text(entry.hint, color = Katty.colors.muted, fontSize = 12.sp)
+                    }
+                }
             }
             MenuDivider -> separator()
             is MenuSubmenu -> submenu(submenu = { entries(entry.entries, close) }) {

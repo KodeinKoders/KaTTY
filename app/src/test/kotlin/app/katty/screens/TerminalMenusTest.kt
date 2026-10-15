@@ -18,6 +18,7 @@ class TerminalMenusTest {
         splitRight = { calls += "splitRight" },
         splitDown = { calls += "splitDown" },
         moveTo = { calls += "move ${it.value}" },
+        colorScheme = { calls += "colorScheme" },
         copyDirectory = { calls += "copyDirectory" },
         close = { calls += "close" },
     )
@@ -45,24 +46,24 @@ class TerminalMenusTest {
 
     @Test
     fun theMenuOfAPaneIsTheDesignsInItsOrder() {
-        val entries = terminalMenu(listOf(WorkspaceChoice(WorkspaceId("w"), "release-notes")), menuActions)
+        val entries = terminalMenu(listOf(WorkspaceChoice(WorkspaceId("w"), "release-notes")), "Default", menuActions)
 
         assertEquals(
-            listOf("Rename terminal", "---", "Split right", "Split down", "---", "Move to workspace ›", "---", "Copy working directory", "---", "Close terminal"),
+            listOf("Rename terminal", "---", "Split right", "Split down", "---", "Move to workspace ›", "Color scheme", "---", "Copy working directory", "---", "Close terminal"),
             entries.labels(),
         )
     }
 
     @Test
     fun closingATerminalIsRedAndNothingElseIs() {
-        val entries = terminalMenu(emptyList(), menuActions)
+        val entries = terminalMenu(emptyList(), "Default", menuActions)
 
         assertEquals(listOf("Close terminal"), entries.filterIsInstance<MenuAction>().filter { it.danger }.map { it.label })
     }
 
     @Test
     fun movingGoesToTheWorkspaceThatWasChosen() {
-        val entries = terminalMenu(listOf(WorkspaceChoice(WorkspaceId("w1"), "a"), WorkspaceChoice(WorkspaceId("w2"), "api / b")), menuActions)
+        val entries = terminalMenu(listOf(WorkspaceChoice(WorkspaceId("w1"), "a"), WorkspaceChoice(WorkspaceId("w2"), "api / b")), "Default", menuActions)
 
         val submenu = entries.filterIsInstance<MenuSubmenu>().single()
         assertEquals(listOf("a", "api / b"), submenu.entries.labels())
@@ -72,19 +73,28 @@ class TerminalMenusTest {
 
     @Test
     fun withNoOtherWorkspaceThereIsNothingToMoveTo() {
-        val entries = terminalMenu(emptyList(), menuActions)
+        val entries = terminalMenu(emptyList(), "Default", menuActions)
 
         assertFalse(entries.any { it is MenuSubmenu })
-        assertEquals(listOf("Rename terminal", "---", "Split right", "Split down", "---", "Copy working directory", "---", "Close terminal"), entries.labels())
+        assertEquals(listOf("Rename terminal", "---", "Split right", "Split down", "---", "Color scheme", "---", "Copy working directory", "---", "Close terminal"), entries.labels())
     }
 
     @Test
     fun theItemsOfTheMenuDoWhatTheySay() {
-        val entries = terminalMenu(emptyList(), menuActions)
+        val entries = terminalMenu(emptyList(), "Default", menuActions)
 
         listOf("Rename terminal", "Split right", "Split down", "Copy working directory", "Close terminal").forEach { entries.action(it).onClick() }
 
         assertEquals(listOf("rename", "splitRight", "splitDown", "copyDirectory", "close"), calls)
+    }
+
+    @Test
+    fun theColorSchemeItemSaysWhatTheSchemeIsNow() {
+        val item = terminalMenu(emptyList(), "Nord", menuActions).action("Color scheme")
+
+        assertEquals("Nord", item.hint)
+        item.onClick()
+        assertEquals(listOf("colorScheme"), calls)
     }
 
     @Test
