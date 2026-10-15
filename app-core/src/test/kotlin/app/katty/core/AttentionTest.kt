@@ -60,7 +60,7 @@ class AttentionTest {
         val item = state.attention(mapOf(a to info(AgentState.NEEDS_INPUT, 1))).needsYou.single()
 
         assertEquals("a", item.project.name)
-        assertEquals("workspace", item.workspace.name)
+        assertEquals("a", item.workspace.name)
         assertEquals(a, item.terminal.id)
     }
 

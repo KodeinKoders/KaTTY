@@ -28,7 +28,7 @@ class KattyStoreTest {
         assertEquals(id, project.id)
         assertEquals("api-gateway", project.name)
         assertEquals("/dev/api-gateway/", project.directory)
-        assertEquals("workspace", project.workspaces.single().name)
+        assertEquals("api-gateway", project.workspaces.single().name, "The first workspace is named after its project")
         val terminal = project.workspaces.single().layout.terminals().single()
         assertEquals("/dev/api-gateway/", terminal.directory)
         assertEquals(Selection(id, project.workspaces.single().id, terminal.id), state.selection)
@@ -95,10 +95,11 @@ class KattyStoreTest {
         val fifth = store.addWorkspace(project)
 
         val names = state.projects.single().workspaces.associate { it.id to it.name }
+        // The first is named after the project; the ones after it are "workspace", "workspace 2"…
+        assertEquals("api-gateway", names.values.first())
         assertEquals("refactor-auth", names[second])
-        assertEquals("workspace 2", names[fourth])
-        assertEquals("workspace 3", names[fifth])
-        assertEquals("workspace", names.values.first())
+        assertEquals("workspace", names[fourth])
+        assertEquals("workspace 2", names[fifth])
     }
 
     @Test

@@ -42,7 +42,7 @@ public class KattyStore(
     // ----- Projects
 
     /**
-     * Adds the folder [directory] as a project, with one workspace and one shell, and selects it. A folder that already is a project
+     * Adds the folder [directory] as a project, with one workspace named like it and one shell, and selects it. A folder that already is a project
      * is selected instead.
      *
      * @param name The project's name: the folder's by default.
@@ -55,8 +55,10 @@ public class KattyStore(
             return existing.id
         }
         val id = ProjectId(newId())
-        val workspace = Workspace(WorkspaceId(newId()), workspaceName(emptyList()), PaneNode.Leaf(newTerminal(directory)))
-        val project = Project(id, name?.takeIf { it.isNotBlank() } ?: directory.trimEnd('/').substringAfterLast('/').ifEmpty { directory }, directory, listOf(workspace))
+        val projectName = name?.takeIf { it.isNotBlank() } ?: directory.trimEnd('/').substringAfterLast('/').ifEmpty { directory }
+        // The first workspace is named after its project, which is what it is: the folder as it is.
+        val workspace = Workspace(WorkspaceId(newId()), projectName, PaneNode.Leaf(newTerminal(directory)))
+        val project = Project(id, projectName, directory, listOf(workspace))
         edit { it.copy(projects = it.projects + project, selection = Selection(id, workspace.id, workspace.layout.terminals().first().id)) }
         return id
     }

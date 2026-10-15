@@ -3,6 +3,7 @@ package app.katty.screens
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -38,6 +41,7 @@ import app.katty.ui.AgentTile
 import app.katty.ui.ButtonSize
 import app.katty.ui.CheckSetting
 import app.katty.ui.Katty
+import app.katty.ui.Icon
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import app.katty.ui.SectionLabel
@@ -210,27 +214,51 @@ fun UsageBarRow(
 }
 
 /**
- * What the Welcome screen says of the agents: each with its program, and whether it was found on the machine.
+ * What the Welcome screen says of the agents, in two sections: the ones that were found on the machine, and the ones that KaTTY supports and
+ * that were not, which is folded until the user opens it.
  */
 @Composable
 fun DetectedAgents(detected: Map<Agent, java.nio.file.Path>, modifier: Modifier = Modifier) {
     val colors = Katty.colors
+    var notFoundOpen by remember { mutableStateOf(false) }
+    val found = Agent.entries.filter { it in detected }
+    val missing = Agent.entries.filter { it !in detected }
     Column(modifier.widthIn(max = 480.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SectionLabel("DETECTED ON THIS MACHINE")
-        for (agent in Agent.entries) {
-            val found = agent in detected
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SectionLabel("DETECTED ON THIS MACHINE")
+            Text(found.size.toString(), color = colors.muted, fontSize = 11.sp)
+        }
+        if (found.isEmpty()) Text("No agent was found on this machine.", color = colors.muted, fontSize = 12.sp)
+        for (agent in found) AgentLine(agent, found = true)
+        if (missing.isNotEmpty()) {
             Row(
-                Modifier.fillMaxWidth().semantics { contentDescription = "${agent.displayName}: ${if (found) "Detected" else "Not found"}" },
+                Modifier.fillMaxWidth().padding(top = 8.dp).clickable(role = Role.Button) { notFoundOpen = !notFoundOpen }
+                    .semantics { contentDescription = "Not found: ${missing.size}"; stateDescription = if (notFoundOpen) "Expanded" else "Collapsed" },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                AgentTile(agent.glyph(), size = TileSize.LIST)
-                Text(agent.displayName, color = colors.text)
-                Text(agent.executable, Modifier.weight(1f), color = colors.muted, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                Text(if (found) "Detected" else "Not found", color = if (found) colors.done else colors.muted, fontSize = 12.sp)
+                Icon(if (notFoundOpen) KattyIcons.ChevronDown else KattyIcons.ChevronRight, colors.muted, size = 12.dp)
+                SectionLabel("NOT FOUND")
+                Text(missing.size.toString(), color = colors.muted, fontSize = 11.sp)
             }
+            if (notFoundOpen) for (agent in missing) AgentLine(agent, found = false)
         }
         Text("Agents you install later appear here automatically.", Modifier.padding(top = 4.dp), color = colors.muted, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun AgentLine(agent: Agent, found: Boolean) {
+    val colors = Katty.colors
+    Row(
+        Modifier.fillMaxWidth().semantics { contentDescription = "${agent.displayName}: ${if (found) "Detected" else "Not found"}" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        AgentTile(agent.glyph(), size = TileSize.LIST)
+        Text(agent.displayName, color = colors.text)
+        Text(agent.executable, Modifier.weight(1f), color = colors.muted, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+        Text(if (found) "Detected" else "Not found", color = if (found) colors.done else colors.muted, fontSize = 12.sp)
     }
 }
 

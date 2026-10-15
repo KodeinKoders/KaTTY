@@ -199,7 +199,12 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
 
     val addProject = {
         val folder = chooseFolder(window, "Add project folder", state.selectedProject?.directory)
-        if (folder != null) store.addProject(folder)
+        if (folder != null) {
+            val before = state.projects.size
+            store.addProject(folder)
+            // A project that is new has a workspace with its default name, which opens for editing as a new workspace does.
+            if (store.state.value.projects.size > before) renamingWorkspace = store.state.value.selection.workspace
+        }
         Unit
     }
     val newWorkspace = {

@@ -30,6 +30,13 @@ class SidebarTest {
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
 
+    // A project whose first workspace is called "workspace", which is not what a new project's is: that has its project's name.
+    private fun plainProject(directory: String): app.katty.core.ProjectId {
+        val id = store.addProject(directory)
+        store.renameWorkspace(store.state.value.selection.workspace!!, "workspace")
+        return id
+    }
+
     @Composable
     private fun Content(onAddProject: () -> Unit = {}, removed: MutableList<String> = mutableListOf()) {
         KattyTheme(dark = false) {
@@ -52,8 +59,8 @@ class SidebarTest {
 
     @Test
     fun listsTheProjectsAndTheWorkspacesOfTheSelectedOne() = runComposeUiTest {
-        store.addProject("/dev/api-gateway")
-        store.addProject("/dev/web-client")
+        plainProject("/dev/api-gateway")
+        plainProject("/dev/web-client")
         store.addWorkspace(store.state.value.projects.last().id, "checkout-form")
         setContent { Content() }
 
@@ -67,8 +74,8 @@ class SidebarTest {
 
     @Test
     fun clickingAProjectSelectsItAndOpensIt() = runComposeUiTest {
-        val first = store.addProject("/dev/api-gateway")
-        store.addProject("/dev/web-client")
+        val first = plainProject("/dev/api-gateway")
+        plainProject("/dev/web-client")
         setContent { Content() }
 
         onNodeWithContentDescription("api-gateway").performClick()
@@ -79,7 +86,7 @@ class SidebarTest {
 
     @Test
     fun clickingAWorkspaceSelectsIt() = runComposeUiTest {
-        val project = store.addProject("/dev/api-gateway")
+        val project = plainProject("/dev/api-gateway")
         val second = store.addWorkspace(project, "release-notes")!!
         val first = store.state.value.projects.single().workspaces.first().id
         setContent { Content() }
@@ -92,7 +99,7 @@ class SidebarTest {
 
     @Test
     fun theNewWorkspaceRowAddsAWorkspaceAndOpensItsNameForEditing() = runComposeUiTest {
-        store.addProject("/dev/api-gateway")
+        plainProject("/dev/api-gateway")
         setContent { Content() }
 
         onNodeWithText("New workspace").performClick()
@@ -106,7 +113,7 @@ class SidebarTest {
 
     @Test
     fun f2RenamesTheWorkspaceThatHasTheFocus() = runComposeUiTest {
-        store.addProject("/dev/api-gateway")
+        plainProject("/dev/api-gateway")
         setContent { Content() }
 
         onNodeWithContentDescription("workspace").performClick()
@@ -122,7 +129,7 @@ class SidebarTest {
 
     @Test
     fun f2RenamesTheProjectThatHasTheFocus() = runComposeUiTest {
-        store.addProject("/dev/api-gateway")
+        plainProject("/dev/api-gateway")
         setContent { Content() }
 
         onNodeWithContentDescription("api-gateway").performClick()
@@ -137,7 +144,7 @@ class SidebarTest {
 
     @Test
     fun escapeKeepsTheOldName() = runComposeUiTest {
-        store.addProject("/dev/api-gateway")
+        plainProject("/dev/api-gateway")
         setContent { Content() }
 
         onNodeWithContentDescription("api-gateway").performClick()
@@ -152,7 +159,7 @@ class SidebarTest {
 
     @Test
     fun aBlankNameKeepsTheOldOne() = runComposeUiTest {
-        store.addProject("/dev/api-gateway")
+        plainProject("/dev/api-gateway")
         setContent { Content() }
 
         onNodeWithContentDescription("api-gateway").performClick()
@@ -167,7 +174,7 @@ class SidebarTest {
 
     @Test
     fun theAddButtonAsksForAFolder() = runComposeUiTest {
-        store.addProject("/dev/api-gateway")
+        plainProject("/dev/api-gateway")
         var asked = 0
         setContent { Content(onAddProject = { asked++ }) }
 

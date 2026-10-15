@@ -27,18 +27,25 @@ class AgentBoardTest {
     private val now = 10_000_000_000L
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
+
+    // A project whose first workspace is called "workspace", which is not what a new project's is: that has its project's name.
+    private fun plainProject(directory: String): app.katty.core.ProjectId {
+        val id = store.addProject(directory)
+        store.renameWorkspace(store.state.value.selection.workspace!!, "workspace")
+        return id
+    }
     private val state get() = store.state.value
     private lateinit var infos: Map<TerminalId, AgentInfo>
 
     private fun info(s: AgentState, app: String?, ago: Long, note: String?) = AgentInfo(AgentReport(s, app, note), now - ago * 60_000)
 
     private fun populate() {
-        val gateway = store.addProject("/dev/api-gateway")
+        val gateway = plainProject("/dev/api-gateway")
         store.renameWorkspace(state.selection.workspace!!, "refactor-auth")
         val claude = state.selection.terminal!!
         val codex = store.split(claude, SplitDirection.ROW)!!
         val shell = store.split(codex, SplitDirection.ROW)!!
-        store.addProject("/dev/web-client")
+        plainProject("/dev/web-client")
         val failed = state.selection.terminal!!
         infos = mapOf(
             claude to info(AgentState.WORKING, "claude-code", 4, "Running the auth tests to check the refactor."),

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -100,15 +101,50 @@ class UsagePanelTest {
     }
 
     @Test
-    fun theWelcomeListsEachAgentAsDetectedOrNot() = runComposeUiTest {
+    fun theWelcomeListsTheAgentsThatWereFoundAndFoldsTheOthers() = runComposeUiTest {
         setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"), Agent.GEMINI to Path.of("/bin/gemini"))) } }
 
         onNodeWithText("DETECTED ON THIS MACHINE").assertExists()
+        // Two found, and three that were not: the numbers of the two sections.
+        onNodeWithText("2").assertExists()
+        onNodeWithText("3").assertExists()
         onNodeWithContentDescription("Claude Code: Detected").assertExists()
         onNodeWithContentDescription("Gemini CLI: Detected").assertExists()
-        onNodeWithContentDescription("Antigravity: Not found").assertExists()
-        onNodeWithContentDescription("Codex: Not found").assertExists()
+        // The others are in a section that is closed: its title says how many, and none of them is listed.
+        onNodeWithText("NOT FOUND").assertExists()
+        onNodeWithContentDescription("Not found: 3").assertExists()
+        assertEquals(0, onAllNodesWithContentDescription("Antigravity: Not found").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithContentDescription("Codex: Not found").fetchSemanticsNodes().size)
         onNodeWithText("Agents you install later appear here automatically.").assertExists()
+    }
+
+    @Test
+    fun theSectionOfTheAgentsThatWereNotFoundOpensAndCloses() = runComposeUiTest {
+        setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"))) } }
+
+        onNodeWithContentDescription("Not found: 4").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Codex: Not found").assertExists()
+        onNodeWithContentDescription("Copilot CLI: Not found").assertExists()
+        onNodeWithContentDescription("Not found: 4").performClick()
+        waitForIdle()
+
+        assertEquals(0, onAllNodesWithContentDescription("Codex: Not found").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun withEveryAgentFoundThereIsNoSectionOfTheOthers() = runComposeUiTest {
+        setContent { KattyTheme(false) { DetectedAgents(Agent.entries.associateWith { Path.of("/bin/${it.executable}") }) } }
+
+        assertEquals(0, onAllNodesWithText("NOT FOUND").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun withNoAgentFoundTheWelcomeSaysSo() = runComposeUiTest {
+        setContent { KattyTheme(false) { DetectedAgents(emptyMap()) } }
+
+        onNodeWithText("No agent was found on this machine.").assertExists()
+        onNodeWithContentDescription("Not found: 5").assertExists()
     }
 
     @Test

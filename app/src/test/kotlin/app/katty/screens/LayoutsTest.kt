@@ -26,11 +26,18 @@ import kotlin.test.assertTrue
 class LayoutsTest {
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
+
+    // A project whose first workspace is called "workspace", which is not what a new project's is: that has its project's name.
+    private fun plainProject(directory: String): app.katty.core.ProjectId {
+        val id = store.addProject(directory)
+        store.renameWorkspace(store.state.value.selection.workspace!!, "workspace")
+        return id
+    }
     private val state get() = store.state.value
 
     private fun populate() {
-        store.addProject("/Users/me/dev/web-client")
-        val gateway = store.addProject("/Users/me/dev/api-gateway")
+        plainProject("/Users/me/dev/web-client")
+        val gateway = plainProject("/Users/me/dev/api-gateway")
         store.renameProject(gateway, "api-gateway")
         store.renameWorkspace(state.selection.workspace!!, "refactor-auth")
         store.addWorkspace(gateway, "rate-limiter")

@@ -165,7 +165,8 @@ These are the operations of the store, whatever triggers them (a click, a menu, 
 
 | Add a project
 | From a folder chosen with the system's folder dialog.
-The project is named after the folder, gets a workspace named "workspace" with one terminal in the folder, and is selected.
+The project is named after the folder, gets a workspace named like it (so the first workspace of "api-gateway" is "api-gateway") with one terminal in the folder, and is selected.
+The name of that workspace opens for editing, as for any new workspace; a folder that already is a project does not.
 A folder that already is a project is selected instead.
 
 | Rename a project
@@ -434,7 +435,7 @@ A click on a tile selects the project and opens a panel (264 px) with its folder
 
 === Without a project
 
-The window shows the welcome: "Add your first project", what a project is, a button "Add project folder…" with ⌘O, and the agents of the machine (each "Detected" or "Not found") with "Agents you install later appear here automatically."
+The window shows the welcome: "Add your first project", what a project is, a button "Add project folder…" with ⌘O, and the agents in two sections: DETECTED ON THIS MACHINE, with the number of agents found (each with its program and "Detected"), and NOT FOUND, which lists the supported agents that were not found, with their number, and is folded until the user opens it (it is absent when every agent is found); "Agents you install later appear here automatically."
 
 A project without a workspace shows "This project has no workspace." and a button for a new one.
 
