@@ -1,4 +1,5 @@
 import org.gradle.jvm.toolchain.JvmVendorSpec
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -61,5 +62,22 @@ compose {
         // ghostty-vt calls the FFM API, and pty4j calls JNA: both are restricted, and the JVM warns on the
         // first native call without this flag.
         jvmArgs += "--enable-native-access=ALL-UNNAMED"
+
+        nativeDistributions {
+            // The disk image is for macOS on Apple Silicon, the only platform libghostty-vt is built for.
+            targetFormats(TargetFormat.Dmg)
+            packageName = "KaTTY"
+            // macOS does not accept a version whose first number is 0.
+            packageVersion = "1.0.0"
+            description = "A terminal manager for coding agents"
+            vendor = "Kodein Koders"
+            // The FFM calls of ghostty-vt and the JNA calls of pty4j are restricted.
+            jvmArgs += "--enable-native-access=ALL-UNNAMED"
+
+            macOS {
+                bundleID = "app.katty"
+                dockName = "KaTTY"
+            }
+        }
     }
 }
