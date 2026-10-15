@@ -52,6 +52,7 @@ import app.katty.ui.AgentGlyph
 import app.katty.ui.AgentTile
 import app.katty.ui.ButtonSize
 import app.katty.ui.Icon
+import app.katty.ui.glyph
 import app.katty.ui.InlineRename
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyMenu
@@ -114,13 +115,15 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                 true
             },
     ) {
-        val title = spec.name ?: handle?.shellName ?: "zsh"
+        // What a program says of itself: its name is the title while it reports, and the shell's name is when nothing does.
+        val info = context.infos[spec.id]
+        val report = info?.report
+        val title = spec.name ?: report?.takeIf { it.reporting }?.let { it.agent?.displayName ?: it.app } ?: handle?.shellName ?: "zsh"
         var paneMenu by remember { mutableStateOf(false) }
         PaneHeader(
             title = title,
-            glyph = AgentGlyph.SHELL,
-            // What an agent says about itself comes with the states of the agents.
-            state = AgentState.IDLE,
+            glyph = report?.agent.glyph(),
+            state = report?.state ?: AgentState.IDLE,
             stateLabel = if (exitCode != null) "Exited" else null,
             git = handle?.git?.collectAsState()?.value,
             renaming = context.actions.renaming == spec.id,

@@ -1,0 +1,184 @@
+package app.katty.terminals
+
+import app.katty.core.AgentState
+import app.katty.core.KattyStore
+import app.katty.core.SplitDirection
+import app.katty.terminal.TerminalSession
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import java.util.Base64
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class AgentTrackerTest {
+    private var counter = 0
+    private val store = KattyStore(newId = { "id${counter++}" })
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var time = 1000L
+    private val tracker = AgentTracker(scope, clock = { time })
+    private val scripts = ArrayDeque<String>()
+
+    private val registry = SessionRegistry(
+        store, scope, loadTheme = { null },
+        start = { spec, _ ->
+            TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", scripts.removeFirstOrNull() ?: "sleep 60"), directory = spec.directory, shellIntegration = false)
+        },
+    )
+
+    @AfterTest
+    fun close() {
+        tracker.close()
+        registry.close()
+        scope.cancel()
+    }
+
+    private fun b64(text: String) = Base64.getEncoder().encodeToString(text.toByteArray())
+
+    private fun report(vararg fields: String) = "printf '\\033]7501;${fields.joinToString(":")}\\033\\\\'"
+
+    private fun start(): app.katty.core.TerminalId {
+        store.addProject("/tmp")
+        registry.sync(store.state.value)
+        tracker.sync(registry.handles.value)
+        return store.state.value.selection.terminal!!
+    }
+
+    private fun await(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 15_000_000_000
+        while (!condition() && System.nanoTime() < deadline) Thread.sleep(20)
+        assertTrue(condition(), what)
+    }
+
+    @Test
+    fun aTerminalThatSaysNothingIsAtRest() {
+        scripts += "sleep 60"
+        val id = start()
+
+        await("the terminal is followed") { tracker.infos.value[id] != null }
+
+        assertEquals(AgentState.IDLE, tracker.infos.value.getValue(id).state)
+    }
+
+    @Test
+    fun followsWhatTheProgramReports() {
+        scripts += "${report("state=working", "app=claude-code", "msg=${b64("Running the tests")}")}; sleep 60"
+        val id = start()
+
+        await("working") { tracker.infos.value[id]?.state == AgentState.WORKING }
+
+        val info = tracker.infos.value.getValue(id)
+        assertEquals("claude-code", info.report.app)
+        assertEquals("Running the tests", info.report.note)
+        assertEquals(app.katty.core.Agent.CLAUDE, info.report.agent)
+    }
+
+    @Test
+    fun aTerminalThatWaitsForTheUserNeedsInput() {
+        scripts += "${report("state=blocked", "kind=permission", "app=codex", "msg=${b64("Apply this patch?")}")}; sleep 60"
+        val id = start()
+
+        await("blocked") { tracker.infos.value[id]?.state == AgentState.NEEDS_INPUT }
+
+        assertEquals("Apply this patch?", tracker.infos.value.getValue(id).report.note)
+    }
+
+    @Test
+    fun theTimeIsWhenTheStateChangedNotWhenItWasSaidAgain() {
+        scripts += "${report("state=working", "app=a")}; sleep 1; ${report("state=working", "app=a", "msg=${b64("more")}")}; sleep 60"
+        val id = start()
+
+        await("working") { tracker.infos.value[id]?.state == AgentState.WORKING }
+        val first = tracker.infos.value.getValue(id).since
+        time = 5000
+        await("the note changed") { tracker.infos.value[id]?.report?.note == "more" }
+
+        assertEquals(first, tracker.infos.value.getValue(id).since, "Still working: the time did not move")
+    }
+
+    @Test
+    fun aChangeOfStateIsATransitionWithTheStateItLeft() {
+        scripts += "sleep 1; ${report("state=working", "app=a")}; sleep 1; ${report("state=done", "app=a")}; sleep 60"
+        val received = java.util.concurrent.CopyOnWriteArrayList<AgentTransition>()
+        scope.launch { tracker.transitions.collect { received += it } }
+        Thread.sleep(200)
+        val id = start()
+
+        await("two transitions") { received.size >= 2 }
+
+        assertEquals(listOf(AgentState.IDLE to AgentState.WORKING, AgentState.WORKING to AgentState.DONE), received.take(2).map { it.from to it.info.state })
+        assertEquals(id, received.first().terminal)
+    }
+
+    @Test
+    fun markingAnAgentSeenTakesWhatItFinishedOff() {
+        scripts += "${report("state=done", "app=claude-code")}; sleep 60"
+        val id = start()
+        await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
+
+        tracker.markSeen(id)
+
+        await("at rest") { tracker.infos.value[id]?.state == AgentState.IDLE }
+    }
+
+    @Test
+    fun markingSeenLeavesWhatIsStillWorking() {
+        scripts += "${report("state=working", "app=a")}; sleep 60"
+        val id = start()
+        await("working") { tracker.infos.value[id]?.state == AgentState.WORKING }
+
+        tracker.markSeen(id)
+        Thread.sleep(200)
+
+        assertEquals(AgentState.WORKING, tracker.infos.value.getValue(id).state)
+    }
+
+    @Test
+    fun markingEverythingSeenDoesItForEveryTerminal() {
+        scripts += "${report("state=done", "app=a")}; sleep 60"
+        scripts += "${report("state=error", "app=b")}; sleep 60"
+        store.addProject("/tmp")
+        val first = store.state.value.selection.terminal!!
+        val second = store.split(first, SplitDirection.ROW)!!
+        registry.sync(store.state.value)
+        tracker.sync(registry.handles.value)
+        await("both report") { tracker.infos.value[first]?.state == AgentState.DONE && tracker.infos.value[second]?.state == AgentState.ERROR }
+
+        tracker.markAllSeen()
+
+        await("both at rest") { tracker.infos.value.values.all { it.state == AgentState.IDLE } }
+    }
+
+    @Test
+    fun aTerminalThatIsGoneIsNotFollowedAnyMore() {
+        scripts += "${report("state=working", "app=a")}; sleep 60"
+        val id = start()
+        await("working") { tracker.infos.value[id]?.state == AgentState.WORKING }
+        store.addWorkspace(store.state.value.selection.project!!)
+
+        store.closeTerminal(id)
+        registry.sync(store.state.value)
+        tracker.sync(registry.handles.value)
+
+        assertNull(tracker.infos.value[id])
+    }
+
+    @Test
+    fun aShellThatWasStartedAgainStartsAtRest() {
+        scripts += "${report("state=working", "app=a")}; sleep 60"
+        scripts += "sleep 60"
+        val id = start()
+        await("working") { tracker.infos.value[id]?.state == AgentState.WORKING }
+
+        registry.restart(id)
+        tracker.sync(registry.handles.value)
+
+        await("at rest") { tracker.infos.value[id]?.state == AgentState.IDLE }
+    }
+
+}

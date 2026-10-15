@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import app.katty.core.AgentInfo
 import app.katty.core.KattyStore
 import app.katty.core.PaneNode
 import app.katty.core.Settings
@@ -54,6 +55,7 @@ val PANE_GAP = 8.dp
  * @param flipped Whether every split is turned, as the vertical layout draws the tree.
  * @param focusTerminals Whether the focused terminal may take the keyboard focus: not while something else is being typed in.
  * @param actions What the window does for the panes.
+ * @param infos What each terminal says it is doing: the header of a pane says it.
  * @param showHeader Whether the workspace has a header of its own: the vertical layout has tabs instead.
  * @param maximized The terminal that floats over the area of the workspace, with the others under a scrim.
  */
@@ -71,9 +73,10 @@ fun WorkspaceArea(
     maximized: TerminalId? = null,
     font: TerminalFont = TerminalFont.bundled(),
     showHeader: Boolean = true,
+    infos: Map<TerminalId, AgentInfo> = emptyMap(),
 ) {
     val colors = Katty.colors
-    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, maximized, font)
+    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, maximized, font, infos)
     Column(modifier.background(colors.bg)) {
         // The vertical layout has the workspace's name and its split buttons in its tabs.
         if (showHeader) WorkspaceHeader(workspace, selectedTerminal, store)
@@ -108,6 +111,7 @@ internal class PaneContext(
     val actions: PaneActions,
     val maximized: TerminalId? = null,
     val font: TerminalFont = TerminalFont.bundled(),
+    val infos: Map<TerminalId, AgentInfo> = emptyMap(),
 )
 
 /**

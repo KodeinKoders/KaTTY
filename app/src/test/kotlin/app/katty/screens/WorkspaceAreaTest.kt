@@ -46,6 +46,7 @@ class WorkspaceAreaTest {
     }
 
     private val closed = mutableListOf<app.katty.core.TerminalId>()
+    private var infos by androidx.compose.runtime.mutableStateOf(emptyMap<app.katty.core.TerminalId, app.katty.core.AgentInfo>())
     private var renaming by androidx.compose.runtime.mutableStateOf<app.katty.core.TerminalId?>(null)
 
     private fun androidx.compose.ui.test.ComposeUiTest.show() {
@@ -58,7 +59,7 @@ class WorkspaceAreaTest {
                 val workspace = state.selectedWorkspace
                 if (workspace != null) {
                     WorkspaceArea(
-                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = true, maximized = state.selection.maximized,
+                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = true, maximized = state.selection.maximized, infos = infos,
                         actions = PaneActions(
                             renaming = renaming,
                             onRename = { renaming = it },
@@ -96,6 +97,33 @@ class WorkspaceAreaTest {
         val tree = store.state.value.selectedWorkspace!!.layout
         assertEquals(3, tree.terminals().size)
         assertEquals(SplitDirection.ROW, (tree as app.katty.core.PaneNode.Split).direction)
+    }
+
+    @Test
+    fun theTitleOfATerminalIsTheNameOfTheAgentThatReportsAndTheShellsOtherwise() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+        onNodeWithContentDescription("Terminal zsh").assertExists()
+        onNodeWithText("Idle").assertExists()
+
+        infos = mapOf(terminal to app.katty.core.AgentInfo(app.katty.core.AgentReport(app.katty.core.AgentState.NEEDS_INPUT, "codex", "Apply this patch?"), 0))
+        waitForIdle()
+
+        onNodeWithContentDescription("Terminal Codex").assertExists()
+        onNodeWithText("Needs input").assertExists()
+    }
+
+    @Test
+    fun aTerminalThatTheUserNamedKeepsItsNameWhateverRuns() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        store.renameTerminal(terminal, "build")
+        infos = mapOf(terminal to app.katty.core.AgentInfo(app.katty.core.AgentReport(app.katty.core.AgentState.WORKING, "claude-code"), 0))
+        show()
+
+        onNodeWithContentDescription("Terminal build").assertExists()
+        onNodeWithText("Working").assertExists()
     }
 
     @Test

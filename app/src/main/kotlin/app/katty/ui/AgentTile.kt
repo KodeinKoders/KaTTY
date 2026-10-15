@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.katty.core.Agent
 
 /**
  * What an agent is drawn as. The glyphs are placeholders of the design, until the logos of the agents are supplied: swap them here.
@@ -43,4 +44,14 @@ fun AgentTile(glyph: AgentGlyph, modifier: Modifier = Modifier, size: TileSize =
     ) {
         Icon(glyph.icon, glyph.tint, size = size.icon)
     }
+}
+
+/** The glyph of an agent, and the neutral one for a program that is not one of the agents that are known. */
+fun Agent?.glyph(): AgentGlyph = when (this) {
+    Agent.CLAUDE -> AgentGlyph.CLAUDE
+    Agent.CODEX -> AgentGlyph.CODEX
+    Agent.GEMINI -> AgentGlyph.GEMINI
+    Agent.ANTIGRAVITY -> AgentGlyph.ANTIGRAVITY
+    Agent.COPILOT -> AgentGlyph.COPILOT
+    null -> AgentGlyph.SHELL
 }

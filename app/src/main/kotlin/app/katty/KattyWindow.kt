@@ -35,7 +35,7 @@ import app.katty.core.AgentStates
 import app.katty.core.CloseDecision
 import app.katty.core.Direction
 import app.katty.core.KattyStore
-import app.katty.core.NoAgentStates
+import app.katty.core.MainView
 import app.katty.core.Orientation
 import app.katty.core.orientation
 import app.katty.core.Project
@@ -62,8 +62,9 @@ import app.katty.screens.WorkspaceChoice
 import app.katty.screens.TitleBarContent
 import app.katty.screens.Welcome
 import app.katty.screens.WorkspaceArea
+import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
-import app.katty.ui.AgentGlyph
+import app.katty.ui.glyph
 import app.katty.terminal.compose.TerminalFont
 import app.katty.terminal.themes.ITermColorSchemes
 import app.katty.ui.ConfirmDialog
@@ -83,7 +84,7 @@ import java.io.File
  * What is in the window: the title bar, and under it the sidebar and the workspace, or the welcome of an application that has no project.
  */
 @Composable
-fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: SessionRegistry) {
+fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: SessionRegistry, tracker: AgentTracker) {
     val state by store.state.collectAsState()
     val settings = state.settings
     var renamingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
@@ -105,14 +106,31 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     val handles by registry.handles.collectAsState()
-    // What each terminal is doing comes from what its program reports: until the agents are told apart, every terminal is a shell at rest.
-    val agentStates: AgentStates = NoAgentStates
+    // What each terminal is doing comes from what its program reports (OSC 7501).
+    val infos by tracker.infos.collectAsState()
+    val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
     val stateOf: (TerminalId) -> AgentState = agentStates::stateOf
+    LaunchedEffect(handles) { tracker.sync(handles) }
+    // Seen: what a terminal finished or failed at stays until the user has it in front of them, in a window that has the focus.
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    val selectedState = state.selection.terminal?.let { infos[it]?.state }
+    LaunchedEffect(selectedState, windowFocused, state.selection.terminal, settings.view) {
+        val id = state.selection.terminal
+        if (id != null && windowFocused && settings.view == MainView.TERMINALS && (selectedState == AgentState.DONE || selectedState == AgentState.ERROR)) {
+            tracker.markSeen(id)
+        }
+    }
     // The shape of the window decides the layout when the user left it to Auto.
     val size = LocalWindowInfo.current.containerSize
     val vertical = settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
     val describe: (TerminalSpec) -> TerminalSummary = { spec ->
-        TerminalSummary(spec.id, spec.name ?: handles[spec.id]?.shellName ?: "shell", AgentGlyph.SHELL, stateOf(spec.id))
+        val report = infos[spec.id]?.report
+        TerminalSummary(
+            spec.id,
+            spec.name ?: report?.takeIf { it.reporting }?.let { it.agent?.displayName ?: it.app } ?: handles[spec.id]?.shellName ?: "shell",
+            report?.agent.glyph(),
+            stateOf(spec.id),
+        )
     }
 
     // The sessions follow the terminals of the store, and the ones that are not on the screen are paused.
@@ -235,6 +253,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                         maximized = state.selection.maximized,
                         font = font,
                         showHeader = header,
+                        infos = infos,
                         modifier = areaModifier,
                     )
                 }

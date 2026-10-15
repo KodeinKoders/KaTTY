@@ -17,6 +17,7 @@ import app.katty.core.KattyStore
 import app.katty.core.StateFile
 import app.katty.core.StatePersistence
 import app.katty.core.ThemeMode
+import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.ui.KattyTheme
 import kotlinx.coroutines.CoroutineScope
@@ -41,9 +42,12 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile) {
     val persistence = remember { StatePersistence(store, file, writer) }
     // One shell for each terminal of the store, which goes on running when its workspace is not the one that is shown.
     val registry = remember { SessionRegistry(store, writer) }
+    // What each of them says it is doing.
+    val tracker = remember { AgentTracker(writer) }
     DisposableEffect(Unit) { onDispose { writer.cancel() } }
     val quit = {
         persistence.flush()
+        tracker.close()
         registry.close()
         exitApplication()
     }
@@ -60,7 +64,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile) {
             title = "KaTTY",
             state = rememberWindowState(size = DpSize(1440.dp, 900.dp)),
         ) {
-            KattyWindowContent(store, registry)
+            KattyWindowContent(store, registry, tracker)
         }
     }
 }
