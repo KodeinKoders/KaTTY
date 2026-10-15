@@ -50,11 +50,12 @@ fun TitleBarScope.TitleBarContent(
             }
         }
     }
-    // What the window shows: the terminals of the workspace, or the board of the agents.
+    // What the window shows: the terminals, or the board of the agents.
     Row(Modifier.align(Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
         Choice(listOf(ChoiceOption(MainView.TERMINALS, "Terminals"), ChoiceOption(MainView.BOARD, "Board")), view, onView)
     }
     Row(Modifier.align(Alignment.End).padding(end = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        PaletteButton(compactPalette, onPalette)
         trailing()
     }
 }

@@ -45,6 +45,7 @@ import app.katty.core.GitInfo
 import app.katty.core.GitKind
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalSpec
+import app.katty.core.terminalIdentity
 import app.katty.copyToClipboard
 import app.katty.readClipboard
 import app.katty.terminal.compose.Terminal
@@ -53,6 +54,8 @@ import app.katty.ui.AgentTile
 import app.katty.ui.ButtonSize
 import app.katty.ui.Icon
 import app.katty.ui.glyph
+import app.katty.ui.onDoubleClick
+import app.katty.ui.onSecondaryClick
 import app.katty.ui.InlineRename
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyMenu
@@ -115,48 +118,60 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                 true
             },
     ) {
-        // What a program says of itself: its name is the title while it reports, and the shell's name is when nothing does.
+        // What the terminal is called: the name the user gave it, else the agent that reports in it, else the program that runs in it, else
+        // its shell. An agent's own name is the one of its tile.
         val info = context.infos[spec.id]
         val report = info?.report
-        val title = spec.name ?: report?.takeIf { it.reporting }?.let { it.agent?.displayName ?: it.app } ?: handle?.shellName ?: "zsh"
+        val process = handle?.processName?.collectAsState()?.value
+        val identity = terminalIdentity(spec.name, report, process, handle?.shellName ?: "zsh")
+        val title = identity.title
+        // The menu of the terminal: from the button of its header, or from a right click anywhere on the header.
         var paneMenu by remember { mutableStateOf(false) }
-        PaneHeader(
-            title = title,
-            glyph = report?.agent.glyph(),
-            state = report?.state ?: AgentState.IDLE,
-            stateLabel = if (exitCode != null) "Exited" else null,
-            git = handle?.git?.collectAsState()?.value,
-            renaming = context.actions.renaming == spec.id,
-            onRenamed = { context.actions.onRenamed(spec.id, it) },
-            trailing = {
-                if (floating) {
-                    KattyIconButton(KattyIcons.Restore, "Restore pane", { context.store.maximize(null) }, size = ButtonSize.COMPACT)
-                } else {
-                    KattyIconButton(KattyIcons.Maximize, "Maximize pane", { context.store.maximize(spec.id) }, size = ButtonSize.COMPACT)
-                }
-                Box {
-                    KattyIconButton(KattyIcons.Kebab, "Pane menu", { paneMenu = true }, size = ButtonSize.COMPACT)
-                    if (paneMenu) {
-                        KattyMenu(
-                            terminalMenu(
-                                context.actions.destinations,
-                                spec.colorScheme ?: "Default",
-                                TerminalMenuActions(
-                                    colorScheme = { context.actions.onColorScheme(spec.id) },
-                                    rename = { context.actions.onRename(spec.id) },
-                                    splitRight = { context.store.split(spec.id, SplitDirection.ROW) },
-                                    splitDown = { context.store.split(spec.id, SplitDirection.COLUMN) },
-                                    moveTo = { context.actions.onMove(spec.id, it) },
-                                    copyDirectory = { copyToClipboard(spec.directory) },
-                                    close = { context.actions.onClose(spec.id) },
-                                ),
-                            ),
-                            onDismiss = { paneMenu = false },
-                        )
+        var headerMenuAt by remember { mutableStateOf<IntOffset?>(null) }
+        val menuEntries = {
+            terminalMenu(
+                context.actions.destinations,
+                spec.colorScheme ?: "Default",
+                TerminalMenuActions(
+                    colorScheme = { context.actions.onColorScheme(spec.id) },
+                    rename = { context.actions.onRename(spec.id) },
+                    useProcessName = if (spec.name != null) ({ context.store.renameTerminal(spec.id, null) }) else null,
+                    splitRight = { context.store.split(spec.id, SplitDirection.ROW) },
+                    splitDown = { context.store.split(spec.id, SplitDirection.COLUMN) },
+                    moveTo = { context.actions.onMove(spec.id, it) },
+                    copyDirectory = { copyToClipboard(spec.directory) },
+                    close = { context.actions.onClose(spec.id) },
+                ),
+            )
+        }
+        Box {
+            PaneHeader(
+                title = title,
+                glyph = identity.agent.glyph(),
+                state = report?.state ?: AgentState.IDLE,
+                stateLabel = if (exitCode != null) "Exited" else null,
+                git = handle?.git?.collectAsState()?.value,
+                modifier = Modifier.onSecondaryClick { at ->
+                    context.store.focus(spec.id)
+                    headerMenuAt = IntOffset(at.x.toInt(), at.y.toInt())
+                },
+                renaming = context.actions.renaming == spec.id,
+                onRename = { context.actions.onRename(spec.id) },
+                onRenamed = { context.actions.onRenamed(spec.id, it) },
+                trailing = {
+                    if (floating) {
+                        KattyIconButton(KattyIcons.Restore, "Restore pane", { context.store.maximize(null) }, size = ButtonSize.COMPACT)
+                    } else {
+                        KattyIconButton(KattyIcons.Maximize, "Maximize pane", { context.store.maximize(spec.id) }, size = ButtonSize.COMPACT)
                     }
-                }
-            },
-        )
+                    Box {
+                        KattyIconButton(KattyIcons.Kebab, "Pane menu", { paneMenu = true }, size = ButtonSize.COMPACT)
+                        if (paneMenu) KattyMenu(menuEntries(), onDismiss = { paneMenu = false })
+                    }
+                },
+            )
+            headerMenuAt?.let { at -> KattyMenu(menuEntries(), onDismiss = { headerMenuAt = null }, offset = at) }
+        }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val session = handle?.session
             if (hollow) {
@@ -258,6 +273,7 @@ internal fun PaneHeader(
     /** What the state is called when it is not the usual word: a shell that ended is "Exited". */
     stateLabel: String? = null,
     renaming: Boolean = false,
+    onRename: () -> Unit = {},
     onRenamed: (String?) -> Unit = {},
     trailing: @Composable () -> Unit = {},
 ) {
@@ -274,7 +290,7 @@ internal fun PaneHeader(
             if (renaming) {
                 InlineRename(title, onRenamed, Modifier.widthIn(max = 200.dp))
             } else {
-                OneLine(title, Modifier.semantics { contentDescription = "Terminal $title" }, color = colors.text)
+                OneLine(title, Modifier.semantics { contentDescription = "Terminal $title" }.onDoubleClick(onRename), color = colors.text)
             }
             if (git != null) {
                 val description = if (git.kind == GitKind.WORKTREE) "Worktree" else if (git.kind == GitKind.DETACHED) "Commit" else "Branch"

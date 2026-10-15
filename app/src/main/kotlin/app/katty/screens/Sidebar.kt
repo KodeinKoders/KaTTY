@@ -61,6 +61,8 @@ import app.katty.ui.Icon
 import app.katty.ui.InlineRename
 import app.katty.ui.OneLine
 import app.katty.ui.SectionLabel
+import app.katty.ui.hoverHighlight
+import app.katty.ui.onDoubleClick
 import app.katty.ui.onSecondaryClick
 import org.jetbrains.jewel.ui.component.Text
 
@@ -96,8 +98,6 @@ fun Sidebar(
     usage: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
-    // The projects that the user folded: the selected project is open unless it was folded.
-    var folded by remember { mutableStateOf(emptySet<ProjectId>()) }
 
     Column(modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -108,27 +108,29 @@ fun Sidebar(
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             for (project in state.projects) {
                 val selected = project.id == state.selection.project
-                val open = selected && project.id !in folded
+                val open = project.open
                 ProjectRow(
                     project = project,
                     selected = selected,
                     open = open,
                     counts = states.counts(project),
                     renaming = renamingProject == project.id,
-                    onToggle = { folded = if (open) folded + project.id else folded - project.id },
+                    onToggle = { store.setProjectOpen(project.id, !open) },
+                    // A click opens a closed project, and selects it; on one that is open it closes it. The arrow does the same without selecting.
                     onSelect = {
-                        folded = folded - project.id
-                        store.selectProject(project.id)
+                        if (open) {
+                            store.setProjectOpen(project.id, false)
+                        } else {
+                            store.setProjectOpen(project.id, true)
+                            store.selectProject(project.id)
+                        }
                     },
                     onRename = { onRenamingProject(project.id) },
                     onRenamed = { name ->
                         onRenamingProject(null)
                         if (!name.isNullOrBlank()) store.renameProject(project.id, name)
                     },
-                    onNewWorkspace = {
-                        folded = folded - project.id
-                        onRenamingWorkspace(store.addWorkspace(project.id))
-                    },
+                    onNewWorkspace = { onRenamingWorkspace(store.addWorkspace(project.id)) },
                     onRemove = { onRemoveProject(project.id) },
                     onReveal = { onReveal(project.id) },
                 )
@@ -155,7 +157,7 @@ fun Sidebar(
                         )
                     }
                     Row(
-                        Modifier.fillMaxWidth().height(30.dp).padding(start = 22.dp).clip(RoundedCornerShape(5.dp))
+                        Modifier.fillMaxWidth().height(30.dp).padding(start = 22.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
                             .clickable(role = Role.Button) {
                                 onRenamingWorkspace(store.addWorkspace(project.id))
                             }
@@ -193,7 +195,7 @@ private fun ProjectRow(
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
     Box {
         Row(
-            Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
+            Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
                 .semantics { contentDescription = project.name; this.selected = selected }
                 .clickable(role = Role.Button, onClick = onSelect)
                 // F2 renames what has the focus, when it is in the sidebar: in a terminal it is the program's key.
@@ -206,11 +208,12 @@ private fun ProjectRow(
                     }
                 }
                 .onSecondaryClick { menuAt = IntOffset(it.x.toInt(), it.y.toInt()) }
+                .onDoubleClick { if (!renaming) onRename() }
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Box(Modifier.clickable(role = Role.Button, onClick = onToggle).padding(4.dp)) {
+            Box(Modifier.clickable(role = Role.Button, onClick = onToggle).semantics { contentDescription = if (open) "Close ${project.name}" else "Open ${project.name}" }.padding(4.dp)) {
                 Icon(if (open) KattyIcons.ChevronDown else KattyIcons.ChevronRight, colors.muted, size = 12.dp)
             }
             Icon(KattyIcons.Folder, colors.muted, size = 16.dp)
@@ -245,7 +248,7 @@ private fun WorkspaceRow(
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
     Box(Modifier.padding(start = 22.dp)) {
         Row(
-            Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
+            Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight(enabled = !selected)
                 .background(if (selected) colors.sel else androidx.compose.ui.graphics.Color.Transparent)
                 .semantics { contentDescription = workspace.name; this.selected = selected }
                 .clickable(role = Role.Tab, onClick = onSelect)
@@ -258,6 +261,7 @@ private fun WorkspaceRow(
                     }
                 }
                 .onSecondaryClick { menuAt = IntOffset(it.x.toInt(), it.y.toInt()) }
+                .onDoubleClick { if (!renaming) onRename() }
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),

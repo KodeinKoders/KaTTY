@@ -34,6 +34,9 @@ public enum class Agent(public val id: String, public val displayName: String, p
         }
 
         public fun byId(id: String): Agent? = entries.firstOrNull { it.id == id }
+
+        /** The agent whose program is called [process] (`claude`, `agy`…), `null` for any other program. */
+        public fun fromProcess(process: String?): Agent? = process?.let { name -> entries.firstOrNull { it.executable.equals(name, ignoreCase = true) } }
     }
 }
 

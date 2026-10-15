@@ -89,6 +89,25 @@ class TerminalMenusTest {
     }
 
     @Test
+    fun aTerminalWithANameOfItsOwnCanGoBackToTheNameOfItsProcess() {
+        val withName = TerminalMenuActions(
+            rename = {}, useProcessName = { calls += "revert" }, splitRight = {}, splitDown = {}, moveTo = {}, colorScheme = {}, copyDirectory = {}, close = {},
+        )
+
+        val entries = terminalMenu(emptyList(), "Default", withName)
+
+        // Right after Rename terminal.
+        assertEquals(listOf("Rename terminal", "Use process name", "---"), entries.labels().take(3))
+        entries.action("Use process name").onClick()
+        assertEquals(listOf("revert"), calls)
+    }
+
+    @Test
+    fun aTerminalWithoutOneHasNothingToGiveUp() {
+        assertFalse(terminalMenu(emptyList(), "Default", menuActions).labels().contains("Use process name"))
+    }
+
+    @Test
     fun theColorSchemeItemSaysWhatTheSchemeIsNow() {
         val item = terminalMenu(emptyList(), "Nord", menuActions).action("Color scheme")
 

@@ -34,6 +34,7 @@ import app.katty.core.ProjectId
 import app.katty.core.counts
 import app.katty.ui.Icon
 import app.katty.ui.Katty
+import app.katty.ui.hoverHighlight
 import app.katty.ui.KattyIcons
 import app.katty.ui.OneLine
 import app.katty.ui.SectionLabel
@@ -79,6 +80,7 @@ private fun FilterRow(label: String, selected: Boolean, onClick: () -> Unit, tra
     val colors = Katty.colors
     Row(
         Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
+            .hoverHighlight(enabled = !selected)
             .background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = label; this.selected = selected }
             .clickable(role = Role.RadioButton, onClick = onClick)
@@ -109,7 +111,7 @@ fun BoardTabs(state: KattyState, filter: ProjectId?, onFilter: (ProjectId?) -> U
 private fun BoardTab(label: String, selected: Boolean, onClick: () -> Unit, trailing: @Composable () -> Unit) {
     val colors = Katty.colors
     Row(
-        Modifier.height(TAB_BAR_HEIGHT).background(if (selected) colors.sel else Color.Transparent)
+        Modifier.height(TAB_BAR_HEIGHT).hoverHighlight(enabled = !selected).background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = label; this.selected = selected }
             .clickable(role = Role.Tab, onClick = onClick)
             .padding(horizontal = 14.dp),

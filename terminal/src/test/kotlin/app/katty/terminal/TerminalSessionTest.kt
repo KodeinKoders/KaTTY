@@ -1727,3 +1727,49 @@ class TerminalSessionTest {
         const val TIMEOUT_MS = 5_000L
     }
 }
+
+class ForegroundProcessTest {
+    private val sessions = mutableListOf<TerminalSession>()
+
+    @AfterTest
+    fun close() = sessions.forEach { it.close() }
+
+    private fun await(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 15_000_000_000
+        while (!condition() && System.nanoTime() < deadline) Thread.sleep(20)
+        assertTrue(condition(), what)
+    }
+
+    // An interactive zsh, with no startup files: it has job control, as the user's shell has.
+    private fun shell(): TerminalSession =
+        TerminalSession.start(80, 10, command = listOf("/bin/zsh", "-f", "-i"), shellIntegration = false).also { sessions += it }
+
+    @Test
+    fun isTheShellAtItsPrompt() {
+        val session = shell()
+
+        await("the name of the shell") { session.foregroundProcessName() == "zsh" }
+    }
+
+    @Test
+    fun isTheProgramThatTheShellRunsAndTheShellAgainWhenItEnds() {
+        val session = shell()
+        await("the shell") { session.foregroundProcessName() == "zsh" }
+
+        session.sendText("sleep 30\r")
+        await("sleep") { session.foregroundProcessName() == "sleep" }
+        // Control + C ends it.
+        session.sendText("\u0003")
+
+        await("the shell again") { session.foregroundProcessName() == "zsh" }
+    }
+
+    @Test
+    fun isNothingOnceTheProgramHasEnded() {
+        val session = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "exit 0"), shellIntegration = false).also { sessions += it }
+
+        await("the end") { session.exited.value != null }
+
+        assertEquals(null, session.foregroundProcessName())
+    }
+}

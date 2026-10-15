@@ -33,12 +33,14 @@ import app.katty.core.BoardColumn
 import app.katty.core.GitInfo
 import app.katty.core.GitKind
 import app.katty.core.TerminalId
+import app.katty.core.terminalIdentity
 import app.katty.core.relativeTime
 import app.katty.terminals.TerminalHandle
 import app.katty.ui.AgentTile
 import app.katty.ui.CountPill
 import app.katty.ui.Icon
 import app.katty.ui.Katty
+import app.katty.ui.hoverHighlight
 import app.katty.ui.KattyIcons
 import app.katty.ui.OneLine
 import app.katty.ui.StateGlyph
@@ -55,9 +57,8 @@ internal fun BoardCard.defaultNote(): String = when (info.state) {
     AgentState.DONE -> "Finished."
 }
 
-/** What a card calls its terminal: what the user named it, the agent that reports in it, or its shell. */
-internal fun BoardCard.title(shell: String): String =
-    terminal.name ?: info.report.takeIf { it.reporting }?.let { it.agent?.displayName ?: it.app } ?: shell
+/** What a card calls its terminal, and which agent's tile it has: as the pane does. */
+internal fun BoardCard.identity(process: String?, shell: String) = terminalIdentity(terminal.name, info.report, process, shell)
 
 /**
  * The board of the agents: a column for each state, and in it a card for each terminal, with what runs, where it is, since when it has been
@@ -133,9 +134,10 @@ private fun BoardHeader(column: BoardColumn, count: Int) {
 private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, onOpen: (TerminalId) -> Unit) {
     val colors = Katty.colors
     val git: GitInfo? = handle?.git?.collectAsState()?.value
-    val title = card.title(handle?.shellName ?: "shell")
+    val identity = card.identity(handle?.processName?.collectAsState()?.value, handle?.shellName ?: "shell")
+    val title = identity.title
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.panel).border(1.dp, colors.line, RoundedCornerShape(8.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.panel).hoverHighlight().border(1.dp, colors.line, RoundedCornerShape(8.dp))
             .semantics { contentDescription = "$title in ${card.project.name} / ${card.workspace.name}" }
             .clickable(role = Role.Button) { onOpen(card.terminal.id) }
             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -143,7 +145,7 @@ private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, onOpen: (T
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StateGlyph(card.info.state)
-            AgentTile(card.info.report.agent.glyph(), size = TileSize.HEADER)
+            AgentTile(identity.agent.glyph(), size = TileSize.HEADER)
             OneLine(title, Modifier.weight(1f), color = colors.text)
             Text(relativeTime(now, card.info.since), color = colors.muted, fontSize = 11.sp)
         }

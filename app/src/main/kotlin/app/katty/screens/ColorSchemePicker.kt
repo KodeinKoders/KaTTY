@@ -57,6 +57,7 @@ import app.katty.ui.ChoiceOption
 import app.katty.ui.DialogScrim
 import app.katty.ui.Icon
 import app.katty.ui.Katty
+import app.katty.ui.hoverHighlight
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import app.katty.ui.OneLine
@@ -169,6 +170,7 @@ private fun SchemeRow(entry: ITermColorSchemeInfo, selected: Boolean, onClick: (
     val colors = Katty.colors
     Row(
         Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(6.dp))
+            .hoverHighlight(enabled = !selected)
             .background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = entry.name; this.selected = selected }
             .clickable(role = Role.RadioButton, onClick = onClick)
@@ -190,6 +192,7 @@ private fun DefaultRow(defaultName: String, selected: Boolean, onClick: () -> Un
     val colors = Katty.colors
     Row(
         Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(6.dp))
+            .hoverHighlight(enabled = !selected)
             .background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = "Default"; this.selected = selected }
             .clickable(role = Role.RadioButton, onClick = onClick)

@@ -10,6 +10,8 @@ class WorkspaceChoice(val id: WorkspaceId, val label: String)
 /** What the menu of a terminal does. */
 class TerminalMenuActions(
     val rename: () -> Unit,
+    /** Goes back to calling the terminal after what runs in it; `null` for a terminal that has no name of its own. */
+    val useProcessName: (() -> Unit)? = null,
     val splitRight: () -> Unit,
     val splitDown: () -> Unit,
     val moveTo: (WorkspaceId) -> Unit,
@@ -26,6 +28,8 @@ class TerminalMenuActions(
  */
 fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, actions: TerminalMenuActions): List<MenuEntry> = menu {
     action("Rename terminal", onClick = actions.rename)
+    // Only a terminal that has a name of its own has one to give up.
+    actions.useProcessName?.let { revert -> action("Use process name", onClick = revert) }
     divider()
     action("Split right", "⌘D", onClick = actions.splitRight)
     action("Split down", "⌘⇧D", onClick = actions.splitDown)

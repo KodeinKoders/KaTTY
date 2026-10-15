@@ -53,6 +53,7 @@ import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
 import app.katty.core.attention
+import app.katty.core.terminalIdentity
 import app.katty.core.board
 import app.katty.core.closeTerminalDecision
 import app.katty.core.closeWorkspaceDecision
@@ -182,13 +183,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     val size = LocalWindowInfo.current.containerSize
     val vertical = settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
     val describe: (TerminalSpec) -> TerminalSummary = { spec ->
-        val report = infos[spec.id]?.report
-        TerminalSummary(
-            spec.id,
-            spec.name ?: report?.takeIf { it.reporting }?.let { it.agent?.displayName ?: it.app } ?: handles[spec.id]?.shellName ?: "shell",
-            report?.agent.glyph(),
-            stateOf(spec.id),
-        )
+        val identity = terminalIdentity(spec.name, infos[spec.id]?.report, handles[spec.id]?.processName?.value, handles[spec.id]?.shellName ?: "shell")
+        TerminalSummary(spec.id, identity.title, identity.agent.glyph(), stateOf(spec.id))
     }
 
     // The sessions follow the terminals of the store, and the ones that are not on the screen are paused.
@@ -224,6 +220,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     val openTerminal: (TerminalId) -> Unit = { id ->
         store.updateSettings { it.copy(view = MainView.TERMINALS) }
         store.focus(id)
+        // Where it is can be seen.
+        state.locate(id)?.project?.id?.let { store.setProjectOpen(it, true) }
         attentionOpen = false
         toast = null
     }

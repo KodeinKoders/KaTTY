@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -33,6 +34,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -54,6 +57,7 @@ import app.katty.core.PaletteMatch
 import app.katty.core.searchPalette
 import app.katty.ui.Icon
 import app.katty.ui.Katty
+import app.katty.ui.hoverHighlight
 import app.katty.ui.KattyIcons
 import app.katty.ui.KeyCap
 import app.katty.ui.OneLine
@@ -75,8 +79,10 @@ internal fun highlighted(label: String, indices: List<Int>, accent: Color): Anno
 fun PaletteButton(compact: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = Katty.colors
     Row(
-        modifier.widthIn(min = if (compact) 120.dp else 320.dp).height(28.dp).clip(RoundedCornerShape(6.dp)).background(colors.panel).border(1.dp, colors.line, RoundedCornerShape(6.dp))
+        modifier.width(if (compact) 140.dp else 280.dp).height(28.dp).clip(RoundedCornerShape(6.dp)).background(colors.panel).border(1.dp, colors.line, RoundedCornerShape(6.dp))
             .semantics { contentDescription = "Open command palette" }
+            // It looks like a text field, and the pointer says so, although a click opens the palette, which is where the text is typed.
+            .pointerHoverIcon(PointerIcon.Text)
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -170,7 +176,7 @@ private fun PaletteRow(match: PaletteMatch, selected: Boolean, onClick: () -> Un
     val colors = Katty.colors
     val entry = match.entry
     Row(
-        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(6.dp)).background(if (selected) colors.sel else Color.Transparent)
+        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(6.dp)).hoverHighlight(enabled = !selected).background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = "${entry.label} ${entry.context}".trim(); this.selected = selected }
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

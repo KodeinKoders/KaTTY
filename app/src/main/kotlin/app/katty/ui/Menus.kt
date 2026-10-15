@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
@@ -14,6 +17,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.input.InputMode
 import org.jetbrains.jewel.ui.component.MenuScope
 import org.jetbrains.jewel.ui.component.PopupMenu
 import org.jetbrains.jewel.ui.component.Text
@@ -68,15 +72,24 @@ fun menu(build: MenuBuilder.() -> Unit): List<MenuEntry> = MenuBuilder().apply(b
 
 /**
  * A popup menu of the entries, Jewel's: at [offset] from the top left of the place where it is composed, or under it when there is no
- * offset. It closes when something is chosen, or when the user clicks outside.
+ * offset. It closes when something is chosen, or when the user clicks outside. A [MenuSubmenu] is Jewel's own submenu, a popup that opens
+ * beside the item when the pointer is on it.
  */
 @Composable
 fun KattyMenu(entries: List<MenuEntry>, onDismiss: () -> Unit, offset: IntOffset? = null) {
-    val content: MenuScope.() -> Unit = { entries(entries, onDismiss) }
+    // Jewel keeps, for each menu, a controller that knows whether the pointer is over it, and makes a new one whenever the callback that it was
+    // given is a new object. A callback made at each drawing of the parent (and a pane's header is drawn often) made the menu forget, while a
+    // submenu was open, that a click was on it, so that the click closed everything instead of choosing the item. The callback is made once,
+    // and calls the latest one.
+    val latest by rememberUpdatedState(onDismiss)
+    val dismiss = remember { { _: InputMode -> latest(); true } }
+    val close = remember { { latest() } }
+    val content: MenuScope.() -> Unit = { entries(entries, close) }
     if (offset != null) {
-        PopupMenu(onDismissRequest = { onDismiss(); true }, popupPositionProvider = AtOffset(offset), content = content)
+        val position = remember(offset) { AtOffset(offset) }
+        PopupMenu(onDismissRequest = dismiss, popupPositionProvider = position, content = content)
     } else {
-        PopupMenu(onDismissRequest = { onDismiss(); true }, horizontalAlignment = Alignment.Start, content = content)
+        PopupMenu(onDismissRequest = dismiss, horizontalAlignment = Alignment.Start, content = content)
     }
 }
 

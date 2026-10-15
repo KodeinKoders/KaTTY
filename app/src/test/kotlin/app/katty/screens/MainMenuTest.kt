@@ -53,7 +53,7 @@ class MainMenuTest {
         onNodeWithText("FONT FAMILY").assertExists()
         onNodeWithText("Font ligatures").assertExists()
         onNodeWithText("Shows sequences like => and != as single glyphs.").assertExists()
-        onNodeWithText("12.5 px").assertExists()
+        onNodeWithText("14 px").assertExists()
     }
 
     @Test
@@ -76,11 +76,11 @@ class MainMenuTest {
 
         onNodeWithContentDescription("Increase font size").performClick()
         onNodeWithContentDescription("Increase font size").performClick()
-        assertEquals(13.5f, settings.fontSize)
+        assertEquals(15f, settings.fontSize)
         onNodeWithContentDescription("Decrease font size").performClick()
-        assertEquals(13f, settings.fontSize)
+        assertEquals(14.5f, settings.fontSize)
         waitForIdle()
-        onNodeWithText("13 px").assertExists()
+        onNodeWithText("14.5 px").assertExists()
     }
 
     @Test

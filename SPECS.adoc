@@ -77,7 +77,7 @@ Every project, workspace, terminal and split has an id that is made when it is c
 | Entity | Content
 
 | Project
-| An id, a name (the folder's name by default), the path of its folder, its workspaces in order.
+| An id, a name (the folder's name by default), the path of its folder, its workspaces in order, and whether it is open (listed with its workspaces in the sidebar).
 
 | Workspace
 | An id, a name, and a tree of panes.
@@ -86,7 +86,7 @@ Every project, workspace, terminal and split has an id that is made when it is c
 | An id, a direction (`ROW`: first side on the left; `COLUMN`: first side above), a ratio (the share of the first side), two sides.
 
 | Terminal
-| An id, a name (`null` for the default name), the directory its shell starts in, a color scheme (`null` for the default of the settings).
+| An id, a name (`null` for the automatic name, see <<terminal-title>>), the directory its shell starts in, a color scheme (`null` for the default of the settings).
 |===
 
 
@@ -130,7 +130,7 @@ After any change, the selection is made to point at something: a project, worksp
 | The bundled font, or a monospaced family of the system.
 
 | Font size
-| 12.5 px
+| 14 px
 | From 8 to 32 px, by steps of 0.5.
 
 | Font ligatures
@@ -178,7 +178,7 @@ Its workspaces and terminals are closed; its folder stays on the disk.
 The next project is selected, else the previous one.
 
 | New workspace
-| A workspace with one terminal in the project's folder, selected, named "workspace", else "workspace 2", "workspace 3"… (the lowest number that is free).
+| A workspace with one terminal in the project's folder, selected, named like the project when it has no workspace, else "workspace", "workspace 2", "workspace 3"… (the lowest number that is free).
 Its name opens for editing.
 
 | Rename a workspace
@@ -265,7 +265,7 @@ The header of a pane is 30 px high and holds, from left to right:
 
 . the glyph of its state;
 . the tile of its agent, or of a shell;
-. its title: the name the user gave it, else the agent's name while a program reports (or the program's own name for one that is not a known agent), else the shell's name (`zsh`);
+. its title (see <<terminal-title>>);
 . where it is in git, with an icon: the branch, the branch of a linked worktree (with the worktree icon), or the first 7 characters of a detached commit; nothing outside a repository;
 . the state in words (Idle, Working, Needs input, Done, Exited), "Needs input" bold and amber;
 . a button to maximize it, or to restore it when it is maximized;
@@ -277,6 +277,21 @@ The focused pane has a 2 px ring of the accent color; the others have a 1 px bor
 A click in a terminal, or anything that gives it the keyboard, focuses it.
 The focused terminal takes the keyboard, except while something else has it: a name being edited, a dialog, the color scheme picker, the palette.
 
+
+[#terminal-title]
+=== Title of a terminal
+
+A terminal is called, in this order:
+
+. the name the user gave it;
+. the agent that reports in it (OSC 7501): its name, or what the program calls itself when it is not a known agent;
+. the agent that runs in it, known by its program (`claude`, `codex`, `gemini`, `agy`, `copilot`): its name;
+. the program that runs in it, as the system names it: `emacs` while the user runs emacs;
+. the shell (`zsh`): what is left at the prompt, so the title goes back to it when the program quits.
+
+The program is the one that has the terminal in the system (the foreground process of its pty, read every 500 ms), so it needs a shell with job control, which every interactive shell has.
+The title is the same in the pane, the dialogs, the board and the palette, and an agent's tile follows it.
+A terminal that has a name of its own has "Use process name" after "Rename terminal" in its menu, which removes the name (as does renaming it to nothing).
 
 === Maximized terminal
 
@@ -417,7 +432,9 @@ The title bar is 40 px high and holds:
 * The project sidebar (272 px), on the left:
 ** PROJECTS, with a button to add a project;
 ** a row for each project: a chevron, a folder icon, its name, and its counts;
-** under the selected project (unless folded with its chevron): its folder (with `~` for the home), its workspaces (each with a dot for each terminal's state, in the order of the tree), and "New workspace";
+** under each project that is open: its folder (with `~` for the home), its workspaces (each with a dot for each terminal's state, in the order of the tree), and "New workspace"; any number of projects are open at once, and a new project is open;
+** a click on a closed project opens it and selects it, a click on an open project closes it, and the arrow at the left of a project does the same without selecting it;
+** a workspace that is added or selected opens its project; closing a project does not change the selection;
 ** the usage of the agents at its bottom;
 ** it scrolls when the list is long.
 * Folded, it is a rail (56 px): a 36 px tile for each project with two letters (the first letters of its first two words, `api-gateway` is `AG`) and a badge of its most urgent state, a dashed tile to add a project, and the usage as percentages at the bottom.
@@ -452,13 +469,15 @@ A project without a workspace shows "This project has no workspace." and a butto
 | Workspace (right click on a workspace row or tab)
 | Rename workspace F2, — , Close workspace ⌘⇧W (red).
 
-| Terminal (the "…" of a pane)
-| Rename terminal, — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces, named `project / workspace` when in another project; absent when there are none), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, — , Close terminal ⌘W (red).
+| Terminal (the "…" of a pane, or a right click anywhere on its header, which also focuses it)
+| Rename terminal, Use process name (only when the terminal has a name of its own), — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces, named `project / workspace` when in another project; absent when there are none), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, — , Close terminal ⌘W (red).
 
 | Context (right click in a terminal that did not ask for the mouse, or with Shift)
 | Copy ⌘C (only when something is selected), Paste ⌘V, Select all ⌘A, — , Find… ⌘F, Clear scrollback ⌘L, — , Split right ⌘D, Split down ⌘⇧D, — , Close terminal ⌘W (red).
 |===
 
+A double click on the name of a project, of a workspace (in the sidebar or the tabs) or of a terminal (in its header) starts renaming it too; the first click of it acts as a single click does (it selects).
+A submenu ("Move to workspace ›") is Jewel's own: a popup that opens beside its item when the pointer is on it.
 Renaming is done in place: the name becomes a field with its text selected; Enter or leaving the field keeps what was typed, Escape keeps the old name.
 F2 renames the project or the workspace that has the focus in the sidebar or the tabs; in a terminal, F2 is the program's key.
 
@@ -687,6 +706,10 @@ On other platforms ⌘ would be Ctrl; it would take keys from the shell, and is 
 | idle | `#7A7E8A` | `#8C909B` | Nothing.
 |===
 
+
+=== Hover
+
+Everything that can be clicked in a list (the rows of the sidebar and its "New workspace", the tabs, the tiles of the rail, the cards, the rows of the lists and of the palette) is filled with the hover color while the pointer is over it, except what is already filled because it is selected.
 
 === Sizes
 

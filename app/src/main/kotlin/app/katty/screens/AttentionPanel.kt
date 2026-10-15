@@ -40,6 +40,7 @@ import app.katty.ui.AgentTile
 import app.katty.ui.BelowEnd
 import app.katty.ui.Icon
 import app.katty.ui.Katty
+import app.katty.ui.hoverHighlight
 import app.katty.ui.KattyIcons
 import app.katty.ui.OneLine
 import app.katty.ui.SectionLabel
@@ -137,7 +138,7 @@ fun AttentionPopover(
 private fun AttentionRow(item: AttentionItem, now: Long, onClick: () -> Unit) {
     val colors = Katty.colors
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).semantics { contentDescription = "${item.title()} in ${item.project.name} / ${item.workspace.name}" }
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).hoverHighlight().semantics { contentDescription = "${item.title()} in ${item.project.name} / ${item.workspace.name}" }
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {

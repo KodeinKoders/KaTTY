@@ -37,6 +37,7 @@ class StateFileTest {
         store.renameTerminal(first, "claude")
         store.setColorScheme(second, "Nord")
         store.addWorkspace(project, "release-notes")
+        store.setProjectOpen(project, false)
         store.updateSettings { it.copy(theme = ThemeMode.DARK, layout = LayoutMode.VERTICAL, fontSize = 14f, ligatures = false, view = MainView.BOARD) }
         return store.state.value
     }

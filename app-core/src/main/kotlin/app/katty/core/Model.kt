@@ -30,6 +30,8 @@ public data class Project(
     val name: String,
     val directory: String,
     val workspaces: List<Workspace> = emptyList(),
+    /** Whether its workspaces are listed in the sidebar. Any number of projects are open at once. */
+    val open: Boolean = true,
 )
 
 /**

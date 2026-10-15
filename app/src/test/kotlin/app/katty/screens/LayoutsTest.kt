@@ -5,12 +5,15 @@ package app.katty.screens
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.AgentState
 import app.katty.core.AgentStates
@@ -98,6 +101,32 @@ class LayoutsTest {
         onNodeWithContentDescription("Split down").performClick()
         waitForIdle()
         assertEquals(3, state.selectedWorkspace!!.layout.terminals().size)
+    }
+
+    @Test
+    fun doubleClickingATabRenamesIt() = runComposeUiTest {
+        populate()
+        var renamed: String? = null
+        setContent {
+            KattyTheme(false) {
+                val current by store.state.collectAsState()
+                var projectRenaming by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<app.katty.core.ProjectId?>(null) }
+                var workspaceRenaming by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<app.katty.core.WorkspaceId?>(null) }
+                Column {
+                    ProjectTabs(current, store, onAddProject = {}, onRemoveProject = {}, onReveal = {}, renamingProject = projectRenaming, onRenamingProject = { projectRenaming = it; renamed = "project ${it?.value}" }, onNewWorkspace = {})
+                    WorkspaceTabs(
+                        current.selectedProject, current.selection.workspace, current.selection.terminal, store,
+                        renamingWorkspace = workspaceRenaming, onRenamingWorkspace = { workspaceRenaming = it; renamed = "workspace ${it?.value}" },
+                        onCloseWorkspace = {}, onNewWorkspace = {},
+                    )
+                }
+            }
+        }
+
+        onNodeWithContentDescription("rate-limiter").performMouseInput { doubleClick() }
+        assertEquals("workspace ${state.selectedProject!!.workspaces.last().id.value}", renamed)
+        onNodeWithContentDescription("web-client").performMouseInput { doubleClick() }
+        assertEquals("project ${state.projects.first().id.value}", renamed)
     }
 
     @Test

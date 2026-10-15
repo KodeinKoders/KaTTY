@@ -47,6 +47,74 @@ class KattyStoreTest {
     }
 
     @Test
+    fun aNewProjectIsOpen() {
+        addProject("/a")
+        addProject("/b")
+
+        assertEquals(listOf(true, true), state.projects.map { it.open })
+    }
+
+    @Test
+    fun anyNumberOfProjectsAreOpenAtOnce() {
+        val a = addProject("/a")
+        val b = addProject("/b")
+        val c = addProject("/c")
+
+        store.setProjectOpen(b, false)
+
+        assertEquals(mapOf(a to true, b to false, c to true), state.projects.associate { it.id to it.open })
+        store.setProjectOpen(b, true)
+        assertEquals(listOf(true, true, true), state.projects.map { it.open })
+    }
+
+    @Test
+    fun closingAProjectDoesNotMoveTheSelection() {
+        val a = addProject("/a")
+        val selection = state.selection
+
+        store.setProjectOpen(a, false)
+
+        assertEquals(selection, state.selection)
+    }
+
+    @Test
+    fun theFirstWorkspaceOfAProjectWithNoneIsNamedLikeTheProject() {
+        val a = addProject("/code/alpha")
+        store.closeWorkspace(state.selection.workspace!!)
+
+        store.addWorkspace(a)
+        store.addWorkspace(a)
+
+        assertEquals(listOf("alpha", "workspace"), state.projects.single().workspaces.map { it.name })
+    }
+
+    @Test
+    fun aWorkspaceThatIsAddedOrSelectedOpensItsProject() {
+        val a = addProject("/a")
+        val first = state.selection.workspace!!
+        store.setProjectOpen(a, false)
+
+        val second = store.addWorkspace(a)!!
+        assertTrue(state.projects.single().open)
+
+        store.setProjectOpen(a, false)
+        store.selectWorkspace(first)
+        assertTrue(state.projects.single().open)
+        assertEquals(second, state.projects.single().workspaces.last().id)
+    }
+
+    @Test
+    fun focusingATerminalDoesNotOpenAProjectThatTheUserClosed() {
+        val a = addProject("/a")
+        val terminal = state.selection.terminal!!
+        store.setProjectOpen(a, false)
+
+        store.focus(terminal)
+
+        assertFalse(state.projects.single().open)
+    }
+
+    @Test
     fun renamingAProjectNeedsAName() {
         val id = addProject()
 

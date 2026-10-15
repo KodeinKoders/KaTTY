@@ -6,10 +6,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.rightClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.input.key.Key
@@ -36,7 +40,8 @@ class WorkspaceAreaTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val registry = SessionRegistry(
         store, scope, loadTheme = { null },
-        start = { spec, _ -> TerminalSession.start(80, 10, command = listOf("/bin/sh", "-c", "sleep 60"), directory = spec.directory) },
+        // An interactive zsh with no startup files: what a user has, so that its name is the terminal's.
+        start = { spec, _ -> TerminalSession.start(80, 10, command = listOf("/bin/zsh", "-f", "-i"), directory = spec.directory, shellIntegration = false) },
     )
 
     @AfterTest
@@ -115,6 +120,21 @@ class WorkspaceAreaTest {
     }
 
     @Test
+    fun doubleClickingTheNameOfATerminalRenamesIt() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+
+        onNodeWithContentDescription("Terminal zsh").performMouseInput { doubleClick() }
+        waitForIdle()
+        onNodeWithText("zsh").performTextInput("build")
+        onNodeWithText("build").performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+
+        assertEquals("build", store.state.value.locate(terminal)!!.terminal.name)
+    }
+
+    @Test
     fun aTerminalThatTheUserNamedKeepsItsNameWhateverRuns() = runComposeUiTest {
         store.addProject("/tmp")
         val terminal = store.state.value.selection.terminal!!
@@ -142,6 +162,75 @@ class WorkspaceAreaTest {
         onNodeWithText("Close terminal").performClick()
         waitForIdle()
         assertEquals(listOf(terminal), closed)
+    }
+
+    @Test
+    fun aRightClickOnTheHeaderOpensTheMenuOfTheTerminalAndFocusesIt() = runComposeUiTest {
+        store.addProject("/tmp")
+        val first = store.state.value.selection.terminal!!
+        val second = store.split(first, SplitDirection.ROW)!!
+        show()
+        assertEquals(second, store.state.value.selection.terminal)
+
+        // On the title of the first pane, which is not the focused one.
+        onAllNodesWithContentDescription("Terminal zsh")[0].performMouseInput { rightClick() }
+        waitForIdle()
+
+        onNodeWithText("Rename terminal").assertExists()
+        onNodeWithText("Split right").assertExists()
+        onNodeWithText("Close terminal").assertExists()
+        assertEquals(first, store.state.value.selection.terminal)
+    }
+
+    @Test
+    fun aTerminalIsCalledAfterTheProgramThatRunsInItUntilItEnds() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+        onNodeWithContentDescription("Terminal zsh").assertExists()
+
+        registry.handles.value.getValue(terminal).session!!.sendText("sleep 30\r")
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Terminal sleep").fetchSemanticsNodes().isNotEmpty() }
+        registry.handles.value.getValue(terminal).session!!.sendText("\u0003")
+
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Terminal zsh").fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun aNameThatTheUserGaveStaysWhateverRuns() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        store.renameTerminal(terminal, "build")
+        show()
+
+        registry.handles.value.getValue(terminal).session!!.sendText("sleep 30\r")
+        waitUntil(timeoutMillis = 15_000) { registry.handles.value.getValue(terminal).processName.value == "sleep" }
+        waitForIdle()
+
+        onNodeWithContentDescription("Terminal build").assertExists()
+        registry.handles.value.getValue(terminal).session!!.sendText("\u0003")
+    }
+
+    @Test
+    fun theMenuOffersToGoBackToTheProcessNameOnlyForATerminalThatHasANameOfItsOwn() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+
+        onNodeWithContentDescription("Pane menu").performClick()
+        assertEquals(0, onAllNodesWithText("Use process name").fetchSemanticsNodes().size)
+        onNodeWithText("Rename terminal").assertExists()
+        onNodeWithText("Split right").performClick()
+        waitForIdle()
+        store.renameTerminal(terminal, "build")
+        waitForIdle()
+
+        onAllNodesWithContentDescription("Pane menu")[0].performClick()
+        onNodeWithText("Use process name").performClick()
+        waitForIdle()
+
+        assertEquals(null, store.state.value.locate(terminal)!!.terminal.name)
+        onAllNodesWithContentDescription("Terminal zsh")[0].assertExists()
     }
 
     @Test

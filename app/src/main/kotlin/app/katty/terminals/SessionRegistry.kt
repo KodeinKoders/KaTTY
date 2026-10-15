@@ -15,7 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -48,6 +50,11 @@ class TerminalHandle(
     val focus: FocusRequester = FocusRequester()
 
     internal val gitState = MutableStateFlow<GitInfo?>(null)
+
+    internal val processState = MutableStateFlow<String?>(null)
+
+    /** The program that has the terminal now (`emacs`, or the shell's own name at its prompt), `null` when it is not known. */
+    val processName: StateFlow<String?> get() = processState
 
     /** The branch, worktree or commit that the shell is in, `null` when it is not in a repository. */
     val git: StateFlow<GitInfo?> get() = gitState
@@ -150,6 +157,13 @@ class SessionRegistry(
         // Where the shell goes is where it starts the next time, and what repository it is in is read again then, and when a command ends.
         followers[spec.id] = scope.launch {
             launch { session.workingDirectory.filterNotNull().collect { store.setDirectory(spec.id, it) } }
+            // What runs in the terminal is its name: asked often, since it takes two system calls and a shell tells nothing when a program ends.
+            launch {
+                while (isActive) {
+                    handle.processState.value = session.foregroundProcessName()
+                    delay(PROCESS_POLL_MS)
+                }
+            }
             // What the shell wrote stays on the screen, and says that it is over.
             launch {
                 session.exited.filterNotNull().first()
@@ -173,6 +187,9 @@ class SessionRegistry(
 }
 
 // What the shell is called, as its program is: the one that the user's login shell is.
+/** How often the program that has a terminal is asked for. */
+private const val PROCESS_POLL_MS = 500L
+
 private fun shellName(): String = File(System.getenv("SHELL") ?: "/bin/zsh").name.ifEmpty { "shell" }
 
 /**

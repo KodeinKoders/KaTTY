@@ -14,7 +14,14 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.moveTo
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.graphics.toPixelMap
+import kotlin.test.assertTrue
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runComposeUiTest
@@ -58,7 +65,7 @@ class SidebarTest {
     }
 
     @Test
-    fun listsTheProjectsAndTheWorkspacesOfTheSelectedOne() = runComposeUiTest {
+    fun listsTheWorkspacesOfEveryProjectThatIsOpen() = runComposeUiTest {
         plainProject("/dev/api-gateway")
         plainProject("/dev/web-client")
         store.addWorkspace(store.state.value.projects.last().id, "checkout-form")
@@ -66,22 +73,96 @@ class SidebarTest {
 
         onNodeWithContentDescription("web-client").assertIsSelected()
         onNodeWithContentDescription("checkout-form").assertIsSelected()
-        onNodeWithContentDescription("workspace").assertExists()
-        // The other project is folded: its workspace is not listed.
         onNodeWithContentDescription("api-gateway").assertExists()
-        assertEquals(1, onAllNodesWithContentDescription("workspace").fetchSemanticsNodes().size)
+        // The workspace of the other project is listed too: both are open.
+        assertEquals(2, onAllNodesWithContentDescription("workspace").fetchSemanticsNodes().size)
     }
 
     @Test
-    fun clickingAProjectSelectsItAndOpensIt() = runComposeUiTest {
+    fun aClosedProjectDoesNotListItsWorkspaces() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
+        val web = plainProject("/dev/web-client")
+        store.setProjectOpen(web, false)
+        setContent { Content() }
+
+        assertEquals(1, onAllNodesWithContentDescription("workspace").fetchSemanticsNodes().size)
+        onNodeWithContentDescription("Open web-client").assertExists()
+        onNodeWithContentDescription("Close api-gateway").assertExists()
+    }
+
+    @Test
+    fun clickingAClosedProjectOpensItAndSelectsIt() = runComposeUiTest {
         val first = plainProject("/dev/api-gateway")
+        store.setProjectOpen(first, false)
         plainProject("/dev/web-client")
         setContent { Content() }
 
         onNodeWithContentDescription("api-gateway").performClick()
+        waitForIdle()
 
+        assertTrue(store.state.value.projects.first().open)
         assertEquals(first, store.state.value.selection.project)
-        onNodeWithContentDescription("api-gateway").assertIsSelected()
+        onNodeWithContentDescription("Close api-gateway").assertExists()
+    }
+
+    @Test
+    fun clickingAnOpenProjectClosesIt() = runComposeUiTest {
+        val first = plainProject("/dev/api-gateway")
+        val web = plainProject("/dev/web-client")
+        setContent { Content() }
+
+        onNodeWithContentDescription("api-gateway").performClick()
+        waitForIdle()
+
+        assertEquals(listOf(false, true), store.state.value.projects.map { it.open })
+        // Closing it does not select it, nor move the selection.
+        assertEquals(web, store.state.value.selection.project)
+        assertTrue(first != store.state.value.selection.project)
+        onNodeWithContentDescription("Open api-gateway").assertExists()
+    }
+
+    @Test
+    fun clickingTheSelectedProjectClosesItAndTheSelectionStays() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
+        val web = plainProject("/dev/web-client")
+        val workspace = store.state.value.selection.workspace
+        setContent { Content() }
+
+        onNodeWithContentDescription("web-client").performClick()
+        waitForIdle()
+
+        assertEquals(listOf(true, false), store.state.value.projects.map { it.open })
+        assertEquals(web, store.state.value.selection.project)
+        assertEquals(workspace, store.state.value.selection.workspace)
+    }
+
+    @Test
+    fun theArrowOfAnOpenProjectClosesItWithoutSelectingIt() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
+        val web = plainProject("/dev/web-client")
+        setContent { Content() }
+
+        onNodeWithContentDescription("Close api-gateway").performClick()
+        waitForIdle()
+
+        assertEquals(listOf(false, true), store.state.value.projects.map { it.open })
+        assertEquals(web, store.state.value.selection.project)
+        onNodeWithContentDescription("Open api-gateway").assertExists()
+    }
+
+    @Test
+    fun theArrowOfAClosedProjectOpensIt() = runComposeUiTest {
+        val first = plainProject("/dev/api-gateway")
+        plainProject("/dev/web-client")
+        store.setProjectOpen(first, false)
+        setContent { Content() }
+
+        onNodeWithContentDescription("Open api-gateway").performClick()
+        waitForIdle()
+
+        assertEquals(listOf(true, true), store.state.value.projects.map { it.open })
+        // Opening is not selecting: the arrow only shows or hides.
+        assertTrue(first != store.state.value.selection.project)
     }
 
     @Test
@@ -140,6 +221,101 @@ class SidebarTest {
         waitForIdle()
 
         assertEquals("gateway", store.state.value.projects.single().name)
+    }
+
+    @Test
+    fun theRowsThatCanBeClickedChangeWhenThePointerIsOverThem() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
+        setContent { Content() }
+
+        // The row around the text: its fill is what changes, so the whole row is looked at.
+        val before = onNodeWithText("New workspace").fetchSemanticsNode().boundsInRoot
+        val rowBefore = onRoot().captureToImage().toPixelMap()
+        onNodeWithText("New workspace").performMouseInput { moveTo(center) }
+        waitForIdle()
+        val rowAfter = onRoot().captureToImage().toPixelMap()
+
+        var differs = false
+        for (x in before.left.toInt() until before.right.toInt() step 2) for (y in before.top.toInt() until before.bottom.toInt() step 2) {
+            if (rowBefore[x, y] != rowAfter[x, y]) differs = true
+        }
+        assertTrue(differs, "The row did not change under the pointer")
+    }
+
+    @Test
+    fun theSelectedProjectChangesUnderThePointerToo() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
+        setContent { Content() }
+        // Its row has no fill of its own when it is selected (the workspace is what is highlighted), so the hover is what shows.
+        val bounds = onNodeWithContentDescription("api-gateway").fetchSemanticsNode().boundsInRoot
+        val before = onRoot().captureToImage().toPixelMap()
+
+        onNodeWithContentDescription("api-gateway").performMouseInput { moveTo(center) }
+        waitForIdle()
+        val after = onRoot().captureToImage().toPixelMap()
+
+        var differs = false
+        for (x in bounds.left.toInt() until bounds.right.toInt() step 2) for (y in bounds.top.toInt() until bounds.bottom.toInt() step 2) {
+            if (before[x, y] != after[x, y]) differs = true
+        }
+        assertTrue(differs, "The selected project did not change under the pointer")
+    }
+
+    @Test
+    fun doubleClickingAProjectNameRenamesIt() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
+        setContent { Content() }
+
+        onNodeWithContentDescription("api-gateway").performMouseInput { doubleClick() }
+        waitForIdle()
+        onNodeWithText("api-gateway").performTextInput("gateway")
+        onNodeWithText("gateway").performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+
+        assertEquals("gateway", store.state.value.projects.single().name)
+    }
+
+    @Test
+    fun doubleClickingAWorkspaceNameRenamesIt() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
+        setContent { Content() }
+
+        onNodeWithContentDescription("workspace").performMouseInput { doubleClick() }
+        waitForIdle()
+        onNodeWithText("workspace").performTextInput("refactor-auth")
+        onNodeWithText("refactor-auth").performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+
+        assertEquals("refactor-auth", store.state.value.projects.single().workspaces.single().name)
+    }
+
+    @Test
+    fun aSingleClickOnlySelectsAndDoesNotRename() = runComposeUiTest {
+        val project = plainProject("/dev/api-gateway")
+        store.addWorkspace(project, "release-notes")
+        setContent { Content() }
+
+        onNodeWithContentDescription("workspace").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("release-notes").performClick()
+        waitForIdle()
+
+        assertEquals("release-notes", store.state.value.selectedWorkspace!!.name)
+        // No field is open: the names are still text, and typing finds no field.
+        assertEquals(0, onAllNodes(androidx.compose.ui.test.hasSetTextAction()).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun twoClicksFarApartAreNotADoubleClick() = runComposeUiTest {
+        val project = plainProject("/dev/api-gateway")
+        store.addWorkspace(project, "release-notes")
+        setContent { Content() }
+
+        onNodeWithContentDescription("workspace").performClick()
+        onNodeWithContentDescription("release-notes").performClick()
+        waitForIdle()
+
+        assertEquals(0, onAllNodes(androidx.compose.ui.test.hasSetTextAction()).fetchSemanticsNodes().size)
     }
 
     @Test

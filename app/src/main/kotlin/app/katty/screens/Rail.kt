@@ -62,6 +62,7 @@ import app.katty.core.urgent
 import app.katty.ui.GlyphSize
 import app.katty.ui.Icon
 import app.katty.ui.Katty
+import app.katty.ui.hoverHighlight
 import app.katty.ui.KattyIcons
 import app.katty.ui.OneLine
 import app.katty.ui.StateCount
@@ -121,6 +122,7 @@ private fun RailTile(project: Project, selected: Boolean, urgent: AgentState, on
         Box(
             Modifier.size(TILE_SIZE).clip(RoundedCornerShape(8.dp))
                 .background(if (selected) colors.sel else colors.hover)
+                .hoverHighlight(enabled = !selected, color = colors.line)
                 .semantics { contentDescription = project.name; this.selected = selected }
                 .clickable(role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center,
@@ -138,7 +140,7 @@ private fun RailTile(project: Project, selected: Boolean, urgent: AgentState, on
 private fun AddTile(onClick: () -> Unit) {
     val colors = Katty.colors
     Box(
-        Modifier.size(TILE_SIZE).clip(RoundedCornerShape(8.dp))
+        Modifier.size(TILE_SIZE).clip(RoundedCornerShape(8.dp)).hoverHighlight()
             .semantics { contentDescription = "Add project" }
             .clickable(role = Role.Button, onClick = onClick)
             .drawBehind {
@@ -182,6 +184,7 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
                 val selected = workspace.id == state.selection.workspace
                 Row(
                     Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
+                        .hoverHighlight(enabled = !selected)
                         .background(if (selected) colors.sel else Color.Transparent)
                         .semantics { contentDescription = workspace.name; this.selected = selected }
                         .clickable(role = Role.Tab) {
@@ -197,7 +200,7 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
                 }
             }
             Row(
-                Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
+                Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
                     .clickable(role = Role.Button) {
                         store.addWorkspace(project.id)
                         onDismiss()

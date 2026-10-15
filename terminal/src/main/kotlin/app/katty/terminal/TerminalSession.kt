@@ -990,6 +990,17 @@ public class TerminalSession private constructor(
         outputStart?.let { terminal.commandOutput(it, unwrap) }
     }
 
+    /**
+     * The name of the program that has the terminal now: `emacs` while the user runs it, and the shell's own (`zsh`) at its prompt. It is what
+     * the shell is waiting for, read from the pty, so it needs a shell with job control, which every interactive one has. `null` when it cannot
+     * be known, and once the program has ended. It costs two system calls: ask as often as a name on the screen needs.
+     */
+    public fun foregroundProcessName(): String? {
+        if (closed.get() || exitCode.value != null) return null
+        val fd = (process as? UnixPtyProcess)?.pty?.masterFD ?: return null
+        return app.katty.terminal.foregroundProcessName(fd)
+    }
+
     /** The text that is selected, for the caller to copy, or `null` when nothing is. */
     public fun selectedText(): String? = lock.withLock {
         if (closed.get()) null else terminal.selectedText()?.takeIf { it.isNotEmpty() }

@@ -55,6 +55,8 @@ import app.katty.ui.KattyMenu
 import app.katty.ui.OneLine
 import app.katty.ui.StateCount
 import app.katty.ui.StateGlyph
+import app.katty.ui.hoverHighlight
+import app.katty.ui.onDoubleClick
 import app.katty.ui.onSecondaryClick
 import org.jetbrains.jewel.ui.component.Text
 
@@ -118,6 +120,7 @@ private fun ProjectTab(
     Box {
         Row(
             Modifier.height(TAB_BAR_HEIGHT)
+                .hoverHighlight(enabled = !selected)
                 .background(if (selected) colors.sel else Color.Transparent)
                 .semantics { contentDescription = project.name; this.selected = selected }
                 .clickable(role = Role.Tab, onClick = onSelect)
@@ -130,6 +133,7 @@ private fun ProjectTab(
                     }
                 }
                 .onSecondaryClick { menuAt = IntOffset(it.x.toInt(), it.y.toInt()) }
+                .onDoubleClick { if (!renaming) onRename() }
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -201,6 +205,7 @@ private fun WorkspaceTab(
     Box {
         Row(
             Modifier.height(TAB_BAR_HEIGHT)
+                .hoverHighlight(enabled = !selected)
                 .semantics { contentDescription = workspace.name; this.selected = selected }
                 .clickable(role = Role.Tab, onClick = onSelect)
                 .onKeyEvent { event ->
@@ -212,6 +217,7 @@ private fun WorkspaceTab(
                     }
                 }
                 .onSecondaryClick { menuAt = IntOffset(it.x.toInt(), it.y.toInt()) }
+                .onDoubleClick { if (!renaming) onRename() }
                 // The selected tab has a line of the accent color under it, 2 px thick.
                 .drawBehind {
                     if (selected) {

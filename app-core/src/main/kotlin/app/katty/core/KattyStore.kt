@@ -80,20 +80,26 @@ public class KattyStore(
         }
     }
 
+    /** Opens or closes the project in the sidebar: closed, its workspaces are not listed. Nothing else changes. */
+    public fun setProjectOpen(id: ProjectId, open: Boolean) {
+        edit { state -> state.copy(projects = state.projects.map { if (it.id == id && it.open != open) it.copy(open = open) else it }) }
+    }
+
     // ----- Workspaces
 
     /**
      * Adds a workspace to [project], with one shell in the project's folder, and selects it.
      *
-     * @param name Its name: "workspace", "workspace 2"… by default.
+     * @param name Its name: the project's when it has no workspace, else "workspace", "workspace 2"… by default.
      * @return The workspace, or `null` if there is no such project.
      */
     public fun addWorkspace(project: ProjectId, name: String? = null): WorkspaceId? {
         val target = flow.value.projects.firstOrNull { it.id == project } ?: return null
-        val workspace = Workspace(WorkspaceId(newId()), name?.takeIf { it.isNotBlank() } ?: workspaceName(target.workspaces), PaneNode.Leaf(newTerminal(target.directory)))
+        val workspace = Workspace(WorkspaceId(newId()), name?.takeIf { it.isNotBlank() } ?: if (target.workspaces.isEmpty()) target.name else workspaceName(target.workspaces), PaneNode.Leaf(newTerminal(target.directory)))
         edit { state ->
             state.copy(
-                projects = state.projects.map { if (it.id == project) it.copy(workspaces = it.workspaces + workspace) else it },
+                // The project is open: the workspace that was just made has to be seen.
+                projects = state.projects.map { if (it.id == project) it.copy(workspaces = it.workspaces + workspace, open = true) else it },
                 selection = Selection(project, workspace.id, workspace.layout.terminals().first().id),
             )
         }
@@ -227,7 +233,11 @@ public class KattyStore(
             val project = state.projects.firstOrNull { p -> p.workspaces.any { it.id == id } } ?: return@edit state
             if (state.selection.workspace == id) return@edit state
             val workspace = project.workspaces.first { it.id == id }
-            state.copy(selection = Selection(project.id, id, workspace.layout.terminals().first().id))
+            // Its project is open, since the workspace that is selected is one that can be seen.
+            state.copy(
+                projects = state.projects.map { if (it.id == project.id) it.copy(open = true) else it },
+                selection = Selection(project.id, id, workspace.layout.terminals().first().id),
+            )
         }
     }
 
