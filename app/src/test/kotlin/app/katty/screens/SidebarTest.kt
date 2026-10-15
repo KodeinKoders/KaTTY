@@ -35,12 +35,15 @@ class SidebarTest {
         KattyTheme(dark = false) {
             val state by store.state.collectAsState()
             var renaming by remember { mutableStateOf<WorkspaceId?>(null) }
+            var renamingProject by remember { mutableStateOf<app.katty.core.ProjectId?>(null) }
             Sidebar(
                 state, store,
                 onAddProject = onAddProject,
                 onRemoveProject = { removed += it.value },
                 onCloseWorkspace = store::closeWorkspace,
                 onReveal = {},
+                renamingProject = renamingProject,
+                onRenamingProject = { renamingProject = it },
                 renamingWorkspace = renaming,
                 onRenamingWorkspace = { renaming = it },
             )

@@ -20,10 +20,15 @@ import org.jetbrains.jewel.window.TitleBarScope
  * What is in the title bar: the sidebar's toggle, and where the user is, as `project / workspace`.
  */
 @Composable
-fun TitleBarScope.TitleBarContent(state: KattyState, onToggleSidebar: () -> Unit, trailing: @Composable () -> Unit = {}) {
+fun TitleBarScope.TitleBarContent(
+    state: KattyState,
+    onToggleSidebar: () -> Unit,
+    showSidebarToggle: Boolean = true,
+    trailing: @Composable () -> Unit = {},
+) {
     val colors = Katty.colors
     Row(Modifier.align(Alignment.Start).padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        KattyIconButton(KattyIcons.SidebarToggle, "Toggle project sidebar", onToggleSidebar)
+        if (showSidebarToggle) KattyIconButton(KattyIcons.SidebarToggle, "Toggle project sidebar", onToggleSidebar)
         val project = state.selectedProject
         if (project == null) {
             Text("KaTTY", color = colors.text, fontWeight = FontWeight.SemiBold)

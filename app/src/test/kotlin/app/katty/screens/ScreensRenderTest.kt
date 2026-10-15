@@ -28,7 +28,7 @@ class ScreensRenderTest {
     @Composable
     private fun SidebarOf(store: KattyStore) {
         val state by store.state.collectAsState()
-        Sidebar(state, store, onAddProject = {}, onRemoveProject = {}, onCloseWorkspace = {}, onReveal = {}, renamingWorkspace = null, onRenamingWorkspace = {}, modifier = Modifier)
+        Sidebar(state, store, onAddProject = {}, onRemoveProject = {}, onCloseWorkspace = {}, onReveal = {}, renamingProject = null, onRenamingProject = {}, renamingWorkspace = null, onRenamingWorkspace = {}, modifier = Modifier)
     }
 
     @Test

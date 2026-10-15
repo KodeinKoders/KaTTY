@@ -38,14 +38,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.katty.core.AgentState
+import app.katty.core.AgentStates
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
+import app.katty.core.NoAgentStates
 import app.katty.core.Project
 import app.katty.core.ProjectId
 import app.katty.core.Workspace
 import app.katty.core.WorkspaceId
+import app.katty.core.counts
+import app.katty.core.strip
 import app.katty.ui.ButtonSize
+import app.katty.ui.GlyphSize
 import app.katty.ui.Katty
+import app.katty.ui.StateCount
+import app.katty.ui.StateGlyph
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import app.katty.ui.KattyMenu
@@ -53,7 +61,6 @@ import app.katty.ui.Icon
 import app.katty.ui.InlineRename
 import app.katty.ui.OneLine
 import app.katty.ui.SectionLabel
-import app.katty.ui.menu
 import app.katty.ui.onSecondaryClick
 import org.jetbrains.jewel.ui.component.Text
 
@@ -69,6 +76,7 @@ val SIDEBAR_WIDTH = 272.dp
  * @param onReveal Shows a project's folder in the file manager.
  * @param renamingWorkspace The workspace whose name is being edited, which a new one is as soon as it exists; the window keeps it so
  * that the shortcut for a new workspace can start it too.
+ * @param states What each terminal is doing: a project is shown with how many are in each state, and a workspace with the state of each.
  * @param usage What is at the bottom of the sidebar.
  */
 @Composable
@@ -79,14 +87,16 @@ fun Sidebar(
     onRemoveProject: (ProjectId) -> Unit,
     onCloseWorkspace: (WorkspaceId) -> Unit,
     onReveal: (ProjectId) -> Unit,
+    renamingProject: ProjectId?,
+    onRenamingProject: (ProjectId?) -> Unit,
     renamingWorkspace: WorkspaceId?,
     onRenamingWorkspace: (WorkspaceId?) -> Unit,
     modifier: Modifier = Modifier,
+    states: AgentStates = NoAgentStates,
     usage: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
-    // What is being renamed, and the projects that the user folded: the selected project is open unless it was folded.
-    var renamingProject by remember { mutableStateOf<ProjectId?>(null) }
+    // The projects that the user folded: the selected project is open unless it was folded.
     var folded by remember { mutableStateOf(emptySet<ProjectId>()) }
 
     Column(modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
@@ -103,15 +113,16 @@ fun Sidebar(
                     project = project,
                     selected = selected,
                     open = open,
+                    counts = states.counts(project),
                     renaming = renamingProject == project.id,
                     onToggle = { folded = if (open) folded + project.id else folded - project.id },
                     onSelect = {
                         folded = folded - project.id
                         store.selectProject(project.id)
                     },
-                    onRename = { renamingProject = project.id },
+                    onRename = { onRenamingProject(project.id) },
                     onRenamed = { name ->
-                        renamingProject = null
+                        onRenamingProject(null)
                         if (!name.isNullOrBlank()) store.renameProject(project.id, name)
                     },
                     onNewWorkspace = {
@@ -132,6 +143,7 @@ fun Sidebar(
                         WorkspaceRow(
                             workspace = workspace,
                             selected = workspace.id == state.selection.workspace,
+                            strip = states.strip(workspace),
                             renaming = renamingWorkspace == workspace.id,
                             onSelect = { store.selectWorkspace(workspace.id) },
                             onRename = { onRenamingWorkspace(workspace.id) },
@@ -167,6 +179,7 @@ private fun ProjectRow(
     project: Project,
     selected: Boolean,
     open: Boolean,
+    counts: List<Pair<AgentState, Int>>,
     renaming: Boolean,
     onToggle: () -> Unit,
     onSelect: () -> Unit,
@@ -206,19 +219,13 @@ private fun ProjectRow(
             } else {
                 OneLine(project.name, Modifier.weight(1f), color = colors.text)
             }
+            // How many of its terminals are in each state: the sign that tells the user where to look.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                for ((state, count) in counts) StateCount(state, count)
+            }
         }
         menuAt?.let { at ->
-            KattyMenu(
-                menu {
-                    action("New workspace", "⌘N", onClick = onNewWorkspace)
-                    action("Rename project…", "F2", onClick = onRename)
-                    action("Reveal in file manager", onClick = onReveal)
-                    divider()
-                    action("Remove project…", danger = true, onClick = onRemove)
-                },
-                onDismiss = { menuAt = null },
-                offset = at,
-            )
+            KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove), onDismiss = { menuAt = null }, offset = at)
         }
     }
 }
@@ -227,6 +234,7 @@ private fun ProjectRow(
 private fun WorkspaceRow(
     workspace: Workspace,
     selected: Boolean,
+    strip: List<AgentState>,
     renaming: Boolean,
     onSelect: () -> Unit,
     onRename: () -> Unit,
@@ -259,17 +267,12 @@ private fun WorkspaceRow(
             } else {
                 OneLine(workspace.name, Modifier.weight(1f), color = colors.text)
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                for (state in strip) StateGlyph(state, size = GlyphSize.SMALL)
+            }
         }
         menuAt?.let { at ->
-            KattyMenu(
-                menu {
-                    action("Rename workspace", "F2", onClick = onRename)
-                    divider()
-                    action("Close workspace", "⌘⇧W", danger = true, onClick = onClose)
-                },
-                onDismiss = { menuAt = null },
-                offset = at,
-            )
+            KattyMenu(workspaceMenu(onRename, onClose), onDismiss = { menuAt = null }, offset = at)
         }
     }
 }

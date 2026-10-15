@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -19,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
@@ -29,9 +31,13 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import app.katty.core.AgentState
+import app.katty.core.AgentStates
 import app.katty.core.CloseDecision
 import app.katty.core.Direction
 import app.katty.core.KattyStore
+import app.katty.core.NoAgentStates
+import app.katty.core.Orientation
+import app.katty.core.orientation
 import app.katty.core.Project
 import app.katty.core.ProjectId
 import app.katty.core.SplitDirection
@@ -47,6 +53,9 @@ import app.katty.screens.ColorSchemePicker
 import app.katty.screens.MainMenu
 import app.katty.screens.CloseWorkspaceDialog
 import app.katty.screens.PaneActions
+import app.katty.screens.ProjectTabs
+import app.katty.screens.Rail
+import app.katty.screens.WorkspaceTabs
 import app.katty.screens.Sidebar
 import app.katty.screens.TerminalSummary
 import app.katty.screens.WorkspaceChoice
@@ -78,6 +87,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     val state by store.state.collectAsState()
     val settings = state.settings
     var renamingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
+    var renamingProject by remember { mutableStateOf<ProjectId?>(null) }
     var removing by remember { mutableStateOf<ProjectId?>(null) }
     var renamingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     var findingTerminal by remember { mutableStateOf<TerminalId?>(null) }
@@ -96,7 +106,11 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     val handles by registry.handles.collectAsState()
     // What each terminal is doing comes from what its program reports: until the agents are told apart, every terminal is a shell at rest.
-    val stateOf: (TerminalId) -> AgentState = { AgentState.IDLE }
+    val agentStates: AgentStates = NoAgentStates
+    val stateOf: (TerminalId) -> AgentState = agentStates::stateOf
+    // The shape of the window decides the layout when the user left it to Auto.
+    val size = LocalWindowInfo.current.containerSize
+    val vertical = settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
     val describe: (TerminalSpec) -> TerminalSummary = { spec ->
         TerminalSummary(spec.id, spec.name ?: handles[spec.id]?.shellName ?: "shell", AgentGlyph.SHELL, stateOf(spec.id))
     }
@@ -133,8 +147,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                 .map { WorkspaceChoice(it.id, if (project.id == here?.project?.id) it.name else "${project.name} / ${it.name}") }
         }
     }
-    // Whether every split is drawn turned, which the vertical layout does: decided with the layout mode, later.
-    val flipped = false
+    // The vertical layout draws every split turned.
+    val flipped = vertical
     val focusNeighbour = { direction: Direction ->
         val workspace = state.selectedWorkspace
         val from = state.selection.terminal
@@ -146,6 +160,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
         TitleBarContent(
             state,
             onToggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
+            showSidebarToggle = !vertical,
             trailing = {
                 Box {
                     KattyIconButton(KattyIcons.Menu, "Main menu", { menuOpen = !menuOpen })
@@ -187,22 +202,10 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
         if (state.projects.isEmpty()) {
             Welcome(onAddProject = addProject)
         } else {
-            Row(Modifier.fillMaxSize()) {
-                if (!settings.sidebarCollapsed) {
-                    Sidebar(
-                        state = state,
-                        store = store,
-                        onAddProject = addProject,
-                        onRemoveProject = { removing = it },
-                        onCloseWorkspace = closeWorkspace,
-                        onReveal = { id -> state.projects.firstOrNull { it.id == id }?.let { revealInFileManager(it.directory) } },
-                        renamingWorkspace = renamingWorkspace,
-                        onRenamingWorkspace = { renamingWorkspace = it },
-                    )
-                }
-                val workspace = state.selectedWorkspace
+            val workspace = state.selectedWorkspace
+            val area: @Composable (Modifier, Boolean) -> Unit = { areaModifier, header ->
                 if (workspace == null) {
-                    EmptyProject(Modifier.weight(1f), onNewWorkspace = newWorkspace)
+                    EmptyProject(areaModifier, onNewWorkspace = newWorkspace)
                 } else {
                     WorkspaceArea(
                         workspace = workspace,
@@ -231,8 +234,57 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                         ),
                         maximized = state.selection.maximized,
                         font = font,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        showHeader = header,
+                        modifier = areaModifier,
                     )
+                }
+            }
+            val reveal: (ProjectId) -> Unit = { id -> state.projects.firstOrNull { it.id == id }?.let { revealInFileManager(it.directory) } }
+            if (vertical) {
+                Column(Modifier.fillMaxSize()) {
+                    ProjectTabs(
+                        state, store,
+                        onAddProject = addProject,
+                        onRemoveProject = { removing = it },
+                        onReveal = reveal,
+                        renamingProject = renamingProject,
+                        onRenamingProject = { renamingProject = it },
+                        onNewWorkspace = { project -> renamingWorkspace = store.addWorkspace(project) },
+                        states = agentStates,
+                    )
+                    WorkspaceTabs(
+                        project = state.selectedProject,
+                        selectedWorkspace = state.selection.workspace,
+                        selectedTerminal = state.selection.terminal,
+                        store = store,
+                        renamingWorkspace = renamingWorkspace,
+                        onRenamingWorkspace = { renamingWorkspace = it },
+                        onCloseWorkspace = closeWorkspace,
+                        onNewWorkspace = newWorkspace,
+                        states = agentStates,
+                    )
+                    area(Modifier.weight(1f).fillMaxWidth(), false)
+                }
+            } else {
+                Row(Modifier.fillMaxSize()) {
+                    if (settings.sidebarCollapsed) {
+                        Rail(state, store, onAddProject = addProject, states = agentStates)
+                    } else {
+                        Sidebar(
+                            state = state,
+                            store = store,
+                            onAddProject = addProject,
+                            onRemoveProject = { removing = it },
+                            onCloseWorkspace = closeWorkspace,
+                            onReveal = reveal,
+                            renamingProject = renamingProject,
+                            onRenamingProject = { renamingProject = it },
+                            renamingWorkspace = renamingWorkspace,
+                            onRenamingWorkspace = { renamingWorkspace = it },
+                            states = agentStates,
+                        )
+                    }
+                    area(Modifier.weight(1f).fillMaxHeight(), true)
                 }
             }
         }

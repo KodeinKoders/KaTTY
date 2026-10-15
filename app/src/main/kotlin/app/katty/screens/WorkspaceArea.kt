@@ -54,6 +54,7 @@ val PANE_GAP = 8.dp
  * @param flipped Whether every split is turned, as the vertical layout draws the tree.
  * @param focusTerminals Whether the focused terminal may take the keyboard focus: not while something else is being typed in.
  * @param actions What the window does for the panes.
+ * @param showHeader Whether the workspace has a header of its own: the vertical layout has tabs instead.
  * @param maximized The terminal that floats over the area of the workspace, with the others under a scrim.
  */
 @Composable
@@ -69,11 +70,13 @@ fun WorkspaceArea(
     modifier: Modifier = Modifier,
     maximized: TerminalId? = null,
     font: TerminalFont = TerminalFont.bundled(),
+    showHeader: Boolean = true,
 ) {
     val colors = Katty.colors
     val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, maximized, font)
     Column(modifier.background(colors.bg)) {
-        WorkspaceHeader(workspace, selectedTerminal, store)
+        // The vertical layout has the workspace's name and its split buttons in its tabs.
+        if (showHeader) WorkspaceHeader(workspace, selectedTerminal, store)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.fillMaxSize().padding(PANE_GAP / 2)) {
                 PaneTree(node = workspace.layout, context = context)
