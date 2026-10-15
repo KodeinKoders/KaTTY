@@ -285,7 +285,7 @@ The header of a pane is 30 px high and holds, from left to right:
 . its title (see <<terminal-title>>);
 . where it is in git, with an icon: the branch, the branch of a linked worktree (with the worktree icon), or the first 7 characters of a detached commit; nothing outside a repository;
 . the state in words (Idle, Working, Needs input, Done, Exited), "Needs input" bold and amber;
-. a button to maximize it, or to restore it when it is maximized;
+. a button to maximize it (only when the workspace has more than one pane), or to restore it when it is maximized;
 . a button that opens the terminal menu.
 
 The git information is read from git's files (not by running git), when the shell changes directory and when a command ends.

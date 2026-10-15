@@ -51,6 +51,7 @@ import app.katty.core.GitKind
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalSpec
 import app.katty.core.terminalIdentity
+import app.katty.core.terminals
 import app.katty.copyToClipboard
 import app.katty.readClipboard
 import app.katty.terminal.compose.Terminal
@@ -174,7 +175,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                 trailing = {
                     if (floating) {
                         KattyIconButton(KattyIcons.Restore, "Restore pane", { context.store.maximize(null) }, size = ButtonSize.COMPACT)
-                    } else {
+                    } else if (context.workspace.layout.terminals().size > 1) {
+                        // With one pane in the workspace there is nothing for it to be maximized over.
                         KattyIconButton(KattyIcons.Maximize, "Maximize pane", { context.store.maximize(spec.id) }, size = ButtonSize.COMPACT)
                     }
                     Box {

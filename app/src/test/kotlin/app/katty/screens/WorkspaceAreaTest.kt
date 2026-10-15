@@ -2,6 +2,7 @@
 
 package app.katty.screens
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -249,6 +250,21 @@ class WorkspaceAreaTest {
 
         assertEquals("build", store.state.value.locate(terminal)!!.terminal.name)
         onNodeWithContentDescription("Terminal build").assertExists()
+    }
+
+    @Test
+    fun aWorkspaceWithOnePaneHasNothingToMaximizeAPaneOver() = runComposeUiTest {
+        store.addProject("/tmp")
+        val first = store.state.value.selection.terminal!!
+        show()
+
+        onAllNodesWithContentDescription("Maximize pane").assertCountEquals(0)
+        // The menu of the pane is still there: only the button goes.
+        onNodeWithContentDescription("Pane menu").assertExists()
+
+        store.split(first, SplitDirection.ROW)
+        waitForIdle()
+        onAllNodesWithContentDescription("Maximize pane").assertCountEquals(2)
     }
 
     @Test
