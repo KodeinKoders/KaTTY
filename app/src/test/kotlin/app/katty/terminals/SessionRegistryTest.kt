@@ -183,6 +183,43 @@ class SessionRegistryTest {
     }
 
     @Test
+    fun aTerminalStartsWhereItLastWasIfThatFolderIsStillThere() {
+        val project = kotlin.io.path.createTempDirectory("katty-project").toRealPath().toFile()
+        val inside = java.io.File(project, "src").also { it.mkdirs() }
+        try {
+            store.addProject(project.path)
+            store.setDirectory(store.state.value.selection.terminal!!, inside.path)
+            val directories = mutableListOf<String>()
+            val recording = SessionRegistry(store, scope, loadTheme = { null }, start = { spec, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
+
+            recording.sync(store.state.value)
+
+            assertEquals(listOf(inside.path), directories)
+            recording.close()
+        } finally {
+            project.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aTerminalWhoseFolderIsGoneStartsInTheFolderOfItsProject() {
+        val project = kotlin.io.path.createTempDirectory("katty-project").toRealPath().toFile()
+        try {
+            store.addProject(project.path)
+            store.setDirectory(store.state.value.selection.terminal!!, "/nonexistent/folder")
+            val directories = mutableListOf<String>()
+            val recording = SessionRegistry(store, scope, loadTheme = { null }, start = { spec, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
+
+            recording.sync(store.state.value)
+
+            assertEquals(listOf(project.path), directories)
+            recording.close()
+        } finally {
+            project.deleteRecursively()
+        }
+    }
+
+    @Test
     fun aShellThatEndsLeavesItsOutputAndSaysThatItIsOver() {
         script = "printf hello"
         store.addProject("/tmp")

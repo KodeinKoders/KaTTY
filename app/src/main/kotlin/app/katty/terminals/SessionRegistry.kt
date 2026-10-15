@@ -83,7 +83,7 @@ class SessionRegistry(
 
     /** Makes the sessions match the terminals of [state]. Call it from one thread, the UI's. */
     fun sync(state: KattyState) {
-        val wanted = state.allTerminals().associate { it.terminal.id to it.terminal }
+        val wanted = state.allTerminals().associate { it.terminal.id to startingPlace(it.terminal, it.project.directory) }
         val current = mutableHandles.value
         var next = current
 
@@ -118,7 +118,8 @@ class SessionRegistry(
     /** Ends the shell of the terminal and starts another in its place: what "Reopen shell" does. */
     fun restart(id: TerminalId) {
         val state = store.state.value
-        val spec = state.locate(id)?.terminal ?: return
+        val location = state.locate(id) ?: return
+        val spec = startingPlace(location.terminal, location.project.directory)
         val old = mutableHandles.value[id] ?: return
         stop(old)
         val generation = (generations[id] ?: 0) + 1
@@ -173,6 +174,13 @@ class SessionRegistry(
 
 // What the shell is called, as its program is: the one that the user's login shell is.
 private fun shellName(): String = File(System.getenv("SHELL") ?: "/bin/zsh").name.ifEmpty { "shell" }
+
+/**
+ * Where a shell starts: where the terminal last was, if that folder is still there, else the folder of its project, else (for [startShell])
+ * the user's home. A terminal that is restored starts there, and a shell that is started again does.
+ */
+internal fun startingPlace(spec: TerminalSpec, projectDirectory: String): TerminalSpec =
+    if (File(spec.directory).isDirectory) spec else spec.copy(directory = projectDirectory)
 
 private fun loadColorScheme(name: String): TerminalTheme? =
     try {
