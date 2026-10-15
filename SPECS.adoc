@@ -625,6 +625,7 @@ This was not tried against a real Codex.
 * The bar of an agent shows its most used allowance; it is amber from 80 %.
 * Full: the tile, the name, "N% used", the bar, "Resets in …" ("53 minutes", "2 hours 10 minutes", "3 days 4 hours", "11 days").
 * Compact: the tile, the bar and the percent; the tooltip says every allowance with its reset.
+* The bar at the bottom of the vertical layout follows the same choice: one full item for each agent, side by side, or compact ones when compact mode is checked.
 * In the rail: the tile and the percent.
 * An agent that is shown without a reading says "No meter" (or "–" in the rail).
 * With no agent chosen: "No agents selected."

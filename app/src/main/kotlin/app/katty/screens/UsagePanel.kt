@@ -184,7 +184,7 @@ fun UsageSection(
     }
 }
 
-/** The usage at the bottom of the vertical layout: one line of compact items, with the chooser. */
+/** The usage at the bottom of the vertical layout: one line with an item for each agent, compact or full as the user chose, with the chooser. */
 @Composable
 fun UsageBarRow(
     detected: List<Agent>,
@@ -204,7 +204,7 @@ fun UsageBarRow(
         if (agents.isEmpty()) {
             Text("No agents selected.", Modifier.weight(1f), color = colors.muted, fontSize = 11.sp)
         } else {
-            for (agent in agents) UsageList(listOf(agent), readings, now, UsageVariant.COMPACT, Modifier.weight(1f))
+            for (agent in agents) UsageList(listOf(agent), readings, now, if (compact) UsageVariant.COMPACT else UsageVariant.FULL, Modifier.weight(1f))
         }
         androidx.compose.foundation.layout.Box {
             KattyIconButton(KattyIcons.Kebab, "Choose agents to show", { choosing = true }, size = ButtonSize.COMPACT)

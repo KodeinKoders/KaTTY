@@ -4,6 +4,8 @@ package app.katty.screens
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -79,6 +81,21 @@ class UsagePanelTest {
 
         onNodeWithText("AGENT USAGE").assertExists()
         onNodeWithText("No agents selected.").assertExists()
+    }
+
+    @Test
+    fun theBarOfTheVerticalLayoutIsCompactOnlyWhenTheUserChoseCompactMode() = runComposeUiTest {
+        var compact by androidx.compose.runtime.mutableStateOf(false)
+        setContent {
+            KattyTheme(false) { UsageBarRow(agents, readings, shown = setOf("claude"), compact = compact, now = now, onCompact = {}, onShown = { _, _ -> }) }
+        }
+
+        onNodeWithText("82% used").assertExists()
+        onNodeWithText("Resets in 53 minutes").assertExists()
+        compact = true
+        waitForIdle()
+        onNodeWithText("82%").assertExists()
+        onNodeWithText("82% used").assertDoesNotExist()
     }
 
     @Test
