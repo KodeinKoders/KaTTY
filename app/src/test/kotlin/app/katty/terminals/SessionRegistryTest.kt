@@ -106,7 +106,7 @@ class SessionRegistryTest {
         store.setColorScheme(id, null)
         sync()
 
-        assertEquals(listOf("Dracula", "Nord", "Dracula"), themes)
+        assertEquals(listOf("Alabaster", "Nord", "Alabaster"), themes)
     }
 
     @Test
@@ -117,7 +117,7 @@ class SessionRegistryTest {
         store.updateSettings { it.copy(colorScheme = "Nord") }
         sync()
 
-        assertEquals(listOf("Dracula", "Nord"), themes)
+        assertEquals(listOf("Alabaster", "Nord"), themes)
     }
 
     @Test

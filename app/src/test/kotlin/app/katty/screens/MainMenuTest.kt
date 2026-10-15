@@ -97,7 +97,7 @@ class MainMenuTest {
     fun theColorSchemeFieldOpensThePicker() = runComposeUiTest {
         show()
 
-        onNodeWithContentDescription("Terminal color scheme: Dracula").performClick()
+        onNodeWithContentDescription("Terminal color scheme: Alabaster").performClick()
 
         assertEquals(listOf("colorScheme"), picked)
     }

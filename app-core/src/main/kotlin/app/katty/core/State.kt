@@ -49,7 +49,7 @@ public data class Settings(
     val view: MainView = MainView.TERMINALS,
 ) {
     public companion object {
-        public const val DEFAULT_COLOR_SCHEME: String = "Dracula"
+        public const val DEFAULT_COLOR_SCHEME: String = "Alabaster"
         public const val DEFAULT_FONT_SIZE: Float = 12.5f
         public const val MIN_FONT_SIZE: Float = 8f
         public const val MAX_FONT_SIZE: Float = 32f

@@ -1,0 +1,717 @@
+= KaTTY: specifications
+:toc: left
+:toclevels: 2
+:icons: font
+:source-highlighter: highlight.js
+
+[.lead]
+What the KaTTY application does, as it is built: its model, its behaviors, its screens, its keys and its limits.
+
+This document describes the application (the `app` and `app-core` modules).
+The terminal itself (emulation, keyboard, mouse, selection, images, search) is the library's, and `AGENTS.md` describes it.
+The design that the application follows is the "ADE — Terminal Manager" canvas, and the product decisions are in the "ADE — implementation brief".
+Where this document and the code disagree, the code is right and this document is to be fixed.
+
+
+== Scope
+
+KaTTY is a desktop application that organizes terminals for people who run several CLI coding agents at once.
+
+* It shows and arranges terminals, and shows the state that each program in them reports.
+* It never reads, writes or interprets what an agent says: it does not read the screen to guess a state, and it installs nothing in the agents.
+* A terminal always starts as a plain shell.
+The user starts agents, and manages git worktrees, from the shell.
+* It runs on macOS on Apple Silicon only, the one platform libghostty-vt is built for.
+
+
+=== Non-goals
+
+* A launcher, or any way to start a terminal with an agent.
+* A settings page, or a configuration per agent.
+* Acting on the state of an agent: the board is for looking at.
+* Handling rare failures with a design of their own (an agent that crashes, a project folder that is deleted, a shell that does not start).
+* Native notifications.
+* Keeping the scrollback of a terminal across launches.
+
+
+== Vocabulary
+
+[cols="1,3"]
+|===
+| Term | Meaning
+
+| Project
+| A folder on the disk, with the workspaces that were opened in it.
+
+| Workspace
+| A named group of the terminals of one project, arranged in a tree of splits.
+
+| Terminal
+| A shell in a pseudo-terminal, shown in a pane.
+
+| Pane
+| What shows a terminal: its header and the terminal.
+
+| Split
+| A node of the tree of a workspace, with two sides and a ratio.
+
+| Agent
+| A coding agent that runs in a terminal: Claude Code, Codex, Gemini CLI, Antigravity, Copilot CLI.
+
+| Report
+| What a program says of itself with the escape sequence OSC 7501.
+
+| State
+| What a terminal is doing, as the application shows it: Nothing (idle), Working, Needs input, Done, and a failure.
+|===
+
+
+== Domain model
+
+=== Entities
+
+Every project, workspace, terminal and split has an id that is made when it is created (a UUID) and kept as long as it exists.
+
+[cols="1,3"]
+|===
+| Entity | Content
+
+| Project
+| An id, a name (the folder's name by default), the path of its folder, its workspaces in order.
+
+| Workspace
+| An id, a name, and a tree of panes.
+
+| Split
+| An id, a direction (`ROW`: first side on the left; `COLUMN`: first side above), a ratio (the share of the first side), two sides.
+
+| Terminal
+| An id, a name (`null` for the default name), the directory its shell starts in, a color scheme (`null` for the default of the settings).
+|===
+
+
+=== Invariants
+
+* A workspace always has at least one terminal: closing its last terminal removes the workspace.
+* A project may have no workspace.
+* A split's ratio is between 0.05 and 0.95.
+* The same folder is never two projects: adding a folder that is a project selects it.
+* The directions of the splits are the ones of the horizontal layout; the vertical layout draws every split turned.
+
+
+=== Selection
+
+One project, one workspace of it and one terminal of that workspace are selected; the selected terminal has the focus.
+A terminal can be maximized; it is then also the selected one.
+
+After any change, the selection is made to point at something: a project, workspace or terminal that is gone is replaced by the first one that exists, and a maximized terminal that is not in the selected workspace is put back.
+
+
+=== Settings
+
+[cols="1,1,3"]
+|===
+| Setting | Default | Values
+
+| Layout
+| Auto
+| Auto, Horizontal, Vertical.
+
+| Theme
+| Light
+| Light, Dark, System (follows macOS).
+
+| Default color scheme
+| Alabaster
+| Any of the 811 iTerm2 schemes.
+
+| Font family
+| JetBrains Mono (bundled)
+| The bundled font, or a monospaced family of the system.
+
+| Font size
+| 12.5 px
+| From 8 to 32 px, by steps of 0.5.
+
+| Font ligatures
+| On
+| On, off.
+
+| Usage shown
+| Claude Code, Codex, Antigravity
+| Any of the agents.
+
+| Compact usage
+| Off
+| On, off.
+
+| Sidebar collapsed
+| Off
+| On (the rail), off (the sidebar).
+
+| View
+| Terminals
+| Terminals, Board.
+|===
+
+
+== Operations
+
+These are the operations of the store, whatever triggers them (a click, a menu, a shortcut, the palette).
+
+[cols="1,3"]
+|===
+| Operation | Behavior
+
+| Add a project
+| From a folder chosen with the system's folder dialog.
+The project is named after the folder, gets a workspace named "workspace" with one terminal in the folder, and is selected.
+A folder that already is a project is selected instead.
+
+| Rename a project
+| A blank name is refused; the name is trimmed.
+
+| Remove a project
+| After a confirmation.
+Its workspaces and terminals are closed; its folder stays on the disk.
+The next project is selected, else the previous one.
+
+| New workspace
+| A workspace with one terminal in the project's folder, selected, named "workspace", else "workspace 2", "workspace 3"… (the lowest number that is free).
+Its name opens for editing.
+
+| Rename a workspace
+| A blank name is refused; the name is trimmed.
+
+| Close a workspace
+| Its terminals are closed.
+The next workspace of the project is selected, else the previous one.
+See <<closing>> for when it asks first.
+
+| Split
+| The terminal's place becomes a split of the terminal and a new shell, with a ratio of 0.5.
+The new shell starts where the split terminal is, and has the focus.
+
+| Close a terminal
+| Its sibling takes its space.
+The focus goes to the terminal that was before it in the tree, else after it.
+The last terminal of a workspace closes the workspace.
+
+| Rename a terminal
+| A blank name gives back the default name (the agent's or the shell's).
+
+| Move a terminal to a workspace
+| To any workspace of any project but its own.
+It is added to the right of everything in the target (a new root split, `ROW`), and has the focus.
+A workspace left without terminals is removed.
+
+| Color scheme of a terminal
+| A scheme of its own, or the default of the settings.
+
+| Resize a split
+| By dragging the gap between panes; the ratio is kept, within 0.05 and 0.95, and a side is never smaller than 160 px.
+
+| Focus a terminal
+| Selects its workspace and its project.
+
+| Maximize a terminal
+| It floats over the area of its workspace; focusing another terminal, or closing it, puts it back.
+|===
+
+The shell of each terminal reports where it is (OSC 7, which shell integration makes zsh and bash send); the terminal's directory follows it.
+
+
+== Persistence
+
+* The state is kept in `~/Library/Application Support/KaTTY/state.json`.
+The system property `katty.support` replaces the folder.
+* It is JSON, with a `version` field (1).
+It holds the projects, the selection (without the maximized terminal) and the settings.
+* It is written 500 ms after the last change, and once more when the application quits.
+It is written to `state.json.tmp`, then moved over `state.json`.
+* At launch:
+** no file is an empty state;
+** a file that cannot be read is moved to `state.json.damaged` (then `.damaged.1`…) and the state is empty;
+** a file of a later version is moved to `state.json.version-<n>` and the state is empty;
+** fields that the application does not know are ignored.
+* The application never writes over a file that it could not read.
+
+
+== Terminals
+
+=== Sessions
+
+* Every terminal of every project has its shell running, whether its workspace is shown or not.
+* The shell is the user's login shell (`$SHELL -l`), with `TERM=xterm-256color` and `COLORTERM=truecolor`, and KaTTY's shell integration for zsh and bash.
+* A shell starts in the terminal's directory if that folder exists, else in its project's folder if that exists, else in the user's home.
+* The terminals that are not on the screen are paused: they produce no frames, keep running, and keep being followed.
+While the board is shown, no terminal is on the screen.
+* Closing a terminal ends its shell.
+Quitting the application ends every shell.
+* At launch, every terminal of the saved state gets a new shell; the old programs and the scrollback are not kept.
+
+
+=== A shell that ends
+
+* What it wrote stays on the screen, followed by `[Process completed]`.
+* The header says "Exited", and a strip under the terminal says "Shell exited with code N" with two buttons: Reopen shell (a new shell in the same pane and directory) and Close (closes the terminal).
+* Restart terminal (⌘R) does the same as Reopen shell, for a shell that runs.
+
+
+=== Pane
+
+The header of a pane is 30 px high and holds, from left to right:
+
+. the glyph of its state;
+. the tile of its agent, or of a shell;
+. its title: the name the user gave it, else the agent's name while a program reports (or the program's own name for one that is not a known agent), else the shell's name (`zsh`);
+. where it is in git, with an icon: the branch, the branch of a linked worktree (with the worktree icon), or the first 7 characters of a detached commit; nothing outside a repository;
+. the state in words (Idle, Working, Needs input, Done, Exited), "Needs input" bold and amber;
+. a button to maximize it, or to restore it when it is maximized;
+. a button that opens the terminal menu.
+
+The git information is read from git's files (not by running git), when the shell changes directory and when a command ends.
+
+The focused pane has a 2 px ring of the accent color; the others have a 1 px border.
+A click in a terminal, or anything that gives it the keyboard, focuses it.
+The focused terminal takes the keyboard, except while something else has it: a name being edited, a dialog, the color scheme picker, the palette.
+
+
+=== Maximized terminal
+
+* The terminal floats over the area of the workspace, 24 px from its edges, over a scrim of 30 % black.
+* The title bar, the sidebar and the header of the workspace stay as they are.
+* The terminal's place in the tree is left empty: a session is shown in one place only.
+* The restore button, or a click outside the terminal, puts it back.
+Escape does not: the programs in a terminal use it.
+
+
+=== Find bar
+
+* ⌘F, or Find… in the context menu, opens a find bar at the top right of the terminal.
+* It searches as the user types: ASCII letters without regard for the case, no regular expression.
+* It says "N of M", "M results", "No results", or "Searching…".
+* Enter and the down arrow button go to the next match, Shift+Enter and the up arrow button to the previous one; Escape and the close button close it and give the keyboard back to the terminal.
+* The matches are yellow and the current one orange; closing the bar takes them off.
+* There is no match-case option: libghostty's search has none.
+
+
+[#agent-state]
+== Agent state
+
+=== Source
+
+The state of a terminal comes only from the reports of the program in it (OSC 7501, the program status protocol of libghostty-vt).
+A report has a state, a kind, a progress, an id (records form a tree with `/`), the program's name (`app`), a title and a message.
+The session keeps the records by the rules of the specification: a report replaces its record, a clear removes a record and the ones beneath it, the records that are working or blocked go when a prompt starts or the program exits.
+
+
+=== Mapping
+
+[cols="1,2,1"]
+|===
+| OSC 7501 state | KaTTY state, glyph | Board column
+
+| no record, `idle`
+| Nothing (Idle): a hollow ring
+| Nothing
+
+| `working`
+| Working: a ring that spins once a second (still when the system asks for less motion)
+| Working
+
+| `blocked`
+| Needs input: an amber disc with `!`
+| Needs input
+
+| `done`
+| Done: a green disc with a check
+| Done
+
+| `error`
+| Failure: a red disc with `×`, called "Needs input" in words
+| Needs input
+|===
+
+
+=== Summary of a terminal
+
+* The state of a terminal is the state of its most urgent record, in this order: needs input, failure, working, done, idle.
+* Its program is the `app` of the most urgent record that has one.
+* Its note is the message of the most urgent record, else its title; it is shown as plain text.
+* "Since" is the time the terminal entered its state; reports of the same state do not move it.
+* An agent is *active* while its terminal is Working, Needs input or failed.
+* The state of a project is its most urgent terminal's; its counts are the number of terminals in each state, the most urgent first.
+
+
+=== Seen
+
+A terminal that is Done or failed stays so until the user has seen it: until it is the selected terminal in the Terminals view of a window that has the focus, or "Mark all seen" is used.
+Seeing it removes its `done` and `error` records, and the terminal is at rest.
+
+
+=== Agents
+
+[cols="1,1,1,1"]
+|===
+| Agent | Id | Program | Tile tint
+
+| Claude Code
+| `claude`
+| `claude`
+| `#D97757`
+
+| Codex
+| `codex`
+| `codex`
+| `#2E9E6B`
+
+| Gemini CLI
+| `gemini`
+| `gemini`
+| `#3574F0`
+
+| Antigravity
+| `antigravity`
+| `agy`
+| `#8A63D2`
+
+| Copilot CLI
+| `copilot`
+| `copilot`
+| `#0E8A9A`
+|===
+
+A report's `app` is an agent when it contains the agent's name, without regard for the case and the punctuation (`claude-code` is Claude Code), or is `agy`.
+Another program keeps its own name and the neutral tile (tint `#6E7280`).
+The tiles are placeholders until the agents' logos are supplied.
+
+
+== Layouts
+
+=== Choosing the layout
+
+* Horizontal and Vertical are what they say.
+* Auto is Vertical when the window is taller than it is wide, and is decided again when the window is resized.
+* The same projects, workspaces and trees are shown in both; only their arrangement changes.
+
+
+=== Window
+
+* The window is 1440 × 900 by default, and has Jewel's decorated title bar, with the macOS buttons at the left.
+* The application's theme (light or dark) does not change the terminals' colors.
+
+
+=== Title bar
+
+The title bar is 40 px high and holds:
+
+* at the left: the button that folds the sidebar (horizontal layout, Terminals view), and where the user is: `project / workspace`, or "All projects" or the filtered project on the board, or "KaTTY" without a project;
+* in the middle: the switch between Terminals and Board;
+* at the right: the field that opens the palette ("Search or run a command… ⌘K", or "Commands ⌘K" in the vertical layout), the bell, and the button of the main menu.
+
+
+=== Horizontal layout
+
+* The project sidebar (272 px), on the left:
+** PROJECTS, with a button to add a project;
+** a row for each project: a chevron, a folder icon, its name, and its counts;
+** under the selected project (unless folded with its chevron): its folder (with `~` for the home), its workspaces (each with a dot for each terminal's state, in the order of the tree), and "New workspace";
+** the usage of the agents at its bottom;
+** it scrolls when the list is long.
+* Folded, it is a rail (56 px): a 36 px tile for each project with two letters (the first letters of its first two words, `api-gateway` is `AG`) and a badge of its most urgent state, a dashed tile to add a project, and the usage as percentages at the bottom.
+A click on a tile selects the project and opens a panel (264 px) with its folder, its workspaces and "New workspace".
+* The workspace, on the right: a 40 px header (its name, "N terminals", Split right, Split down) above the tree of panes, with 8 px between panes.
+
+
+=== Vertical layout
+
+* A bar of project tabs (40 px), each with its name and counts, and a button to add a project at the right; it scrolls horizontally.
+* A bar of workspace tabs (40 px), each with the dots of its terminals and its name, the selected one with a 2 px line of the accent color under it; a button for a new workspace; behind a divider at the far right, Split right and Split down.
+* The tree of panes, with every split turned.
+* The usage, in a bar at the bottom.
+
+
+=== Without a project
+
+The window shows the welcome: "Add your first project", what a project is, a button "Add project folder…" with ⌘O, and the agents of the machine (each "Detected" or "Not found") with "Agents you install later appear here automatically."
+
+A project without a workspace shows "This project has no workspace." and a button for a new one.
+
+
+== Menus
+
+[cols="1,3"]
+|===
+| Menu | Items, in order
+
+| Project (right click on a project row or tab)
+| New workspace ⌘N, Rename project… F2, Reveal in file manager, — , Remove project… (red).
+
+| Workspace (right click on a workspace row or tab)
+| Rename workspace F2, — , Close workspace ⌘⇧W (red).
+
+| Terminal (the "…" of a pane)
+| Rename terminal, — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces, named `project / workspace` when in another project; absent when there are none), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, — , Close terminal ⌘W (red).
+
+| Context (right click in a terminal that did not ask for the mouse, or with Shift)
+| Copy ⌘C (only when something is selected), Paste ⌘V, Select all ⌘A, — , Find… ⌘F, Clear scrollback ⌘L, — , Split right ⌘D, Split down ⌘⇧D, — , Close terminal ⌘W (red).
+|===
+
+Renaming is done in place: the name becomes a field with its text selected; Enter or leaving the field keeps what was typed, Escape keeps the old name.
+F2 renames the project or the workspace that has the focus in the sidebar or the tabs; in a terminal, F2 is the program's key.
+
+
+[#closing]
+== Closing and removing
+
+[cols="1,1,3"]
+|===
+| Action | Asks when | Dialog
+
+| Close a workspace
+| An agent in it is active.
+| "Close “name”?", "Closing this workspace ends all of its terminals. N agents are still active and will be stopped.", its terminals with their tile, name and state, Cancel and a red "Close workspace".
+
+| Close the last terminal of a workspace
+| Its agent is active.
+| "Close the last terminal?", "This is the only terminal in “name”. Closing it deletes the workspace and stops the agent that is still working.", the terminal, Cancel and a red "Delete workspace".
+
+| Close a terminal that has company
+| Never.
+| —
+
+| Remove a project
+| Always.
+| "Remove “name”?", "Removing this project closes its workspaces and ends its terminals. Its folder stays on your disk.", its workspaces with their numbers of terminals, Cancel and a red "Remove project".
+|===
+
+A dialog is over a scrim of 30 % black that covers the window; Escape cancels it.
+
+
+== Main menu
+
+The main menu, opened from the title bar, is the only place where the application is set up.
+
+* LAYOUT: Auto, Horizontal, Vertical, with "Auto uses Vertical when the window is taller than it is wide."
+* THEME: Light, Dark, System.
+* TERMINAL COLOR SCHEME: a field with four swatches of the scheme and its name, which opens the color scheme picker.
+* FONT FAMILY: a field that opens the list of families ("JetBrains Mono (bundled)" first, then the monospaced families of the system); the font size with − and + by 0.5 px; "Font ligatures" with "Shows sequences like => and != as single glyphs."
+
+A change applies at once to every terminal.
+A family that cannot be loaded gives the bundled font.
+
+
+=== Color scheme picker
+
+* It chooses the default scheme (from the main menu) or the scheme of one terminal (from its menu, with "Default" first, which says the default's name).
+* It has a search field (anywhere in the name, without regard for the case), a filter All / Light / Dark with the number of schemes of each, and a list with a swatch, the name and the kind of each scheme.
+* It shows the chosen scheme in a real terminal, with the swatches of its palette (background, foreground, red, green, yellow, blue, magenta, cyan).
+* A click applies the scheme at once; the picker stays open until its close button or Escape.
+* A scheme is dark when the brightness of its background is under half.
+
+
+=== Monospaced families
+
+The families are the ones of the system whose characters `iIlMW.m1` all have the same width, without the families whose name starts with a dot.
+They are listed once, in the background.
+
+
+== Attention
+
+* The bell of the title bar shows the number of terminals that need the user (Needs input or failed), in amber.
+* Its panel (380 px) has:
+** NEEDS YOU, with the number and "Mark all seen";
+** the terminals that need the user, the most recent first, then FINISHED: the Done terminals that were not seen, the most recent first; each with its glyph, tile, name, how long ago, `project / workspace` and its note;
+** "Nothing needs you." when there is none;
+** "Jump to next waiting agent ⌘⇧J" at its bottom.
+* A click on a row goes to the terminal: the Terminals view, its workspace and project selected, the terminal focused.
+* Mark all seen removes what every terminal finished or failed at; the terminals that wait for the user still do.
+* Jump to next waiting agent (⌘⇧J) goes to the waiting terminal that follows the focused one in the order of the sidebar, round to the first; nothing when none waits.
+* A notice appears at the bottom right of the window for 6 s when a terminal starts needing the user, finishes or fails, unless it is the focused terminal of the Terminals view of a window that has the focus.
+It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, and the note; a click goes to the terminal.
+* Ages are "now" under a minute, then "N min", "N h", "N d".
+
+
+== Board
+
+* The Board view has a column for each state, in this order: Nothing, Working, Needs input (with the failures), Done, each with its glyph, title and number of cards.
+* Every terminal has a card, shells at rest too.
+In a column, the card that has been there for the shortest time is first.
+* A card has the state's glyph, the tile, the title (as the pane's), how long ago, `project / workspace`, the branch or worktree, and the note on two lines at most.
+Without a note, it says "Idle shell, waiting at the prompt." (a shell), "At rest.", "Working.", "Waiting for you.", "Failed." or "Finished.".
+* It is titled "Agent board", with "N agents across M projects".
+* It is filtered by project: in the horizontal layout, a sidebar with "All projects" (with the number of agents) and each project with its counts; in the vertical layout, tabs.
+* Cards cannot be moved; a click on a card goes to its terminal.
+* In the vertical layout the columns are sections, one under the other.
+
+
+== Usage
+
+=== Installed agents
+
+* The agents' programs are looked for in the `PATH` of the user's login shell, read once with `$SHELL -l -c 'printf %s "$PATH"'` (8 s at most), else in the application's own `PATH`.
+* The first folder of the `PATH` that has an executable file of the program's name wins.
+* They are looked for again each time the window gets the focus.
+
+
+=== Sources
+
+The usage is read from the agents' own commands, which do not cost a turn, and never from a credential.
+The commands run in `~/Library/Application Support/KaTTY/usage`, not in a project, with nothing on their input.
+
+[cols="1,3"]
+|===
+| Agent | Source
+
+| Claude Code
+| `claude -p /usage --output-format json`, 30 s at most.
+The `result` of the JSON is text with a line per allowance: `Current session: 26% used · resets Oct 15 at 5:49am (Europe/Paris)`.
+The label is the line's name without "Current ".
+A reset without a date is the next time the clock says so; a date that is more than a day past is next year's.
+
+| Antigravity
+| `agy --version` first (5 s): versions before 1.1.11 are not asked, since the command costs a turn there.
+Then `agy -p /usage --output-format json --print-timeout 20s`, 30 s at most: each bucket of each group of `command.data` is an allowance named after its group, used at `1 - remaining_fraction`, reset at `reset_time`.
+
+| Codex
+| `codex app-server`, over JSON-RPC (one object a line): `initialize`, then the `initialized` notification, then `account/rateLimits/read`; 20 s at most, after which the server is ended.
+The `primary` and `secondary` windows are allowances: "Session" for about 5 hours, "Week" for about 7 days, else their length.
+This was not tried against a real Codex.
+
+| Gemini CLI, Copilot CLI
+| None: no command reports it without a turn.
+|===
+
+* An agent is read only while it is installed and shown, every 2 minutes, one after the other.
+* A command that fails, takes too long, or prints something that is not understood gives no reading; the agent then has no meter.
+
+
+=== Presentation
+
+* The bar of an agent shows its most used allowance; it is amber from 80 %.
+* Full: the tile, the name, "N% used", the bar, "Resets in …" ("53 minutes", "2 hours 10 minutes", "3 days 4 hours", "11 days").
+* Compact: the tile, the bar and the percent; the tooltip says every allowance with its reset.
+* In the rail: the tile and the percent.
+* An agent that is shown without a reading says "No meter" (or "–" in the rail).
+* With no agent chosen: "No agents selected."
+* The chooser (the "…" of the usage) has "Compact mode", SHOW USAGE FOR with a checkbox for each installed agent, and "Agents are detected from the CLIs installed on this machine."
+
+
+== Command palette
+
+* ⌘K, or the field of the title bar, opens it over a scrim; ⌘K again, Escape, or a click outside closes it.
+* It lists, in this order:
+** WORKSPACES: each workspace, with its project;
+** TERMINALS: each terminal, with its workspace and state (idle, working, needs input, done);
+** COMMANDS: with their shortcuts, the ones that need a workspace or a terminal only when there is one.
+* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Jump to next waiting agent, Mark all agents seen, Show the agent board (or Show terminals), Toggle project sidebar, the three layouts and the three themes.
+* What is typed is matched with the labels: its letters, in order, without regard for the case and the spaces.
+A match whose letters are together, at the start of the text or of a word, in a short label, is better; the matched letters are bold in the accent color.
+* The groups stay in their order; in a group, the best match is first; with nothing typed, everything is in its order.
+* The up and down arrows move the selection (round the list), Enter does what is selected, a click does what it says; a new query selects the first entry again.
+* Going to a workspace or a terminal switches to the Terminals view.
+
+
+== Keyboard
+
+The window's shortcuts are handled before the terminal sees them.
+
+[cols="1,3"]
+|===
+| Keys | Action
+
+| ⌘K
+| Open or close the command palette.
+
+| ⌘O
+| Add a project folder.
+
+| ⌘N
+| New workspace in the selected project.
+
+| ⌘⇧W
+| Close the selected workspace.
+
+| ⌘D, ⌘⇧D
+| Split the focused terminal right, down.
+
+| ⌘W
+| Close the focused terminal.
+
+| ⌘R
+| Restart the shell of the focused terminal.
+
+| ⌘⇧J
+| Jump to the next agent that waits.
+
+| ⌘⌥ + arrow
+| Focus the pane next to the focused one, as the screen shows them: among the panes past its edge that share part of its side, the nearest, then the one that shares the most.
+
+| ⌘F, ⌘A, ⌘L
+| Find, select all, clear the scrollback: in the terminal that has the keyboard.
+
+| ⌘C, ⌘V
+| Copy, paste: the terminal's own.
+
+| F2
+| Rename the project or workspace that has the focus in the sidebar or the tabs.
+|===
+
+The library's keys (line editing, history, prompt jumps, links) are in `AGENTS.md`.
+On other platforms ⌘ would be Ctrl; it would take keys from the shell, and is not done.
+
+
+== Visual system
+
+=== Colors
+
+[cols="1,1,1,2"]
+|===
+| Token | Light | Dark | Use
+
+| bg | `#F2F3F5` | `#1E1F22` | The window and the area of the splits.
+| panel | `#FFFFFF` | `#2B2D30` | Panes, menus, dialogs, the header of a workspace.
+| side | `#F7F8FA` | `#27282C` | The sidebar and the headers of panes.
+| line | `#DFE1E5` | `#393B40` | Borders and dividers.
+| text | `#1E1F22` | `#DFE1E5` | Text.
+| muted | `#5F6370` | `#9DA0A8` | Secondary text and icons.
+| sel | `#D4E2FF` | `#2E436E` | A selected row or tab.
+| hover | `#E6E8EC` | `#36383D` | Hover, the background of tiles.
+| accent | `#3574F0` | `#548AF7` | The focus ring, the underline of a tab, matches.
+| work | `#2F6BE0` | `#6B9BFA` | Working.
+| input | `#A85F00` | `#E5A93D` | Needs input, usage from 80 %.
+| done | `#1F7A3A` | `#6CC17D` | Done, a detected agent.
+| err | `#C93234` | `#F2767A` | A failure, a destructive button.
+| idle | `#7A7E8A` | `#8C909B` | Nothing.
+|===
+
+
+=== Sizes
+
+* Rows 30 px; the headers of panes 30 px; the title bar, the header of a workspace and the tabs 40 px.
+* Icon buttons 28 px, 24 px in the headers of panes.
+* State glyphs 12 px, 9 px (without their mark) in rows, counts and strips.
+* Agent tiles 18 px in headers, 20 px in lists, 24 px in the rail.
+* Radii: 5–6 px for buttons and panes, 8 px for menus and cards, 12 px for dialogs.
+* The components are Jewel's Int UI where the design has them (buttons, menus, choices, checkboxes, fields, tooltips, splits), and the font of the interface is Jewel's.
+
+
+== Accessibility
+
+* Every icon button has a description, which is also its tooltip.
+* Rows, tabs, cards and items have descriptions that say what they are (a card: "Claude Code in api-gateway / refactor-auth"), and selected ones are marked selected.
+* A state glyph is decoration: its state is always said in words next to it or in the description of what holds it.
+* The working ring does not spin when the system asks for less motion.
+
+
+== Limits
+
+* macOS on Apple Silicon only; the Windows title bar is Jewel's but has never run.
+* An agent that does not send OSC 7501 shows as a shell.
+* Which `app` name each agent sends is not known for sure: names are matched by substring.
+* The Codex usage request follows another application's code and was not tried.
+* Gemini CLI and Copilot CLI have no usage meter.
+* The scrollback and the programs of the terminals are not kept across launches.
+* Panes cannot be moved within a workspace, only to another one.
+* The agents' tiles are placeholders, and the application has no icon.
