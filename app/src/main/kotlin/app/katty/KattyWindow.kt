@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import app.katty.core.AgentState
 import app.katty.core.AgentStates
+import app.katty.core.AttentionItem
 import app.katty.core.CloseDecision
 import app.katty.core.Direction
 import app.katty.core.KattyStore
@@ -43,11 +45,15 @@ import app.katty.core.ProjectId
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
+import app.katty.core.attention
 import app.katty.core.closeTerminalDecision
 import app.katty.core.closeWorkspaceDecision
 import app.katty.core.WorkspaceId
 import app.katty.core.neighbour
 import app.katty.core.terminals
+import app.katty.screens.AgentToast
+import app.katty.screens.AttentionBell
+import app.katty.screens.AttentionPopover
 import app.katty.screens.CloseLastTerminalDialog
 import app.katty.screens.ColorSchemePicker
 import app.katty.screens.MainMenu
@@ -71,6 +77,7 @@ import app.katty.ui.ConfirmDialog
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import app.katty.ui.Katty
 import org.jetbrains.jewel.ui.component.DefaultButton
@@ -93,6 +100,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     var renamingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     var findingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var attentionOpen by remember { mutableStateOf(false) }
+    var toast by remember { mutableStateOf<AttentionItem?>(null) }
     // Whose color scheme is being chosen: the default of the settings (`null` target with the flag), or a terminal's.
     var picking by remember { mutableStateOf<SchemeTarget?>(null) }
     val families by produceState(emptyList<String>()) { value = withContext(Dispatchers.IO) { SystemFonts.monospacedFamilies() } }
@@ -111,6 +120,14 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
     val stateOf: (TerminalId) -> AgentState = agentStates::stateOf
     LaunchedEffect(handles) { tracker.sync(handles) }
+    val attention = remember(state.projects, infos) { state.attention(infos) }
+    // The time that ages are told from moves on by itself.
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000)
+            value = System.currentTimeMillis()
+        }
+    }
     // Seen: what a terminal finished or failed at stays until the user has it in front of them, in a window that has the focus.
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val selectedState = state.selection.terminal?.let { infos[it]?.state }
@@ -156,6 +173,31 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     val closeTerminal: (TerminalId) -> Unit = { id ->
         if (state.closeTerminalDecision(id, stateOf) == CloseDecision.NOW) store.closeTerminal(id) else closingTerminal = id
     }
+    // Goes to a terminal, whatever the window is showing.
+    val openTerminal: (TerminalId) -> Unit = { id ->
+        store.updateSettings { it.copy(view = MainView.TERMINALS) }
+        store.focus(id)
+        attentionOpen = false
+        toast = null
+    }
+    val jumpToWaiting = { attention.nextWaiting(state, state.selection.terminal)?.let(openTerminal); Unit }
+    // A terminal that starts needing the user, finishes or fails, in one that the user is not looking at, is told in a notice.
+    val windowFocusedNow by rememberUpdatedState(LocalWindowInfo.current.isWindowFocused)
+    LaunchedEffect(Unit) {
+        tracker.transitions.collect { transition ->
+            val current = store.state.value
+            val looking = transition.terminal == current.selection.terminal && windowFocusedNow && current.settings.view == MainView.TERMINALS
+            if (looking || transition.info.state !in setOf(AgentState.NEEDS_INPUT, AgentState.ERROR, AgentState.DONE)) return@collect
+            val location = current.locate(transition.terminal) ?: return@collect
+            toast = AttentionItem(location.terminal, location.project, location.workspace, transition.info)
+        }
+    }
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            delay(TOAST_MS)
+            toast = null
+        }
+    }
     val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
     // The workspaces that a terminal can go to: the ones of every project, named with their project when it is another one.
     val destinationsOf = { terminal: TerminalId ->
@@ -180,6 +222,19 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
             onToggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
             showSidebarToggle = !vertical,
             trailing = {
+                Box {
+                    AttentionBell(attention.count, { attentionOpen = !attentionOpen })
+                    if (attentionOpen) {
+                        AttentionPopover(
+                            attention = attention,
+                            now = now,
+                            onOpen = openTerminal,
+                            onMarkAllSeen = tracker::markAllSeen,
+                            onJumpToNext = jumpToWaiting,
+                            onDismiss = { attentionOpen = false },
+                        )
+                    }
+                }
                 Box {
                     KattyIconButton(KattyIcons.Menu, "Main menu", { menuOpen = !menuOpen })
                     if (menuOpen) {
@@ -209,6 +264,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                 WindowShortcut.SPLIT_DOWN -> terminal?.let { store.split(it, SplitDirection.COLUMN) }
                 WindowShortcut.CLOSE_TERMINAL -> terminal?.let(closeTerminal)
                 WindowShortcut.RESTART_TERMINAL -> terminal?.let(registry::restart)
+                WindowShortcut.JUMP_TO_WAITING -> jumpToWaiting()
                 WindowShortcut.FOCUS_LEFT -> focusNeighbour(Direction.LEFT)
                 WindowShortcut.FOCUS_RIGHT -> focusNeighbour(Direction.RIGHT)
                 WindowShortcut.FOCUS_UP -> focusNeighbour(Direction.UP)
@@ -308,6 +364,9 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
             }
         }
 
+        toast?.let { item ->
+            AgentToast(item, now, onClick = { openTerminal(item.terminal.id) }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
+        }
         picking?.let { target ->
             val chosen = when (target) {
                 SchemeTarget.Default -> settings.colorScheme
@@ -359,6 +418,9 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     }
 }
 
+/** How long a notice stays. */
+private const val TOAST_MS = 6_000L
+
 /** Whose color scheme the picker chooses. */
 private sealed interface SchemeTarget {
     /** The default of the settings, which the terminals that have no scheme of their own follow. */
@@ -369,7 +431,7 @@ private sealed interface SchemeTarget {
 
 /** The window's own shortcuts, which the terminal does not see. */
 private enum class WindowShortcut {
-    ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE, SPLIT_RIGHT, SPLIT_DOWN, CLOSE_TERMINAL, RESTART_TERMINAL, FOCUS_LEFT, FOCUS_RIGHT, FOCUS_UP, FOCUS_DOWN,
+    ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE, SPLIT_RIGHT, SPLIT_DOWN, CLOSE_TERMINAL, RESTART_TERMINAL, JUMP_TO_WAITING, FOCUS_LEFT, FOCUS_RIGHT, FOCUS_UP, FOCUS_DOWN,
 }
 
 private fun KeyEvent.windowShortcut(): WindowShortcut? {
@@ -388,6 +450,7 @@ private fun KeyEvent.windowShortcut(): WindowShortcut? {
         key == Key.O && !isShiftPressed -> WindowShortcut.ADD_PROJECT
         key == Key.N && !isShiftPressed -> WindowShortcut.NEW_WORKSPACE
         key == Key.W && isShiftPressed -> WindowShortcut.CLOSE_WORKSPACE
+        key == Key.J && isShiftPressed -> WindowShortcut.JUMP_TO_WAITING
         key == Key.W -> WindowShortcut.CLOSE_TERMINAL
         key == Key.R && !isShiftPressed -> WindowShortcut.RESTART_TERMINAL
         key == Key.D && isShiftPressed -> WindowShortcut.SPLIT_DOWN

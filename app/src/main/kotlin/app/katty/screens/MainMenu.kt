@@ -25,20 +25,16 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import app.katty.core.LayoutMode
 import app.katty.core.Settings
 import app.katty.core.ThemeMode
 import app.katty.terminal.themes.ITermColorSchemeInfo
 import app.katty.ui.CheckSetting
+import app.katty.ui.BelowEnd
 import app.katty.ui.Choice
 import app.katty.ui.ChoiceOption
 import app.katty.ui.Icon
@@ -110,12 +106,6 @@ fun MainMenu(
             }
         }
     }
-}
-
-// Under the button that opens it, with its right edge on the button's.
-private object BelowEnd : PopupPositionProvider {
-    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset =
-        IntOffset((anchorBounds.right - popupContentSize.width).coerceAtLeast(0), anchorBounds.bottom + 4)
 }
 
 @Composable
