@@ -46,14 +46,18 @@ import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
 import app.katty.core.attention
+import app.katty.core.board
 import app.katty.core.closeTerminalDecision
 import app.katty.core.closeWorkspaceDecision
 import app.katty.core.WorkspaceId
 import app.katty.core.neighbour
 import app.katty.core.terminals
+import app.katty.screens.AgentBoard
 import app.katty.screens.AgentToast
 import app.katty.screens.AttentionBell
 import app.katty.screens.AttentionPopover
+import app.katty.screens.BoardSidebar
+import app.katty.screens.BoardTabs
 import app.katty.screens.CloseLastTerminalDialog
 import app.katty.screens.ColorSchemePicker
 import app.katty.screens.MainMenu
@@ -101,6 +105,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     var findingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var attentionOpen by remember { mutableStateOf(false) }
+    // The project that the board shows, `null` for every project.
+    var boardFilter by remember { mutableStateOf<ProjectId?>(null) }
     var toast by remember { mutableStateOf<AttentionItem?>(null) }
     // Whose color scheme is being chosen: the default of the settings (`null` target with the flag), or a terminal's.
     var picking by remember { mutableStateOf<SchemeTarget?>(null) }
@@ -152,7 +158,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
 
     // The sessions follow the terminals of the store, and the ones that are not on the screen are paused.
     LaunchedEffect(state.projects, state.settings.colorScheme) { registry.sync(state) }
-    val shown = state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty()
+    // No terminal is on the screen while the board is.
+    val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
     LaunchedEffect(shown, handles.keys) { registry.setVisible(shown) }
 
     val addProject = {
@@ -220,7 +227,10 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
         TitleBarContent(
             state,
             onToggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
-            showSidebarToggle = !vertical,
+            showSidebarToggle = !vertical && settings.view == MainView.TERMINALS,
+            view = settings.view,
+            onView = { view -> store.updateSettings { it.copy(view = view) } },
+            boardTitle = state.projects.firstOrNull { it.id == boardFilter }?.name ?: "All projects",
             trailing = {
                 Box {
                     AttentionBell(attention.count, { attentionOpen = !attentionOpen })
@@ -315,7 +325,25 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                 }
             }
             val reveal: (ProjectId) -> Unit = { id -> state.projects.firstOrNull { it.id == id }?.let { revealInFileManager(it.directory) } }
-            if (vertical) {
+            if (settings.view == MainView.BOARD) {
+                // A project that was removed is not a filter any more.
+                val filter = boardFilter?.takeIf { id -> state.projects.any { it.id == id } }
+                val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
+                val board: @Composable (Modifier) -> Unit = { boardModifier ->
+                    AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, modifier = boardModifier)
+                }
+                if (vertical) {
+                    Column(Modifier.fillMaxSize()) {
+                        BoardTabs(state, filter, { boardFilter = it }, states = agentStates)
+                        board(Modifier.weight(1f))
+                    }
+                } else {
+                    Row(Modifier.fillMaxSize()) {
+                        BoardSidebar(state, filter, { boardFilter = it }, states = agentStates)
+                        board(Modifier.weight(1f))
+                    }
+                }
+            } else if (vertical) {
                 Column(Modifier.fillMaxSize()) {
                     ProjectTabs(
                         state, store,
