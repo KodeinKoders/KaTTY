@@ -61,6 +61,9 @@ import app.katty.core.neighbour
 import app.katty.core.terminals
 import app.katty.screens.AgentBoard
 import app.katty.screens.AgentToast
+import app.katty.screens.CommandPalette
+import app.katty.screens.PaletteHandlers
+import app.katty.screens.paletteCommands
 import app.katty.screens.AttentionBell
 import app.katty.screens.AttentionPopover
 import app.katty.screens.BoardSidebar
@@ -117,6 +120,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     var findingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var attentionOpen by remember { mutableStateOf(false) }
+    var paletteOpen by remember { mutableStateOf(false) }
     // The project that the board shows, `null` for every project.
     var boardFilter by remember { mutableStateOf<ProjectId?>(null) }
     var toast by remember { mutableStateOf<AttentionItem?>(null) }
@@ -236,6 +240,33 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
             toast = null
         }
     }
+    val paletteHandlers = PaletteHandlers(
+        addProject = addProject,
+        newWorkspace = newWorkspace,
+        renameWorkspace = { renamingWorkspace = state.selection.workspace },
+        closeWorkspace = { state.selection.workspace?.let(closeWorkspace) },
+        splitRight = { state.selection.terminal?.let { store.split(it, SplitDirection.ROW) } },
+        splitDown = { state.selection.terminal?.let { store.split(it, SplitDirection.COLUMN) } },
+        renameTerminal = { renamingTerminal = state.selection.terminal },
+        closeTerminal = { state.selection.terminal?.let(closeTerminal) },
+        restartTerminal = { state.selection.terminal?.let(registry::restart) },
+        find = { findingTerminal = state.selection.terminal },
+        clearScrollback = { state.selection.terminal?.let { handles[it]?.session?.clearScrollback() } },
+        maximize = { store.maximize(if (state.selection.maximized == null) state.selection.terminal else null) },
+        colorScheme = { state.selection.terminal?.let { picking = SchemeTarget.Terminal(it) } },
+        toggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
+        showView = { view -> store.updateSettings { it.copy(view = view) } },
+        setLayout = { mode -> store.updateSettings { it.copy(layout = mode) } },
+        setTheme = { theme -> store.updateSettings { it.copy(theme = theme) } },
+        jumpToWaiting = jumpToWaiting,
+        markAllSeen = tracker::markAllSeen,
+        openTerminal = openTerminal,
+        openWorkspace = { id ->
+            state.projects.firstOrNull { p -> p.workspaces.any { it.id == id } }?.let { store.selectProject(it.id) }
+            store.selectWorkspace(id)
+            store.updateSettings { it.copy(view = MainView.TERMINALS) }
+        },
+    )
     val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
     // The workspaces that a terminal can go to: the ones of every project, named with their project when it is another one.
     val destinationsOf = { terminal: TerminalId ->
@@ -262,6 +293,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
             view = settings.view,
             onView = { view -> store.updateSettings { it.copy(view = view) } },
             boardTitle = state.projects.firstOrNull { it.id == boardFilter }?.name ?: "All projects",
+            compactPalette = vertical,
+            onPalette = { paletteOpen = !paletteOpen },
             trailing = {
                 Box {
                     AttentionBell(attention.count, { attentionOpen = !attentionOpen })
@@ -306,6 +339,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                 WindowShortcut.CLOSE_TERMINAL -> terminal?.let(closeTerminal)
                 WindowShortcut.RESTART_TERMINAL -> terminal?.let(registry::restart)
                 WindowShortcut.JUMP_TO_WAITING -> jumpToWaiting()
+                WindowShortcut.PALETTE -> paletteOpen = !paletteOpen
                 WindowShortcut.FOCUS_LEFT -> focusNeighbour(Direction.LEFT)
                 WindowShortcut.FOCUS_RIGHT -> focusNeighbour(Direction.RIGHT)
                 WindowShortcut.FOCUS_UP -> focusNeighbour(Direction.UP)
@@ -435,6 +469,12 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
             }
         }
 
+        if (paletteOpen) {
+            val commands = remember(state, infos, handles) {
+                paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers)
+            }
+            CommandPalette(commands.entries, onRun = { entry -> paletteOpen = false; commands.run(entry) }, onDismiss = { paletteOpen = false })
+        }
         toast?.let { item ->
             AgentToast(item, now, onClick = { openTerminal(item.terminal.id) }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
         }
@@ -502,7 +542,7 @@ private sealed interface SchemeTarget {
 
 /** The window's own shortcuts, which the terminal does not see. */
 private enum class WindowShortcut {
-    ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE, SPLIT_RIGHT, SPLIT_DOWN, CLOSE_TERMINAL, RESTART_TERMINAL, JUMP_TO_WAITING, FOCUS_LEFT, FOCUS_RIGHT, FOCUS_UP, FOCUS_DOWN,
+    ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE, SPLIT_RIGHT, SPLIT_DOWN, CLOSE_TERMINAL, RESTART_TERMINAL, JUMP_TO_WAITING, PALETTE, FOCUS_LEFT, FOCUS_RIGHT, FOCUS_UP, FOCUS_DOWN,
 }
 
 private fun KeyEvent.windowShortcut(): WindowShortcut? {
@@ -522,6 +562,7 @@ private fun KeyEvent.windowShortcut(): WindowShortcut? {
         key == Key.N && !isShiftPressed -> WindowShortcut.NEW_WORKSPACE
         key == Key.W && isShiftPressed -> WindowShortcut.CLOSE_WORKSPACE
         key == Key.J && isShiftPressed -> WindowShortcut.JUMP_TO_WAITING
+        key == Key.K && !isShiftPressed -> WindowShortcut.PALETTE
         key == Key.W -> WindowShortcut.CLOSE_TERMINAL
         key == Key.R && !isShiftPressed -> WindowShortcut.RESTART_TERMINAL
         key == Key.D && isShiftPressed -> WindowShortcut.SPLIT_DOWN

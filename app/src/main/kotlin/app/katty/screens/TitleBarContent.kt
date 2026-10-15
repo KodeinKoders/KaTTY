@@ -30,6 +30,8 @@ fun TitleBarScope.TitleBarContent(
     view: MainView = MainView.TERMINALS,
     onView: (MainView) -> Unit = {},
     boardTitle: String = "All projects",
+    compactPalette: Boolean = false,
+    onPalette: () -> Unit = {},
     trailing: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
