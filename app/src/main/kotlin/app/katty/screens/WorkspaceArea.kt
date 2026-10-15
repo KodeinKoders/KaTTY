@@ -20,11 +20,13 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.util.lerp
+import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -34,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import app.katty.core.AgentInfo
 import app.katty.core.KattyStore
 import app.katty.core.PaneNode
@@ -58,6 +61,9 @@ import org.jetbrains.jewel.ui.component.styling.DividerStyle
 
 /** The height of the header of a workspace, and of the tabs that stand for it in the vertical layout. */
 val WORKSPACE_HEADER_HEIGHT = 40.dp
+
+/** The space around a maximized pane, in the area of its workspace. */
+val MAXIMIZED_MARGIN = 24.dp
 
 /** How long a pane takes to grow to its maximized place and to go back, in milliseconds. */
 const val MAXIMIZE_MS = 200
@@ -111,7 +117,7 @@ fun WorkspaceArea(
     Column(modifier.background(colors.bg)) {
         // The vertical layout has the workspace's name and its split buttons in its tabs.
         if (showHeader) WorkspaceHeader(workspace, selectedTerminal, store)
-        Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { areaBounds = it.boundsInRoot() }) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { areaBounds = it.boundsInRoot() }) {
             Column(Modifier.fillMaxSize().padding(PANE_GAP / 2)) {
                 PaneTree(node = workspace.layout, context = context)
             }
@@ -123,25 +129,22 @@ fun WorkspaceArea(
                     Modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f * progress.value))
                         .clickable(interactionSource = null, indication = null) { if (maximized != null) store.maximize(null) },
                 )
-                // It is laid out where it ends, so that its terminal is resized once, and drawn scaled from its place to there: animating its
-                // bounds would resize the program on every frame.
-                var target by remember { mutableStateOf(Rect.Zero) }
+                // The pane's frame is laid out at its real bounds on every frame, from its place in the tree to where it ends. Its terminal is laid
+                // out at its final size from the start and clipped, so that the program is resized once and not on every frame of the way.
                 val from = paneBounds[floating.id]?.translate(-areaBounds.left, -areaBounds.top)
+                val terminalSize = DpSize(maxWidth - MAXIMIZED_MARGIN * 2, maxHeight - MAXIMIZED_MARGIN * 2 - PANE_HEADER_HEIGHT)
                 Box(
-                    Modifier.fillMaxSize().padding(24.dp)
-                        .onGloballyPositioned { target = it.boundsInRoot().translate(-areaBounds.left, -areaBounds.top) }
-                        .graphicsLayer {
-                            if (from == null || target.width <= 0f || target.height <= 0f) return@graphicsLayer
-                            val p = progress.value
-                            transformOrigin = TransformOrigin(0f, 0f)
-                            scaleX = lerp(from.width / target.width, 1f, p)
-                            scaleY = lerp(from.height / target.height, 1f, p)
-                            translationX = lerp(from.left - target.left, 0f, p)
-                            translationY = lerp(from.top - target.top, 0f, p)
+                    Modifier
+                        .layout { measurable, constraints ->
+                            val margin = MAXIMIZED_MARGIN.roundToPx().toFloat()
+                            val end = Rect(margin, margin, constraints.maxWidth - margin, constraints.maxHeight - margin)
+                            val rect = if (from == null) end else lerp(from, end, progress.value)
+                            val placeable = measurable.measure(Constraints.fixed(rect.width.roundToInt().coerceAtLeast(0), rect.height.roundToInt().coerceAtLeast(0)))
+                            layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(rect.left.roundToInt(), rect.top.roundToInt()) }
                         }
                         .shadow(24.dp, RoundedCornerShape(8.dp)),
                 ) {
-                    PaneView(floating, context, floating = true)
+                    PaneView(floating, context, floating = true, terminalSize = terminalSize)
                 }
             }
         }

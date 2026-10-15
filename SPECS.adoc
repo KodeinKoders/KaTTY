@@ -299,7 +299,8 @@ A terminal that has a name of its own has "Use process name" after "Rename termi
 * The title bar, the sidebar and the header of the workspace stay as they are.
 * The terminal's place in the tree is left empty: a session is shown in one place only.
 * It grows from its place in the tree to there in 200 ms while the scrim fades in, and shrinks back to its place when it is restored.
-The terminal is resized once, to its final size, and drawn scaled in between.
+The frame of the pane (border, header, corners, shadow) is drawn at its real bounds on every frame.
+The terminal is resized once, to its final size, at the start (and once more at the end when it goes back), and what does not fit yet is clipped: the text is never scaled.
 * The restore button, or a click outside the terminal, puts it back.
 Escape does not: the programs in a terminal use it.
 

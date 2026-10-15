@@ -254,17 +254,31 @@ class WorkspaceAreaTest {
     @Test
     fun aPaneGrowsToItsMaximizedPlaceAndGoesBackToItsOwn() = runComposeUiTest {
         store.addProject("/tmp")
-        store.split(store.state.value.selection.terminal!!, SplitDirection.ROW)
+        val first = store.state.value.selection.terminal!!
+        store.split(first, SplitDirection.ROW)
         show()
         mainClock.autoAdvance = false
         val start = onAllNodesWithContentDescription("Maximize pane")[0].fetchSemanticsNode().boundsInRoot.left
+        val columns = { registry.handles.value[first]!!.session!!.frames.value.cols }
+        val startColumns = columns()
 
         onAllNodesWithContentDescription("Maximize pane")[0].performClick()
         mainClock.advanceTimeBy(100)
-        val midway = onNodeWithContentDescription("Restore pane").fetchSemanticsNode().boundsInRoot.left
+        val midwayButton = onNodeWithContentDescription("Restore pane").fetchSemanticsNode().boundsInRoot
+        val midway = midwayButton.left
+        // The terminal has its final size from the first frame of the way: it is not resized as the pane grows.
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (columns() == startColumns && System.nanoTime() < deadline) Thread.sleep(20)
+        val midwayColumns = columns()
         mainClock.advanceTimeBy(400)
-        val end = onNodeWithContentDescription("Restore pane").fetchSemanticsNode().boundsInRoot.left
+        val endButton = onNodeWithContentDescription("Restore pane").fetchSemanticsNode().boundsInRoot
+        val end = endButton.left
         assertTrue(start < midway && midway < end, "$start < $midway < $end")
+        assertTrue(midwayColumns != startColumns, "$startColumns, $midwayColumns")
+        Thread.sleep(200)
+        assertEquals(midwayColumns, columns())
+        // What is drawn is not scaled: the buttons of the header have their size all the way.
+        assertEquals(endButton.height, midwayButton.height)
 
         onNodeWithContentDescription("Restore pane").performClick()
         mainClock.advanceTimeBy(100)

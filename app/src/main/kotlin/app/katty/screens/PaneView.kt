@@ -24,6 +24,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -79,10 +83,12 @@ private val PANE_RADIUS = 6.dp
  * the keyboard focus, makes it the focused one.
  *
  * @param floating Whether it is the maximized one, over the others: it has the button to put it back.
+ * @param terminalSize The size its terminal is laid out at, whatever the pane's: the pane shows what fits. The maximized pane grows from its place
+ * to its final bounds, and a terminal that followed it would be resized, and its program with it, on every frame.
  * @param hollow Whether it only holds the place of a terminal that is shown floating: its session has one view only.
  */
 @Composable
-internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolean = false, hollow: Boolean = false) {
+internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolean = false, hollow: Boolean = false, terminalSize: DpSize? = null) {
     val colors = Katty.colors
     val focused = context.selected == spec.id
     val handle = context.handles[spec.id]
@@ -179,14 +185,14 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
             )
             headerMenuAt?.let { at -> KattyMenu(menuEntries(), onDismiss = { headerMenuAt = null }, offset = at) }
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
             val session = handle?.session
             if (session != null) {
                 // A shell that was started again is another session: what shows it is made again.
                 key(handle.generation) {
                     Terminal(
                         session,
-                        Modifier.fillMaxSize(),
+                        if (terminalSize == null) Modifier.fillMaxSize() else Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(terminalSize),
                         fontSize = context.settings.fontSize.sp,
                         font = context.font,
                         ligatures = context.settings.ligatures,
