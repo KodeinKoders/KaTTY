@@ -10,30 +10,51 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.core.AgentState
 import app.katty.core.GitInfo
 import app.katty.core.GitKind
+import app.katty.core.SplitDirection
 import app.katty.core.TerminalSpec
+import app.katty.copyToClipboard
+import app.katty.readClipboard
 import app.katty.terminal.compose.Terminal
 import app.katty.ui.AgentGlyph
 import app.katty.ui.AgentTile
+import app.katty.ui.ButtonSize
 import app.katty.ui.Icon
+import app.katty.ui.InlineRename
+import app.katty.ui.KattyIconButton
+import app.katty.ui.KattyMenu
 import app.katty.ui.Katty
 import app.katty.ui.KattyIcons
 import app.katty.ui.StateGlyph
@@ -57,6 +78,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
     val focused = context.selected == spec.id
     val handle = context.handles[spec.id]
     val shape = RoundedCornerShape(PANE_RADIUS)
+    var contextAt by remember { mutableStateOf<IntOffset?>(null) }
 
     // The focused terminal has the keyboard, unless something else is being typed in. The terminal may not be composed yet.
     LaunchedEffect(handle, focused, context.focusTerminals) {
@@ -72,14 +94,50 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
             .background(colors.panel)
             // The ring is the border of the design plus the shadow around it: 2 px of the accent, 1 px of the line otherwise.
             .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.line, shape)
-            .onFocusChanged { if (it.hasFocus) context.store.focus(spec.id) },
+            .onFocusChanged { if (it.hasFocus) context.store.focus(spec.id) }
+            // Select all and clear the scrollback are the terminal's, whenever it has the focus: the window does not know whether it does.
+            .onPreviewKeyEvent { event ->
+                val session = handle?.session ?: return@onPreviewKeyEvent false
+                if (event.type != KeyEventType.KeyDown || !event.isMetaPressed || event.isAltPressed || event.isShiftPressed) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.A -> session.selectAll()
+                    Key.L -> session.clearScrollback()
+                    else -> return@onPreviewKeyEvent false
+                }
+                true
+            },
     ) {
+        val title = spec.name ?: handle?.shellName ?: "zsh"
+        var paneMenu by remember { mutableStateOf(false) }
         PaneHeader(
-            title = spec.name ?: handle?.shellName ?: "zsh",
+            title = title,
             glyph = AgentGlyph.SHELL,
             // What an agent says about itself comes with the states of the agents.
             state = AgentState.IDLE,
             git = handle?.git?.collectAsState()?.value,
+            renaming = context.actions.renaming == spec.id,
+            onRenamed = { context.actions.onRenamed(spec.id, it) },
+            trailing = {
+                Box {
+                    KattyIconButton(KattyIcons.Kebab, "Pane menu", { paneMenu = true }, size = ButtonSize.COMPACT)
+                    if (paneMenu) {
+                        KattyMenu(
+                            terminalMenu(
+                                context.actions.destinations,
+                                TerminalMenuActions(
+                                    rename = { context.actions.onRename(spec.id) },
+                                    splitRight = { context.store.split(spec.id, SplitDirection.ROW) },
+                                    splitDown = { context.store.split(spec.id, SplitDirection.COLUMN) },
+                                    moveTo = { context.actions.onMove(spec.id, it) },
+                                    copyDirectory = { copyToClipboard(spec.directory) },
+                                    close = { context.actions.onClose(spec.id) },
+                                ),
+                            ),
+                            onDismiss = { paneMenu = false },
+                        )
+                    }
+                }
+            },
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val session = handle?.session
@@ -93,6 +151,25 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext) {
                         ligatures = context.settings.ligatures,
                         focusRequester = handle.focus,
                         focusOnStart = false,
+                        onContextMenu = { at -> contextAt = IntOffset(at.x.toInt(), at.y.toInt()) },
+                    )
+                }
+                contextAt?.let { at ->
+                    KattyMenu(
+                        terminalContextMenu(
+                            hasSelection = session.selectedText() != null,
+                            actions = ContextMenuActions(
+                                copy = { session.selectedText()?.let(::copyToClipboard) },
+                                paste = { readClipboard()?.let(session::paste) },
+                                selectAll = session::selectAll,
+                                clearScrollback = session::clearScrollback,
+                                splitRight = { context.store.split(spec.id, SplitDirection.ROW) },
+                                splitDown = { context.store.split(spec.id, SplitDirection.COLUMN) },
+                                close = { context.actions.onClose(spec.id) },
+                            ),
+                        ),
+                        onDismiss = { contextAt = null },
+                        offset = at,
                     )
                 }
             } else if (handle?.failure != null) {
@@ -115,7 +192,16 @@ internal fun AgentState.label(): String = when (this) {
  * The name of a terminal that the user renamed is what they chose.
  */
 @Composable
-internal fun PaneHeader(title: String, glyph: AgentGlyph, state: AgentState, git: GitInfo?, modifier: Modifier = Modifier) {
+internal fun PaneHeader(
+    title: String,
+    glyph: AgentGlyph,
+    state: AgentState,
+    git: GitInfo?,
+    modifier: Modifier = Modifier,
+    renaming: Boolean = false,
+    onRenamed: (String?) -> Unit = {},
+    trailing: @Composable () -> Unit = {},
+) {
     val colors = Katty.colors
     Row(
         modifier.fillMaxWidth().height(PANE_HEADER_HEIGHT).background(colors.side).padding(start = 10.dp, end = 4.dp),
@@ -126,7 +212,11 @@ internal fun PaneHeader(title: String, glyph: AgentGlyph, state: AgentState, git
         AgentTile(glyph, size = TileSize.HEADER)
         // What the terminal is and where it is take the space that the state does not.
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OneLine(title, Modifier.semantics { contentDescription = "Terminal $title" }, color = colors.text)
+            if (renaming) {
+                InlineRename(title, onRenamed, Modifier.widthIn(max = 200.dp))
+            } else {
+                OneLine(title, Modifier.semantics { contentDescription = "Terminal $title" }, color = colors.text)
+            }
             if (git != null) {
                 val description = if (git.kind == GitKind.WORKTREE) "Worktree" else if (git.kind == GitKind.DETACHED) "Commit" else "Branch"
                 Row(
@@ -143,5 +233,6 @@ internal fun PaneHeader(title: String, glyph: AgentGlyph, state: AgentState, git
             state.label(), color = if (state == AgentState.NEEDS_INPUT || state == AgentState.ERROR) colors.input else colors.muted,
             fontSize = 12.sp, fontWeight = if (state == AgentState.NEEDS_INPUT || state == AgentState.ERROR) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1,
         )
+        trailing()
     }
 }

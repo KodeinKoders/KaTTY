@@ -48,6 +48,7 @@ val PANE_GAP = 8.dp
  *
  * @param flipped Whether every split is turned, as the vertical layout draws the tree.
  * @param focusTerminals Whether the focused terminal may take the keyboard focus: not while something else is being typed in.
+ * @param actions What the window does for the panes.
  */
 @Composable
 fun WorkspaceArea(
@@ -58,8 +59,8 @@ fun WorkspaceArea(
     store: KattyStore,
     flipped: Boolean,
     focusTerminals: Boolean,
+    actions: PaneActions,
     modifier: Modifier = Modifier,
-    overlay: @Composable (TerminalId) -> Unit = {},
 ) {
     val colors = Katty.colors
     Column(modifier.background(colors.bg)) {
@@ -67,7 +68,7 @@ fun WorkspaceArea(
         Column(Modifier.weight(1f).fillMaxWidth().padding(PANE_GAP / 2)) {
             PaneTree(
                 node = workspace.layout,
-                context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals),
+                context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions),
             )
         }
     }
@@ -82,6 +83,23 @@ internal class PaneContext(
     val store: KattyStore,
     val flipped: Boolean,
     val focusTerminals: Boolean,
+    val actions: PaneActions,
+)
+
+/**
+ * What the window does for the panes, since it is what asks questions and keeps the dialogs.
+ *
+ * @param renaming The terminal whose name is being edited in its header.
+ * @param onClose Closes a terminal, after the confirmation that it needs.
+ * @param destinations The other workspaces that a terminal can be moved to.
+ */
+class PaneActions(
+    val renaming: TerminalId?,
+    val onRename: (TerminalId) -> Unit,
+    val onRenamed: (TerminalId, String?) -> Unit,
+    val onClose: (TerminalId) -> Unit,
+    val destinations: List<WorkspaceChoice>,
+    val onMove: (TerminalId, app.katty.core.WorkspaceId) -> Unit,
 )
 
 @Composable

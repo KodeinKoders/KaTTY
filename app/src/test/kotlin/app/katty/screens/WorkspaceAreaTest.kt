@@ -5,9 +5,15 @@ package app.katty.screens
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.input.key.Key
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.KattyStore
 import app.katty.core.SplitDirection
@@ -39,6 +45,9 @@ class WorkspaceAreaTest {
         scope.cancel()
     }
 
+    private val closed = mutableListOf<app.katty.core.TerminalId>()
+    private var renaming by androidx.compose.runtime.mutableStateOf<app.katty.core.TerminalId?>(null)
+
     private fun androidx.compose.ui.test.ComposeUiTest.show() {
         registry.sync(store.state.value)
         setContent {
@@ -48,7 +57,17 @@ class WorkspaceAreaTest {
                 androidx.compose.runtime.LaunchedEffect(state.projects) { registry.sync(state) }
                 val workspace = state.selectedWorkspace
                 if (workspace != null) {
-                    WorkspaceArea(workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = true)
+                    WorkspaceArea(
+                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = true,
+                        actions = PaneActions(
+                            renaming = renaming,
+                            onRename = { renaming = it },
+                            onRenamed = { id, name -> renaming = null; if (name != null) store.renameTerminal(id, name) },
+                            onClose = { closed += it },
+                            destinations = emptyList(),
+                            onMove = { _, _ -> },
+                        ),
+                    )
                 }
             }
         }
@@ -77,6 +96,41 @@ class WorkspaceAreaTest {
         val tree = store.state.value.selectedWorkspace!!.layout
         assertEquals(3, tree.terminals().size)
         assertEquals(SplitDirection.ROW, (tree as app.katty.core.PaneNode.Split).direction)
+    }
+
+    @Test
+    fun theMenuOfAPaneSplitsRenamesAndClosesItsTerminal() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+
+        onNodeWithContentDescription("Pane menu").performClick()
+        onNodeWithText("Split down").performClick()
+        waitForIdle()
+        assertEquals(2, store.state.value.selectedWorkspace!!.layout.terminals().size)
+
+        // Two panes now, each with its menu: the first one is the terminal that was there.
+        onAllNodesWithContentDescription("Pane menu")[0].performClick()
+        onNodeWithText("Close terminal").performClick()
+        waitForIdle()
+        assertEquals(listOf(terminal), closed)
+    }
+
+    @Test
+    fun theNameOfATerminalIsEditedInItsHeader() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+
+        onNodeWithContentDescription("Pane menu").performClick()
+        onNodeWithText("Rename terminal").performClick()
+        waitForIdle()
+        onNodeWithText("zsh").performTextInput("build")
+        onNodeWithText("build").performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+
+        assertEquals("build", store.state.value.locate(terminal)!!.terminal.name)
+        onNodeWithContentDescription("Terminal build").assertExists()
     }
 
     @Test

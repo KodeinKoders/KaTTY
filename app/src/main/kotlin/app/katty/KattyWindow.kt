@@ -27,19 +27,31 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import app.katty.core.AgentState
+import app.katty.core.CloseDecision
 import app.katty.core.Direction
 import app.katty.core.KattyStore
 import app.katty.core.Project
 import app.katty.core.ProjectId
 import app.katty.core.SplitDirection
+import app.katty.core.TerminalId
+import app.katty.core.TerminalSpec
+import app.katty.core.closeTerminalDecision
+import app.katty.core.closeWorkspaceDecision
 import app.katty.core.WorkspaceId
 import app.katty.core.neighbour
 import app.katty.core.terminals
+import app.katty.screens.CloseLastTerminalDialog
+import app.katty.screens.CloseWorkspaceDialog
+import app.katty.screens.PaneActions
 import app.katty.screens.Sidebar
+import app.katty.screens.TerminalSummary
+import app.katty.screens.WorkspaceChoice
 import app.katty.screens.TitleBarContent
 import app.katty.screens.Welcome
 import app.katty.screens.WorkspaceArea
 import app.katty.terminals.SessionRegistry
+import app.katty.ui.AgentGlyph
 import app.katty.ui.ConfirmDialog
 import app.katty.ui.Katty
 import org.jetbrains.jewel.ui.component.DefaultButton
@@ -58,7 +70,16 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     val settings = state.settings
     var renamingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var removing by remember { mutableStateOf<ProjectId?>(null) }
+    var renamingTerminal by remember { mutableStateOf<TerminalId?>(null) }
+    // What the user has to confirm before it is closed.
+    var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
+    var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     val handles by registry.handles.collectAsState()
+    // What each terminal is doing comes from what its program reports: until the agents are told apart, every terminal is a shell at rest.
+    val stateOf: (TerminalId) -> AgentState = { AgentState.IDLE }
+    val describe: (TerminalSpec) -> TerminalSummary = { spec ->
+        TerminalSummary(spec.id, spec.name ?: handles[spec.id]?.shellName ?: "shell", AgentGlyph.SHELL, stateOf(spec.id))
+    }
 
     // The sessions follow the terminals of the store, and the ones that are not on the screen are paused.
     LaunchedEffect(state.projects, state.settings.colorScheme) { registry.sync(state) }
@@ -76,7 +97,22 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
         }
         Unit
     }
-    val closeSelectedWorkspace = { state.selection.workspace?.let(store::closeWorkspace); Unit }
+    // Closing asks first when an agent that is active would be stopped, and does not otherwise.
+    val closeWorkspace: (WorkspaceId) -> Unit = { id ->
+        if (state.closeWorkspaceDecision(id, stateOf) == CloseDecision.NOW) store.closeWorkspace(id) else closingWorkspace = id
+    }
+    val closeTerminal: (TerminalId) -> Unit = { id ->
+        if (state.closeTerminalDecision(id, stateOf) == CloseDecision.NOW) store.closeTerminal(id) else closingTerminal = id
+    }
+    val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
+    // The workspaces that a terminal can go to: the ones of every project, named with their project when it is another one.
+    val destinationsOf = { terminal: TerminalId ->
+        val here = state.locate(terminal)
+        state.projects.flatMap { project ->
+            project.workspaces.filter { it.id != here?.workspace?.id }
+                .map { WorkspaceChoice(it.id, if (project.id == here?.project?.id) it.name else "${project.name} / ${it.name}") }
+        }
+    }
     // Whether every split is drawn turned, which the vertical layout does: decided with the layout mode, later.
     val flipped = false
     val focusNeighbour = { direction: Direction ->
@@ -100,7 +136,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                 WindowShortcut.CLOSE_WORKSPACE -> closeSelectedWorkspace()
                 WindowShortcut.SPLIT_RIGHT -> terminal?.let { store.split(it, SplitDirection.ROW) }
                 WindowShortcut.SPLIT_DOWN -> terminal?.let { store.split(it, SplitDirection.COLUMN) }
-                WindowShortcut.CLOSE_TERMINAL -> terminal?.let { store.closeTerminal(it) }
+                WindowShortcut.CLOSE_TERMINAL -> terminal?.let(closeTerminal)
                 WindowShortcut.FOCUS_LEFT -> focusNeighbour(Direction.LEFT)
                 WindowShortcut.FOCUS_RIGHT -> focusNeighbour(Direction.RIGHT)
                 WindowShortcut.FOCUS_UP -> focusNeighbour(Direction.UP)
@@ -119,7 +155,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                         store = store,
                         onAddProject = addProject,
                         onRemoveProject = { removing = it },
-                        onCloseWorkspace = store::closeWorkspace,
+                        onCloseWorkspace = closeWorkspace,
                         onReveal = { id -> state.projects.firstOrNull { it.id == id }?.let { revealInFileManager(it.directory) } },
                         renamingWorkspace = renamingWorkspace,
                         onRenamingWorkspace = { renamingWorkspace = it },
@@ -136,13 +172,51 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                         settings = settings,
                         store = store,
                         flipped = flipped,
-                        focusTerminals = renamingWorkspace == null && removing == null,
+                        focusTerminals = renamingWorkspace == null && removing == null && closingWorkspace == null && closingTerminal == null && renamingTerminal == null,
+                        actions = PaneActions(
+                            renaming = renamingTerminal,
+                            onRename = { renamingTerminal = it },
+                            onRenamed = { id, name ->
+                                renamingTerminal = null
+                                // A name that is blank is no name: the terminal goes back to its default one only when the user clears it on purpose.
+                                if (name != null) store.renameTerminal(id, name)
+                            },
+                            onClose = closeTerminal,
+                            destinations = state.selection.terminal?.let(destinationsOf).orEmpty(),
+                            onMove = { id, to -> store.moveTerminal(id, to) },
+                        ),
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
             }
         }
 
+        closingWorkspace?.let { id ->
+            val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == id }
+            if (workspace == null) {
+                closingWorkspace = null
+            } else {
+                CloseWorkspaceDialog(
+                    workspaceName = workspace.name,
+                    terminals = workspace.layout.terminals().map(describe),
+                    onConfirm = { store.closeWorkspace(id); closingWorkspace = null },
+                    onCancel = { closingWorkspace = null },
+                )
+            }
+        }
+        closingTerminal?.let { id ->
+            val location = state.locate(id)
+            if (location == null) {
+                closingTerminal = null
+            } else {
+                CloseLastTerminalDialog(
+                    workspaceName = location.workspace.name,
+                    terminal = describe(location.terminal),
+                    onConfirm = { store.closeTerminal(id); closingTerminal = null },
+                    onCancel = { closingTerminal = null },
+                )
+            }
+        }
         removing?.let { id ->
             val project = state.projects.firstOrNull { it.id == id }
             if (project == null) removing = null else RemoveProjectDialog(project, onConfirm = { store.removeProject(id); removing = null }, onCancel = { removing = null })
