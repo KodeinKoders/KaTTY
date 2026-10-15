@@ -11,7 +11,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.util.lerp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -46,6 +59,9 @@ import org.jetbrains.jewel.ui.component.styling.DividerStyle
 /** The height of the header of a workspace, and of the tabs that stand for it in the vertical layout. */
 val WORKSPACE_HEADER_HEIGHT = 40.dp
 
+/** How long a pane takes to grow to its maximized place and to go back, in milliseconds. */
+const val MAXIMIZE_MS = 200
+
 /** The gap between panes, and between them and the edge of the area. */
 val PANE_GAP = 8.dp
 
@@ -76,22 +92,55 @@ fun WorkspaceArea(
     infos: Map<TerminalId, AgentInfo> = emptyMap(),
 ) {
     val colors = Katty.colors
-    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, maximized, font, infos)
+    // What the floating pane is, while it grows from its place and while it goes back to it: it outlives `maximized` by the time of the way back.
+    var shown by remember(workspace.id) { mutableStateOf<TerminalId?>(null) }
+    val progress = remember(workspace.id) { Animatable(0f) }
+    LaunchedEffect(workspace.id, maximized) {
+        if (maximized != null) {
+            shown = maximized
+            progress.animateTo(1f, tween(MAXIMIZE_MS, easing = FastOutSlowInEasing))
+        } else {
+            progress.animateTo(0f, tween(MAXIMIZE_MS, easing = FastOutSlowInEasing))
+            shown = null
+        }
+    }
+    // Where the panes are, to grow the floating one from there.
+    val paneBounds = remember(workspace.id) { mutableStateMapOf<TerminalId, Rect>() }
+    var areaBounds by remember(workspace.id) { mutableStateOf(Rect.Zero) }
+    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, shown, font, infos, paneBounds)
     Column(modifier.background(colors.bg)) {
         // The vertical layout has the workspace's name and its split buttons in its tabs.
         if (showHeader) WorkspaceHeader(workspace, selectedTerminal, store)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { areaBounds = it.boundsInRoot() }) {
             Column(Modifier.fillMaxSize().padding(PANE_GAP / 2)) {
                 PaneTree(node = workspace.layout, context = context)
             }
-            val floating = workspace.layout.terminals().firstOrNull { it.id == maximized }
+            val floating = workspace.layout.terminals().firstOrNull { it.id == shown }
             if (floating != null) {
                 // Over the area of the workspace only: the title bar, the sidebar and the header of the workspace stay as they are. A click
                 // outside the terminal puts it back; Escape does not, since the programs in a terminal use it.
                 Box(
-                    Modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f)).clickable(interactionSource = null, indication = null) { store.maximize(null) },
+                    Modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f * progress.value))
+                        .clickable(interactionSource = null, indication = null) { if (maximized != null) store.maximize(null) },
                 )
-                Box(Modifier.fillMaxSize().padding(24.dp).shadow(24.dp, RoundedCornerShape(8.dp))) {
+                // It is laid out where it ends, so that its terminal is resized once, and drawn scaled from its place to there: animating its
+                // bounds would resize the program on every frame.
+                var target by remember { mutableStateOf(Rect.Zero) }
+                val from = paneBounds[floating.id]?.translate(-areaBounds.left, -areaBounds.top)
+                Box(
+                    Modifier.fillMaxSize().padding(24.dp)
+                        .onGloballyPositioned { target = it.boundsInRoot().translate(-areaBounds.left, -areaBounds.top) }
+                        .graphicsLayer {
+                            if (from == null || target.width <= 0f || target.height <= 0f) return@graphicsLayer
+                            val p = progress.value
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            scaleX = lerp(from.width / target.width, 1f, p)
+                            scaleY = lerp(from.height / target.height, 1f, p)
+                            translationX = lerp(from.left - target.left, 0f, p)
+                            translationY = lerp(from.top - target.top, 0f, p)
+                        }
+                        .shadow(24.dp, RoundedCornerShape(8.dp)),
+                ) {
                     PaneView(floating, context, floating = true)
                 }
             }
@@ -112,6 +161,8 @@ internal class PaneContext(
     val maximized: TerminalId? = null,
     val font: TerminalFont = TerminalFont.bundled(),
     val infos: Map<TerminalId, AgentInfo> = emptyMap(),
+    /** Where each pane of the tree is, in the window's coordinates, written by the panes. */
+    val paneBounds: MutableMap<TerminalId, Rect> = mutableMapOf(),
 )
 
 /**
@@ -164,7 +215,9 @@ private val MIN_PANE_SIZE = 160.dp
 @Composable
 private fun PaneTree(node: PaneNode, context: PaneContext) {
     when (node) {
-        is PaneNode.Leaf -> Column(Modifier.padding(PANE_GAP / 2).fillMaxSize()) {
+        is PaneNode.Leaf -> Column(
+            Modifier.padding(PANE_GAP / 2).fillMaxSize().onGloballyPositioned { context.paneBounds[node.terminal.id] = it.boundsInRoot() },
+        ) {
             // The terminal that is maximized is shown in its floating pane: a second view of its session would fight that one over its size.
             PaneView(node.terminal, context, hollow = context.maximized == node.terminal.id)
         }

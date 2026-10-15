@@ -33,6 +33,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class WorkspaceAreaTest {
     private var counter = 0
@@ -248,6 +249,30 @@ class WorkspaceAreaTest {
 
         assertEquals("build", store.state.value.locate(terminal)!!.terminal.name)
         onNodeWithContentDescription("Terminal build").assertExists()
+    }
+
+    @Test
+    fun aPaneGrowsToItsMaximizedPlaceAndGoesBackToItsOwn() = runComposeUiTest {
+        store.addProject("/tmp")
+        store.split(store.state.value.selection.terminal!!, SplitDirection.ROW)
+        show()
+        mainClock.autoAdvance = false
+        val start = onAllNodesWithContentDescription("Maximize pane")[0].fetchSemanticsNode().boundsInRoot.left
+
+        onAllNodesWithContentDescription("Maximize pane")[0].performClick()
+        mainClock.advanceTimeBy(100)
+        val midway = onNodeWithContentDescription("Restore pane").fetchSemanticsNode().boundsInRoot.left
+        mainClock.advanceTimeBy(400)
+        val end = onNodeWithContentDescription("Restore pane").fetchSemanticsNode().boundsInRoot.left
+        assertTrue(start < midway && midway < end, "$start < $midway < $end")
+
+        onNodeWithContentDescription("Restore pane").performClick()
+        mainClock.advanceTimeBy(100)
+        val back = onNodeWithContentDescription("Restore pane").fetchSemanticsNode().boundsInRoot.left
+        // Still floating, and not yet at its place: the pane of the tree is hollow until it is there.
+        assertTrue(back < end && back > start, "$start < $back < $end")
+        mainClock.advanceTimeBy(400)
+        assertEquals(2, onAllNodesWithContentDescription("Maximize pane").fetchSemanticsNodes().size)
     }
 
     @Test

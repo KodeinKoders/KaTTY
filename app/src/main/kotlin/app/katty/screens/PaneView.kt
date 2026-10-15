@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -98,6 +99,12 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
         }
     }
 
+    // Where the terminal that floats came from is left empty: drawn, it would show as a second pane behind the one that moves.
+    if (hollow) {
+        Spacer(Modifier.fillMaxSize())
+        return
+    }
+
     Column(
         Modifier.fillMaxSize()
             .clip(shape)
@@ -174,10 +181,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val session = handle?.session
-            if (hollow) {
-                // Under the scrim, where the terminal that floats came from.
-                Box(Modifier.fillMaxSize().background(colors.bg))
-            } else if (session != null) {
+            if (session != null) {
                 // A shell that was started again is another session: what shows it is made again.
                 key(handle.generation) {
                     Terminal(
@@ -224,7 +228,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                 Text("Could not start the shell: ${handle.failure}", Modifier.padding(12.dp), color = colors.err)
             }
         }
-        if (exitCode != null && !hollow) {
+        if (exitCode != null) {
             EndedStrip(exitCode, onReopen = { context.actions.onReopen(spec.id) }, onClose = { context.actions.onClose(spec.id) })
         }
     }
