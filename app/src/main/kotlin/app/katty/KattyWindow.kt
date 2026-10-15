@@ -84,7 +84,7 @@ import app.katty.screens.Rail
 import app.katty.screens.WorkspaceTabs
 import app.katty.screens.Sidebar
 import app.katty.screens.TerminalSummary
-import app.katty.screens.WorkspaceChoice
+import app.katty.screens.destinationsOf
 import app.katty.screens.TitleBarContent
 import app.katty.screens.Welcome
 import app.katty.screens.WorkspaceArea
@@ -271,14 +271,6 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
         },
     )
     val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
-    // The workspaces that a terminal can go to: the ones of every project, named with their project when it is another one.
-    val destinationsOf = { terminal: TerminalId ->
-        val here = state.locate(terminal)
-        state.projects.flatMap { project ->
-            project.workspaces.filter { it.id != here?.workspace?.id }
-                .map { WorkspaceChoice(it.id, if (project.id == here?.project?.id) it.name else "${project.name} / ${it.name}") }
-        }
-    }
     // The vertical layout draws every split turned.
     val flipped = vertical
     val focusNeighbour = { direction: Direction ->
@@ -376,7 +368,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                                 if (name != null) store.renameTerminal(id, name)
                             },
                             onClose = closeTerminal,
-                            destinations = state.selection.terminal?.let(destinationsOf).orEmpty(),
+                            destinations = state.selection.terminal?.let { destinationsOf(state, it) }.orEmpty(),
                             onMove = { id, to -> store.moveTerminal(id, to) },
                             finding = findingTerminal,
                             onFind = { findingTerminal = it },

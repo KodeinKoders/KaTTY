@@ -209,7 +209,7 @@ The last terminal of a workspace closes the workspace.
 | A blank name gives back the default name (the agent's or the shell's).
 
 | Move a terminal to a workspace
-| To any workspace of any project but its own.
+| The menu offers the other workspaces of its own project, and no entry when the project has only one.
 It is added to the right of everything in the target (a new root split, `ROW`), and has the focus.
 A workspace left without terminals is removed.
 
@@ -483,7 +483,7 @@ A project without a workspace shows "This project has no workspace." and a butto
 | Rename workspace F2, — , Close workspace ⌘⇧W (red).
 
 | Terminal (the "…" of a pane, or a right click anywhere on its header, which also focuses it)
-| Rename terminal, Use process name (only when the terminal has a name of its own), — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces, named `project / workspace` when in another project; absent when there are none), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, — , Close terminal ⌘W (red).
+| Rename terminal, Use process name (only when the terminal has a name of its own), — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces of the project, by their name; absent when the project has no other), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, — , Close terminal ⌘W (red).
 
 | Context (right click in a terminal that did not ask for the mouse, or with Shift)
 | Copy ⌘C (only when something is selected), Paste ⌘V, Select all ⌘A, — , Find… ⌘F, Clear scrollback ⌘L, — , Split right ⌘D, Split down ⌘⇧D, — , Close terminal ⌘W (red).

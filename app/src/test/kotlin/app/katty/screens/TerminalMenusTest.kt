@@ -63,12 +63,28 @@ class TerminalMenusTest {
 
     @Test
     fun movingGoesToTheWorkspaceThatWasChosen() {
-        val entries = terminalMenu(listOf(WorkspaceChoice(WorkspaceId("w1"), "a"), WorkspaceChoice(WorkspaceId("w2"), "api / b")), "Default", menuActions)
+        val entries = terminalMenu(listOf(WorkspaceChoice(WorkspaceId("w1"), "a"), WorkspaceChoice(WorkspaceId("w2"), "b")), "Default", menuActions)
 
         val submenu = entries.filterIsInstance<MenuSubmenu>().single()
-        assertEquals(listOf("a", "api / b"), submenu.entries.labels())
+        assertEquals(listOf("a", "b"), submenu.entries.labels())
         (submenu.entries[1] as MenuAction).onClick()
         assertEquals(listOf("move w2"), calls)
+    }
+
+    @Test
+    fun onlyTheOtherWorkspacesOfTheSameProjectAreOffered() {
+        var counter = 0
+        val store = app.katty.core.KattyStore(newId = { "id${counter++}" })
+        store.addProject("/dev/a")
+        val terminal = store.state.value.selection.terminal!!
+        val second = store.addWorkspace(store.state.value.selection.project!!, "second")!!
+        store.addProject("/dev/b")
+
+        // The terminal of the first project: its other workspace, and nothing of the second project.
+        assertEquals(listOf(second), destinationsOf(store.state.value, terminal).map { it.id })
+        assertEquals(listOf("second"), destinationsOf(store.state.value, terminal).map { it.label })
+        // A project with one workspace has nowhere to move to.
+        assertEquals(emptyList(), destinationsOf(store.state.value, store.state.value.selection.terminal!!))
     }
 
     @Test

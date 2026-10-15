@@ -1,11 +1,19 @@
 package app.katty.screens
 
+import app.katty.core.KattyState
+import app.katty.core.TerminalId
 import app.katty.core.WorkspaceId
 import app.katty.ui.MenuEntry
 import app.katty.ui.menu
 
 /** A workspace that a terminal can be moved to: [label] says where it is. */
 class WorkspaceChoice(val id: WorkspaceId, val label: String)
+
+/** The workspaces that [terminal] can be moved to: the other ones of its own project, so none when the project has only one. */
+fun destinationsOf(state: KattyState, terminal: TerminalId): List<WorkspaceChoice> {
+    val here = state.locate(terminal) ?: return emptyList()
+    return here.project.workspaces.filter { it.id != here.workspace.id }.map { WorkspaceChoice(it.id, it.name) }
+}
 
 /** What the menu of a terminal does. */
 class TerminalMenuActions(
@@ -23,7 +31,7 @@ class TerminalMenuActions(
 /**
  * The menu that the header of a pane opens: renaming, splitting, moving to another workspace, copying where the shell is, closing.
  *
- * @param destinations The other workspaces of every project. There is no entry to move to when there are none.
+ * @param destinations The other workspaces of the terminal's project. There is no entry to move to when there are none.
  * @param colorSchemeHint What the terminal's color scheme is: `Default`, or the name of the one that it has.
  */
 fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, actions: TerminalMenuActions): List<MenuEntry> = menu {
