@@ -22,6 +22,7 @@ internal fun resolveColors(
     defaultForeground: TerminalColor,
     defaultBackground: TerminalColor,
     boldForeground: TerminalColor? = null,
+    minimumContrast: Float = 1f,
 ): CellColors {
     // The bold color is for text that has the default foreground: a program's own color is not touched.
     val defaultOfCell = if (cell.style.bold && boldForeground != null) boldForeground else defaultForeground
@@ -32,10 +33,59 @@ internal fun resolveColors(
     }
     if (cell.style.invisible) {
         foreground = background
-    } else if (cell.style.faint) {
-        foreground = blend(foreground, background)
+    } else {
+        // The text is made readable first, and then dimmed: faint is meant to be dim.
+        if (minimumContrast > 1f) foreground = withMinimumContrast(foreground, background, minimumContrast)
+        if (cell.style.faint) foreground = blend(foreground, background)
     }
     return CellColors(foreground, background)
+}
+
+/**
+ * [foreground] moved towards white or black, whichever it can be most readable on [background], until the contrast between them (the
+ * WCAG ratio: 1 for equal colors, 21 for black on white) is at least [minimum], or as far as it goes. It is [foreground] itself when it is
+ * readable already.
+ */
+internal fun withMinimumContrast(foreground: Int, background: Int, minimum: Float): Int {
+    if (contrastRatio(foreground, background) >= minimum) return foreground
+    val white = 0xFFFFFF
+    val black = 0x000000
+    val target = if (contrastRatio(white, background) >= contrastRatio(black, background)) white else black
+    if (contrastRatio(target, background) < minimum) return target
+    // The least that is moved: the contrast only grows as the color goes to the target.
+    var low = 0f
+    var high = 1f
+    repeat(CONTRAST_STEPS) {
+        val middle = (low + high) / 2
+        if (contrastRatio(mix(foreground, target, middle), background) >= minimum) high = middle else low = middle
+    }
+    return mix(foreground, target, high)
+}
+
+private const val CONTRAST_STEPS = 12
+
+/** The WCAG contrast ratio of two `0xRRGGBB` colors, from 1 to 21. */
+internal fun contrastRatio(a: Int, b: Int): Float {
+    val la = luminance(a)
+    val lb = luminance(b)
+    return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
+}
+
+private fun luminance(rgb: Int): Float {
+    fun channel(shift: Int): Float {
+        val c = (rgb shr shift and 0xFF) / 255f
+        return if (c <= 0.03928f) c / 12.92f else Math.pow(((c + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
+    }
+    return 0.2126f * channel(16) + 0.7152f * channel(8) + 0.0722f * channel(0)
+}
+
+private fun mix(from: Int, to: Int, amount: Float): Int {
+    fun channel(shift: Int): Int {
+        val a = from shr shift and 0xFF
+        val b = to shr shift and 0xFF
+        return (a + (b - a) * amount).toInt().coerceIn(0, 255) shl shift
+    }
+    return channel(16) or channel(8) or channel(0)
 }
 
 /** The color halfway between the two. */
@@ -84,6 +134,10 @@ internal data class TextRun(
     val underline: TerminalUnderline,
     val strikethrough: Boolean,
     val overline: Boolean,
+    /** `0xRRGGBB`, `null` for the color of the text. */
+    val underlineColor: Int? = null,
+    /** Whether it is the text that blinks (SGR 5): it is hidden half of the time. */
+    val blink: Boolean = false,
 )
 
 /**
@@ -99,13 +153,17 @@ internal fun textRuns(
     defaultForeground: TerminalColor,
     defaultBackground: TerminalColor,
     boldForeground: TerminalColor? = null,
+    minimumContrast: Float = 1f,
+    builtinGlyphs: Boolean = false,
 ): List<TextRun> {
     val runs = ArrayList<TextRun>()
     row.cells.forEachIndexed { col, cell ->
         if (cell.text.isEmpty() || cell.width == TerminalCellWidth.SPACER_TAIL || cell.width == TerminalCellWidth.SPACER_HEAD) {
             return@forEachIndexed
         }
-        val foreground = resolveColors(cell, defaultForeground, defaultBackground, boldForeground).foreground
+        // Drawn as a shape: see [spriteCells].
+        if (builtinGlyphs && cell.spriteCodepoint() != null) return@forEachIndexed
+        val foreground = resolveColors(cell, defaultForeground, defaultBackground, boldForeground, minimumContrast).foreground
         val style = cell.style
         val plain = cell.text.length == 1 && cell.text[0] in ' '..'~' && cell.width == TerminalCellWidth.NARROW
 
@@ -117,7 +175,9 @@ internal fun textRuns(
             last.italic == style.italic &&
             last.underline == style.underline &&
             last.strikethrough == style.strikethrough &&
-            last.overline == style.overline
+            last.overline == style.overline &&
+            last.underlineColor == style.underlineColor?.rgb &&
+            last.blink == style.blink
         ) {
             runs[runs.lastIndex] = last.copy(cols = last.cols + 1, text = last.text + cell.text)
         } else {
@@ -131,6 +191,8 @@ internal fun textRuns(
                 underline = style.underline,
                 strikethrough = style.strikethrough,
                 overline = style.overline,
+                underlineColor = style.underlineColor?.rgb,
+                blink = style.blink,
             )
         }
     }
@@ -139,3 +201,32 @@ internal fun textRuns(
 
 // A run of several cells is plain, and a run of a single one is plain if its cell is: only those merge.
 private fun TextRun.isPlain(): Boolean = cols == text.length && text.all { it in ' '..'~' }
+
+/** The code point of the cell's character if it is one that is drawn as a shape (see [isSprite]), `null` if it is for the font. */
+internal fun TerminalCell.spriteCodepoint(): Int? {
+    if (text.isEmpty() || width != TerminalCellWidth.NARROW) return null
+    val codepoint = text.codePointAt(0)
+    // A character with marks over it (a variation selector, a combining mark) is not the plain shape.
+    if (Character.charCount(codepoint) != text.length) return null
+    return codepoint.takeIf(::isSprite)
+}
+
+/** A character of a row that is drawn as a shape: where it is, and in what color. */
+internal data class SpriteCell(val col: Int, val codepoint: Int, val foreground: Int, val blink: Boolean = false)
+
+/** The characters of a row that are drawn as shapes that fill their cell, not with the font. */
+internal fun spriteCells(
+    row: TerminalRow,
+    defaultForeground: TerminalColor,
+    defaultBackground: TerminalColor,
+    boldForeground: TerminalColor? = null,
+    minimumContrast: Float = 1f,
+): List<SpriteCell> {
+    val cells = ArrayList<SpriteCell>()
+    row.cells.forEachIndexed { col, cell ->
+        val codepoint = cell.spriteCodepoint() ?: return@forEachIndexed
+        val foreground = resolveColors(cell, defaultForeground, defaultBackground, boldForeground, minimumContrast).foreground
+        cells += SpriteCell(col, codepoint, foreground, cell.style.blink)
+    }
+    return cells
+}

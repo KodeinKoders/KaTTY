@@ -19,6 +19,7 @@ import app.katty.ghostty.GhosttySnapshotException
 import app.katty.ghostty.GhosttySearch
 import app.katty.ghostty.GhosttySearchStatus
 import app.katty.ghostty.GhosttyViewportMatch
+import app.katty.ghostty.GhosttyDirty
 import app.katty.ghostty.GhosttyScrollbar
 import app.katty.ghostty.GhosttySelectionGesture
 import app.katty.ghostty.GhosttyRenderState
@@ -107,6 +108,14 @@ public class TerminalSession private constructor(
 
     private val searchStateFlow = MutableStateFlow(TerminalSearchState())
 
+    // The search with a regular expression, when that is what was asked for: its pattern, what it found in the last rows as of the last time
+    // it looked, the match that is selected, and when it looked. It is ours and not libghostty's, which is then idle. Under the lock.
+    private var regexQuery: RegexQuery? = null
+    private var regexMatchList: List<RegexMatch> = emptyList()
+    private var regexSelected: RegexMatch? = null
+    private var regexStale = true
+    private var regexLookedAtNanos = 0L
+
     // How big a cell is and how many there are, for what the stream of the program says in cells or percent: read by the reader.
     @Volatile
     private var geometry = CellGeometry(INITIAL_CELL_WIDTH_PX, INITIAL_CELL_HEIGHT_PX, 80, 24)
@@ -130,9 +139,22 @@ public class TerminalSession private constructor(
     @Volatile
     private var lastOutputNanos = System.nanoTime() - 1_000_000_000L
 
+    // Whether the shell is reading a command line, between the marks that it makes at the end of the prompt and at the start of the output
+    // (OSC 133 B and C): written under the lock, by the reader.
+    private var inputActive = false
+
+    // When the program began to hold the screen (synchronized output), in System.nanoTime() terms, 0 when it does not: the producer
+    // makes no frame meanwhile.
+    @Volatile
+    private var holdSinceNanos = 0L
+
     // The rows of the last frame, to hand the same ones out again when they did not change. Only used by
     // the producer, once it runs.
     private var rowCache: Map<GhosttyRowId, TerminalRow> = emptyMap()
+
+    // Set when what the rows are drawn from changed, with no change of the rows: the producer forgets what it kept.
+    @Volatile
+    private var rowCacheStale = false
 
     // The images of the last frames, by id, which are only the ones whose placements exist: what is deleted frees its memory.
     // Only the frame producer uses it, once it runs. It is before the first frame, which uses it.
@@ -256,6 +278,7 @@ public class TerminalSession private constructor(
                 }
                 val started = TimeSource.Monotonic.markNow()
                 settle(started)
+                awaitHold()
                 // Hidden while it waited: the frame is for when it is shown.
                 if (!visibleState.value) {
                     visibleState.first { it }
@@ -364,6 +387,19 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * Waits while the program holds the screen (synchronized output, mode 2026): it is drawing a frame, and the one that is shown stays
+     * until it has finished. A program that does not finish is shown after [HOLD_MAX], as Ghostty does, so that it cannot freeze the screen.
+     * The frame that is kept is the last one made, which is made as before: this only keeps the next one from being made.
+     */
+    private suspend fun awaitHold() {
+        while (true) {
+            val since = holdSinceNanos
+            if (since == 0L || (System.nanoTime() - since).nanoseconds >= HOLD_MAX) return
+            delay(1)
+        }
+    }
+
+    /**
      * Sends a key to the program, as the terminal's current modes ask for it to be encoded.
      */
     public fun sendKey(input: KeyInput) {
@@ -460,6 +496,11 @@ public class TerminalSession private constructor(
     // and the title and the directory, which the terminal says may be read once the callback has returned, are read by
     // [publishAfterWrite].
     private fun installEffects() {
+        terminal.onRenderHold = { held ->
+            holdSinceNanos = if (held) System.nanoTime() else 0L
+            // What was kept back is shown now.
+            if (!held) frameRequests.trySend(Unit)
+        }
         terminal.onBell = { eventFlow.tryEmit(TerminalEvent.Bell) }
         terminal.onTitleChanged = { titleChanged = true }
         terminal.onPwdChanged = { workingDirectoryChanged = true }
@@ -507,19 +548,24 @@ public class TerminalSession private constructor(
         terminal.onSemanticPrompt = { step ->
             when (step.kind) {
                 GhosttyPromptEventKind.PROMPT_START -> {
+                    inputActive = false
                     // What was being worked on is over: the shell is asking for the next thing.
                     if (programStatusStore.promptStarted()) programStatusState.value = programStatusStore.snapshot()
                     eventFlow.tryEmit(TerminalEvent.PromptStarted)
                 }
                 GhosttyPromptEventKind.OUTPUT_START -> {
+                    inputActive = false
                     // Here, where the screen is up to date: it is where the output starts, which it would not be after the write.
                     outputStart?.close()
                     outputStart = terminal.trackCursor()
                     eventFlow.tryEmit(TerminalEvent.CommandStarted(step.command.ifEmpty { null }))
                 }
-                GhosttyPromptEventKind.COMMAND_END -> eventFlow.tryEmit(TerminalEvent.CommandFinished(step.exitCode))
-                // What follows is what the user types: nothing for the host.
-                GhosttyPromptEventKind.INPUT_START -> Unit
+                GhosttyPromptEventKind.COMMAND_END -> {
+                    inputActive = false
+                    eventFlow.tryEmit(TerminalEvent.CommandFinished(step.exitCode))
+                }
+                // What follows is what the user types, until the command runs: nothing for the host, but a click may move the cursor in it.
+                GhosttyPromptEventKind.INPUT_START -> inputActive = true
             }
         }
         terminal.onClipboardWrite = { location, text ->
@@ -882,19 +928,35 @@ public class TerminalSession private constructor(
         sendTyped { terminal.encodePaste(text) }
     }
 
+    /**
+     * Whether pasting [text] could run commands that the user did not see: it has a newline and the program did not ask for bracketed
+     * paste, or it holds the marker that ends one. The host asks the user before [paste] for what is.
+     */
+    public fun isPasteUnsafe(text: String): Boolean = lock.withLock { !closed.get() && terminal.isPasteUnsafe(text) }
+
     /** The search for a text in the history and the screen. */
     public val search: TerminalSearch = TerminalSearch(this)
 
     internal val searchState: StateFlow<TerminalSearchState> get() = searchStateFlow
 
-    internal fun setSearchQuery(query: String) {
+    internal fun setSearchQuery(query: String, regex: Boolean = false, caseSensitive: Boolean = false) {
         lock.withLock {
             if (closed.get()) return
             searchQuery = query
+            regexMatchList = emptyList()
+            regexSelected = null
+            regexStale = true
             if (query.isEmpty()) {
+                regexQuery = null
                 searcher?.setNeedle("")
                 searchStateFlow.value = TerminalSearchState()
+            } else if (regex) {
+                // libghostty's search is idle: this one is ours.
+                searcher?.setNeedle("")
+                val compiled = RegexQuery.of(query, caseSensitive).also { regexQuery = it }
+                searchStateFlow.value = TerminalSearchState(query = query, searching = compiled.pattern != null, error = compiled.error)
             } else {
+                regexQuery = null
                 val active = searcher ?: GhosttySearch(terminal).also { searcher = it }
                 active.setNeedle(query)
                 searchStateFlow.value = TerminalSearchState(query = query, searching = true)
@@ -907,10 +969,48 @@ public class TerminalSession private constructor(
     internal fun moveSearch(towardOlder: Boolean) {
         lock.withLock {
             if (closed.get() || searchQuery.isEmpty()) return
+            if (regexQuery != null) {
+                moveRegexSearch(towardOlder)
+                frameRequests.trySend(Unit)
+                return
+            }
             val active = searcher ?: return
             if (towardOlder) active.selectNext() else active.selectPrevious()
         }
         frameRequests.trySend(Unit)
+    }
+
+    // The match after the selected one (toward newer content), or before it, round at the ends; the first one is the top-most. It scrolls
+    // to bring it into view. Under the lock.
+    private fun moveRegexSearch(towardOlder: Boolean) {
+        lookForRegexMatches()
+        val matches = regexMatchList
+        if (matches.isEmpty()) return
+        val at = regexSelected?.let { current -> matches.indexOfFirst { it.row == current.row && it.start == current.start } }?.takeIf { it >= 0 }
+        val index = when {
+            at == null -> if (towardOlder) matches.lastIndex else 0
+            towardOlder -> (at - 1 + matches.size) % matches.size
+            else -> (at + 1) % matches.size
+        }
+        val match = matches[index]
+        regexSelected = match
+        val position = terminal.scrollbar
+        if (match.row < position.offset || match.row >= position.offset + position.len) {
+            terminal.scroll(GhosttyScrollViewport.Row((match.row - position.len / 2).coerceIn(0, maxOf(0, position.total - position.len))))
+        }
+    }
+
+    // Looks again for the matches in the last rows, when the screen changed since it did or the query did. Under the lock.
+    private fun lookForRegexMatches() {
+        val pattern = regexQuery?.pattern ?: return
+        val total = terminal.totalRows
+        val first = maxOf(0L, total - REGEX_MAX_ROWS)
+        val lines = if (total == 0L) emptyList() else terminal.readRows(first, total - 1, unwrap = false).split('\n')
+        regexMatchList = regexMatches(lines, first, pattern)
+        regexStale = false
+        regexLookedAtNanos = System.nanoTime()
+        // What is selected goes on being so if it is still there, and is not any more if not.
+        regexSelected = regexSelected?.let { current -> regexMatchList.firstOrNull { it.row == current.row && it.start == current.start } }
     }
 
     /**
@@ -991,6 +1091,63 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * Moves the cursor of the line that the shell is reading to the cell at [column] and [row] of the screen, by sending it the arrow keys
+     * that get there, as Ghostty does with a click: it is for a click on the command line. Only the shell that marks its input (OSC 133: see
+     * `shellIntegration` of [start]) and the row of the cursor are moved: the line may be wider than the screen, and the shell is the one to
+     * know what is on it.
+     *
+     * @return Whether the keys were sent, `false` when the shell is not reading, or the cell is not on the row of the cursor.
+     */
+    public fun moveCursorTo(column: Int, row: Int): Boolean {
+        val keys = lock.withLock {
+            if (closed.get() || !inputActive || terminal.activeScreen == GhosttyScreen.ALTERNATE) return false
+            // Scrolled into the history, the rows of the screen are not the ones that the shell has.
+            val position = terminal.scrollbar
+            if (position.offset + position.len < position.total) return false
+            if (row != terminal.cursorRow) return false
+            val delta = column.coerceIn(0, terminal.cols - 1) - terminal.cursorColumn
+            if (delta == 0) return false
+            keyEncoder.setOptionsFrom(terminal)
+            val arrow = if (delta < 0) TerminalKey.ARROW_LEFT else TerminalKey.ARROW_RIGHT
+            List(kotlin.math.abs(delta)) { keyEncoder.encode(KeyInput(arrow).toGhostty()) }.filter { it.isNotEmpty() }
+        }
+        keys.forEach(outgoing::put)
+        return keys.isNotEmpty()
+    }
+
+    /**
+     * Extends what is selected, as the keys do (the arrows, with Shift): the end of the selection that a drag moves goes as [adjustment]
+     * says. It does not scroll: the host does, if the end goes out of the screen.
+     *
+     * @return Whether something was selected.
+     */
+    public fun adjustSelection(adjustment: TerminalSelectionAdjust): Boolean {
+        val adjusted = lock.withLock {
+            if (closed.get() || !hasSelection) return false
+            selectionGesture.reset()
+            terminal.adjustSelection(adjustment.toGhostty())
+        }
+        if (adjusted) frameRequests.trySend(Unit)
+        return adjusted
+    }
+
+    /**
+     * Selects the output of the last command, which is then what [selectedText] gives and what the host copies, as the shell marked it
+     * (OSC 133: see `shellIntegration` of [start]). Nothing is selected, and the answer is `false`, before the first command or without
+     * the shell's marks.
+     */
+    public fun selectLastCommandOutput(): Boolean {
+        val selected = lock.withLock {
+            if (closed.get()) return false
+            val start = outputStart ?: return false
+            selectionGesture.reset()
+            terminal.selectCommandOutput(start).also { if (it) hasSelection = true }
+        }
+        if (selected) frameRequests.trySend(Unit)
+        return selected
+    }
+
+    /**
      * The name of the program that has the terminal now: `emacs` while the user runs it, and the shell's own (`zsh`) at its prompt. It is what
      * the shell is waiting for, read from the pty, so it needs a shell with job control, which every interactive one has. `null` when it cannot
      * be known, and once the program has ended. It costs two system calls: ask as often as a name on the screen needs.
@@ -1001,9 +1158,9 @@ public class TerminalSession private constructor(
         return app.katty.terminal.foregroundProcessName(fd)
     }
 
-    /** The text that is selected, for the caller to copy, or `null` when nothing is. */
-    public fun selectedText(): String? = lock.withLock {
-        if (closed.get()) null else terminal.selectedText()?.takeIf { it.isNotEmpty() }
+    /** The text that is selected, for the caller to copy, as [format] says (the characters only by default), or `null` when nothing is. */
+    public fun selectedText(format: TerminalTextFormat = TerminalTextFormat.PLAIN): String? = lock.withLock {
+        if (closed.get()) null else terminal.selectedText(format.toGhostty())?.takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -1050,12 +1207,30 @@ public class TerminalSession private constructor(
      * @param theme `null` goes back to libghostty's own colors.
      */
     public fun setTheme(theme: TerminalTheme?) {
-        lock.withLock {
+        val report = lock.withLock {
             if (closed.get()) return
             terminal.applyTheme(theme)
             this.theme = theme
+            val dark = isDark(theme)
+            val changed = terminal.isColorSchemeDark != dark
+            terminal.isColorSchemeDark = dark
+            // Only the programs that asked to be told (mode 2031) are, and only when it changed.
+            if (changed && terminal.isModeEnabled(GhosttyMode.COLOR_SCHEME_REPORT)) colorSchemeReport(dark) else null
         }
+        if (report != null) outgoing.put(report)
         // The terminal flags every row as changed, so the rows are read again, with their new colors.
+        frameRequests.trySend(Unit)
+    }
+
+    /**
+     * Whether bold text in one of the 8 normal colors is drawn in the bright one, as terminals did when they had no bold font. Off by
+     * default. What is on the screen is read again, with it.
+     */
+    public fun setBoldIsBright(enabled: Boolean) {
+        if (renderState.boldIsBright == enabled) return
+        renderState.boldIsBright = enabled
+        // The rows are only read again if they changed, or if they are not known.
+        rowCacheStale = true
         frameRequests.trySend(Unit)
     }
 
@@ -1153,6 +1328,12 @@ public class TerminalSession private constructor(
 
     // Only the update reads the terminal, so only it is under the lock: reading the rows, which is the
     // costly part, does not hold up the thread that feeds the terminal.
+    // Whether the program turned the echo off to read a line: a password.
+    private fun readingPassword(): Boolean {
+        val fd = (process as? UnixPtyProcess)?.pty?.masterFD ?: return false
+        return isPtyReadingPassword(fd)
+    }
+
     private fun produceFrame(): TerminalFrame {
         val tracking: Boolean
         val alternate: Boolean
@@ -1163,10 +1344,12 @@ public class TerminalSession private constructor(
         val cellWidth: Int
         val cellHeight: Int
         var found: SearchFound? = null
+        var regexLooked: List<RegexMatch>? = null
         lock.withLock {
             renderState.update(terminal)
             // As of this moment, with the rows that are read for it: what is found is where it is on this frame.
             found = searchOnFrame()
+            regexLooked = if (regexQuery?.pattern != null && searchQuery.isNotEmpty()) regexMatchesOnFrame(renderState.dirty != GhosttyDirty.CLEAN) else null
             tracking = terminal.mouseTracking
             alternate = terminal.activeScreen == GhosttyScreen.ALTERNATE
             shape = terminal.mouseShape
@@ -1187,6 +1370,10 @@ public class TerminalSession private constructor(
         }
         val realImages = imagePlacements(placements, fresh, cellWidth, cellHeight)
 
+        if (rowCacheStale) {
+            rowCacheStale = false
+            rowCache = emptyMap()
+        }
         val previous = rowCache
         val rows = renderState.readRows { id, dirty -> dirty || id !in previous }
         val terminalRows = rows.map { row ->
@@ -1230,7 +1417,10 @@ public class TerminalSession private constructor(
             background = colors.background.toTerminal(),
             foreground = colors.foreground.toTerminal(),
             cursorColor = colors.cursor?.toTerminal(),
-            cursor = renderState.cursor.toTerminal(),
+            cursor = renderState.cursor.toTerminal().let { cursor ->
+                // The terminal cannot tell that the program reads a password: the pty can.
+                if (cursor.passwordInput || !readingPassword()) cursor else cursor.copy(passwordInput = true)
+            },
             cursorTextColor = theme?.cursorText,
             boldColor = theme?.bold,
             mouseTracking = tracking,
@@ -1242,7 +1432,7 @@ public class TerminalSession private constructor(
             scrollbar = if (position.total > position.len) TerminalScrollbar(position.total, position.offset, position.len) else null,
             images = images,
             alternateScreen = alternate,
-            searchMatches = found?.let { searchMatches(it, renderState.cols) } ?: emptyList(),
+            searchMatches = found?.let { searchMatches(it, renderState.cols) } ?: regexLooked?.let { regexFrameMatches(it, terminalRows, position) } ?: emptyList(),
         )
         renderState.clean()
         found?.let { result ->
@@ -1251,6 +1441,41 @@ public class TerminalSession private constructor(
             if (result.status != GhosttySearchStatus.COMPLETE) frameRequests.trySend(Unit)
         }
         return frame
+    }
+
+    // The matches of the regular expression as of this frame, which are looked for again when the screen changed, and not more often than
+    // every so often: a long history is read for it. `null` when the query is not one. Under the lock.
+    private fun regexMatchesOnFrame(changed: Boolean): List<RegexMatch> {
+        val sinceNanos = System.nanoTime() - regexLookedAtNanos
+        if (regexStale || (changed && sinceNanos >= REGEX_REFRESH_NS)) {
+            lookForRegexMatches()
+        } else if (changed) {
+            // Too soon: it looks when it is time.
+            producerScope.launch {
+                delay(REGEX_REFRESH_NS.nanoseconds)
+                frameRequests.trySend(Unit)
+            }
+        }
+        return regexMatchList
+    }
+
+    // The matches that are on the rows of the viewport, by the cells that they cover, and what the host shows of the search.
+    private fun regexFrameMatches(matches: List<RegexMatch>, rows: List<TerminalRow>, position: GhosttyScrollbar): List<TerminalSearchMatch> {
+        val selected = regexSelected
+        val index = selected?.let { current -> matches.indexOfFirst { it.row == current.row && it.start == current.start } }?.takeIf { it >= 0 }
+        searchStateFlow.value = TerminalSearchState(searchQuery, matches.size, index?.let { it + 1 }, searching = false)
+        val visible = ArrayList<TerminalSearchMatch>()
+        for (match in matches) {
+            val y = match.row - position.offset
+            if (y < 0 || y >= rows.size) continue
+            val cells = rows[y.toInt()].cells
+            val columns = columnsOfCharacters(cells)
+            val first = columns.getOrNull(match.start) ?: continue
+            val lastChar = columns.getOrNull(match.end - 1) ?: continue
+            val last = (lastChar + cellSpan(cells, lastChar) - 1).coerceAtMost(cells.size - 1)
+            visible += TerminalSearchMatch(y.toInt(), first..last, current = match === selected || (selected != null && match.row == selected.row && match.start == selected.start))
+        }
+        return visible
     }
 
     // What the search has for one frame.
@@ -1264,7 +1489,7 @@ public class TerminalSession private constructor(
     // Under the lock.
     private fun searchOnFrame(): SearchFound? {
         val active = searcher ?: return null
-        if (searchQuery.isEmpty()) return null
+        if (searchQuery.isEmpty() || regexQuery != null) return null
         active.feed()
         val status = active.tick()
         val total = active.totalMatches
@@ -1376,6 +1601,25 @@ public class TerminalSession private constructor(
         private val SETTLE_QUIET = 3.milliseconds
         private val SETTLE_MAX = 8.milliseconds
 
+        // The least time between two looks for the matches of a regular expression, which reads the last rows of the history.
+        private const val REGEX_REFRESH_NS = 200_000_000L
+
+        // How long a program may hold the screen (synchronized output) before it is shown anyway: Ghostty's own limit.
+        private val HOLD_MAX = 1.seconds
+
+        /** What the terminal calls itself: XTVERSION, and what programs find in `TERM_PROGRAM`. */
+        private const val TERMINAL_NAME = "KaTTY"
+
+        // Whether a theme is a dark one, which is what a program that adapts to it asks (CSI ? 996 n). Without a theme it is libghostty's
+        // own colors, white on black.
+        private fun isDark(theme: TerminalTheme?): Boolean {
+            val background = theme?.background ?: return true
+            return (0.299 * background.r + 0.587 * background.g + 0.114 * background.b) < 128
+        }
+
+        // What tells a program that the scheme changed: CSI ? 997 ; 1 n for dark, 2 for light.
+        private fun colorSchemeReport(dark: Boolean): ByteArray = "\u001b[?997;${if (dark) 1 else 2}n".encodeToByteArray()
+
         // Two clicks are one double click if they are this close in space and in time. The time is the one that the
         // system gives for it, or half a second.
         private const val REPEAT_CLICK_DISTANCE_PX = 5.0
@@ -1456,6 +1700,8 @@ public class TerminalSession private constructor(
          * @throws TerminalSnapshotException If [snapshot] was made by another build of libghostty, or is damaged.
          * @param advertiseSixel Whether the answer to a device attributes query says that the terminal draws Sixel images, which is how
          * programs that probe (chafa, img2sixel) choose it by themselves.
+         * @param boldIsBright Whether bold text in one of the 8 normal colors of the palette is drawn in the bright one, as terminals did when
+         * they had no bold font. [setBoldIsBright] changes it.
          * @param clipboardWrite Whether a program may put text in the clipboard (OSC 52), which then comes as a
          * [TerminalEvent.ClipboardWrite]. It is refused when `false`.
          * @param clipboardReader What a program that reads the clipboard (OSC 52) gets: the text it returns, or a refusal for
@@ -1478,6 +1724,7 @@ public class TerminalSession private constructor(
             shellIntegration: Boolean = true,
             snapshot: TerminalSnapshot? = null,
             advertiseSixel: Boolean = true,
+            boldIsBright: Boolean = false,
         ): TerminalSession {
             if (snapshot != null && !snapshot.isRestorable) {
                 throw TerminalSnapshotException("The snapshot was made by another build of libghostty, which cannot read it: start a new session")
@@ -1489,6 +1736,9 @@ public class TerminalSession private constructor(
             val env = HashMap(System.getenv())
             env["TERM"] = TERM
             env["COLORTERM"] = "truecolor"
+            // Not the one of the terminal that started this application: programs that look at it to know where they run.
+            env["TERM_PROGRAM"] = TERMINAL_NAME
+            env.remove("TERM_PROGRAM_VERSION")
             env.putAll(environment)
             val argv = if (shellIntegration) ShellIntegration.apply(command, env) else command
 
@@ -1524,6 +1774,8 @@ public class TerminalSession private constructor(
                 }
                 // Before the session, so that the first frame already has the colors.
                 terminal.applyTheme(theme)
+                terminal.isColorSchemeDark = isDark(theme)
+                terminal.xtVersion = TERMINAL_NAME
                 // The terminal does not know how big a cell is until it is told, and an image that a program sends before the first
                 // resize would be placed on cells of no size.
                 terminal.resize(cols, rows, INITIAL_CELL_WIDTH_PX, INITIAL_CELL_HEIGHT_PX)
@@ -1539,7 +1791,10 @@ public class TerminalSession private constructor(
                     }
                     terminal.vtWrite(RESTORE_RESET)
                 }
-                val renderState = GhosttyRenderState().also { toClose.addFirst(it) }
+                val renderState = GhosttyRenderState().also {
+                    it.boldIsBright = boldIsBright
+                    toClose.addFirst(it)
+                }
                 val keyEncoder = GhosttyKeyEncoder().also { toClose.addFirst(it) }
                 val mouseEncoder = GhosttyMouseEncoder().also { toClose.addFirst(it) }
                 val selectionGesture = GhosttySelectionGesture(terminal).also { toClose.addFirst(it) }

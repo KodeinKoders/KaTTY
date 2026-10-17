@@ -23,6 +23,9 @@ import app.katty.ghostty.ffm.GhosttyString
 import app.katty.ghostty.ffm.GhosttyTerminalBellFn
 import app.katty.ghostty.ffm.GhosttyTerminalClipboardReadFn
 import app.katty.ghostty.ffm.GhosttyTerminalClipboardWriteFn
+import app.katty.ghostty.ffm.GhosttyTerminalColorSchemeFn
+import app.katty.ghostty.ffm.GhosttyTerminalRenderHoldFn
+import app.katty.ghostty.ffm.GhosttyTerminalXtversionFn
 import app.katty.ghostty.ffm.GhosttyTerminalDesktopNotification
 import app.katty.ghostty.ffm.GhosttyTerminalDesktopNotificationFn
 import app.katty.ghostty.ffm.GhosttyTerminalDeviceAttributesFn
@@ -170,6 +173,27 @@ public class GhosttyTerminal private constructor(
      */
     @Volatile
     public var onClipboardWrite: ((GhosttyClipboardLocation, String) -> Boolean)? = null
+
+    /**
+     * A program began (`true`) or ended (`false`) a hold of the screen: it asks for the screen not to be updated while it draws a frame
+     * (synchronized output, mode 2026). The terminal also ends it by itself when it is resized or reset. While it is held the render state
+     * must not be updated, and the host ends the hold when it lasts too long, so that a program cannot freeze the screen.
+     */
+    @Volatile
+    public var onRenderHold: ((held: Boolean) -> Unit)? = null
+
+    /**
+     * Whether the color scheme is dark, as the answer to a program's query (CSI ? 996 n), `null` for no answer. Read when the query is
+     * answered. A change is told to the programs that asked for it (mode 2031) by the host, which writes the report to the program.
+     */
+    @Volatile
+    public var isColorSchemeDark: Boolean? = null
+
+    /**
+     * What XTVERSION (CSI > q) is answered with, such as `KaTTY 1.0`. `null` is the library's own name. Read when the query is answered.
+     */
+    @Volatile
+    public var xtVersion: String? = null
 
     /**
      * Whether the answer to a device attributes query (DA1) says that the terminal draws Sixel images (feature 4). Programs that probe
@@ -569,13 +593,14 @@ public class GhosttyTerminal private constructor(
         }
 
     /**
-     * The text of the selection, which is what is copied: soft-wrapped lines are joined and the blanks that end a
+     * The text of the selection, which is what is copied ([format] says how: the characters only, the characters with the escape sequences
+     * that give them their styles and colors, or HTML): soft-wrapped lines are joined and the blanks that end a
      * line are dropped. `null` when nothing is selected.
      */
-    public fun selectedText(): String? {
+    public fun selectedText(format: GhosttyTextFormat = GhosttyTextFormat.PLAIN): String? {
         requireOpen()
         // Not a selection of its own: the one of the terminal.
-        return formatSelection(MemorySegment.NULL, unwrap = true)
+        return formatSelection(MemorySegment.NULL, unwrap = true, format = format)
     }
 
     /**
@@ -629,6 +654,26 @@ public class GhosttyTerminal private constructor(
             val result = GhosttyVt.ghostty_terminal_select_all(handle, selection)
             if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use false
             checkResult(result, "ghostty_terminal_select_all")
+            installSelection(selection)
+            true
+        }
+    }
+
+    /**
+     * Moves the end of the selection that was last moved (the one that a drag moves) as [adjustment] says, which keeps the selection the
+     * terminal's own: it is what the keys do that extend a selection.
+     *
+     * @return Whether there was a selection to adjust.
+     */
+    public fun adjustSelection(adjustment: GhosttySelectionAdjust): Boolean {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val selection = arena.allocate(GhosttySelection.layout())
+            GhosttySelection.size(selection, GhosttySelection.layout().byteSize())
+            val found = GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_SELECTION(), selection)
+            if (found == GhosttyVt.GHOSTTY_NO_VALUE()) return@use false
+            checkResult(found, "ghostty_terminal_get(SELECTION)")
+            checkResult(GhosttyVt.ghostty_terminal_selection_adjust(handle, selection, adjustment.ordinal), "ghostty_terminal_selection_adjust")
             installSelection(selection)
             true
         }
@@ -689,12 +734,41 @@ public class GhosttyTerminal private constructor(
         }
     }
 
+    /**
+     * Selects the output of the command that [ref] is in, as the shell marked it (OSC 133), which makes it the terminal's selection.
+     *
+     * @return Whether [ref] is in the output of a command: nothing is selected when it is not.
+     */
+    public fun selectCommandOutput(ref: GhosttyTrackedRef): Boolean {
+        requireOpen()
+        if (!ref.hasValue) return false
+        return Arena.ofConfined().use { arena ->
+            val snapshot = arena.allocate(GhosttyGridRef.layout())
+            GhosttyGridRef.size(snapshot, GhosttyGridRef.layout().byteSize())
+            checkResult(GhosttyVt.ghostty_tracked_grid_ref_snapshot(ref.handle, snapshot), "ghostty_tracked_grid_ref_snapshot")
+            val selection = arena.allocate(GhosttySelection.layout())
+            GhosttySelection.size(selection, GhosttySelection.layout().byteSize())
+            val result = GhosttyVt.ghostty_terminal_select_output(handle, snapshot, selection)
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use false
+            checkResult(result, "ghostty_terminal_select_output")
+            installSelection(selection)
+            true
+        }
+    }
+
     // The plain text of [selection], or of the terminal's own when it is NULL, which is `null` when there is none.
-    private fun formatSelection(selection: MemorySegment, unwrap: Boolean): String? =
+    private fun formatSelection(selection: MemorySegment, unwrap: Boolean, format: GhosttyTextFormat = GhosttyTextFormat.PLAIN): String? =
         Arena.ofConfined().use { arena ->
             val options = arena.allocate(GhosttyTerminalSelectionFormatOptions.layout())
             GhosttyTerminalSelectionFormatOptions.size(options, GhosttyTerminalSelectionFormatOptions.layout().byteSize())
-            GhosttyTerminalSelectionFormatOptions.emit(options, GhosttyVt.GHOSTTY_FORMATTER_FORMAT_PLAIN())
+            GhosttyTerminalSelectionFormatOptions.emit(
+                options,
+                when (format) {
+                    GhosttyTextFormat.PLAIN -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_PLAIN()
+                    GhosttyTextFormat.VT -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_VT()
+                    GhosttyTextFormat.HTML -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_HTML()
+                },
+            )
             GhosttyTerminalSelectionFormatOptions.unwrap(options, unwrap)
             GhosttyTerminalSelectionFormatOptions.trim(options, true)
             GhosttyTerminalSelectionFormatOptions.selection(options, selection)
@@ -743,6 +817,23 @@ public class GhosttyTerminal private constructor(
             checkResult(result, "ghostty_paste_encode")
             buffer.asSlice(0, written.get(ValueLayout.JAVA_LONG, 0)).toArray(ValueLayout.JAVA_BYTE)
         }
+    }
+
+    /**
+     * Whether pasting [text] could run commands that the user did not see: it has a newline, which a program that did not ask for bracketed
+     * paste takes for Enter, or the marker that ends a bracketed paste, which lets the rest out of it. In a bracketed paste (mode 2004) the
+     * newlines are the program's to take as text, so only the marker counts. The host asks the user before it pastes what is unsafe.
+     */
+    public fun isPasteUnsafe(text: String): Boolean {
+        requireOpen()
+        if (text.isEmpty()) return false
+        val unsafe = Arena.ofConfined().use { arena ->
+            val bytes = text.toByteArray(Charsets.UTF_8)
+            val data = arena.allocate(bytes.size.toLong())
+            MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.size)
+            !GhosttyVt.ghostty_paste_is_safe(data, bytes.size.toLong())
+        }
+        return unsafe && (!isModeEnabled(GhosttyMode.BRACKETED_PASTE) || BRACKETED_PASTE_END in text)
     }
 
     // How much of an unfinished escape sequence is kept, so that a snapshot taken in the middle of one can be restored. 0 keeps none.
@@ -1033,6 +1124,25 @@ public class GhosttyTerminal private constructor(
         }
     }
 
+    // The answer to XTVERSION: a string that stays valid after the callback returns, since the terminal reads it then. It is kept for as long
+    // as the version does not change; the empty one is the library's own name.
+    private val emptyVersion: MemorySegment by lazy { callbacks.allocate(GhosttyString.layout()) }
+    private var versionText: String? = null
+    private var versionStruct: MemorySegment? = null
+
+    private fun versionString(): MemorySegment {
+        val text = xtVersion?.takeIf { it.isNotEmpty() } ?: return emptyVersion
+        if (text != versionText || versionStruct == null) {
+            val bytes = callbacks.allocateFrom(text)
+            val struct = callbacks.allocate(GhosttyString.layout())
+            GhosttyString.ptr(struct, bytes)
+            GhosttyString.len(struct, bytes.byteSize() - 1)
+            versionText = text
+            versionStruct = struct
+        }
+        return versionStruct!!
+    }
+
     // What the terminal says that it is, to the programs that ask (CSI c, CSI > c, CSI = c): a VT220 that has ANSI color, and Sixel if
     // it draws it, the way Ghostty answers.
     private fun fillDeviceAttributes(out: MemorySegment) {
@@ -1179,6 +1289,39 @@ public class GhosttyTerminal private constructor(
                 },
                 callbacks,
             ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_RENDER_HOLD() to GhosttyTerminalRenderHoldFn.allocate(
+                GhosttyTerminalRenderHoldFn.Function { _, _, held -> guarded("onRenderHold") { onRenderHold?.invoke(held) } },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_COLOR_SCHEME() to GhosttyTerminalColorSchemeFn.allocate(
+                GhosttyTerminalColorSchemeFn.Function { _, _, out ->
+                    // An exception must never cross into native code: it would take the JVM down.
+                    try {
+                        val dark = isColorSchemeDark ?: return@Function false
+                        out.reinterpret(Int.SIZE_BYTES.toLong()).set(
+                            ValueLayout.JAVA_INT,
+                            0,
+                            if (dark) GhosttyVt.GHOSTTY_COLOR_SCHEME_DARK() else GhosttyVt.GHOSTTY_COLOR_SCHEME_LIGHT(),
+                        )
+                        true
+                    } catch (e: Throwable) {
+                        logger.error("The color scheme failed", e)
+                        false
+                    }
+                },
+                callbacks,
+            ),
+            GhosttyVt.GHOSTTY_TERMINAL_OPT_XTVERSION() to GhosttyTerminalXtversionFn.allocate(
+                GhosttyTerminalXtversionFn.Function { _, _ ->
+                    try {
+                        versionString()
+                    } catch (e: Throwable) {
+                        logger.error("The version failed", e)
+                        emptyVersion
+                    }
+                },
+                callbacks,
+            ),
             GhosttyVt.GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE() to GhosttyTerminalClipboardWriteFn.allocate(
                 GhosttyTerminalClipboardWriteFn.Function { _, _, write -> guarded("The clipboard write") { answerClipboardWrite(write) } },
                 callbacks,
@@ -1213,6 +1356,9 @@ public class GhosttyTerminal private constructor(
 
     public companion object {
         private const val PASTE_MARKERS_CAPACITY = 32L
+
+        // What ends a bracketed paste.
+        private const val BRACKETED_PASTE_END = "\u001b[201~"
         private const val FOCUS_REPORT_CAPACITY = 8L
         private const val CONTINUATION_MAX_BYTES = 64L * 1024
         private const val HYPERLINK_INITIAL_CAPACITY = 512L

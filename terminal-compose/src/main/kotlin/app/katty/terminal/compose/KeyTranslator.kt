@@ -30,6 +30,9 @@ internal class KeyInfo(
     val ctrl: Boolean,
     val alt: Boolean,
     val meta: Boolean,
+    /** Whether the Caps Lock and Num Lock keys are on: the Kitty keyboard protocol reports them among the modifiers. */
+    val capsLock: Boolean = false,
+    val numLock: Boolean = false,
 ) {
     enum class Kind { PRESSED, RELEASED, TYPED }
 }
@@ -51,7 +54,34 @@ internal fun KeyEvent.toKeyInfo() = KeyInfo(
     ctrl = isCtrlPressed,
     alt = isAltPressed,
     meta = isMetaPressed,
+    capsLock = lockingKeyState(AwtKeyEvent.VK_CAPS_LOCK),
+    numLock = lockingKeyState(AwtKeyEvent.VK_NUM_LOCK),
 )
+
+// Whether a lock key is on. The platform may not say, and then it is off.
+private fun lockingKeyState(keyCode: Int): Boolean = try {
+    java.awt.Toolkit.getDefaultToolkit().getLockingKeyState(keyCode)
+} catch (e: UnsupportedOperationException) {
+    false
+}
+
+/**
+ * Whether the Option key of the Mac is the program's Alt: Option and a key is then `ESC` and the key, as in Ghostty and iTerm2's
+ * "Esc+" setting, and not the character that the layout makes of it (`å`). It is what Emacs and readline's word keys need.
+ */
+public enum class TerminalOptionAsAlt {
+    /** Option types the characters of the layout, and is not sent as Alt. */
+    NONE,
+
+    /** Both Option keys are Alt. */
+    BOTH,
+
+    /** Only the left Option key is Alt: the right one still types the characters. */
+    LEFT,
+
+    /** Only the right Option key is Alt. */
+    RIGHT,
+}
 
 /**
  * Turns the key events that Compose hands over into what is sent to the program.
@@ -60,15 +90,29 @@ internal fun KeyEvent.toKeyInfo() = KeyInfo(
  * there is one. The text comes from the latter: the keyboard layout has already composed it, so dead keys,
  * input methods and Option characters (`å`) work. The former is only used for keys that have no text
  * (arrows, Enter, Escape, function keys, modifiers) and for Ctrl combinations. Option is the key that
- * produces the characters: it is not the Alt of the program, so Option+key is not sent as Alt+key. Command
+ * produces the characters: it is not the Alt of the program, so Option+key is not sent as Alt+key, unless [optionAsAlt] says
+ * that it is: it is then sent from the `KEY_PRESSED`, as the key and not as the character that came of it. Command
  * shortcuts are not sent either. The keys that edit the line (Option or Command and the arrows) are the terminal's
  * shortcuts, taken before: see [lineEditingText].
  *
  * Not thread-safe: it is used from the UI thread.
  */
-internal class KeyTranslator {
+internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = TerminalOptionAsAlt.NONE) {
     // The AWT key codes that are down, which is how a repeat is told from a press.
     private val down = HashSet<Int>()
+
+    // Which of the Option keys are down: AWT's modifiers do not say which.
+    private var leftOption = false
+    private var rightOption = false
+
+    // The key that was just pressed and whose text is still to come as a KEY_TYPED, so that the text is sent as what that key typed and not
+    // as text of no key (the Kitty keyboard protocol tells them apart). It does not outlive the next event of another key.
+    private var pending: Pending? = null
+
+    // The keys whose press was sent as a key, by AWT key code: their release is sent too.
+    private val sent = HashSet<Int>()
+
+    private class Pending(val keyCode: Int, val key: TerminalKey, val action: TerminalKeyAction, val unshifted: Char, val info: KeyInfo)
 
     // The first half of a character that does not fit in a char, which is sent as two KEY_TYPED.
     private var highSurrogate: Char? = null
@@ -76,7 +120,24 @@ internal class KeyTranslator {
     /** Forgets which keys are down: their release will not be seen, for instance when the focus is lost. */
     fun reset() {
         down.clear()
+        sent.clear()
+        pending = null
+        leftOption = false
+        rightOption = false
         highSurrogate = null
+    }
+
+    // Whether the Option that is down is the program's Alt.
+    private fun optionIsAlt(event: KeyInfo): Boolean = event.alt && when (optionAsAlt) {
+        TerminalOptionAsAlt.NONE -> false
+        TerminalOptionAsAlt.BOTH -> true
+        TerminalOptionAsAlt.LEFT -> leftOption
+        TerminalOptionAsAlt.RIGHT -> rightOption
+    }
+
+    private fun trackOption(event: KeyInfo, isDown: Boolean) {
+        if (event.keyCode != AwtKeyEvent.VK_ALT) return
+        if (event.location == AwtKeyEvent.KEY_LOCATION_RIGHT) rightOption = isDown else leftOption = isDown
     }
 
     /** `null` when the event is not for the program. */
@@ -92,6 +153,8 @@ internal class KeyTranslator {
         if (char == AwtKeyEvent.CHAR_UNDEFINED || char.isISOControl() || event.ctrl || event.meta) {
             return null
         }
+        // The program's Alt: the key was sent when it was pressed, and this is the character that the layout made of it.
+        if (optionIsAlt(event)) return null
         if (char.isHighSurrogate()) {
             highSurrogate = char
             return null
@@ -103,35 +166,63 @@ internal class KeyTranslator {
         } else {
             char.toString()
         }
-        return KeyInput(TerminalKey.UNIDENTIFIED, text = text)
+        // The key that typed it, if it is known: the program may ask for keys and not for text.
+        val key = pending.also { pending = null }
+        if (key == null || text.codePointCount(0, text.length) != 1) return KeyInput(TerminalKey.UNIDENTIFIED, text = text)
+        sent += key.keyCode
+        // Option made the text of an Option key that is not Alt (`å`): the program is told of the key and its text, not of an Alt. Shift
+        // made the text if it is not what the key types without it.
+        val mods = modifiers(key.info) - TerminalModifier.ALT
+        return KeyInput(
+            key = key.key,
+            action = key.action,
+            mods = mods,
+            consumedMods = if (TerminalModifier.SHIFT in mods && text != key.unshifted.toString()) setOf(TerminalModifier.SHIFT) else emptySet(),
+            text = text,
+            unshiftedCodepoint = key.unshifted.code,
+        )
     }
 
     private fun pressed(event: KeyInfo): KeyInput? {
+        trackOption(event, isDown = true)
+        pending = null
         val key = terminalKey(event.keyCode, event.location) ?: return null
         val action = if (down.add(event.keyCode)) TerminalKeyAction.PRESS else TerminalKeyAction.REPEAT
         val mods = modifiers(event)
 
         val unshifted = unshiftedChar(key) ?: return KeyInput(key, action, mods)
 
-        // A key that has text. Its text comes with the KEY_TYPED, unless there is none because of Ctrl.
-        if (event.meta || !event.ctrl) return null
-        val shifted = event.shift && unshifted.isLetter()
+        // A key that has text. Its text comes with the KEY_TYPED, unless there is none because of Ctrl, or it is not wanted: Option
+        // is the program's Alt, and the key is sent instead of the character that the layout makes of it.
+        if (event.meta || !(event.ctrl || optionIsAlt(event))) {
+            // A Command shortcut is not for the program: no text comes of it, and nothing is waited for.
+            if (!event.meta) pending = Pending(event.keyCode, key, action, unshifted, event)
+            return null
+        }
+        sent += event.keyCode
+        // Ctrl keeps the key of a symbol and tells Shift apart, as it always did; Alt has the symbol that Shift makes of it.
+        val shiftedChar = if (event.shift && (unshifted.isLetter() || optionIsAlt(event))) shiftedChar(unshifted) else null
         return KeyInput(
             key = key,
             action = action,
             mods = mods,
-            consumedMods = if (shifted) setOf(TerminalModifier.SHIFT) else emptySet(),
-            text = (if (shifted) unshifted.uppercaseChar() else unshifted).toString(),
+            consumedMods = if (shiftedChar != null) setOf(TerminalModifier.SHIFT) else emptySet(),
+            text = (shiftedChar ?: unshifted).toString(),
             unshiftedCodepoint = unshifted.code,
         )
     }
 
     private fun released(event: KeyInfo): KeyInput? {
         down.remove(event.keyCode)
+        trackOption(event, isDown = false)
         val key = terminalKey(event.keyCode, event.location) ?: return null
-        // The release of a key that has text is of no use to the program: it was not sent as a key.
-        if (unshiftedChar(key) != null) return null
-        return KeyInput(key, TerminalKeyAction.RELEASE, modifiers(event))
+        if (pending?.keyCode == event.keyCode) pending = null
+        val unshifted = unshiftedChar(key) ?: return KeyInput(key, TerminalKeyAction.RELEASE, modifiers(event))
+        // A key that has text: its release is only for a program that asked for the releases of keys (the Kitty keyboard protocol), and
+        // only if its press was sent. Option that made the text is not told, as for the press.
+        if (!sent.remove(event.keyCode)) return null
+        val mods = if (optionIsAlt(event)) modifiers(event) else modifiers(event) - TerminalModifier.ALT
+        return KeyInput(key, TerminalKeyAction.RELEASE, mods, unshiftedCodepoint = unshifted.code)
     }
 
     private fun modifiers(event: KeyInfo): Set<TerminalModifier> = buildSet {
@@ -139,8 +230,19 @@ internal class KeyTranslator {
         if (event.ctrl) add(TerminalModifier.CTRL)
         if (event.alt) add(TerminalModifier.ALT)
         if (event.meta) add(TerminalModifier.SUPER)
+        if (event.capsLock) add(TerminalModifier.CAPS_LOCK)
+        if (event.numLock) add(TerminalModifier.NUM_LOCK)
     }
 }
+
+/** What Shift makes of [char] on a US keyboard: the capital of a letter, the symbol over a digit or a punctuation key; `null` for the others. */
+internal fun shiftedChar(char: Char): Char? = when {
+    char.isLetter() -> char.uppercaseChar()
+    else -> SHIFTED.getOrNull(UNSHIFTED.indexOf(char))
+}
+
+private const val UNSHIFTED = "1234567890-=[]\\;',./`"
+private const val SHIFTED = "!@#$%^&*()_+{}|:\"<>?~"
 
 /** The character a key types without Shift on a US keyboard, for the keys that type one; `null` for the others. */
 internal fun unshiftedChar(key: TerminalKey): Char? = when (key) {

@@ -38,6 +38,18 @@ public class GhosttyKeyEncoder : AutoCloseable {
         requireOpen()
         terminal.requireOpen()
         GhosttyVt.ghostty_key_encoder_setopt_from_terminal(encoder, terminal.handle)
+        setOptionAsAlt()
+    }
+
+    // On macOS the encoder takes the Alt of a key that has text for the Option that made the text, and drops it (Option and `b` is `∫`,
+    // sent as `b`). The host decides which Option is the program's Alt before it makes the event, and a key that it gives with Alt is
+    // Alt: so for the encoder it always is.
+    private fun setOptionAsAlt() {
+        Arena.ofConfined().use { arena ->
+            val value = arena.allocate(ValueLayout.JAVA_INT)
+            value.set(ValueLayout.JAVA_INT, 0, GhosttyVt.GHOSTTY_OPTION_AS_ALT_TRUE())
+            GhosttyVt.ghostty_key_encoder_setopt(encoder, GhosttyVt.GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT(), value)
+        }
     }
 
     /**

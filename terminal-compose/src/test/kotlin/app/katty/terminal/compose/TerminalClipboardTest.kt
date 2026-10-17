@@ -1,6 +1,7 @@
 package app.katty.terminal.compose
 
 import app.katty.terminal.TerminalMouseButton
+import app.katty.terminal.TerminalSelectionAdjust
 import java.awt.event.KeyEvent as AwtKeyEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -51,6 +52,25 @@ class TerminalClipboardTest {
     fun otherKeysAndTypedCharactersAreNotShortcuts() {
         assertNull(clipboardShortcut(key(AwtKeyEvent.VK_X, meta = true), mac = true))
         assertNull(clipboardShortcut(key(AwtKeyEvent.VK_C, meta = true, kind = KeyInfo.Kind.TYPED), mac = true))
+    }
+
+    @Test
+    fun shiftAndAnArrowExtendASelection() {
+        assertEquals(TerminalSelectionAdjust.LEFT, selectionAdjustment(key(AwtKeyEvent.VK_LEFT, shift = true)))
+        assertEquals(TerminalSelectionAdjust.RIGHT, selectionAdjustment(key(AwtKeyEvent.VK_RIGHT, shift = true)))
+        assertEquals(TerminalSelectionAdjust.UP, selectionAdjustment(key(AwtKeyEvent.VK_UP, shift = true)))
+        assertEquals(TerminalSelectionAdjust.DOWN, selectionAdjustment(key(AwtKeyEvent.VK_DOWN, shift = true)))
+        // The release is the terminal's too.
+        assertEquals(TerminalSelectionAdjust.UP, selectionAdjustment(key(AwtKeyEvent.VK_UP, shift = true, kind = KeyInfo.Kind.RELEASED)))
+    }
+
+    @Test
+    fun anArrowWithAnotherModifierOrNoneIsNotAnAdjustment() {
+        assertNull(selectionAdjustment(key(AwtKeyEvent.VK_LEFT)))
+        assertNull(selectionAdjustment(key(AwtKeyEvent.VK_LEFT, shift = true, ctrl = true)))
+        assertNull(selectionAdjustment(key(AwtKeyEvent.VK_LEFT, shift = true, alt = true)))
+        assertNull(selectionAdjustment(key(AwtKeyEvent.VK_LEFT, shift = true, meta = true)))
+        assertNull(selectionAdjustment(key(AwtKeyEvent.VK_A, shift = true)))
     }
 
     private fun press(button: TerminalMouseButton, shift: Boolean = false, kind: PointerInfo.Kind = PointerInfo.Kind.PRESS) =

@@ -245,6 +245,28 @@ class OutputTranslatorTest {
     }
 
     @Test
+    fun focusReportsThatACommandLeftOnAreTurnedOffBeforeTheNextPrompt() {
+        val stream = mark("C") + "$esc[?1004h" + mark("A")
+
+        assertEquals(mark("C") + "$esc[?1004h" + "$esc[?1004l" + mark("A"), filtered(stream))
+    }
+
+    @Test
+    fun focusReportsThatTheCommandTurnedOffItselfAreLeftAlone() {
+        val stream = mark("C") + "$esc[?1004h" + "$esc[?1004l" + mark("A")
+
+        assertEquals(stream, filtered(stream))
+    }
+
+    @Test
+    fun focusReportsThatTheShellHadOnAreLeftOn() {
+        // A shell that wants them (fish does) turned them on before the command.
+        val stream = "$esc[?1004h" + mark("C") + mark("A")
+
+        assertEquals(stream, filtered(stream))
+    }
+
+    @Test
     fun theVisibilityInAListOfModesIsFollowed() {
         val stream = mark("C") + "$esc[?1;25l" + "$esc[?12;2004h" + mark("A")
 

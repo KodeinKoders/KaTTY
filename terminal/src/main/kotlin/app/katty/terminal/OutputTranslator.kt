@@ -39,7 +39,8 @@ internal data class CellGeometry(val cellWidthPx: Int, val cellHeightPx: Int, va
  *   still answered by the terminal.
  * - **The cursor of the shell is given back when a command ends.** The shell's marks (OSC 133) say where a command starts (`C`) and where
  *   the next prompt does (`A`): the style (DECSCUSR) and the visibility that the cursor had at `C` are put back, before `A`, if the
- *   command changed them. It only works for a shell that sends the marks.
+ *   command changed them. It only works for a shell that sends the marks. The reports of the focus (mode 1004) that a command turned on
+ *   and did not turn off are turned off then too: a shell does not read them, and takes them for keys that it rings the bell at.
  *
  * It follows the structure of the stream (escape sequences, strings up to BEL or ST), and a string that it does not translate is passed
  * on as it comes, the images of the Kitty protocol included: what is in it is never taken for a sequence.
@@ -83,6 +84,10 @@ internal class OutputTranslator(
     private var shellStyle = 0
     private var shellVisible = true
     private var commandRunning = false
+
+    // Whether focus reporting (mode 1004) is on, and whether the shell had it on when the command started.
+    private var focusEvents = false
+    private var shellFocusEvents = false
 
     /**
      * Translates the first [length] bytes of [buffer], and returns how many bytes of [output] are the result. [output] is [buffer] itself
@@ -337,6 +342,7 @@ internal class OutputTranslator(
             if (i == n - 1 || held[i] == SEMICOLON) {
                 if (isNumber(tokenStart, i, 12)) removed = true else kept += tokenStart until i
                 if (isNumber(tokenStart, i, 25)) cursorVisible = set
+                if (isNumber(tokenStart, i, 1004)) focusEvents = set
                 tokenStart = i + 1
             }
         }
@@ -429,6 +435,7 @@ internal class OutputTranslator(
             'C'.code.toByte() -> {
                 shellStyle = cursorStyle
                 shellVisible = cursorVisible
+                shellFocusEvents = focusEvents
                 commandRunning = true
             }
             'A'.code.toByte() -> {
@@ -438,6 +445,13 @@ internal class OutputTranslator(
                         modified = true
                         emitText("\u001b[$shellStyle q")
                         cursorStyle = shellStyle
+                    }
+                    // A program that was killed, or crashed, leaves the focus reports on, and the shell that follows reads them as keys it does not
+                    // know and rings the bell at each change of focus.
+                    if (focusEvents && !shellFocusEvents) {
+                        modified = true
+                        emitText("\u001b[?1004l")
+                        focusEvents = false
                     }
                     if (cursorVisible != shellVisible) {
                         modified = true
