@@ -57,6 +57,30 @@ class WindowFileTest {
     }
 
     @Test
+    fun eachWindowHasItsOwnDefaultWhenThereIsNothingUsableInItsFile() {
+        val board = WindowGeometry(width = 1100f, height = 720f)
+        val boardFile = WindowFile(path, board)
+
+        assertEquals(board, boardFile.load())
+        path.writeText("not json")
+        assertEquals(board, boardFile.load())
+        path.writeText("""{"version": 99}""")
+        assertEquals(board, boardFile.load())
+        // What was written is read back, not the default.
+        boardFile.save(WindowGeometry(x = 5f, y = 6f, width = 900f, height = 600f))
+        assertEquals(900f, boardFile.load().width)
+    }
+
+    @Test
+    fun theBoardWindowHasAFileOfItsOwn() {
+        val directories = KattyDirectories(directory)
+
+        assertEquals("board-window.json", directories.boardWindowFile.fileName.toString())
+        assertNotEquals(directories.windowFile, directories.boardWindowFile)
+        assertNotEquals(directories.stateFile, directories.boardWindowFile)
+    }
+
+    @Test
     fun theWindowIsNotKeptInTheStateFile() {
         val directories = KattyDirectories(directory)
 

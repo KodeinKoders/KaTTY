@@ -70,23 +70,25 @@ public data class ScreenBounds(val x: Float, val y: Float, val width: Float, val
 /**
  * The file that keeps the window's geometry, apart from the state of the application: it changes whenever the window is moved, and what
  * is lost with it is nothing worth keeping aside. A file that is missing, unreadable or of a later version means the default window.
+ *
+ * @param default The window when there is nothing usable in the file: each window has its own size to start with.
  */
-public class WindowFile(private val path: Path) {
+public class WindowFile(private val path: Path, private val default: WindowGeometry = WindowGeometry()) {
     /** What is in the file, or the default geometry. */
     public fun load(): WindowGeometry {
-        if (!Files.exists(path)) return WindowGeometry()
+        if (!Files.exists(path)) return default
         return try {
             JSON.decodeFromString(WindowGeometry.serializer(), Files.readString(path)).takeIf { it.version <= WindowGeometry.VERSION }
-                ?: WindowGeometry().also { logger.warn("{} is of a later version", path) }
+                ?: default.also { logger.warn("{} is of a later version", path) }
         } catch (e: SerializationException) {
             logger.warn("{} cannot be read", path, e)
-            WindowGeometry()
+            default
         } catch (e: IllegalArgumentException) {
             logger.warn("{} cannot be read", path, e)
-            WindowGeometry()
+            default
         } catch (e: IOException) {
             logger.warn("{} cannot be read", path, e)
-            WindowGeometry()
+            default
         }
     }
 

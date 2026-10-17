@@ -34,9 +34,6 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.window.DecoratedWindow
 
-/** How long the window has to stay as it is before it is written: moving or resizing it changes it many times a second. */
-private const val WINDOW_WRITE_DELAY_MS = 500L
-
 fun main() {
     // Before the first key is typed.
     disablePressAndHold()
@@ -60,22 +57,10 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val tracker = remember { AgentTracker(writer) }
     DisposableEffect(Unit) { onDispose { writer.cancel() } }
     val windowState = rememberWindowState(placement = geometry.mode.toPlacement(), position = geometry.toPosition(), size = geometry.toSize())
-    // What is kept of the window: the last geometry that was written, and the one that it is now, from the same function.
-    val kept = remember { arrayOf(geometry) }
-    val keep = { kept[0] = geometryOf(windowState.placement, windowState.isMinimized, windowState.position, windowState.size, kept[0]) }
-    @OptIn(FlowPreview::class)
-    LaunchedEffect(windowState) {
-        snapshotFlow { listOf(windowState.placement, windowState.isMinimized, windowState.position, windowState.size) }
-            .debounce(WINDOW_WRITE_DELAY_MS)
-            .collect {
-                val before = kept[0]
-                keep()
-                if (kept[0] != before) withContext(Dispatchers.IO) { runCatching { windowFile.save(kept[0]) } }
-            }
-    }
+    // Where the window is, how big and in which mode is kept as it changes, and a last time when the application quits.
+    val flushWindow = keepWindowGeometry(windowState, windowFile, geometry)
     val quit = {
-        keep()
-        runCatching { windowFile.save(kept[0]) }
+        flushWindow()
         persistence.flush()
         tracker.close()
         registry.close()
@@ -92,6 +77,8 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val bridge = remember { WindowBridge() }
     var boardWindow by remember { mutableStateOf(false) }
     var boardFocusTick by remember { mutableIntStateOf(0) }
+    // The board window comes back where it was last closed, in a file of its own.
+    val boardWindowFile = remember { WindowFile(directories.boardWindowFile, WindowGeometry(width = BOARD_WINDOW_WIDTH, height = BOARD_WINDOW_HEIGHT)) }
     KattyTheme(dark) {
         DecoratedWindow(
             onCloseRequest = quit,
@@ -100,6 +87,6 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
         ) {
             KattyWindowContent(store, registry, tracker, directories, bridge, onOpenBoardWindow = { if (boardWindow) boardFocusTick++ else boardWindow = true })
         }
-        if (boardWindow) BoardWindow(store, tracker, registry, bridge, boardFocusTick, onClose = { boardWindow = false })
+        if (boardWindow) BoardWindow(store, tracker, registry, bridge, boardFocusTick, boardWindowFile, onClose = { boardWindow = false })
     }
 }

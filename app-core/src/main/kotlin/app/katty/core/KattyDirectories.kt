@@ -15,6 +15,9 @@ public class KattyDirectories(public val support: Path) {
     /** Where the window was, how big and in which mode: not in the state file, which it would make change at every move. */
     public val windowFile: Path get() = support.resolve("window.json")
 
+    /** Where the board window was, how big and in which mode: the main window's own file is [windowFile]. */
+    public val boardWindowFile: Path get() = support.resolve("board-window.json")
+
     /**
      * The directory that the commands of the agents that report their usage run in. `claude -p` records a session for the directory it
      * runs in, which must not be one of the user's projects.
