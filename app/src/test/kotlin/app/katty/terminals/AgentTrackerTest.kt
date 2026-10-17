@@ -124,6 +124,23 @@ class AgentTrackerTest {
         tracker.markSeen(id)
 
         await("at rest") { tracker.infos.value[id]?.state == AgentState.IDLE }
+        // What named the program was the record that was taken off: the board cannot tell the agent from what it said any more, and has to
+        // ask which program has the terminal.
+        assertNull(tracker.infos.value.getValue(id).report.app)
+    }
+
+    @Test
+    fun theTimeIsThatOfTheColumnSoAWaitThatBecomesAFailureKeepsIt() {
+        // Waiting, then (after the time has moved on) failing: both are the "Needs input" column.
+        scripts += "${report("state=blocked", "app=claude-code")}; sleep 1; ${report("state=error", "app=claude-code")}; sleep 60"
+        val id = start()
+        await("waiting") { tracker.infos.value[id]?.state == AgentState.NEEDS_INPUT }
+        val arrived = tracker.infos.value.getValue(id).since
+        time = 9_000L
+
+        await("failed") { tracker.infos.value[id]?.state == AgentState.ERROR }
+
+        assertEquals(arrived, tracker.infos.value.getValue(id).since)
     }
 
     @Test

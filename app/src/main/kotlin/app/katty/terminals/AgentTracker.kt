@@ -3,6 +3,7 @@ package app.katty.terminals
 import app.katty.core.AgentInfo
 import app.katty.core.AgentState
 import app.katty.core.TerminalId
+import app.katty.core.column
 import app.katty.core.summarize
 import app.katty.terminal.TerminalProgramState
 import app.katty.terminal.TerminalSession
@@ -68,7 +69,8 @@ class AgentTracker(
         var transition: AgentTransition? = null
         mutableInfos.value = synchronized(this) {
             val before = mutableInfos.value[id]
-            val since = if (before != null && before.state == report.state) before.since else clock()
+            // Since when it is in this column, not in this state: a wait that becomes a failure stays where it is on the board.
+            val since = if (before != null && before.state.column() == report.state.column()) before.since else clock()
             val info = AgentInfo(report, since)
             if (before == info) return
             // A terminal that has said nothing is at rest: becoming so is not a change.

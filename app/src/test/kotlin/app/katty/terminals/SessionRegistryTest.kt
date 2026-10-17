@@ -57,6 +57,28 @@ class SessionRegistryTest {
     }
 
     @Test
+    fun theProgramThatHasEachTerminalIsToldInOnePlaceAndForgottenWithTheTerminal() {
+        store.addProject("/tmp")
+        val first = store.state.value.selection.terminal!!
+        val second = store.split(first, SplitDirection.ROW)!!
+        sync()
+
+        awaitUntil("every terminal has its program") { registry.processNames.value.keys == setOf(first, second) }
+        assertTrue(registry.processNames.value.values.all { !it.isNullOrEmpty() })
+
+        store.closeTerminal(second)
+        sync()
+        awaitUntil("the closed terminal is forgotten") { second !in registry.processNames.value }
+        assertEquals(setOf(first), registry.processNames.value.keys)
+    }
+
+    private fun awaitUntil(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 10_000_000_000
+        while (!condition() && System.nanoTime() < deadline) Thread.sleep(20)
+        assertTrue(condition(), what)
+    }
+
+    @Test
     fun syncingAgainKeepsTheSessionsThatAreThere() {
         store.addProject("/tmp")
         sync()

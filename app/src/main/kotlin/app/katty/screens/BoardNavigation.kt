@@ -49,6 +49,7 @@ internal fun agentCount(count: Int): String = if (count == 1) "1 agent" else "$c
  * each project with its counts.
  *
  * @param filter The project that is shown, `null` for all of them.
+ * @param agents How many agents are on the board, which is what "All projects" says.
  */
 @Composable
 fun BoardSidebar(
@@ -58,13 +59,13 @@ fun BoardSidebar(
     modifier: Modifier = Modifier,
     states: AgentStates = NoAgentStates,
     usage: @Composable () -> Unit = {},
+    agents: Int = state.allTerminals().size,
 ) {
     val colors = Katty.colors
     Column(modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
         SectionLabel("PROJECTS", Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val total = state.allTerminals().size
-            FilterRow("All projects", filter == null, { onFilter(null) }) { Text(agentCount(total), color = colors.muted, fontSize = 11.sp) }
+            FilterRow("All projects", filter == null, { onFilter(null) }) { Text(agentCount(agents), color = colors.muted, fontSize = 11.sp) }
             for (project in state.projects) {
                 FilterRow(project.name, filter == project.id, { onFilter(project.id) }) {
                     for ((s, n) in states.counts(project)) StateCount(s, n)

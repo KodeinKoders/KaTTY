@@ -113,7 +113,14 @@ import java.io.File
  * What is in the window: the title bar, and under it the sidebar and the workspace, or the welcome of an application that has no project.
  */
 @Composable
-fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: SessionRegistry, tracker: AgentTracker, directories: KattyDirectories) {
+fun DecoratedWindowScope.KattyWindowContent(
+    store: KattyStore,
+    registry: SessionRegistry,
+    tracker: AgentTracker,
+    directories: KattyDirectories,
+    bridge: WindowBridge = WindowBridge(),
+    onOpenBoardWindow: () -> Unit = {},
+) {
     val state by store.state.collectAsState()
     val settings = state.settings
     var renamingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
@@ -140,6 +147,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     val handles by registry.handles.collectAsState()
+    val processNames by registry.processNames.collectAsState()
     // What each terminal is doing comes from what its program reports (OSC 7501).
     val infos by tracker.infos.collectAsState()
     val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
@@ -169,12 +177,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
     val setCompact: (Boolean) -> Unit = { on -> store.updateSettings { it.copy(compactUsage = on) } }
     val attention = remember(state.projects, infos) { state.attention(infos) }
     // The time that ages are told from moves on by itself.
-    val now by produceState(System.currentTimeMillis()) {
-        while (true) {
-            delay(30_000)
-            value = System.currentTimeMillis()
-        }
-    }
+    val now = rememberNow()
     val usageNow = java.time.Instant.ofEpochMilli(now)
     // Seen: what a terminal finished or failed at stays until the user has it in front of them, in a window that has the focus.
     val windowFocused = LocalWindowInfo.current.isWindowFocused
@@ -231,6 +234,15 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
         state.locate(id)?.project?.id?.let { store.setProjectOpen(it, true) }
         attentionOpen = false
         toast = null
+    }
+    // A card that is clicked in the board window: its terminal is selected here, and this window comes to the front.
+    LaunchedEffect(bridge) {
+        bridge.openTerminal.collect { id ->
+            openTerminal(id)
+            window.extendedState = window.extendedState and java.awt.Frame.ICONIFIED.inv()
+            window.toFront()
+            window.requestFocus()
+        }
     }
     val jumpToWaiting = { attention.nextWaiting(state, state.selection.terminal)?.let(openTerminal); Unit }
     // A terminal that starts needing the user, finishes or fails, in one that the user is not looking at, is told in a notice.
@@ -401,9 +413,11 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
             if (settings.view == MainView.BOARD) {
                 // A project that was removed is not a filter any more.
                 val filter = boardFilter?.takeIf { id -> state.projects.any { it.id == id } }
-                val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
+                val columns = remember(state.projects, infos, processNames, filter) { state.board(filter, infos, processNames) }
+                // "All projects" says how many agents there are whatever the filter is.
+                val agentsOnBoard = remember(state.projects, infos, processNames) { state.board(null, infos, processNames).values.sumOf { it.size } }
                 val board: @Composable (Modifier) -> Unit = { boardModifier ->
-                    AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, modifier = boardModifier)
+                    AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, modifier = boardModifier, onOpenWindow = onOpenBoardWindow)
                 }
                 if (vertical) {
                     Column(Modifier.fillMaxSize()) {
@@ -413,7 +427,7 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                     }
                 } else {
                     Row(Modifier.fillMaxSize()) {
-                        BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() })
+                        BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() }, agents = agentsOnBoard)
                         board(Modifier.weight(1f))
                     }
                 }

@@ -41,6 +41,7 @@ import app.katty.ui.CountPill
 import app.katty.ui.Icon
 import app.katty.ui.Katty
 import app.katty.ui.hoverHighlight
+import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import app.katty.ui.OneLine
 import app.katty.ui.StateGlyph
@@ -50,7 +51,8 @@ import org.jetbrains.jewel.ui.component.Text
 
 /** What a card says when its program said nothing: in words that say what the state is, since the card has no more to say. */
 internal fun BoardCard.defaultNote(): String = when (info.state) {
-    AgentState.IDLE -> if (info.report.reporting) "At rest." else "Idle shell, waiting at the prompt."
+    // A card is an agent's: one that is at rest after what it said was taken off, or that never said anything, is not a shell.
+    AgentState.IDLE -> if (info.report.reporting || info.since != 0L) "At rest." else "Running, it does not report its state."
     AgentState.WORKING -> "Working."
     AgentState.NEEDS_INPUT -> "Waiting for you."
     AgentState.ERROR -> "Failed."
@@ -65,6 +67,7 @@ internal fun BoardCard.identity(process: String?, shell: String) = terminalIdent
  * in that state and what it said. It is for looking at: cards cannot be moved, and one that is clicked opens its terminal.
  *
  * @param vertical Whether the columns are stacked, as the vertical layout draws them.
+ * @param onOpenWindow Opens the board in a window of its own: the header has a button for it, unless this is `null` (in that window).
  */
 @Composable
 fun AgentBoard(
@@ -74,17 +77,21 @@ fun AgentBoard(
     vertical: Boolean,
     onOpen: (TerminalId) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenWindow: (() -> Unit)? = null,
 ) {
     val colors = Katty.colors
     val cards = columns.values.flatten()
     val projects = cards.map { it.project.id }.toSet().size
     Column(modifier.fillMaxSize().background(colors.bg)) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Agent board", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text(
-                "${cards.size} ${if (cards.size == 1) "agent" else "agents"} across $projects ${if (projects == 1) "project" else "projects"}",
-                color = colors.muted,
-            )
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Agent board", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${cards.size} ${if (cards.size == 1) "agent" else "agents"} across $projects ${if (projects == 1) "project" else "projects"}",
+                    color = colors.muted,
+                )
+            }
+            if (onOpenWindow != null) KattyIconButton(KattyIcons.OpenWindow, "Open the board in a window", onOpenWindow)
         }
         if (vertical) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -147,7 +154,8 @@ private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, onOpen: (T
             StateGlyph(card.info.state)
             AgentTile(identity.agent.glyph(), size = TileSize.HEADER)
             OneLine(title, Modifier.weight(1f), color = colors.text)
-            Text(relativeTime(now, card.info.since), color = colors.muted, fontSize = 11.sp)
+            // An agent that has never reported has no time.
+            if (card.info.since != 0L) Text(relativeTime(now, card.info.since), color = colors.muted, fontSize = 11.sp)
         }
         OneLine("${card.project.name} / ${card.workspace.name}", color = colors.muted, fontSize = 12.sp)
         if (git != null) {

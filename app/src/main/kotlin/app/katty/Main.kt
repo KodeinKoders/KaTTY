@@ -7,6 +7,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.window.ApplicationScope
@@ -85,13 +88,18 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
+    // The board in a window of its own, when it was asked for; the main window is told what is clicked there through the bridge.
+    val bridge = remember { WindowBridge() }
+    var boardWindow by remember { mutableStateOf(false) }
+    var boardFocusTick by remember { mutableIntStateOf(0) }
     KattyTheme(dark) {
         DecoratedWindow(
             onCloseRequest = quit,
             title = "KaTTY",
             state = windowState,
         ) {
-            KattyWindowContent(store, registry, tracker, directories)
+            KattyWindowContent(store, registry, tracker, directories, bridge, onOpenBoardWindow = { if (boardWindow) boardFocusTick++ else boardWindow = true })
         }
+        if (boardWindow) BoardWindow(store, tracker, registry, bridge, boardFocusTick, onClose = { boardWindow = false })
     }
 }

@@ -52,7 +52,8 @@ The position, size and mode of the window are in `window.json` beside it, so tha
 Its *workspaces* hold terminals in a tree of splits that you can drag to resize.
 A terminal always starts as a plain shell: you start the agents, and manage git worktrees, yourself.
 * The sidebar (or the rail it folds into, or the tabs of the vertical layout) shows how many terminals of each project are in each state.
-The *board* shows every terminal in a column for its state, and the bell lists the agents that need you.
+The *board* shows the agents in a column for their state (a shell has no card), and it can be opened in a window of its own for another screen, where a click on a card selects that terminal in the main window.
+The bell lists the agents that need you.
 * The state comes from the program in the terminal, which reports it with the escape sequence `OSC 7501`, the _program status_ protocol of libghostty-vt (https://www.superlogical.com/rex/docs/build/program-status[specification]).
 A program that does not send it shows as a shell.
 * The usage of the agents is read from their own commands, which do not cost a turn: `claude -p /usage`, `agy -p /usage`, and `codex app-server`.

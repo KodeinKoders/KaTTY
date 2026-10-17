@@ -13,6 +13,7 @@ import app.katty.terminal.themes.ITermColorSchemes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.delay
@@ -81,6 +82,14 @@ class SessionRegistry(
 
     /** Every terminal that is running, by its id. */
     val handles: StateFlow<Map<TerminalId, TerminalHandle>> get() = mutableHandles
+
+    private val mutableProcessNames = MutableStateFlow<Map<TerminalId, String?>>(emptyMap())
+
+    /**
+     * The program that has each terminal (`claude`, or the shell's own name at its prompt), which is what each handle's [TerminalHandle.processName]
+     * says, all in one place for the ones that want them all: the board tells the terminals that run an agent by it.
+     */
+    val processNames: StateFlow<Map<TerminalId, String?>> get() = mutableProcessNames
 
     // What each session follows and the scheme it has now.
     private val followers = HashMap<TerminalId, Job>()
@@ -160,7 +169,9 @@ class SessionRegistry(
             // What runs in the terminal is its name: asked often, since it takes two system calls and a shell tells nothing when a program ends.
             launch {
                 while (isActive) {
-                    handle.processState.value = session.foregroundProcessName()
+                    val name = session.foregroundProcessName()
+                    handle.processState.value = name
+                    if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) mutableProcessNames.update { it + (spec.id to name) }
                     delay(PROCESS_POLL_MS)
                 }
             }
@@ -179,6 +190,7 @@ class SessionRegistry(
 
     private fun stop(handle: TerminalHandle) {
         followers.remove(handle.id)?.cancel()
+        mutableProcessNames.update { it - handle.id }
         schemes.remove(handle.id)
         val session = handle.session ?: return
         // Closing waits for the shell to end: not on the thread that draws.

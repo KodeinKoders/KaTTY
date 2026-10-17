@@ -582,13 +582,21 @@ It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, an
 == Board
 
 * The Board view has a column for each state, in this order: Nothing, Working, Needs input (with the failures), Done, each with its glyph, title and number of cards.
-* Every terminal has a card, shells at rest too.
-In a column, the card that has been there for the shortest time is first.
+* Only a terminal that runs one of the known agents has a card: a shell and a program that is not an agent have none.
+A terminal runs an agent when its report names one (OSC 7501, with the `app` of an agent) or when the program that has the terminal is one (as the title of its pane tells), so that an agent stays on the board after what it finished was seen and taken off (which removes the record that named it), and one that never reports is on it too.
+The "Nothing" column is for an agent at rest or that has not reported; its card says "At rest." or "Running, it does not report its state.", and has no time when the agent never reported.
+In a column, the card that arrived in it first is at the top (the oldest first); an agent that has never reported has no time and comes first, and cards that arrived together keep the order of the tree.
+* The time on a card, and so its place, is since it arrived in its **column**, not in its state: a wait that becomes a failure (both are "Needs input") keeps it.
 * A card has the state's glyph, the tile, the title (as the pane's), how long ago, `project / workspace`, the branch or worktree, and the note on two lines at most.
-Without a note, it says "Idle shell, waiting at the prompt." (a shell), "At rest.", "Working.", "Waiting for you.", "Failed." or "Finished.".
+Without a note, it says "At rest.", "Working.", "Waiting for you.", "Failed." or "Finished.".
 * It is titled "Agent board", with "N agents across M projects".
 * It is filtered by project: in the horizontal layout, a sidebar with "All projects" (with the number of agents) and each project with its counts; in the vertical layout, tabs.
 * Cards cannot be moved; a click on a card goes to its terminal.
+* A button at the right of the header of the board (in the main window) opens the board in a window of its own, to keep on another screen:
+** the window shows only the board, with the project tabs along the top as a filter of its own (independent of the main window's), the columns side by side or stacked according to its own shape, and no terminal; it has no such button;
+** a click on a card selects that terminal **in the main window**, which comes to the front (and is restored if it was minimized) and shows the Terminals view, as a click on a card there does;
+** there is one at a time: the button, pressed while it is open, brings it to the front;
+** it is not kept between launches (it is closed at each start, and opens at a default size); closing it only closes it, and closing the main window quits the application and closes it too.
 * In the vertical layout the columns are sections, one under the other.
 
 

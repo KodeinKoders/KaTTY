@@ -2,6 +2,14 @@
 
 package app.katty.screens
 
+import androidx.compose.ui.test.moveTo
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -66,7 +74,7 @@ class AgentBoardTest {
         show()
 
         onNodeWithText("Agent board").assertExists()
-        onNodeWithText("4 agents across 2 projects").assertExists()
+        onNodeWithText("3 agents across 2 projects").assertExists()
         onNodeWithText("Nothing").assertExists()
         onNodeWithText("Working").assertExists()
         onNodeWithText("Needs input").assertExists()
@@ -94,13 +102,50 @@ class AgentBoardTest {
     }
 
     @Test
-    fun aShellAtItsPromptHasACardToo() = runComposeUiTest {
+    fun aShellAtItsPromptHasNoCard() = runComposeUiTest {
         populate()
         show()
 
-        onNodeWithText("Idle shell, waiting at the prompt.").assertExists()
-        onNodeWithContentDescription("shell in api-gateway / refactor-auth").assertExists()
-        onNodeWithText("35 min").assertExists()
+        // The board is for the agents: a terminal that runs a shell is not on it.
+        onNodeWithText("Idle shell, waiting at the prompt.").assertDoesNotExist()
+        onNodeWithContentDescription("shell in api-gateway / refactor-auth").assertDoesNotExist()
+        onNodeWithContentDescription("Claude Code in api-gateway / refactor-auth").assertExists()
+    }
+
+    @Test
+    fun theHeaderHasTheButtonThatOpensTheBoardInAWindowOnlyWhenItIsGivenOne() = runComposeUiTest {
+        populate()
+        var opened = 0
+        var withButton by androidx.compose.runtime.mutableStateOf(true)
+        setContent {
+            KattyTheme(false) {
+                AgentBoard(state.board(null, infos), emptyMap(), now, false, onOpen = {}, onOpenWindow = if (withButton) ({ opened++ }) else null)
+            }
+        }
+
+        onNodeWithContentDescription("Open the board in a window").performClick()
+        assertEquals(1, opened)
+        // In the window itself there is nothing to open.
+        withButton = false
+        waitForIdle()
+        onNodeWithContentDescription("Open the board in a window").assertDoesNotExist()
+    }
+
+    @Test
+    fun anAgentAtRestAfterBeingSeenAndOneThatNeverReportedAreNotCalledShells() = runComposeUiTest {
+        val project = plainProject("/dev/api-gateway")
+        val seen = state.selection.terminal!!
+        val silent = store.split(seen, SplitDirection.ROW)!!
+        check(project.value.isNotEmpty())
+        val processes = mapOf(seen to "claude", silent to "codex")
+        infos = mapOf(seen to AgentInfo(AgentReport(AgentState.IDLE), now - 3 * 60_000))
+        setContent { KattyTheme(false) { AgentBoard(state.board(null, infos, processes), emptyMap(), now, false, onOpen = {}) } }
+
+        onNodeWithText("At rest.").assertExists()
+        onNodeWithText("Running, it does not report its state.").assertExists()
+        onNodeWithText("Idle shell, waiting at the prompt.").assertDoesNotExist()
+        // The one that has been at rest for 3 minutes says so, and the one that never said anything has no time at all.
+        onNodeWithText("3 min").assertExists()
     }
 
     @Test
