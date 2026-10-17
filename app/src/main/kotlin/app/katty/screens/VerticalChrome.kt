@@ -194,8 +194,9 @@ fun WorkspaceTabs(
         }
         KattyIconButton(KattyIcons.Plus, "New workspace", onNewWorkspace, Modifier.padding(horizontal = 4.dp), enabled = project != null)
         Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(20.dp).background(colors.line))
-        KattyIconButton(KattyIcons.SplitRight, "Split right", { selectedTerminal?.let { store.split(it, SplitDirection.ROW) } }, enabled = selectedTerminal != null)
-        KattyIconButton(KattyIcons.SplitDown, "Split down", { selectedTerminal?.let { store.split(it, SplitDirection.COLUMN) } }, Modifier.padding(end = 6.dp), enabled = selectedTerminal != null)
+        // The first is the vertical split, which is what the vertical layout is about; every split is drawn turned here.
+        KattyIconButton(KattyIcons.SplitDown, "Split down", { selectedTerminal?.let { store.splitVisually(it, right = false, flipped = true) } }, enabled = selectedTerminal != null)
+        KattyIconButton(KattyIcons.SplitRight, "Split right", { selectedTerminal?.let { store.splitVisually(it, right = true, flipped = true) } }, Modifier.padding(end = 6.dp), enabled = selectedTerminal != null)
     }
 }
 

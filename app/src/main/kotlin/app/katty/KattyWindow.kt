@@ -65,6 +65,7 @@ import app.katty.screens.AgentBoard
 import app.katty.screens.AgentToast
 import app.katty.screens.CommandPalette
 import app.katty.screens.PaletteHandlers
+import app.katty.screens.splitVisually
 import app.katty.screens.paletteCommands
 import app.katty.screens.AttentionBell
 import app.katty.screens.AttentionPopover
@@ -254,8 +255,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
         newWorkspace = newWorkspace,
         renameWorkspace = { renamingWorkspace = state.selection.workspace },
         closeWorkspace = { state.selection.workspace?.let(closeWorkspace) },
-        splitRight = { state.selection.terminal?.let { store.split(it, SplitDirection.ROW) } },
-        splitDown = { state.selection.terminal?.let { store.split(it, SplitDirection.COLUMN) } },
+        splitRight = { state.selection.terminal?.let { store.splitVisually(it, right = true, flipped = vertical) } },
+        splitDown = { state.selection.terminal?.let { store.splitVisually(it, right = false, flipped = vertical) } },
         renameTerminal = { renamingTerminal = state.selection.terminal },
         closeTerminal = { state.selection.terminal?.let(closeTerminal) },
         restartTerminal = { state.selection.terminal?.let(registry::restart) },
@@ -335,8 +336,8 @@ fun DecoratedWindowScope.KattyWindowContent(store: KattyStore, registry: Session
                 WindowShortcut.ADD_PROJECT -> addProject()
                 WindowShortcut.NEW_WORKSPACE -> newWorkspace()
                 WindowShortcut.CLOSE_WORKSPACE -> closeSelectedWorkspace()
-                WindowShortcut.SPLIT_RIGHT -> terminal?.let { store.split(it, SplitDirection.ROW) }
-                WindowShortcut.SPLIT_DOWN -> terminal?.let { store.split(it, SplitDirection.COLUMN) }
+                WindowShortcut.SPLIT_RIGHT -> terminal?.let { store.splitVisually(it, right = true, flipped = vertical) }
+                WindowShortcut.SPLIT_DOWN -> terminal?.let { store.splitVisually(it, right = false, flipped = vertical) }
                 WindowShortcut.CLOSE_TERMINAL -> terminal?.let(closeTerminal)
                 WindowShortcut.RESTART_TERMINAL -> terminal?.let(registry::restart)
                 WindowShortcut.JUMP_TO_WAITING -> jumpToWaiting()

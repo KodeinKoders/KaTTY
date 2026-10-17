@@ -151,6 +151,16 @@ fun WorkspaceArea(
     }
 }
 
+/**
+ * Splits [terminal] so that the new shell is to its right, or under it, **as it is drawn**: the vertical layout draws every split turned,
+ * so what it shows on the right is a `COLUMN` of the model and what it shows under is a `ROW`.
+ *
+ * @param flipped Whether the splits are drawn turned, as the vertical layout does.
+ */
+fun KattyStore.splitVisually(terminal: TerminalId, right: Boolean, flipped: Boolean) {
+    split(terminal, if (right != flipped) SplitDirection.ROW else SplitDirection.COLUMN)
+}
+
 /** What every pane of a tree needs to know. */
 internal class PaneContext(
     val workspace: Workspace,

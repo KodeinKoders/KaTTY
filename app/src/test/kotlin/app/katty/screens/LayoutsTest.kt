@@ -104,6 +104,26 @@ class LayoutsTest {
     }
 
     @Test
+    fun theFirstSplitButtonOfTheVerticalLayoutIsTheVerticalSplitAndEachDoesWhatItDraws() = runComposeUiTest {
+        populate()
+        setContent { KattyTheme(false) { Tabs() } }
+
+        // The first is the one that puts the new pane under the other, the second the one that puts it beside.
+        val down = onNodeWithContentDescription("Split down").fetchSemanticsNode().boundsInRoot
+        val right = onNodeWithContentDescription("Split right").fetchSemanticsNode().boundsInRoot
+        assertTrue(down.left < right.left, "$down $right")
+
+        // The vertical layout draws every split turned: under is a ROW of the model, beside is a COLUMN.
+        onNodeWithContentDescription("Split down").performClick()
+        waitForIdle()
+        assertEquals(app.katty.core.SplitDirection.ROW, (state.selectedWorkspace!!.layout as app.katty.core.PaneNode.Split).direction)
+        onNodeWithContentDescription("Split right").performClick()
+        waitForIdle()
+        val tree = state.selectedWorkspace!!.layout.toString()
+        assertTrue(tree.contains("COLUMN"), tree)
+    }
+
+    @Test
     fun doubleClickingATabRenamesIt() = runComposeUiTest {
         populate()
         var renamed: String? = null

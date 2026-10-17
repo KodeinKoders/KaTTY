@@ -97,6 +97,7 @@ Every project, workspace, terminal and split has an id that is made when it is c
 * A split's ratio is between 0.05 and 0.95.
 * The same folder is never two projects: adding a folder that is a project selects it.
 * The directions of the splits are the ones of the horizontal layout; the vertical layout draws every split turned.
+The commands "Split right" and "Split down" (buttons, menus, shortcuts, palette) split as it is drawn: in the vertical layout, where every split is turned, "Split right" makes a `COLUMN` of the model and "Split down" a `ROW`.
 
 
 === Selection
@@ -470,7 +471,7 @@ The list does not scroll by itself while an item is dragged.
 === Vertical layout
 
 * A bar of project tabs (40 px), each with its name and counts, and a button to add a project at the right; it scrolls horizontally.
-* A bar of workspace tabs (40 px), each with the dots of its terminals and its name, the selected one with a 2 px line of the accent color under it; a button for a new workspace; behind a divider at the far right, Split right and Split down.
+* A bar of workspace tabs (40 px), each with the dots of its terminals and its name, the selected one with a 2 px line of the accent color under it; a button for a new workspace; behind a divider at the far right, Split down (the vertical split, first) and Split right.
 * The tree of panes, with every split turned.
 * The usage, in a bar at the bottom.
 
