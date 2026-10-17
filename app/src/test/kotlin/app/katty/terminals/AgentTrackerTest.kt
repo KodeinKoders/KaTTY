@@ -145,6 +145,24 @@ class AgentTrackerTest {
     }
 
     @Test
+    fun anAgentThatEndedBeforeItsFinishedStateWasSeenLeavesNoGhostOfItInTheShell() {
+        // It reports `done` and ends: the shell has the terminal, and the `done` record is still there. Seeing it then must leave a plain
+        // shell, not "that agent at rest" for a terminal that runs a shell.
+        val shell = System.getenv("SHELL") ?: "/bin/zsh"
+        scripts += "${report("state=done", "app=claude-code")}; sleep 1; exec $shell -f -i"
+        val id = start()
+        await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
+        // Wait for the shell to have the terminal: the process is what the registry says it is.
+        await("the shell has the terminal") { registry.processNames.value[id] == registry.handles.value.getValue(id).shellName }
+        Thread.sleep(300)
+
+        tracker.markSeen(id)
+
+        await("at rest") { tracker.infos.value[id]?.state == AgentState.IDLE }
+        assertNull(tracker.infos.value.getValue(id).report.app, "a shell is shown as an agent")
+    }
+
+    @Test
     fun anAgentThatWasSeenReportsAgain() {
         scripts += "${report("state=done", "app=claude-code")}; sleep 1; ${report("state=working", "app=claude-code")}; sleep 60"
         val id = start()
