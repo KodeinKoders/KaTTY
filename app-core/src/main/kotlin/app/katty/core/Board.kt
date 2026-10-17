@@ -25,9 +25,10 @@ public data class BoardCard(val terminal: TerminalSpec, val project: Project, va
  * empty or not.
  *
  * Only the terminals that run one of the known agents are on it: a shell, and a program that is not an agent, have no card. A terminal runs
- * an agent when its report names one (OSC 7501) **or** when the program that has the terminal is one of them ([processes], as the pane's
- * title does): what an agent said is gone when a `done` or an `error` is seen and taken off, and it is still running, so what it said last
- * cannot be the only way to tell. The "Nothing" column is for an agent at rest, or one that has not reported.
+ * an agent when its report names one (OSC 7501, which the tracker keeps naming the agent at rest after a `done` was seen, until the shell
+ * has the terminal again) **or**, for an agent that never reports, when the program that has the terminal is one of them ([processes]).
+ * That name is only a fallback: native Claude Code is a file named after its version, `2.1.302`. The "Nothing" column is for an agent at
+ * rest, or one that has not reported.
  *
  * @param processes The program that has each terminal (`claude`, or the shell's own name at its prompt).
  */

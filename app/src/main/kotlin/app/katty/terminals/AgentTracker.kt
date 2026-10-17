@@ -44,9 +44,16 @@ class AgentTracker(
     /** A terminal changed state. A collector that comes late misses what happened before. */
     val transitions: SharedFlow<AgentTransition> get() = mutableTransitions
 
-    private class Follow(val session: TerminalSession, val job: Job)
+    private class Follow(val session: TerminalSession, val job: Job, val processJob: Job)
 
     private val follows = HashMap<TerminalId, Follow>()
+
+    // The agent that a terminal has said it runs, by the `app` of its last report that named one: what it says is gone when what it finished
+    // is seen and taken off, and it still runs. It lasts until the shell has the terminal again, which is when the agent has ended.
+    private val rememberedApp = HashMap<TerminalId, String>()
+
+    // What the records of each terminal come to, without what is remembered.
+    private val latest = HashMap<TerminalId, app.katty.core.AgentReport>()
 
     /** Follows the sessions of [handles], and lets go of the ones that are gone or were replaced by another shell. */
     @Synchronized
@@ -54,20 +61,44 @@ class AgentTracker(
         for (id in follows.keys.toList()) {
             val session = handles[id]?.session
             if (session == null || follows.getValue(id).session !== session) {
-                follows.remove(id)?.job?.cancel()
+                follows.remove(id)?.let { it.job.cancel(); it.processJob.cancel() }
+                rememberedApp.remove(id)
+                latest.remove(id)
                 mutableInfos.value = mutableInfos.value - id
             }
         }
         for ((id, handle) in handles) {
             val session = handle.session ?: continue
             if (id in follows) continue
-            follows[id] = Follow(session, scope.launch { session.programStatus.collect { records -> update(id, summarize(records)) } })
+            follows[id] = Follow(
+                session,
+                scope.launch { session.programStatus.collect { records -> update(id, summarize(records)) } },
+                // The shell has the terminal again: the agent that ran in it is over.
+                scope.launch {
+                    handle.processName.collect { name ->
+                        if (name == null || name == handle.shellName) forgetAgent(id)
+                    }
+                },
+            )
         }
     }
 
-    private fun update(id: TerminalId, report: app.katty.core.AgentReport) {
+    private fun forgetAgent(id: TerminalId) {
+        val report = synchronized(this) {
+            if (rememberedApp.remove(id) == null) return
+            latest[id]
+        } ?: return
+        update(id, report)
+    }
+
+    private fun update(id: TerminalId, summary: app.katty.core.AgentReport) {
         var transition: AgentTransition? = null
         mutableInfos.value = synchronized(this) {
+            latest[id] = summary
+            // A report that names a program says which agent the terminal runs; one at rest that names none (what is left when a `done` was
+            // seen) is that agent, at rest, until the shell has the terminal again.
+            summary.app?.let { rememberedApp[id] = it }
+            val report = if (summary.app == null && summary.state == AgentState.IDLE) rememberedApp[id]?.let { summary.copy(app = it) } ?: summary else summary
             val before = mutableInfos.value[id]
             // Since when it is in this column, not in this state: a wait that becomes a failure stays where it is on the board.
             val since = if (before != null && before.state.column() == report.state.column()) before.since else clock()

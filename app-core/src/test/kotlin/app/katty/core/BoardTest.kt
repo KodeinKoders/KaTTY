@@ -72,6 +72,18 @@ class BoardTest {
     }
 
     @Test
+    fun anAgentAtRestThatStillNamesItselfIsOnTheBoardWhateverItsProgramIsCalled() {
+        store.addProject("/a")
+        val claude = state.selection.terminal!!
+        // Native Claude Code is a file named after its version: the program that has the terminal is `2.1.302`, which says nothing.
+        val seen = AgentInfo(AgentReport(AgentState.IDLE, "claude-code"), 5)
+
+        val board = state.board(null, mapOf(claude to seen), mapOf(claude to "2.1.302"))
+
+        assertEquals(listOf(claude), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
+    }
+
+    @Test
     fun anAgentThatNeverReportedIsOnTheBoardByItsProgramAndOtherProgramsAreNot() {
         store.addProject("/a")
         val codex = state.selection.terminal!!

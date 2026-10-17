@@ -124,9 +124,36 @@ class AgentTrackerTest {
         tracker.markSeen(id)
 
         await("at rest") { tracker.infos.value[id]?.state == AgentState.IDLE }
-        // What named the program was the record that was taken off: the board cannot tell the agent from what it said any more, and has to
-        // ask which program has the terminal.
-        assertNull(tracker.infos.value.getValue(id).report.app)
+        // What named the program was the record that was taken off, and the agent is still running (the foreground program is not the shell):
+        // it is still that agent, at rest. The name of its program cannot say it (native Claude Code's is its version number).
+        assertEquals("claude-code", tracker.infos.value.getValue(id).report.app)
+    }
+
+    @Test
+    fun theAgentIsForgottenWhenTheShellHasTheTerminalAgain() {
+        // It reports, waits, and then the shell takes the terminal: the agent has ended.
+        val shell = System.getenv("SHELL") ?: "/bin/zsh"
+        scripts += "${report("state=done", "app=claude-code")}; sleep 2; exec $shell -f -i"
+        val id = start()
+        await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
+        tracker.markSeen(id)
+        await("at rest, still the agent") { tracker.infos.value[id]?.let { it.state == AgentState.IDLE && it.report.app == "claude-code" } == true }
+
+        await("the shell has the terminal, the agent is gone") { tracker.infos.value[id]?.report?.app == null }
+
+        assertEquals(AgentState.IDLE, tracker.infos.value.getValue(id).state)
+    }
+
+    @Test
+    fun anAgentThatWasSeenReportsAgain() {
+        scripts += "${report("state=done", "app=claude-code")}; sleep 1; ${report("state=working", "app=claude-code")}; sleep 60"
+        val id = start()
+        await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
+        tracker.markSeen(id)
+
+        await("working again") { tracker.infos.value[id]?.state == AgentState.WORKING }
+
+        assertEquals("claude-code", tracker.infos.value.getValue(id).report.app)
     }
 
     @Test

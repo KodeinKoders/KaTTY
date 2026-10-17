@@ -583,7 +583,7 @@ It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, an
 
 * The Board view has a column for each state, in this order: Nothing, Working, Needs input (with the failures), Done, each with its glyph, title and number of cards.
 * Only a terminal that runs one of the known agents has a card: a shell and a program that is not an agent have none.
-A terminal runs an agent when its report names one (OSC 7501, with the `app` of an agent) or when the program that has the terminal is one (as the title of its pane tells), so that an agent stays on the board after what it finished was seen and taken off (which removes the record that named it), and one that never reports is on it too.
+A terminal runs an agent when its report names one (OSC 7501, with the `app` of an agent), and it goes on running that agent, at rest, after what it finished was seen and taken off (which removes the record that named it), until the shell has the terminal again; an agent that never reports is on the board when the program that has the terminal is called after it (`codex`, `agy`…), which is only a fallback: native Claude Code's program is named by its version (`2.1.302`).
 The "Nothing" column is for an agent at rest or that has not reported; its card says "At rest." or "Running, it does not report its state.", and has no time when the agent never reported.
 In a column, the card that arrived in it first is at the top (the oldest first); an agent that has never reported has no time and comes first, and cards that arrived together keep the order of the tree.
 * The time on a card, and so its place, is since it arrived in its **column**, not in its state: a wait that becomes a failure (both are "Needs input") keeps it.
