@@ -40,30 +40,138 @@ class KeyTranslatorTest {
     private val keys = KeyTranslator()
 
     @Test
-    fun printableKeysAreSentAsTheTextThatWasTyped() {
-        // The press of a key that has text is not sent: the text comes with the KEY_TYPED.
+    fun printableKeysAreSentAsTheTextThatWasTypedByTheKey() {
+        // The press of a key that has text is not sent: the text comes with the KEY_TYPED, and it is of that key.
         assertNull(keys.translate(keyInfo(PRESSED, KeyEvent.VK_A, 'a')))
-        assertEquals(KeyInput(TerminalKey.UNIDENTIFIED, text = "a"), keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'a')))
-        assertNull(keys.translate(keyInfo(RELEASED, KeyEvent.VK_A, 'a')))
+        assertEquals(
+            KeyInput(TerminalKey.A, text = "a", unshiftedCodepoint = 'a'.code),
+            keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'a')),
+        )
+        // Its release is sent: the program that asked for the releases of keys has it, the others get nothing of it.
+        assertEquals(
+            KeyInput(TerminalKey.A, TerminalKeyAction.RELEASE, unshiftedCodepoint = 'a'.code),
+            keys.translate(keyInfo(RELEASED, KeyEvent.VK_A, 'a')),
+        )
+    }
+
+    @Test
+    fun aShiftedCharacterHasShiftConsumedAndTheKeyBeforeShift() {
+        val shift = InputEvent.SHIFT_DOWN_MASK
+
+        assertNull(keys.translate(keyInfo(PRESSED, KeyEvent.VK_A, 'A', shift)))
+        assertEquals(
+            KeyInput(
+                TerminalKey.A, mods = setOf(TerminalModifier.SHIFT), consumedMods = setOf(TerminalModifier.SHIFT),
+                text = "A", unshiftedCodepoint = 'a'.code,
+            ),
+            keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'A', shift)),
+        )
+    }
+
+    @Test
+    fun theReleaseOfAKeyThatSentNothingIsNotSent() {
+        // A Command shortcut is not the program's, nor is a key whose text never came (an input method took it).
+        assertNull(keys.translate(keyInfo(PRESSED, KeyEvent.VK_A, 'a', InputEvent.META_DOWN_MASK)))
+        assertNull(keys.translate(keyInfo(RELEASED, KeyEvent.VK_A, 'a', InputEvent.META_DOWN_MASK)))
+        assertNull(keys.translate(keyInfo(PRESSED, KeyEvent.VK_B, 'b')))
+        assertNull(keys.translate(keyInfo(RELEASED, KeyEvent.VK_B, 'b')))
+    }
+
+    @Test
+    fun aTextThatNoKeyJustPressedTypedIsTextOfNoKey() {
+        // What an input method commits, with no press before it.
+        assertEquals(KeyInput(TerminalKey.UNIDENTIFIED, text = "あ"), keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'あ')))
+    }
+
+    @Test
+    fun theLockKeysThatAreOnAreAmongTheModifiers() {
+        val info = KeyInfo(KeyInfo.Kind.PRESSED, KeyEvent.VK_UP, KeyEvent.KEY_LOCATION_STANDARD, KeyEvent.CHAR_UNDEFINED, false, false, false, false, capsLock = true, numLock = true)
+
+        assertEquals(
+            KeyInput(TerminalKey.ARROW_UP, mods = setOf(TerminalModifier.CAPS_LOCK, TerminalModifier.NUM_LOCK)),
+            keys.translate(info),
+        )
     }
 
     @Test
     fun composedCharactersAreSentAsTyped() {
         // Option+E is a dead key: no text. The E that follows has none either, and the layout composes the é.
         assertNull(keys.translate(keyInfo(PRESSED, KeyEvent.VK_E, KeyEvent.CHAR_UNDEFINED, InputEvent.ALT_DOWN_MASK)))
+        assertNull(keys.translate(keyInfo(RELEASED, KeyEvent.VK_E, KeyEvent.CHAR_UNDEFINED, InputEvent.ALT_DOWN_MASK)))
         assertNull(keys.translate(keyInfo(PRESSED, KeyEvent.VK_E, KeyEvent.CHAR_UNDEFINED)))
 
-        assertEquals(KeyInput(TerminalKey.UNIDENTIFIED, text = "é"), keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'é')))
+        assertEquals(
+            KeyInput(TerminalKey.E, text = "é", unshiftedCodepoint = 'e'.code),
+            keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'é')),
+        )
     }
 
     @Test
     fun optionIsNotAlt() {
         // Option+A types å: it is text, not Alt+A.
         assertNull(keys.translate(keyInfo(PRESSED, KeyEvent.VK_A, 'å', InputEvent.ALT_DOWN_MASK)))
+        // The key and its text, with no Alt: Option made the text.
         assertEquals(
-            KeyInput(TerminalKey.UNIDENTIFIED, text = "å"),
+            KeyInput(TerminalKey.A, text = "å", unshiftedCodepoint = 'a'.code),
             keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'å', InputEvent.ALT_DOWN_MASK)),
         )
+    }
+
+    @Test
+    fun optionIsAltWhenAskedAndTheKeyIsSentInsteadOfTheCharacter() {
+        val keys = KeyTranslator(TerminalOptionAsAlt.BOTH)
+        val option = InputEvent.ALT_DOWN_MASK
+
+        // Option+B types ∫: the press is what is sent, as Alt and B, and the character is dropped.
+        keys.translate(keyInfo(PRESSED, KeyEvent.VK_ALT, modifiers = option, location = KeyEvent.KEY_LOCATION_LEFT))
+        assertEquals(
+            KeyInput(TerminalKey.B, mods = setOf(TerminalModifier.ALT), text = "b", unshiftedCodepoint = 'b'.code),
+            keys.translate(keyInfo(PRESSED, KeyEvent.VK_B, '∫', option)),
+        )
+        assertNull(keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, '∫', option)))
+    }
+
+    @Test
+    fun optionAsAltKeepsWhatShiftMakesOfTheKey() {
+        val keys = KeyTranslator(TerminalOptionAsAlt.BOTH)
+        val altShift = InputEvent.ALT_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK
+
+        assertEquals(
+            KeyInput(
+                TerminalKey.B, mods = setOf(TerminalModifier.SHIFT, TerminalModifier.ALT), consumedMods = setOf(TerminalModifier.SHIFT),
+                text = "B", unshiftedCodepoint = 'b'.code,
+            ),
+            keys.translate(keyInfo(PRESSED, KeyEvent.VK_B, 'Í', altShift)),
+        )
+        assertEquals(
+            KeyInput(
+                TerminalKey.DIGIT_1, mods = setOf(TerminalModifier.SHIFT, TerminalModifier.ALT), consumedMods = setOf(TerminalModifier.SHIFT),
+                text = "!", unshiftedCodepoint = '1'.code,
+            ),
+            keys.translate(keyInfo(PRESSED, KeyEvent.VK_1, '⁄', altShift)),
+        )
+    }
+
+    @Test
+    fun onlyTheOptionKeyThatWasAskedForIsAlt() {
+        val option = InputEvent.ALT_DOWN_MASK
+        val left = KeyTranslator(TerminalOptionAsAlt.LEFT)
+        val right = KeyTranslator(TerminalOptionAsAlt.RIGHT)
+
+        left.translate(keyInfo(PRESSED, KeyEvent.VK_ALT, modifiers = option, location = KeyEvent.KEY_LOCATION_RIGHT))
+        right.translate(keyInfo(PRESSED, KeyEvent.VK_ALT, modifiers = option, location = KeyEvent.KEY_LOCATION_RIGHT))
+
+        // The right one types with the setting for the left one, and is the program's Alt with the other.
+        assertNull(left.translate(keyInfo(PRESSED, KeyEvent.VK_B, '∫', option)))
+        assertEquals(
+            KeyInput(TerminalKey.B, text = "∫", unshiftedCodepoint = 'b'.code),
+            left.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, '∫', option)),
+        )
+        assertEquals(TerminalKey.B, right.translate(keyInfo(PRESSED, KeyEvent.VK_B, '∫', option))?.key)
+
+        // Released: it types again.
+        right.translate(keyInfo(RELEASED, KeyEvent.VK_ALT, location = KeyEvent.KEY_LOCATION_RIGHT))
+        assertNull(right.translate(keyInfo(PRESSED, KeyEvent.VK_B, 'b')))
     }
 
     @Test

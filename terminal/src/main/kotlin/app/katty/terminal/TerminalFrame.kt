@@ -34,6 +34,8 @@ public data class TerminalStyle(
     public val strikethrough: Boolean = false,
     public val overline: Boolean = false,
     public val underline: TerminalUnderline = TerminalUnderline.NONE,
+    /** The color of the underline (SGR 58), `null` to draw it in the color of the text. */
+    public val underlineColor: TerminalColor? = null,
 ) {
     public companion object {
         /** No attribute at all, which is most cells. */
@@ -129,6 +131,8 @@ public data class TerminalCursor(
     public val visible: Boolean,
     public val blinking: Boolean,
     public val shape: TerminalCursorShape,
+    /** Whether the program is reading a password: it turned the echo off, and what is typed should not be shown. */
+    public val passwordInput: Boolean = false,
 )
 
 /**

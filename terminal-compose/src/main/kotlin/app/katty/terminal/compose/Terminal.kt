@@ -1,9 +1,15 @@
 package app.katty.terminal.compose
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -46,6 +52,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.terminal.KeyInput
 import app.katty.terminal.TerminalKey
@@ -53,7 +60,9 @@ import app.katty.terminal.TerminalClipboardLocation
 import app.katty.terminal.TerminalEvent
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalMouseButton
+import app.katty.terminal.TerminalSelectionAdjust
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.TerminalTextFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -95,6 +104,32 @@ import kotlin.math.roundToInt
  * one has it, and turns this off.
  * @param onContextMenu Called with the position of a right press (in pixels, from the top left of the terminal) that is not the program's:
  * the program did not ask for the mouse, or Shift is held. The host shows its menu there. Without it the press is handled as before.
+ * @param optionAsAlt Which Option keys are the program's Alt (Option and `b` is `ESC b`, which is how Emacs and the shell's line editor move
+ * by word) instead of typing the characters of the layout (`∫`). None by default, as in Ghostty. It cannot be tried without a real keyboard.
+ * @param confirmPaste Asked before a paste that could run commands that the user did not see (see [TerminalSession.isPasteUnsafe]): it
+ * has the text, and answers whether to paste it. Without it everything is pasted, which is what Ghostty's "never" setting does.
+ * @param minimumContrast The least WCAG contrast ratio between a text and its background, from 1 (none, the default) to 21: a text that is
+ * less readable is moved towards white or black until it is. The colors of the program are what they are: this is for the ones it did not
+ * think of, such as dark blue on black.
+ * @param padding The space around the grid, in the background color. The grid is what is left, which is the size the program is given.
+ * @param backgroundOpacity How opaque the background is, from 0 to 1: the terminal and its padding, not the backgrounds that a program gave
+ * its cells, which stay opaque. Less than 1 only shows something if the window is transparent, which is the host's to do.
+ * @param fontFeatures More OpenType features of the font, such as `ss01, zero` (a slashed zero, in JetBrains Mono): the names, with a `0`
+ * after one to turn it off, separated by commas, and **no quotes**, which Compose ignores them with. They come after [ligatures].
+ * @param builtinGlyphs Whether the box drawing, the blocks, the braille patterns and the arrows of powerline are drawn as shapes that fill
+ * their cell (the default), which makes lines and blocks join whatever the font, or with the glyphs of the font.
+ * @param bell What a BEL character does: the terminal flashes (the default), the system beeps, both, or nothing. The session's
+ * [TerminalEvent.Bell] is there for a host that does more, such as marking the tab.
+ * @param secureInput When macOS keeps what is typed from the other programs (secure event input), which a key logger would otherwise
+ * read: never (the default), while a program reads a password, or whenever the terminal has the keys. It also stops the programs that listen
+ * to the keys for the user, such as text expanders, for as long as it is on. It does nothing off macOS.
+ * @param copyOnSelect Whether what is selected is put in the clipboard as soon as the selection is made (the mouse is released), as
+ * well as being kept for the middle click. Off by default: the clipboard is the user's own.
+ * @param copyRichText Whether a copy also offers the selection as HTML, with its styles and colors, for the programs that paste it as
+ * such (a mail, a document); the others still get the text.
+ * @param optionClickMovesCursor Whether Option and a click on the command line that the shell is reading moves its cursor there, with
+ * the arrow keys, as Ghostty does. It needs the shell to mark its input (see `shellIntegration` of [TerminalSession.start]), and
+ * it is only the row of the cursor. A click anywhere else is a selection, as it is without it.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -109,9 +144,23 @@ public fun Terminal(
     ligatures: Boolean = true,
     focusOnStart: Boolean = true,
     onContextMenu: ((Offset) -> Unit)? = null,
+    optionAsAlt: TerminalOptionAsAlt = TerminalOptionAsAlt.NONE,
+    confirmPaste: (suspend (text: String) -> Boolean)? = null,
+    minimumContrast: Float = 1f,
+    padding: PaddingValues = PaddingValues(0.dp),
+    backgroundOpacity: Float = 1f,
+    fontFeatures: String = "",
+    builtinGlyphs: Boolean = true,
+    bell: TerminalBell = TerminalBell.VISUAL,
+    secureInput: TerminalSecureInput = TerminalSecureInput.NEVER,
+    copyOnSelect: Boolean = false,
+    copyRichText: Boolean = false,
+    optionClickMovesCursor: Boolean = true,
 ) {
+    require(minimumContrast in 1f..21f) { "The minimum contrast is from 1 (none) to 21, not $minimumContrast" }
+    require(backgroundOpacity in 0f..1f) { "The opacity is from 0 to 1, not $backgroundOpacity" }
     val frame by session.frames.collectAsState()
-    val typography = rememberTerminalTypography(fontSize, font, ligatures)
+    val typography = rememberTerminalTypography(fontSize, font, ligatures, fontFeatures)
 
     var size by remember { mutableStateOf(IntSize.Zero) }
     var focused by remember { mutableStateOf(false) }
@@ -119,9 +168,11 @@ public fun Terminal(
     // keys to go to the terminal.
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val active = focused && windowFocused
-    val keys = remember { KeyTranslator() }
+    val keys = remember(optionAsAlt) { KeyTranslator(optionAsAlt) }
     // The text that is typed comes from two routes, and what is being composed is not in the terminal yet.
-    val textInput = remember(session) { TerminalTextInput { session.sendKey(KeyInput(TerminalKey.UNIDENTIFIED, text = it)) } }
+    val textInput = remember(session) {
+        TerminalTextInput { session.sendKey(KeyInput(TerminalKey.UNIDENTIFIED, text = it)) }.also { it.onKey = session::sendKey }
+    }
 
     // What the input method asks for is not composed: the cell of the cursor, for its candidate window.
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -134,9 +185,33 @@ public fun Terminal(
     var selectionModifiers by remember { mutableStateOf(SelectionModifiers.NONE) }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    // What is pasted by a key and by the middle click: after the host said yes, when what it pastes is what could run commands.
+    val latestConfirmPaste = rememberUpdatedState(confirmPaste)
+    val pasteConfirmed: (String) -> Unit = remember(session) {
+        { text ->
+            val confirm = latestConfirmPaste.value
+            if (confirm == null || !session.isPasteUnsafe(text)) {
+                session.paste(text)
+            } else {
+                scope.launch { if (confirm(text)) session.paste(text) }
+            }
+        }
+    }
     val copy: (String) -> Unit = remember(clipboard) {
         { text -> scope.launch { clipboard.setClipEntry(ClipEntry(StringSelection(text))) } }
     }
+    // What is selected goes to the clipboard, as text and, when asked, as HTML too.
+    val latestCopyRichText = rememberUpdatedState(copyRichText)
+    val copySelected: () -> Unit = remember(session, clipboard) {
+        {
+            session.selectedText()?.let { text ->
+                val html = if (latestCopyRichText.value) session.selectedText(TerminalTextFormat.HTML) else null
+                if (html == null) copy(text) else scope.launch { clipboard.setClipEntry(ClipEntry(RichText(text, html))) }
+            }
+        }
+    }
+    val latestCopyOnSelect = rememberUpdatedState(copyOnSelect)
+    val latestOptionClick = rememberUpdatedState(optionClickMovesCursor)
     val primary = primarySelection
     val links = remember(session) { LinkInteraction() }
     val contextMenu = remember(session) { ContextMenuGesture() }
@@ -177,14 +252,42 @@ public fun Terminal(
 
     if (focusOnStart) LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    // What a program puts in the clipboard (OSC 52): the system's goes there, and what a middle click pastes is kept here.
-    LaunchedEffect(session) {
+    // What is typed is kept from the other programs of the system while it has to be: the system counts, so each enable is undone.
+    val secure = active && when (secureInput) {
+        TerminalSecureInput.NEVER -> false
+        TerminalSecureInput.PASSWORD_PROMPTS -> frame.cursor.passwordInput
+        TerminalSecureInput.ALWAYS -> true
+    }
+    DisposableEffect(secure) {
+        val enabled = secure && SecureKeyboardEntry.enable()
+        onDispose { if (enabled) SecureKeyboardEntry.disable() }
+    }
+
+    // The flash of the bell: the terminal is lightened for a moment.
+    val bellFlash = remember { Animatable(0f) }
+
+    // What a program puts in the clipboard (OSC 52): the system's goes there, and what a middle click pastes is kept here. The bell rings.
+    LaunchedEffect(session, bell) {
+        var lastBeep = 0L
         session.events.collect { event ->
-            if (event is TerminalEvent.ClipboardWrite) {
-                when (event.location) {
+            when (event) {
+                is TerminalEvent.ClipboardWrite -> when (event.location) {
                     TerminalClipboardLocation.STANDARD -> copy(event.text)
                     TerminalClipboardLocation.PRIMARY, TerminalClipboardLocation.SELECTION -> primary.text = event.text
                 }
+                is TerminalEvent.Bell -> {
+                    if (bell.visual) launch {
+                        bellFlash.snapTo(BELL_FLASH_ALPHA)
+                        bellFlash.animateTo(0f, tween(BELL_FLASH_MS))
+                    }
+                    // A program that rings in a loop does not get a beep for each.
+                    val now = System.nanoTime()
+                    if (bell.audio && now - lastBeep > BELL_BEEP_INTERVAL_NS) {
+                        lastBeep = now
+                        java.awt.Toolkit.getDefaultToolkit().beep()
+                    }
+                }
+                else -> Unit
             }
         }
     }
@@ -219,7 +322,14 @@ public fun Terminal(
         scrollbarAlpha = scrollbarAlpha,
         scrollbarEmphasized = scrollbarInteraction.hovered || scrollbarInteraction.dragging,
         hoveredLink = links.hovered,
+        minimumContrast = minimumContrast,
+        builtinGlyphs = builtinGlyphs,
+        bellFlash = { bellFlash.value },
+        // The background is painted here, with the padding, and not by the view, which would paint it over again where it is translucent.
+        defaultBackgroundAlpha = 0f,
         modifier = modifier
+            .background(frame.background.rgb.toColor().copy(alpha = backgroundOpacity))
+            .padding(padding)
             .onSizeChanged { size = it }
             .onGloballyPositioned { coordinates = it }
             .focusRequester(focusRequester)
@@ -284,6 +394,18 @@ public fun Terminal(
                             }
                         }
 
+                        // Option and a click on the command line that the shell is reading moves its cursor there: it is not a selection.
+                        if (latestOptionClick.value && info.kind == PointerInfo.Kind.PRESS && info.button == TerminalMouseButton.LEFT &&
+                            info.alt && !info.meta && !info.shift && !info.ctrl && !tracking && !selection.selecting
+                        ) {
+                            val column = (info.x / typography.cellWidth).toInt()
+                            val row = (info.y / typography.cellHeight).toInt()
+                            if (session.moveCursorTo(column, row)) {
+                                event.changes.forEach { it.consume() }
+                                continue
+                            }
+                        }
+
                         // Selecting text is the terminal's, and the program is told nothing of it.
                         val selecting = selection.translate(info, typography.cellWidth, typography.cellHeight, tracking)
                         if (selecting.isNotEmpty() || selection.selecting) {
@@ -298,7 +420,10 @@ public fun Terminal(
                                     // What is selected is kept for the middle button. It is the clipboard's only when the user copies.
                                     is SelectionAction.Release -> {
                                         autoscroll.stop()
-                                        session.selectionRelease(action.column, action.row)?.let { primary.text = it }
+                                        session.selectionRelease(action.column, action.row)?.let {
+                                            primary.text = it
+                                            if (latestCopyOnSelect.value) copySelected()
+                                        }
                                     }
                                 }
                             }
@@ -308,7 +433,7 @@ public fun Terminal(
 
                         // The middle button pastes what was selected last, without the clipboard.
                         if (middleClickPastes(info, tracking)) {
-                            primary.text?.let(session::paste)
+                            primary.text?.let(pasteConfirmed)
                             event.changes.forEach { it.consume() }
                             continue
                         }
@@ -339,8 +464,8 @@ public fun Terminal(
                 clipboardShortcut(info)?.let { shortcut ->
                     if (info.kind == KeyInfo.Kind.PRESSED) {
                         when (shortcut) {
-                            ClipboardShortcut.COPY -> session.selectedText()?.let(copy)
-                            ClipboardShortcut.PASTE -> scope.launch { clipboard.readText()?.let(session::paste) }
+                            ClipboardShortcut.COPY -> copySelected()
+                            ClipboardShortcut.PASTE -> scope.launch { clipboard.readText()?.let(pasteConfirmed) }
                         }
                     }
                     return@onPreviewKeyEvent true
@@ -350,6 +475,13 @@ public fun Terminal(
                     // A repeat is a press too: holding the keys goes on moving.
                     if (info.kind == KeyInfo.Kind.PRESSED) session.sendText(text)
                     return@onPreviewKeyEvent true
+                }
+                // Shift and an arrow extend what is selected, when something is: nothing is the program's then, since typing unselects.
+                selectionAdjustment(info)?.let { adjustment ->
+                    if (latestFrame.value.selection.any { it != null }) {
+                        if (info.kind == KeyInfo.Kind.PRESSED) session.adjustSelection(adjustment)
+                        return@onPreviewKeyEvent true
+                    }
                 }
                 // The modifier of the links was pressed or released: the link under the pointer shows or goes.
                 links.refresh(
@@ -384,7 +516,7 @@ public fun Terminal(
                 val text = input.text
                 if (info.kind == KeyInfo.Kind.TYPED && text != null) {
                     // The input method may deliver it as well.
-                    textInput.deliver(text, TextRoute.KEY_TYPED)
+                    textInput.deliver(text, TextRoute.KEY_TYPED, input)
                 } else {
                     session.sendKey(input)
                 }
@@ -467,3 +599,25 @@ private fun PointerButton.toTerminal(): TerminalMouseButton? = when (this) {
 
 // How long the focus must stay where it is before a program is told.
 private const val FOCUS_REPORT_DELAY_MS = 50L
+
+/** What a BEL does. */
+public enum class TerminalBell(internal val visual: Boolean, internal val audio: Boolean) {
+    /** Nothing. */
+    NONE(false, false),
+
+    /** The terminal flashes. */
+    VISUAL(true, false),
+
+    /** The system beeps. */
+    AUDIO(false, true),
+
+    /** Both. */
+    BOTH(true, true),
+}
+
+// How much the terminal is lightened by the bell at first, and how long it takes to go back.
+private const val BELL_FLASH_ALPHA = 0.3f
+private const val BELL_FLASH_MS = 250
+
+// The least time between two beeps.
+private const val BELL_BEEP_INTERVAL_NS = 200_000_000L

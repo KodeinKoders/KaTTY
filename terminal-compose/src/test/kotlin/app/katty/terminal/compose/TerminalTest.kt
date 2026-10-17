@@ -18,6 +18,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalSession
 import org.jetbrains.skia.Bitmap
@@ -130,6 +131,78 @@ class TerminalTest {
         val frame = session.frames.value
         assertEquals((WIDTH / typography.cellWidth).toInt(), frame.cols)
         assertEquals((HEIGHT / typography.cellHeight).toInt(), frame.rows.size)
+    }
+
+    @Test
+    fun theGridIsWhatIsLeftOfThePadding() {
+        val session = session("sleep 30")
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            Terminal(session, Modifier.fillMaxSize(), padding = androidx.compose.foundation.layout.PaddingValues(20.dp, 10.dp))
+        }.also { scenes += it }
+
+        scene.renderUntil("the terminal to fit what is left") { typography != null && session.frames.value.cols != 10 }
+
+        val typography = typography!!
+        val frame = session.frames.value
+        assertEquals(((WIDTH - 40) / typography.cellWidth).toInt(), frame.cols)
+        assertEquals(((HEIGHT - 20) / typography.cellHeight).toInt(), frame.rows.size)
+        // The padding has the background of the terminal.
+        val corner = Bitmap.makeFromImage(scene.render(clock)).getColor(2, 2) and 0xFFFFFF
+        assertEquals(frame.background.rgb, corner)
+    }
+
+    @Test
+    fun aTranslucentBackgroundLetsWhatIsBehindShowThrough() {
+        val session = session("sleep 30")
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            Terminal(session, Modifier.fillMaxSize(), backgroundOpacity = 0f, padding = androidx.compose.foundation.layout.PaddingValues(10.dp))
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene") { typography != null && session.frames.value.cols != 10 }
+
+        val image = Bitmap.makeFromImage(scene.render(clock))
+
+        // Neither the padding nor the grid are painted: the scene's own background is what is there.
+        assertEquals(0, image.getColor(2, 2) ushr 24, "The padding is transparent")
+        assertEquals(0, image.getColor(WIDTH - 30, HEIGHT - 30) ushr 24, "So is the grid")
+    }
+
+    @Test
+    fun theBellFlashesTheTerminalAndItGoesBack() {
+        val session = session("sleep 1; printf '\\a'; sleep 30")
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            Terminal(session, Modifier.fillMaxSize(), bell = TerminalBell.VISUAL)
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene") { typography != null && session.frames.value.cols != 10 }
+        val background = session.frames.value.background.rgb
+
+        // A pixel that nothing is drawn on: the bottom right.
+        fun corner() = Bitmap.makeFromImage(scene.render(clock.also { clock += 16_000_000 })).getColor(WIDTH - 2, HEIGHT - 2) and 0xFFFFFF
+        assertEquals(background, corner())
+        scene.renderUntil("the flash") { corner() != background }
+        scene.renderUntil("the flash to be over") { corner() == background }
+    }
+
+    @Test
+    fun withoutABellTheBellDoesNothingToTheScreen() {
+        val session = session("sleep 1; printf '\\a'; sleep 30")
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            Terminal(session, Modifier.fillMaxSize(), bell = TerminalBell.NONE)
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene") { typography != null && session.frames.value.cols != 10 }
+        val background = session.frames.value.background.rgb
+
+        // Longer than the program waits to ring, and then some.
+        val end = System.nanoTime() + 2_000_000_000L
+        while (System.nanoTime() < end) {
+            val corner = Bitmap.makeFromImage(scene.render(clock)).getColor(WIDTH - 2, HEIGHT - 2) and 0xFFFFFF
+            clock += 16_000_000
+            assertEquals(background, corner)
+            Thread.sleep(10)
+        }
     }
 
     /** The color of the pixel at the top left of the screen, where the cursor of a program that wrote nothing is. */
@@ -620,6 +693,9 @@ class TerminalTest {
     private class FakeClipboard : androidx.compose.ui.platform.Clipboard {
         val copied = java.util.concurrent.CopyOnWriteArrayList<String>()
 
+        // The HTML that came with the text, when the copy offered it.
+        val copiedHtml = java.util.concurrent.CopyOnWriteArrayList<String>()
+
         // What the user copied somewhere else, which a paste reads.
         var content: String? = null
 
@@ -628,6 +704,9 @@ class TerminalTest {
 
         override suspend fun setClipEntry(clipEntry: androidx.compose.ui.platform.ClipEntry?) {
             val transferable = clipEntry?.nativeClipEntry as java.awt.datatransfer.Transferable
+            if (transferable.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.allHtmlFlavor)) {
+                copiedHtml += transferable.getTransferData(java.awt.datatransfer.DataFlavor.allHtmlFlavor) as String
+            }
             copied += transferable.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor) as String
         }
     }
@@ -635,7 +714,12 @@ class TerminalTest {
     private val clipboard = FakeClipboard()
 
     // A terminal that fills the scene, with what the program printed on it, and a clipboard that is not the system's.
-    private fun selectionScene(script: String, primarySelection: TerminalPrimarySelection? = null): Pair<ImageComposeScene, TerminalSession> {
+    private fun selectionScene(
+        script: String,
+        primarySelection: TerminalPrimarySelection? = null,
+        copyOnSelect: Boolean = false,
+        copyRichText: Boolean = false,
+    ): Pair<ImageComposeScene, TerminalSession> {
         val session = session(script, cols = 80, rows = 24)
         val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
             typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
@@ -643,7 +727,11 @@ class TerminalTest {
                 LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true },
                 androidx.compose.ui.platform.LocalClipboard provides clipboard,
             ) {
-                if (primarySelection == null) Terminal(session, Modifier.fillMaxSize()) else Terminal(session, Modifier.fillMaxSize(), primarySelection = primarySelection)
+                if (primarySelection == null) {
+                    Terminal(session, Modifier.fillMaxSize(), copyOnSelect = copyOnSelect, copyRichText = copyRichText)
+                } else {
+                    Terminal(session, Modifier.fillMaxSize(), primarySelection = primarySelection, copyOnSelect = copyOnSelect, copyRichText = copyRichText)
+                }
             }
         }.also { scenes += it }
         scene.renderUntil("the terminal to fit the scene and show the text") { session.frames.value.cols != 80 && session.frames.value.text(0).startsWith("hello world") }
@@ -706,6 +794,75 @@ class TerminalTest {
         scene.awaitCopied("hello")
         scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }
         assertEquals(0..4, session.selected()[0])
+    }
+
+    @Test
+    fun copiesWhatIsSelectedAsSoonAsItIsWhenAskedTo() {
+        val (scene, session) = selectionScene("printf 'hello world'; sleep 30", copyOnSelect = true)
+
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+
+        scene.renderUntil("hello to be copied without the shortcut") { "hello" in clipboard.copied }
+        assertEquals(0..4, session.selected().let { scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }; session.selected()[0] })
+    }
+
+    @Test
+    fun aCopyOffersTheStylesAsHtmlWhenAskedToAndTheTextAlways() {
+        val (scene, _) = selectionScene("printf 'hello \\033[31mworld'; sleep 30", copyRichText = true)
+
+        scene.drag(at(0.2f, 0.5f), at(10.7f, 0.5f))
+        scene.awaitCopied("hello world")
+
+        scene.renderUntil("the HTML to be copied") { clipboard.copiedHtml.isNotEmpty() }
+        val html = clipboard.copiedHtml.last()
+        assertTrue("world" in html && "<" in html, "It is HTML: $html")
+        assertTrue("hello world" !in html || "<" in html)
+    }
+
+    @Test
+    fun aCopyIsOnlyTextWhenHtmlIsNotAskedFor() {
+        val (scene, _) = selectionScene("printf 'hello world'; sleep 30")
+
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+        scene.awaitCopied("hello")
+
+        assertEquals(emptyList(), clipboard.copiedHtml.toList())
+    }
+
+    @Test
+    fun shiftAndAnArrowExtendTheSelectionAndAreNotTheProgramsWhileThereIsOne() {
+        val (scene, session) = selectionScene("printf 'hello world'; sleep 30")
+        scene.drag(at(0.2f, 0.5f), at(4.7f, 0.5f))
+        scene.renderUntil("the selection to be shown") { session.selected().isNotEmpty() }
+        assertEquals(0..4, session.selected()[0])
+        // The composable has the frame that has it.
+        scene.settle()
+
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_RIGHT), type = KeyEventType.KeyDown, isShiftPressed = true))
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_RIGHT), type = KeyEventType.KeyUp, isShiftPressed = true))
+
+        scene.renderUntil("the selection to grow") { session.selected().getOrNull(0)?.let { it.last > 4 } == true }
+        assertEquals(0, session.selected()[0]!!.first)
+        assertTrue(session.selectedText()!!.startsWith("hello"))
+    }
+
+    @Test
+    fun shiftAndAnArrowAreTheProgramsWhenNothingIsSelected() {
+        val session = session("stty raw -echo; echo ready; head -c6 | od -An -c", cols = 80, rows = 5)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true }) {
+                Terminal(session, Modifier.fillMaxSize())
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the program to be ready") { session.frames.value.text(0).startsWith("ready") }
+        scene.settle()
+
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_RIGHT), type = KeyEventType.KeyDown, isShiftPressed = true))
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_RIGHT), type = KeyEventType.KeyUp, isShiftPressed = true))
+
+        // CSI 1 ; 2 C: Shift is the modifier 2. Six bytes with the end of line the program waits for to end its read.
+        scene.renderUntil("the key to reach the program") { session.frames.value.rows.indices.any { session.frames.value.text(it).contains("[   1   ;   2   C") || session.frames.value.text(it).replace(" ", "").contains("[1;2C") } }
     }
 
     @Test

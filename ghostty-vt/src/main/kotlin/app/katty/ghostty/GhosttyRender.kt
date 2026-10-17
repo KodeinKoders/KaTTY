@@ -82,6 +82,8 @@ public data class GhosttyCellStyle(
     public val strikethrough: Boolean = false,
     public val overline: Boolean = false,
     public val underline: GhosttyUnderline = GhosttyUnderline.NONE,
+    /** The color of the underline (SGR 58), resolved; `null` for the text's own. */
+    public val underlineColor: GhosttyRgb? = null,
 ) {
     public companion object {
         /** No attribute at all, which is most cells. */

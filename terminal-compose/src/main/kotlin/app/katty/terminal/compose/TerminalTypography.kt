@@ -25,6 +25,7 @@ internal class TerminalTypography(
     val font: TerminalFont,
     private val fontSize: TextUnit,
     private val ligatures: Boolean = true,
+    private val fontFeatures: String = "",
 ) {
     /**
      * The width of a cell in pixels: the advance of the font, which is not a whole number of pixels. It is not
@@ -41,7 +42,8 @@ internal class TerminalTypography(
         fontFamily = font.family,
         fontSize = fontSize,
         letterSpacing = TextUnit.Unspecified,
-        fontFeatureSettings = if (ligatures) null else "liga 0, calt 0",
+        fontFeatureSettings = listOfNotNull("liga 0, calt 0".takeIf { !ligatures }, fontFeatures.takeIf { it.isNotBlank() })
+            .joinToString(", ").ifEmpty { null },
     )
 
     init {
@@ -79,8 +81,11 @@ internal fun rememberTerminalTypography(
     fontSize: TextUnit,
     font: TerminalFont = TerminalFont.bundled(),
     ligatures: Boolean = true,
+    fontFeatures: String = "",
 ): TerminalTypography {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    return remember(measurer, density, font, fontSize, ligatures) { TerminalTypography(measurer, density, font, fontSize, ligatures) }
+    return remember(measurer, density, font, fontSize, ligatures, fontFeatures) {
+        TerminalTypography(measurer, density, font, fontSize, ligatures, fontFeatures)
+    }
 }

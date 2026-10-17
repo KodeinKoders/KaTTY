@@ -56,5 +56,8 @@ public value class GhosttyMode private constructor(internal val packed: Short) {
 
         /** Synchronized output. */
         public val SYNC_OUTPUT: GhosttyMode = dec(2026)
+
+        /** The program asked to be told when the color scheme changes (CSI ? 997 ; 1|2 n). */
+        public val COLOR_SCHEME_REPORT: GhosttyMode = dec(2031)
     }
 }

@@ -9,10 +9,14 @@ internal fun Int.toColor(): Color = Color(0xFF000000.toInt() or this)
 
 internal class PreparedText(val run: TextRun, val layout: TextLayoutResult)
 
+/** A character drawn as a shape: [sprite] is in the pixels of its cell, which starts at [left] and is [width] wide. */
+internal class PreparedSprite(val left: Float, val width: Float, val sprite: Sprite, val foreground: Int, val blink: Boolean = false)
+
 /** Everything a row is drawn with, which is what is worth keeping from one frame to the next. */
 internal class PreparedRow(
     val backgrounds: List<BackgroundRun>,
     val texts: List<PreparedText>,
+    val sprites: List<PreparedSprite> = emptyList(),
 )
 
 /**
@@ -21,7 +25,11 @@ internal class PreparedRow(
  * Laying text out is what costs, and a row that did not change is the same object in the next frame. The
  * entries of the rows that are no longer there are dropped.
  */
-internal class RowLayouts(private val typography: TerminalTypography) {
+internal class RowLayouts(
+    private val typography: TerminalTypography,
+    private val minimumContrast: Float = 1f,
+    private val builtinGlyphs: Boolean = true,
+) {
     private var prepared: Map<TerminalRow, PreparedRow> = emptyMap()
 
     fun prepare(frame: TerminalFrame): List<PreparedRow> {
@@ -33,8 +41,18 @@ internal class RowLayouts(private val typography: TerminalTypography) {
 
     private fun prepareRow(row: TerminalRow, frame: TerminalFrame) = PreparedRow(
         backgrounds = backgroundRuns(row, frame.foreground, frame.background, frame.boldColor),
-        texts = textRuns(row, frame.foreground, frame.background, frame.boldColor).map {
+        texts = textRuns(row, frame.foreground, frame.background, frame.boldColor, minimumContrast, builtinGlyphs).map {
             PreparedText(it, typography.layout(it.text, it.bold, it.italic))
         },
+        sprites = if (builtinGlyphs) prepareSprites(row, frame) else emptyList(),
     )
+
+    // The edges of a cell are on whole pixels, as the backgrounds' are, so that the shapes of two cells meet.
+    private fun prepareSprites(row: TerminalRow, frame: TerminalFrame): List<PreparedSprite> =
+        spriteCells(row, frame.foreground, frame.background, frame.boldColor, minimumContrast).mapNotNull { cell ->
+            val left = kotlin.math.round(cell.col * typography.cellWidth)
+            val right = kotlin.math.round((cell.col + 1) * typography.cellWidth)
+            val width = (right - left).toInt()
+            sprite(cell.codepoint, width, typography.cellHeight.toInt())?.let { PreparedSprite(left, right - left, it, cell.foreground, cell.blink) }
+        }
 }

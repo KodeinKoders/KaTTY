@@ -9,6 +9,8 @@ import app.katty.terminal.TerminalStyle
 import app.katty.terminal.TerminalUnderline
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 private val FOREGROUND = TerminalColor(0xEEEEEE)
 private val BACKGROUND = TerminalColor(0x111111)
@@ -163,5 +165,40 @@ class TerminalRunsTest {
         val runs = backgroundRuns(row(cell("a", style = TerminalStyle(inverse = true))), FOREGROUND, BACKGROUND)
 
         assertEquals(listOf(BackgroundRun(0, 1, FOREGROUND.rgb)), runs)
+    }
+
+    @Test
+    fun textThatIsHardToReadIsMovedUntilItHasTheMinimumContrast() {
+        val darkBlue = TerminalColor(0x00005F)
+        val cell = cell("x", darkBlue)
+
+        val plain = resolveColors(cell, FOREGROUND, BACKGROUND).foreground
+        val readable = resolveColors(cell, FOREGROUND, BACKGROUND, minimumContrast = 4.5f).foreground
+
+        assertEquals(darkBlue.rgb, plain, "Without a minimum it is what the program asked")
+        assertTrue(contrastRatio(darkBlue.rgb, BACKGROUND.rgb) < 4.5f)
+        assertTrue(contrastRatio(readable, BACKGROUND.rgb) >= 4.5f, "It is readable now: ${"%06x".format(readable)}")
+        // The least that it takes: not all the way to white.
+        assertNotEquals(0xFFFFFF, readable)
+    }
+
+    @Test
+    fun textThatIsReadableIsLeftAlone() {
+        assertEquals(RED.rgb, resolveColors(cell("x", RED), FOREGROUND, BACKGROUND, minimumContrast = 3f).foreground)
+    }
+
+    @Test
+    fun theMinimumContrastGoesTheWayThatCanBeRead() {
+        // Light grey on white can only be made darker.
+        val readable = withMinimumContrast(0xDDDDDD, 0xFFFFFF, 4.5f)
+
+        assertTrue(readable < 0xDDDDDD)
+        assertTrue(contrastRatio(readable, 0xFFFFFF) >= 4.5f)
+    }
+
+    @Test
+    fun theMinimumContrastGoesAsFarAsItCanWhenItCannotBeMet() {
+        // Nothing is 21 times lighter than mid grey: black on it is the most there is.
+        assertEquals(0x000000, withMinimumContrast(0x777777, 0x777777, 21f))
     }
 }

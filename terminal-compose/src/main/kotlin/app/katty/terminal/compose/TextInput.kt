@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.ImeOptions
 import androidx.compose.ui.text.input.TextEditingScope
 import androidx.compose.ui.text.input.TextEditorState
 import androidx.compose.ui.text.input.TextFieldValue
+import app.katty.terminal.KeyInput
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger(TerminalTextInput::class.java)
@@ -40,6 +41,9 @@ internal enum class TextRoute {
  * Not thread-safe: it is used from the UI thread.
  */
 internal class TerminalTextInput(private val onText: (String) -> Unit) {
+    /** Given the key that typed a text when it is known, instead of [onText]. */
+    var onKey: ((KeyInput) -> Unit)? = null
+
     /** What is being composed, such as a dead key that waits for the next one. It is not sent anywhere yet. */
     var preedit: String by mutableStateOf("")
         private set
@@ -55,7 +59,7 @@ internal class TerminalTextInput(private val onText: (String) -> Unit) {
         fromInputMethod.clear()
     }
 
-    fun deliver(text: String, route: TextRoute) {
+    fun deliver(text: String, route: TextRoute, key: KeyInput? = null) {
         val (own, other) = when (route) {
             TextRoute.KEY_TYPED -> fromKeyTyped to fromInputMethod
             TextRoute.INPUT_METHOD -> fromInputMethod to fromKeyTyped
@@ -67,7 +71,8 @@ internal class TerminalTextInput(private val onText: (String) -> Unit) {
         }
         logger.debug("{} {}", route, text.debugString())
         own += text
-        onText(text)
+        val onKey = onKey
+        if (key != null && onKey != null) onKey(key) else onText(text)
     }
 
     fun compose(text: String) {

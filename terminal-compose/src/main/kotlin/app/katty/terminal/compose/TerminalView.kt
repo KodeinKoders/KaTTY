@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.IntOffset
@@ -49,15 +50,24 @@ internal fun TerminalView(
     scrollbarAlpha: Float = 0f,
     scrollbarEmphasized: Boolean = false,
     hoveredLink: TerminalLink? = null,
+    minimumContrast: Float = 1f,
+    builtinGlyphs: Boolean = true,
+    /** How much the terminal is lightened by the bell right now, from 0 to 1: read as it is drawn, so that the flash does not recompose. */
+    bellFlash: () -> Float = { 0f },
+    /** How opaque the default background that the view paints is: 0 when the one who holds it paints it. */
+    defaultBackgroundAlpha: Float = 1f,
 ) {
     // What is kept for the rows depends on how they are drawn.
-    val layouts = remember(typography, frame.foreground, frame.background, frame.boldColor) { RowLayouts(typography) }
+    val layouts = remember(typography, frame.foreground, frame.background, frame.boldColor, minimumContrast, builtinGlyphs) {
+        RowLayouts(typography, minimumContrast, builtinGlyphs)
+    }
     val cursorShown = rememberCursorBlink(frame.cursor, focused)
+    val textShown = rememberTextBlink(frame)
 
     val bitmaps = remember { ImageBitmapCache() }
 
     Canvas(modifier) {
-        drawRect(frame.background.rgb.toColor())
+        if (defaultBackgroundAlpha > 0f) drawRect(frame.background.rgb.toColor().copy(alpha = defaultBackgroundAlpha))
 
         bitmaps.retain(frame.images.map { it.image })
         // The layers of the images are between what the cells are drawn with, as the protocol says.
@@ -74,7 +84,13 @@ internal fun TerminalView(
         rows.forEachIndexed { y, row ->
             val top = y * typography.cellHeight
             for (text in row.texts) {
+                // Text that blinks is hidden half of the time.
+                if (text.run.blink && !textShown.value) continue
                 drawPreparedText(text, top, typography)
+            }
+            for (sprite in row.sprites) {
+                if (sprite.blink && !textShown.value) continue
+                drawPreparedSprite(sprite, top, typography.cellHeight)
             }
         }
         hoveredLink?.let { drawLinkUnderline(it, frame.foreground.rgb.toColor(), typography) }
@@ -82,6 +98,9 @@ internal fun TerminalView(
 
         if (frame.searchMatches.isNotEmpty()) drawSearchMatches(frame, rows, typography)
         if (frame.selection.isNotEmpty()) drawSelection(frame, rows, typography)
+
+        val flash = bellFlash()
+        if (flash > 0f) drawRect(frame.foreground.rgb.toColor().copy(alpha = flash))
 
         frame.scrollbar?.takeIf { scrollbarAlpha > 0f }?.let { drawScrollbar(it, frame, scrollbarAlpha, scrollbarEmphasized) }
 
@@ -104,6 +123,26 @@ private fun rememberCursorBlink(cursor: TerminalCursor, focused: Boolean): State
     LaunchedEffect(cursor, focused) {
         shown.value = true
         if (cursor.blinking && focused) {
+            while (true) {
+                delay(CURSOR_BLINK_MS)
+                shown.value = !shown.value
+            }
+        }
+    }
+    return shown
+}
+
+/**
+ * Whether the text that blinks (SGR 5) is shown. It is always, and it takes no time, unless the frame has some: then it is the cursor's
+ * rhythm, in every terminal alike, whether or not it is focused.
+ */
+@Composable
+private fun rememberTextBlink(frame: TerminalFrame): State<Boolean> {
+    val shown = remember { mutableStateOf(true) }
+    val blinking = remember(frame) { frame.rows.any { row -> row.cells.any { it.style.blink } } }
+    LaunchedEffect(blinking) {
+        shown.value = true
+        if (blinking) {
             while (true) {
                 delay(CURSOR_BLINK_MS)
                 shown.value = !shown.value
@@ -201,6 +240,7 @@ private fun DrawScope.drawSelection(frame: TerminalFrame, rows: List<PreparedRow
         clipRect(left, top, right, top + typography.cellHeight) {
             drawRect(background, Offset(left, top), Size(right - left, typography.cellHeight))
             for (text in rows[y].texts) drawPreparedText(text, top, typography, foreground)
+            for (sprite in rows[y].sprites) drawPreparedSprite(sprite, top, typography.cellHeight, foreground)
         }
     }
 }
@@ -219,6 +259,7 @@ private fun DrawScope.drawSearchMatches(frame: TerminalFrame, rows: List<Prepare
         clipRect(left, top, right, top + typography.cellHeight) {
             drawRect(if (match.current) SEARCH_CURRENT_BACKGROUND else SEARCH_MATCH_BACKGROUND, Offset(left, top), Size(right - left, typography.cellHeight))
             for (text in rows[match.row].texts) drawPreparedText(text, top, typography, SEARCH_TEXT)
+            for (sprite in rows[match.row].sprites) drawPreparedSprite(sprite, top, typography.cellHeight, SEARCH_TEXT)
         }
     }
 }
@@ -227,17 +268,70 @@ private val SEARCH_MATCH_BACKGROUND = Color(0xFFFFD866)
 private val SEARCH_CURRENT_BACKGROUND = Color(0xFFFF9E3D)
 private val SEARCH_TEXT = Color(0xFF1E1E1E)
 
+// A character drawn as a shape, in the cell that starts at the top of its row.
+private fun DrawScope.drawPreparedSprite(prepared: PreparedSprite, top: Float, cellHeight: Float, colorOverride: Color? = null) {
+    val color = colorOverride ?: prepared.foreground.toColor()
+    val sprite = prepared.sprite
+    for (r in sprite.rects) {
+        drawRect(
+            color.copy(alpha = color.alpha * r.alpha),
+            topLeft = Offset(prepared.left + r.left, top + r.top),
+            size = Size(r.right - r.left, r.bottom - r.top),
+        )
+    }
+    for (polygon in sprite.polygons) {
+        val path = Path().apply {
+            polygon.forEachIndexed { index, (x, y) ->
+                if (index == 0) moveTo(prepared.left + x, top + y) else lineTo(prepared.left + x, top + y)
+            }
+            close()
+        }
+        drawPath(path, color)
+    }
+    for (stroke in sprite.strokes) {
+        val path = Path().apply {
+            for (command in stroke.commands) {
+                when (command) {
+                    is PathCommand.MoveTo -> moveTo(prepared.left + command.x, top + command.y)
+                    is PathCommand.LineTo -> lineTo(prepared.left + command.x, top + command.y)
+                    is PathCommand.QuadTo -> quadraticTo(
+                        prepared.left + command.controlX, top + command.controlY, prepared.left + command.x, top + command.y,
+                    )
+                }
+            }
+        }
+        // Clipped to the cell: a line that goes to its corner is not wider than the cell.
+        clipRect(prepared.left, top, prepared.left + prepared.width, top + cellHeight) {
+            drawPath(path, color, style = Stroke(width = stroke.width))
+        }
+    }
+}
+
 private fun DrawScope.drawPreparedText(text: PreparedText, top: Float, typography: TerminalTypography, colorOverride: Color? = null) {
     val run = text.run
     val left = run.startCol * typography.cellWidth
     val color = colorOverride ?: run.foreground.toColor()
-    drawText(text.layout, color = color, topLeft = Offset(left, top))
+    // A run of plain text is the font of the terminal, exactly as wide as its cells. What is drawn on its own, in its own cells, may be from
+    // another font: it is made to fit them.
+    val fit = if (run.text.all { it in ' '..'~' }) {
+        GlyphFit.NONE
+    } else {
+        fitGlyph(text.layout.getLineRight(0) - text.layout.getLineLeft(0), run.cols * typography.cellWidth)
+    }
+    if (fit == GlyphFit.NONE) {
+        drawText(text.layout, color = color, topLeft = Offset(left, top))
+    } else {
+        withTransform({ scale(fit.scale, fit.scale, pivot = Offset(left, top + typography.cellHeight / 2)) }) {
+            drawText(text.layout, color = color, topLeft = Offset(left + fit.offsetX, top))
+        }
+    }
 
     val right = (run.startCol + run.cols) * typography.cellWidth
     val thickness = max(1f, round(typography.cellHeight / 16f))
     val baseline = top + text.layout.firstBaseline
     if (run.underline != TerminalUnderline.NONE) {
-        drawUnderline(run.underline, left, right, baseline + thickness, thickness, color)
+        // The underline has a color of its own when the program set one (SGR 58), even over a search match.
+        drawUnderline(run.underline, left, right, baseline + thickness, thickness, run.underlineColor?.toColor() ?: color)
     }
     if (run.strikethrough) {
         val y = baseline - typography.cellHeight * 0.3f

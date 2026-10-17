@@ -2,6 +2,7 @@ package app.katty.terminal.compose
 
 import androidx.compose.ui.platform.Clipboard
 import app.katty.terminal.TerminalMouseButton
+import app.katty.terminal.TerminalSelectionAdjust
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
 import java.awt.event.KeyEvent as AwtKeyEvent
@@ -34,6 +35,21 @@ internal fun clipboardShortcut(key: KeyInfo, mac: Boolean = isMac): ClipboardSho
 }
 
 /**
+ * How the key extends a selection: Shift and an arrow, which are the program's when nothing is selected. The release is the terminal's as
+ * well as the press, so that the program is not told of the release of a key that it did not see go down.
+ */
+internal fun selectionAdjustment(key: KeyInfo): TerminalSelectionAdjust? {
+    if (key.kind == KeyInfo.Kind.TYPED || !key.shift || key.ctrl || key.alt || key.meta) return null
+    return when (key.keyCode) {
+        AwtKeyEvent.VK_LEFT -> TerminalSelectionAdjust.LEFT
+        AwtKeyEvent.VK_RIGHT -> TerminalSelectionAdjust.RIGHT
+        AwtKeyEvent.VK_UP -> TerminalSelectionAdjust.UP
+        AwtKeyEvent.VK_DOWN -> TerminalSelectionAdjust.DOWN
+        else -> null
+    }
+}
+
+/**
  * What was selected last in the terminal, which a middle click pastes: it is not the clipboard, which is the user's own and
  * which selecting does not touch. It stays when the selection goes.
  *
@@ -51,6 +67,24 @@ public class TerminalPrimarySelection {
  */
 internal fun middleClickPastes(event: PointerInfo, mouseTracking: Boolean): Boolean =
     event.kind == PointerInfo.Kind.PRESS && event.button == TerminalMouseButton.MIDDLE && (!mouseTracking || event.shift)
+
+/**
+ * A text that the clipboard offers in two ways: as it is, and as HTML, for the programs that paste with their styles. The AWT's own flavors
+ * for them: the plain one is what a program that does not know HTML reads.
+ */
+internal class RichText(private val text: String, private val html: String) : Transferable {
+    private val flavors = arrayOf(DataFlavor.stringFlavor, DataFlavor.allHtmlFlavor)
+
+    override fun getTransferDataFlavors(): Array<DataFlavor> = flavors.copyOf()
+
+    override fun isDataFlavorSupported(flavor: DataFlavor): Boolean = flavors.any { it.equals(flavor) }
+
+    override fun getTransferData(flavor: DataFlavor): Any = when {
+        flavor.equals(DataFlavor.stringFlavor) -> text
+        flavor.equals(DataFlavor.allHtmlFlavor) -> html
+        else -> throw java.awt.datatransfer.UnsupportedFlavorException(flavor)
+    }
+}
 
 /** The text that is on the clipboard, or `null` if there is none. */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)

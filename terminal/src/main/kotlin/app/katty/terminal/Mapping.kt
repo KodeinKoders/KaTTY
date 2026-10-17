@@ -69,6 +69,7 @@ private fun GhosttyCellStyle.toTerminal(): TerminalStyle =
                 GhosttyUnderline.DOTTED -> TerminalUnderline.DOTTED
                 GhosttyUnderline.DASHED -> TerminalUnderline.DASHED
             },
+            underlineColor = underlineColor?.toTerminal(),
         )
     }
 
@@ -99,6 +100,7 @@ internal fun GhosttyRenderCursor.toTerminal() = TerminalCursor(
         GhosttyCursorStyle.UNDERLINE -> TerminalCursorShape.UNDERLINE
         GhosttyCursorStyle.BLOCK_HOLLOW -> TerminalCursorShape.BLOCK_HOLLOW
     },
+    passwordInput = passwordInput,
 )
 
 internal fun TerminalCursorShape.toGhostty(): GhosttyCursorStyle = when (this) {

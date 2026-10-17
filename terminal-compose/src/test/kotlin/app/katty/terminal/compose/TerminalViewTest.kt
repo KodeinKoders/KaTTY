@@ -123,11 +123,11 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true, fontFeatures: String = "", builtinGlyphs: Boolean = true): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
-        typography = rememberTerminalTypography(fontSize.sp, font ?: TerminalFont.bundled(), ligatures)
-        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink)
+        typography = rememberTerminalTypography(fontSize.sp, font ?: TerminalFont.bundled(), ligatures, fontFeatures)
+        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink, builtinGlyphs = builtinGlyphs)
     }
     scene.useScene {
         val image = scene.render()
@@ -150,6 +150,64 @@ class TerminalViewTest {
             }
             file
         }
+    }
+
+    @Test
+    fun boxesAndBlocksFillTheirCellToItsEdgesWhateverTheFont() {
+        val frame = frame(20, listOf(row(20, *text("▖│─┼╔▒⣿")), row(20, *text(" │"))))
+
+        val rendered = render("box-glyphs", frame)
+
+        val cw = rendered.typography.cellWidth
+        val ch = rendered.typography.cellHeight.toInt()
+        // A quarter of the cell, to the pixel: the lower left one is filled, and the others are not.
+        assertEquals(FOREGROUND.rgb, rendered.pixel(1, ch - 1), "The lower left corner of the cell is filled")
+        assertEquals(BACKGROUND.rgb, rendered.pixel(1, 1), "The upper left corner is not")
+        assertEquals(BACKGROUND.rgb, rendered.pixel(cw.toInt() - 2, ch - 1), "Nor the lower right one")
+        // A vertical line goes from the top of the cell to the bottom of the one under it, with no gap where they meet.
+        val left = (cw * 1).toInt()
+        val right = (cw * 2).toInt()
+        for (y in 0 until 2 * ch) {
+            assertTrue((left until right).any { x -> rendered.pixel(x, y) == FOREGROUND.rgb }, "The line is broken at row $y")
+        }
+        // A horizontal one fills the width of its cell.
+        val first = kotlin.math.round(cw * 2).toInt()
+        val last = kotlin.math.round(cw * 3).toInt()
+        assertTrue((0 until ch).any { y -> (first until last).all { x -> rendered.pixel(x, y) == FOREGROUND.rgb } }, "A line fills the width of its cell")
+    }
+
+    @Test
+    fun aWideCharacterIsKeptInItsTwoCells() {
+        // A CJK character and an emoji, each in two cells, then nothing: what is drawn must not go over the cells after them.
+        val wide = { character: String -> arrayOf(cell(character, width = TerminalCellWidth.WIDE), cell(width = TerminalCellWidth.SPACER_TAIL)) }
+        val frame = frame(20, listOf(row(20, *wide("中"), *wide("😀"))))
+
+        val rendered = render("wide-characters", frame)
+
+        assertTrue(rendered.hasInk(0, 0) && rendered.hasInk(1, 0), "The character is drawn over its two cells")
+        for (col in 4..5) assertTrue(!rendered.hasInk(col, 0), "Nothing is drawn in the cell $col, after them")
+    }
+
+    @Test
+    fun theGlyphsOfTheFontAreUsedWhenTheShapesAreTurnedOff() {
+        val frame = frame(20, listOf(row(20, *text("▖│─┼"))))
+
+        val shapes = render("box-shapes", frame)
+        val font = render("box-font", frame, builtinGlyphs = false)
+
+        assertNotEquals(shapes.bytes().toList(), font.bytes().toList())
+    }
+
+    @Test
+    fun theFeaturesOfTheFontAreTheOnesThatAreAskedFor() {
+        val frame = frame(20, listOf(row(20, *text("0000 0000"))))
+
+        val plain = render("features-off", frame)
+        val slashed = render("features-zero", frame, fontFeatures = "zero")
+
+        // The zero of JetBrains Mono is slashed with its `zero` feature, which changes what is drawn and not the cells.
+        assertEquals(plain.typography.cellWidth, slashed.typography.cellWidth)
+        assertNotEquals(plain.bytes().toList(), slashed.bytes().toList())
     }
 
     @Test
@@ -359,6 +417,26 @@ class TerminalViewTest {
     }
 
     @Test
+    fun drawsTheUnderlineInItsOwnColorWhenTheProgramSetOne() {
+        val red = TerminalColor(0xFF0000)
+        val frame = frame(
+            cols = 30,
+            rows = listOf(
+                row(30, *text("   ", style = TerminalStyle(underline = TerminalUnderline.SINGLE, underlineColor = red))),
+                row(30, *text("   ", style = TerminalStyle(underline = TerminalUnderline.SINGLE))),
+            ),
+        )
+
+        val rendered = render("underline-color", frame)
+
+        for (col in 0..2) {
+            assertTrue(rendered.hasLine(col, 0, red), "The underline of the cell $col is red")
+            assertTrue(!rendered.hasLine(col, 1, red), "and is the text's own without a color")
+            assertTrue(rendered.hasLine(col, 1, FOREGROUND), "so the foreground")
+        }
+    }
+
+    @Test
     fun appliesTheAttributes() {
         val frame = frame(
             cols = 30,
@@ -429,6 +507,39 @@ class TerminalViewTest {
             assertTrue(shown(), "It starts shown")
             renderUntil("the cursor to be hidden") { !shown() }
             renderUntil("the cursor to be shown again") { shown() }
+        }
+    }
+
+    private fun blockIsShown(frame: TerminalFrame, block: ImageComposeScene.(shown: () -> Boolean) -> Unit) {
+        var typography: TerminalTypography? = null
+        val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
+            typography = rememberTerminalTypography(14.sp)
+            TerminalView(frame, typography, focused = true, Modifier.fillMaxSize())
+        }
+        scene.useScene {
+            it.block { Rendered(it.render(System.nanoTime()), typography!!).center(1, 0) == FOREGROUND.rgb }
+        }
+    }
+
+    @Test
+    fun textThatBlinksIsHiddenThenShownAgain() {
+        // Full blocks, so that what is hidden shows the background.
+        val frame = frame(30, listOf(row(30, *text("███", style = TerminalStyle(blink = true)))))
+
+        blockIsShown(frame) { shown ->
+            assertTrue(shown(), "It starts shown")
+            renderUntil("the text to be hidden") { !shown() }
+            renderUntil("the text to be shown again") { shown() }
+        }
+    }
+
+    @Test
+    fun textThatDoesNotBlinkStaysShown() {
+        blockIsShown(frame(30, listOf(row(30, *text("███"))))) { shown ->
+            assertTrue(shown())
+            // Longer than it takes the text that blinks to be hidden.
+            Thread.sleep(1_000)
+            assertTrue(shown())
         }
     }
 

@@ -87,6 +87,58 @@ class ShellIntegrationTest {
         assertEquals("second", session.lastCommandOutput(), "The last one, not the first")
     }
 
+    private fun selectsTheOutputOfTheLastCommand(shell: String) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+        val events = session.collectEvents()
+        assertEquals(false, session.selectLastCommandOutput(), "No command yet")
+        assertEquals(null, session.selectedText())
+
+        session.sendText("printf 'a\\nb\\n'\r")
+        await("the end of the command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
+
+        // The shell goes on drawing its prompt, which unselects what it writes over: the user selects when it is done, so it is tried until it holds.
+        await("the output to be selected and shown") {
+            session.selectLastCommandOutput() && session.selectedText() == "a\nb" && session.frames.value.selection.any { it != null }
+        }
+    }
+
+    private fun movesTheCursorOfTheCommandLine(shell: String) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+        // The prompt is still being drawn at first, so the frame is where the cursor was: asked where it is, nothing is sent.
+        await("the cursor to be where the frame has it") {
+            val cursor = session.frames.value.cursor
+            cursor.x != null && cursor.x!! > 0 && !session.moveCursorTo(cursor.x!!, cursor.y!!)
+        }
+
+        session.sendText("echo hello")
+        await("what is typed to be on the screen") { session.frames.value.rows.any { row -> "echo hello" in row.cells.joinToString("") { it.text } } }
+        val frame = session.frames.value
+        val row = frame.cursor.y!!
+        val line = frame.rows[row].cells.joinToString("") { it.text.ifEmpty { " " } }
+        val column = line.indexOf("hello")
+
+        assertTrue(session.moveCursorTo(column, row), "The cursor goes to the h")
+        session.sendText("X\r")
+        await("what is typed after the click to be in the line") { session.frames.value.rows.any { r -> "Xhello" in r.cells.joinToString("") { it.text } } }
+        assertEquals(false, session.moveCursorTo(0, row + 1), "Not on the row of the cursor")
+    }
+
+    @Test
+    fun zshMovesTheCursorOfTheCommandLineToAClick() = movesTheCursorOfTheCommandLine("/bin/zsh")
+
+    @Test
+    fun bashMovesTheCursorOfTheCommandLineToAClick() = movesTheCursorOfTheCommandLine("/bin/bash")
+
+    @Test
+    fun zshSelectsTheOutputOfTheLastCommand() = selectsTheOutputOfTheLastCommand("/bin/zsh")
+
+    @Test
+    fun bashSelectsTheOutputOfTheLastCommand() = selectsTheOutputOfTheLastCommand("/bin/bash")
+
     @Test
     fun zshGivesTheOutputOfTheLastCommand() = givesTheOutputOfTheLastCommand("/bin/zsh")
 

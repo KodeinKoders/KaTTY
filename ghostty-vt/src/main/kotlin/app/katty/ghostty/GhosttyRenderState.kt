@@ -68,6 +68,7 @@ public class GhosttyRenderState : AutoCloseable {
         requireOpen()
         terminal.requireOpen()
         checkResult(GhosttyVt.ghostty_render_state_update(handle, terminal.handle), "ghostty_render_state_update")
+        updatedPalette = null
     }
 
     /**
@@ -246,7 +247,8 @@ public class GhosttyRenderState : AutoCloseable {
             scratch.get(ValueLayout.JAVA_BOOLEAN, 0)
         val style = if (hasStyling) readStyle() else GhosttyCellStyle.NONE
 
-        val foreground = readCellColor(GhosttyVt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR())
+        var foreground = readCellColor(GhosttyVt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR())
+        if (boldIsBright && hasStyling && style.bold && foreground != null) foreground = brightForeground() ?: foreground
         val background = readCellColor(GhosttyVt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR())
 
         checkResult(cellValue(GhosttyVt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW(), scratch), "ghostty_render_state_row_cells_get(RAW)")
@@ -332,7 +334,42 @@ public class GhosttyRenderState : AutoCloseable {
             strikethrough = GhosttyStyle.strikethrough(scratchStyle),
             overline = GhosttyStyle.overline(scratchStyle),
             underline = GhosttyUnderline.entries.getOrElse(GhosttyStyle.underline(scratchStyle)) { GhosttyUnderline.SINGLE },
+            underlineColor = readUnderlineColor(GhosttyStyle.underline_color(scratchStyle)),
         )
+    }
+
+    // The palette that the colors of the cells of this update refer to, read when a cell has an underline color that is one of them.
+    private var updatedPalette: List<GhosttyRgb>? = null
+
+    private fun updatePalette(): List<GhosttyRgb> = updatedPalette ?: palette.also { updatedPalette = it }
+
+    /**
+     * Whether the text that is bold, and in one of the 8 normal colors of the palette, is drawn in the bright one that goes with it
+     * (the palette's 8 to 15), as terminals did when they had no bold font. Applies to the cells that are read from now on: the rows
+     * that have to be read again are the host's to ask for.
+     */
+    @Volatile
+    public var boldIsBright: Boolean = false
+
+    // The bright color that a bold cell has in place of its normal one: `null` when it is not one of the 8 normal colors.
+    private fun brightForeground(): GhosttyRgb? {
+        val color = GhosttyStyle.fg_color(scratchStyle)
+        if (GhosttyStyleColor.tag(color) != GhosttyVt.GHOSTTY_STYLE_COLOR_PALETTE()) return null
+        val index = GhosttyStyleColorValue.palette(GhosttyStyleColor.value(color)).toInt() and 0xFF
+        return if (index < 8) updatePalette()[index + 8] else null
+    }
+
+    // The color that an underline has, with a palette index resolved by the palette of this update: `null` when it has none.
+    private fun readUnderlineColor(color: MemorySegment): GhosttyRgb? {
+        val value = GhosttyStyleColor.value(color)
+        return when (GhosttyStyleColor.tag(color)) {
+            GhosttyVt.GHOSTTY_STYLE_COLOR_PALETTE() -> {
+                val index = GhosttyStyleColorValue.palette(value).toInt() and 0xFF
+                updatePalette()[index]
+            }
+            GhosttyVt.GHOSTTY_STYLE_COLOR_RGB() -> readRgb(GhosttyStyleColorValue.rgb(value))
+            else -> null
+        }
     }
 
     // Null when the cell has no explicit color: GHOSTTY_INVALID_VALUE is the answer, not an error.
