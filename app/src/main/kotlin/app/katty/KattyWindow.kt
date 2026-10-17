@@ -282,6 +282,7 @@ fun DecoratedWindowScope.KattyWindowContent(
         setTheme = { theme -> store.updateSettings { it.copy(theme = theme) } },
         jumpToWaiting = jumpToWaiting,
         markAllSeen = tracker::markAllSeen,
+        openBoardWindow = onOpenBoardWindow,
         openTerminal = openTerminal,
         openWorkspace = { id ->
             state.projects.firstOrNull { p -> p.workspaces.any { it.id == id } }?.let { store.selectProject(it.id) }

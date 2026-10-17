@@ -33,6 +33,8 @@ class PaletteHandlers(
     val setTheme: (ThemeMode) -> Unit,
     val jumpToWaiting: () -> Unit,
     val markAllSeen: () -> Unit,
+    /** Opens the board in a window of its own, or brings that window to the front when it is open. */
+    val openBoardWindow: () -> Unit,
     val openTerminal: (TerminalId) -> Unit,
     val openWorkspace: (WorkspaceId) -> Unit,
 )
@@ -108,6 +110,7 @@ fun paletteCommands(
     command("view", if (state.settings.view == MainView.BOARD) "Show terminals" else "Show the agent board") {
         handlers.showView(if (state.settings.view == MainView.BOARD) MainView.TERMINALS else MainView.BOARD)
     }
+    command("board-window", "Open the board in a window", action = handlers.openBoardWindow)
     command("sidebar", "Toggle project sidebar", action = handlers.toggleSidebar)
     command("layout-auto", "Layout: auto") { handlers.setLayout(LayoutMode.AUTO) }
     command("layout-horizontal", "Layout: horizontal") { handlers.setLayout(LayoutMode.HORIZONTAL) }

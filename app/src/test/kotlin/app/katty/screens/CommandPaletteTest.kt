@@ -173,7 +173,7 @@ class CommandPaletteTest {
         renameTerminal = { calls += "renameTerminal" }, closeTerminal = { calls += "closeTerminal" }, restartTerminal = { calls += "restart" },
         find = { calls += "find" }, clearScrollback = { calls += "clear" }, maximize = { calls += "maximize" }, colorScheme = { calls += "colorScheme" },
         toggleSidebar = { calls += "sidebar" }, showView = { calls += "view $it" }, setLayout = { calls += "layout $it" }, setTheme = { calls += "theme $it" },
-        jumpToWaiting = { calls += "jump" }, markAllSeen = { calls += "seen" }, openTerminal = { calls += "terminal ${it.value}" },
+        jumpToWaiting = { calls += "jump" }, markAllSeen = { calls += "seen" }, openBoardWindow = { calls += "boardWindow" }, openTerminal = { calls += "terminal ${it.value}" },
         openWorkspace = { calls += "workspace ${it.value}" },
     )
 
@@ -188,6 +188,18 @@ class CommandPaletteTest {
         assertFalse("New workspace" in labels)
         assertFalse("Split right" in labels)
         assertFalse("Close terminal" in labels)
+    }
+
+    @Test
+    fun theBoardCanBeOpenedInAWindowFromThePaletteWhateverIsOpen() {
+        val entry = commands().entries.single { it.label == "Open the board in a window" }
+        store.addProject("/dev/api-gateway")
+        // It is there with a project open too, and in the board view.
+        assertTrue(commands().entries.any { it.label == "Open the board in a window" })
+
+        commands().run(entry)
+
+        assertEquals(listOf("boardWindow"), calls)
     }
 
     @Test

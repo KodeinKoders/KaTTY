@@ -662,7 +662,7 @@ In it the label is on two lines ("AGENT", "USAGE") when the items are full, with
 ** WORKSPACES: each workspace, with its project;
 ** TERMINALS: each terminal, with its workspace and state (idle, working, needs input, done);
 ** COMMANDS: with their shortcuts, the ones that need a workspace or a terminal only when there is one.
-* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Jump to next waiting agent, Mark all agents seen, Show the agent board (or Show terminals), Toggle project sidebar, the three layouts and the three themes.
+* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Jump to next waiting agent, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
 * What is typed is matched with the labels: its letters, in order, without regard for the case and the spaces.
 A match whose letters are together, at the start of the text or of a word, in a short label, is better; the matched letters are bold in the accent color.
 * The groups stay in their order; in a group, the best match is first; with nothing typed, everything is in its order.
