@@ -42,7 +42,7 @@ Their level is set in `app/src/main/resources/simplelogger.properties`.
 The images that the rendering tests draw are kept in `app/build/renders` and `terminal-compose/build/renders`.
 
 The state of the application (the projects, the workspaces, the splits and the settings) is kept in `~/Library/Application Support/KaTTY/state.json`.
-The position, size and mode of the window are in `window.json` beside it, and those of the board window in `board-window.json`, so that each opens as it was closed.
+The position, size and mode of the window are in `window.json` beside it, and those of the board window in `board-window.json`, so that each opens as it was closed; the board window also opens again at the next launch if it was open when the application was closed.
 `-Dkatty.support=/some/folder` makes it use another folder, to try something without touching it.
 
 

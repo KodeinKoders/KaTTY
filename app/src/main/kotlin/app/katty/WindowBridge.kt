@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  */
 class WindowBridge {
     val openTerminal = MutableSharedFlow<TerminalId>(extraBufferCapacity = 8)
+
+    /** The main window is to have the focus: the board window that was opened again at launch took it, and the user was not asking for it. */
+    val focusMain = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 }
 
 /** The time in milliseconds, which moves on by itself every 30 seconds: what the ages on the screen are told from. */

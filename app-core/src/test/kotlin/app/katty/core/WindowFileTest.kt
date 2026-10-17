@@ -72,6 +72,17 @@ class WindowFileTest {
     }
 
     @Test
+    fun whetherTheWindowWasOpenIsKeptAndAFileWithoutItSaysNo() {
+        file.save(WindowGeometry(x = 1f, y = 2f, open = true))
+        assertEquals(true, file.load().open)
+
+        // A file from before the flag existed.
+        path.writeText("""{"version": 1, "width": 900}""")
+        assertEquals(false, file.load().open)
+        assertEquals(false, WindowGeometry().open)
+    }
+
+    @Test
     fun theBoardWindowHasAFileOfItsOwn() {
         val directories = KattyDirectories(directory)
 

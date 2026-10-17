@@ -21,6 +21,17 @@ class WindowBridgeTest {
     }
 
     @Test
+    fun theMainWindowIsToldToTakeTheFocusBackAndAskingNeverBlocks() = runBlocking {
+        val bridge = WindowBridge()
+        val received = async(start = CoroutineStart.UNDISPATCHED) { bridge.focusMain.first() }
+
+        assertTrue(bridge.focusMain.tryEmit(Unit))
+        assertEquals(Unit, received.await())
+        // With nobody listening it is lost and does not block.
+        repeat(5) { assertTrue(bridge.focusMain.tryEmit(Unit)) }
+    }
+
+    @Test
     fun askingWhenNobodyListensIsLostAndNeverBlocks() {
         val bridge = WindowBridge()
 

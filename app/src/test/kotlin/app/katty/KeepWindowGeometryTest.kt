@@ -79,6 +79,27 @@ class KeepWindowGeometryTest {
     }
 
     @Test
+    fun aWindowThatIsOpenWhenTheApplicationQuitsIsKeptOpenAndOneThatTheUserClosedIsNot() = runComposeUiTest {
+        val state = WindowState(position = WindowPosition(1.dp, 2.dp), size = DpSize(800.dp, 500.dp))
+        var shown by mutableStateOf(true)
+        var closedByUser = false
+        setContent { if (shown) keepWindowGeometry(state, file, file.load(), open = { !closedByUser }) }
+
+        // The application quits with the window open: it leaves the composition, and the file says that it was open.
+        shown = false
+        waitForIdle()
+        assertTrue(file.load().open, "it was open when the application quit")
+
+        // The user closes it: the file says that it was not, and what the window does as it goes away does not say otherwise.
+        shown = true
+        waitForIdle()
+        closedByUser = true
+        shown = false
+        waitForIdle()
+        assertFalse(file.load().open, "the user had closed it")
+    }
+
+    @Test
     fun flushingWritesAtOnceAndLeavingTheCompositionWritesTheLastState() = runComposeUiTest {
         val state = WindowState(position = WindowPosition(1.dp, 2.dp), size = DpSize(800.dp, 500.dp))
         var shown by mutableStateOf(true)

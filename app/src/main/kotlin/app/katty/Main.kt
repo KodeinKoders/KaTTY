@@ -75,18 +75,21 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     }
     // The board in a window of its own, when it was asked for; the main window is told what is clicked there through the bridge.
     val bridge = remember { WindowBridge() }
-    var boardWindow by remember { mutableStateOf(false) }
-    var boardFocusTick by remember { mutableIntStateOf(0) }
-    // The board window comes back where it was last closed, in a file of its own.
+    // The board window comes back where it was last closed, in a file of its own, and is open again if the application was closed with it open.
     val boardWindowFile = remember { WindowFile(directories.boardWindowFile, WindowGeometry(width = BOARD_WINDOW_WIDTH, height = BOARD_WINDOW_HEIGHT)) }
+    val openedAtLaunch = remember { boardWindowFile.load().open }
+    var boardWindow by remember { mutableStateOf(openedAtLaunch) }
+    // Until the user opens it or closes it themselves, it is the window that opened by itself, which does not keep the focus.
+    var restoredAtLaunch by remember { mutableStateOf(openedAtLaunch) }
+    var boardFocusTick by remember { mutableIntStateOf(0) }
     KattyTheme(dark) {
         DecoratedWindow(
             onCloseRequest = quit,
             title = "KaTTY",
             state = windowState,
         ) {
-            KattyWindowContent(store, registry, tracker, directories, bridge, onOpenBoardWindow = { if (boardWindow) boardFocusTick++ else boardWindow = true })
+            KattyWindowContent(store, registry, tracker, directories, bridge, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true })
         }
-        if (boardWindow) BoardWindow(store, tracker, registry, bridge, boardFocusTick, boardWindowFile, onClose = { boardWindow = false })
+        if (boardWindow) BoardWindow(store, tracker, registry, bridge, boardFocusTick, boardWindowFile, restoredAtLaunch, onClose = { boardWindow = false; restoredAtLaunch = false })
     }
 }

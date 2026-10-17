@@ -1,5 +1,6 @@
 package app.katty
 
+import androidx.compose.runtime.DisposableEffect
 import app.katty.core.WindowFile
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,9 +39,11 @@ internal const val BOARD_WINDOW_HEIGHT = 720f
 
 /**
  * The agent board in a window of its own, to keep on another screen: only the board, with its own project filter. A card that is clicked
- * selects its terminal in the main window, through [bridge]. Closing it only closes it, and it is not opened again at the next launch; when it is
- * opened it is where it was last closed, from [windowFile].
+ * selects its terminal in the main window, through [bridge]. Closing it only closes it. It is opened again at the next launch when it was open
+ * when the application was closed (not when the user closed it), and when it is opened it is where it was last closed, from [windowFile].
  *
+ * @param restoredAtLaunch Whether it is opened by itself, at the launch of the application: the user did not ask for it, so the focus is given
+ * back to the main window when this one takes it (through [bridge]). One that is opened from the button or the palette keeps it.
  * @param focusTick Changes when the button that opens it is pressed while it is already open: it comes to the front.
  */
 @Composable
@@ -51,6 +54,7 @@ fun BoardWindow(
     bridge: WindowBridge,
     focusTick: Int,
     windowFile: WindowFile,
+    restoredAtLaunch: Boolean,
     onClose: () -> Unit,
 ) {
     val state by store.state.collectAsState()
@@ -61,9 +65,27 @@ fun BoardWindow(
     // Where it was, unless that is on a screen that is gone.
     val geometry = remember { windowFile.load().sanitized(screens()) }
     val windowState = rememberWindowState(placement = geometry.mode.toPlacement(), position = geometry.toPosition(), size = geometry.toSize())
-    val flush = keepWindowGeometry(windowState, windowFile, geometry)
-    DecoratedWindow(onCloseRequest = { flush(); onClose() }, title = "KaTTY — Agent board", state = windowState) {
+    // Closed by the user, as against the application quitting with it open: the next launch opens it again in the second case only.
+    val closedByUser = remember { booleanArrayOf(false) }
+    val flush = keepWindowGeometry(windowState, windowFile, geometry, open = { !closedByUser[0] })
+    // It is open from now on, for a launch that comes before anything about it changes.
+    LaunchedEffect(Unit) { flush() }
+    DecoratedWindow(onCloseRequest = { closedByUser[0] = true; flush(); onClose() }, title = "KaTTY — Agent board", state = windowState) {
         LaunchedEffect(focusTick) { if (focusTick > 0) window.toFront() }
+        // A window that opens takes the focus. At launch the main window is the one that is meant to have it: when this one is given it, once,
+        // it is handed back. If it is never given it (the system did not), nothing is done.
+        if (restoredAtLaunch) {
+            DisposableEffect(window) {
+                val listener = object : java.awt.event.WindowAdapter() {
+                    override fun windowGainedFocus(event: java.awt.event.WindowEvent) {
+                        window.removeWindowFocusListener(this)
+                        bridge.focusMain.tryEmit(Unit)
+                    }
+                }
+                window.addWindowFocusListener(listener)
+                onDispose { window.removeWindowFocusListener(listener) }
+            }
+        }
         TitleBar { OneLine("Agent board", color = Katty.colors.text) }
         val size = LocalWindowInfo.current.containerSize
         val vertical = state.settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL

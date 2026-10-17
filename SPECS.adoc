@@ -253,7 +253,7 @@ It is written to `state.json.tmp`, then moved over `state.json`.
 ** while the window is maximized or full screen the position and size that are kept are the floating ones from before, which it goes back to when it is restored;
 ** it is written 500 ms after the last change, and once more when the application quits, through `window.json.tmp`;
 ** at launch a size under 480 × 320 is raised to it, and a position at which less than 120 × 60 of the window is on a screen (one that was unplugged, a resolution that changed) is replaced by the platform's own;
-** the board window has a file of its own, `board-window.json`, with the same content and the same rules, and opens at 1100 × 720 the first time;
+** the board window has a file of its own, `board-window.json`, with the same content and the same rules, and opens at 1100 × 720 the first time; the file also says whether the window was open when the application was closed;
 ** a file that is missing, cannot be read or is of a later version means the default window (1440 × 900, at the platform's position), and the next write replaces it.
 
 
@@ -597,7 +597,7 @@ Without a note, it says "At rest.", "Working.", "Waiting for you.", "Failed." or
 ** the window shows only the board, with the project tabs along the top as a filter of its own (independent of the main window's), the columns side by side or stacked according to its own shape, and no terminal; it has no such button;
 ** a click on a card selects that terminal **in the main window**, which comes to the front (and is restored if it was minimized) and shows the Terminals view, as a click on a card there does;
 ** there is one at a time: the button, pressed while it is open, brings it to the front;
-** it is closed at each start, and when it is opened it comes back where it was last closed (position, size and mode: floating, maximized or full screen, kept in `board-window.json`, see Persistence); closing it only closes it, and closing the main window quits the application and closes it too.
+** it is open at the start if it was open when the application was closed (and not if the user had closed it, or had never opened it: it never opens by itself otherwise), and it does not keep the focus then: the main window has it, whether the board window opens or not, while one that the user opens from the button or the palette has it; when it is opened it comes back where it was last closed (position, size and mode: floating, maximized or full screen, kept in `board-window.json`, see Persistence); closing it only closes it, and closing the main window quits the application and closes it too.
 * In the vertical layout the columns are sections, one under the other.
 
 

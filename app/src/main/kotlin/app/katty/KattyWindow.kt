@@ -244,6 +244,13 @@ fun DecoratedWindowScope.KattyWindowContent(
             window.requestFocus()
         }
     }
+    // The board window that opened by itself at launch took the focus: it goes back to this one.
+    LaunchedEffect(bridge) {
+        bridge.focusMain.collect {
+            window.toFront()
+            window.requestFocus()
+        }
+    }
     val jumpToWaiting = { attention.nextWaiting(state, state.selection.terminal)?.let(openTerminal); Unit }
     // A terminal that starts needing the user, finishes or fails, in one that the user is not looking at, is told in a notice.
     val windowFocusedNow by rememberUpdatedState(LocalWindowInfo.current.isWindowFocused)

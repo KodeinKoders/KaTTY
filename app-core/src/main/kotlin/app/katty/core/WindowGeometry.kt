@@ -22,6 +22,9 @@ public enum class WindowMode { FLOATING, MAXIMIZED, FULLSCREEN }
  *
  * [x], [y], [width] and [height] are those of the **floating** window: when it is maximized, they are what it goes back to when it is
  * restored. [x] and [y] are `null` for the platform's own place.
+ *
+ * @param open Whether the window was open when the application was closed. Only the board window, which is not always there, has a use for
+ * it: it is opened again at the next launch when it was open, and not otherwise.
  */
 @Serializable
 public data class WindowGeometry(
@@ -31,6 +34,7 @@ public data class WindowGeometry(
     val width: Float = DEFAULT_WIDTH,
     val height: Float = DEFAULT_HEIGHT,
     val mode: WindowMode = WindowMode.FLOATING,
+    val open: Boolean = false,
 ) {
     /**
      * This geometry, corrected so that the window can be used: not smaller than [MIN_WIDTH] by [MIN_HEIGHT], and, when its place is not on

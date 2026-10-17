@@ -76,12 +76,18 @@ internal const val WINDOW_WRITE_DELAY_MS = 500L
  * it is and in which mode, so that it opens as it was closed. What is kept comes from [geometryOf].
  *
  * @param initial What the window was opened with: the base of what is kept (the floating bounds stay while it is maximized).
+ * @param open Whether the window is open, for a window that is not always there (the board's): it is kept with the geometry, so that it can
+ * be opened again at the next launch. `null` leaves what [initial] says.
  * @return What writes the geometry now, for a window that is closing or an application that is quitting.
  */
 @Composable
-internal fun keepWindowGeometry(state: WindowState, file: WindowFile, initial: WindowGeometry): () -> Unit {
+internal fun keepWindowGeometry(state: WindowState, file: WindowFile, initial: WindowGeometry, open: (() -> Boolean)? = null): () -> Unit {
     val kept = remember { arrayOf(initial) }
-    val record = { kept[0] = geometryOf(state.placement, state.isMinimized, state.position, state.size, kept[0]) }
+    val latestOpen = rememberUpdatedState(open)
+    val record = {
+        val geometry = geometryOf(state.placement, state.isMinimized, state.position, state.size, kept[0])
+        kept[0] = latestOpen.value?.let { geometry.copy(open = it()) } ?: geometry
+    }
     @OptIn(FlowPreview::class)
     LaunchedEffect(state) {
         snapshotFlow { listOf(state.placement, state.isMinimized, state.position, state.size) }
