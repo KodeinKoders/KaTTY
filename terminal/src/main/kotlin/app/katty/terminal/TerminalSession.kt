@@ -52,6 +52,7 @@ import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.milliseconds
@@ -131,6 +132,27 @@ public class TerminalSession private constructor(
 
     // What goes to the program: the keys, and what the terminal answers to its queries.
     private val outgoing = LinkedBlockingQueue<ByteArray>()
+
+    // What is typed when the shell first waits for a command (see [TypedCommand]): sent once, by whichever of the prompt marks or the timer
+    // gets there first. Fish has no mark of the end of the prompt, so it is sent at the start of it.
+    private val pendingInput = AtomicReference<ByteArray?>()
+
+    @Volatile
+    private var pendingAtPromptStart = false
+
+    // Without prompt marks nothing says when the shell is ready: a second is what a shell takes to start in the usual case.
+    private fun typeAfterQuiet() {
+        producerScope.launch {
+            delay(TYPE_WITHOUT_MARKS_DELAY)
+            typePending()
+        }
+    }
+
+    private fun typePending() {
+        val bytes = pendingInput.getAndSet(null) ?: return
+        outgoing.put(bytes)
+        frameRequests.trySend(Unit)
+    }
 
     // A conflated channel: any number of signals while a frame is being produced mean one more frame.
     private val frameRequests = Channel<Unit>(Channel.CONFLATED)
@@ -552,6 +574,7 @@ public class TerminalSession private constructor(
                     // What was being worked on is over: the shell is asking for the next thing.
                     if (programStatusStore.promptStarted()) programStatusState.value = programStatusStore.snapshot()
                     eventFlow.tryEmit(TerminalEvent.PromptStarted)
+                    if (pendingAtPromptStart) typePending()
                 }
                 GhosttyPromptEventKind.OUTPUT_START -> {
                     inputActive = false
@@ -565,7 +588,10 @@ public class TerminalSession private constructor(
                     eventFlow.tryEmit(TerminalEvent.CommandFinished(step.exitCode))
                 }
                 // What follows is what the user types, until the command runs: nothing for the host, but a click may move the cursor in it.
-                GhosttyPromptEventKind.INPUT_START -> inputActive = true
+                GhosttyPromptEventKind.INPUT_START -> {
+                    inputActive = true
+                    typePending()
+                }
             }
         }
         terminal.onClipboardWrite = { location, text ->
@@ -1158,6 +1184,17 @@ public class TerminalSession private constructor(
         return app.katty.terminal.foregroundProcessName(fd)
     }
 
+    /**
+     * The program that has the terminal now, with its command line and its directory (see [ForegroundCommand]), or `null` when it is the shell at
+     * its prompt, when it cannot be known, and once the program has ended. It costs a few system calls: ask when [foregroundProcessName] changes,
+     * not for each frame.
+     */
+    public fun foregroundCommand(): ForegroundCommand? {
+        if (closed.get() || exitCode.value != null) return null
+        val fd = (process as? UnixPtyProcess)?.pty?.masterFD ?: return null
+        return app.katty.terminal.foregroundCommand(fd, process.pid().toInt())
+    }
+
     /** The text that is selected, for the caller to copy, as [format] says (the characters only by default), or `null` when nothing is. */
     public fun selectedText(format: TerminalTextFormat = TerminalTextFormat.PLAIN): String? = lock.withLock {
         if (closed.get()) null else terminal.selectedText(format.toGhostty())?.takeIf { it.isNotEmpty() }
@@ -1593,6 +1630,7 @@ public class TerminalSession private constructor(
         // A program that floods the output must not keep the producer, and the lock it takes to read the
         // terminal, busy: more frames than a display shows are of no use.
         private val MIN_FRAME_INTERVAL = 1.seconds / 60
+        private val TYPE_WITHOUT_MARKS_DELAY = 1.seconds
 
         // A frame is made once the program has been silent for this long, or after SETTLE_MAX anyway. The writes
         // of a redraw are 0.02 to 0.7 ms apart when zsh draws its completion menu, and the margin is for the
@@ -1702,6 +1740,8 @@ public class TerminalSession private constructor(
          * programs that probe (chafa, img2sixel) choose it by themselves.
          * @param boldIsBright Whether bold text in one of the 8 normal colors of the palette is drawn in the bright one, as terminals did when
          * they had no bold font. [setBoldIsBright] changes it.
+         * @param typeAtPrompt A command to type in the shell when it first waits for one, as the user would (see [TypedCommand]). The shell has
+         * to be [command] itself: it is typed after the mark of its first prompt, which needs [shellIntegration], or after a second without it.
          * @param clipboardWrite Whether a program may put text in the clipboard (OSC 52), which then comes as a
          * [TerminalEvent.ClipboardWrite]. It is refused when `false`.
          * @param clipboardReader What a program that reads the clipboard (OSC 52) gets: the text it returns, or a refusal for
@@ -1725,6 +1765,7 @@ public class TerminalSession private constructor(
             snapshot: TerminalSnapshot? = null,
             advertiseSixel: Boolean = true,
             boldIsBright: Boolean = false,
+            typeAtPrompt: TypedCommand? = null,
         ): TerminalSession {
             if (snapshot != null && !snapshot.isRestorable) {
                 throw TerminalSnapshotException("The snapshot was made by another build of libghostty, which cannot read it: start a new session")
@@ -1741,6 +1782,10 @@ public class TerminalSession private constructor(
             env.remove("TERM_PROGRAM_VERSION")
             env.putAll(environment)
             val argv = if (shellIntegration) ShellIntegration.apply(command, env) else command
+            val shell = ShellIntegration.shellOf(command)
+            val typed = typeAtPrompt?.let { it.toInput(shell ?: "sh") ?: null.also { logger.warn("Not typing {}: it holds a control character", it) } }
+            // The prompt marks are there when the shell is one that the integration knows and it is on.
+            val marked = shellIntegration && shell in setOf("zsh", "bash", "fish")
 
             logger.info("Starting {} in a {}x{} terminal, in {}{}", argv, cols, rows, startIn, if (snapshot != null) ", from a snapshot" else "")
             val process = PtyProcessBuilder(argv.toTypedArray())
@@ -1800,7 +1845,14 @@ public class TerminalSession private constructor(
                 val selectionGesture = GhosttySelectionGesture(terminal).also { toClose.addFirst(it) }
                 terminal.setClipboardReader(clipboardReader?.let { reader -> { location -> reader(location.toTerminal()) } })
                 return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, selectionGesture, theme, clipboardWrite)
-                    .also { it.launch() }
+                    .also {
+                        if (typed != null) {
+                            it.pendingInput.set(typed)
+                            it.pendingAtPromptStart = marked && shell == "fish"
+                            if (!marked) it.typeAfterQuiet()
+                        }
+                        it.launch()
+                    }
             } catch (e: Throwable) {
                 logger.error("Could not start the session", e)
                 process.destroyForcibly()

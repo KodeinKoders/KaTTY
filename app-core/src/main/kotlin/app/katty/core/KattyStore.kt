@@ -203,6 +203,12 @@ public class KattyStore(
         editTerminal(id) { it.copy(directory = directory) }
     }
 
+    /** [running] has the terminal over its shell (`null`: the shell does): a terminal that is started again types it in its new shell. */
+    public fun setRunning(id: TerminalId, running: RunningCommand?) {
+        if (flow.value.locate(id)?.terminal?.running == running) return
+        editTerminal(id) { it.copy(running = running) }
+    }
+
     /**
      * Moves the terminal to [workspace]: it is added there, to the right of everything that is in it, and has the focus. If it was the last
      * one of its workspace, that is gone.

@@ -43,6 +43,25 @@ class StateFileTest {
     }
 
     @Test
+    fun aRunningProgramSurvivesBeingWrittenAndReadAndAnOldFileHasNone() {
+        var n = 0
+        val store = KattyStore(newId = { "id${n++}" })
+        store.addProject("/dev/api")
+        val terminal = store.state.value.selection.terminal!!
+        store.setRunning(terminal, RunningCommand(listOf("claude", "--resume", "abc"), "/dev/api/sub", "claude", "abc"))
+        val state = store.state.value
+
+        file.save(state)
+
+        assertEquals(state, file.load())
+        assertEquals("abc", file.load().locate(terminal)!!.terminal.running!!.agentSession)
+        store.setRunning(terminal, null)
+        file.save(store.state.value)
+        assertFalse("argv" in path.readText(), "A terminal at its shell has nothing of the command in the file")
+        assertEquals(null, file.load().locate(terminal)!!.terminal.running)
+    }
+
+    @Test
     fun noFileIsAnEmptyState() {
         assertEquals(KattyState(), file.load())
     }

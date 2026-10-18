@@ -52,6 +52,13 @@ internal object ShellIntegration {
      * The command to run instead of [command], with what it needs added to [environment]: [command] itself and [environment]
      * untouched when the shell is not one that is known, or is not started to be typed in.
      */
+    /** The name of the shell that [command] starts as a login or interactive shell, or `null` for any other command. */
+    fun shellOf(command: List<String>): String? {
+        val program = command.firstOrNull() ?: return null
+        if (!command.drop(1).all { it == "-l" || it == "--login" || it == "-i" }) return null
+        return File(program).name.removePrefix("-")
+    }
+
     fun apply(command: List<String>, environment: MutableMap<String, String>): List<String> {
         val program = command.firstOrNull() ?: return command
         val arguments = command.drop(1)

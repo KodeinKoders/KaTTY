@@ -34,6 +34,9 @@ private val procName: MethodHandle by lazy {
 
 private const val NAME_BUFFER_BYTES = 256
 
+/** The id of the process group that has the pty whose master is [fd], `0` or less when none does. */
+internal fun foregroundGroup(fd: Int): Int = tcgetpgrp.invokeExact(fd) as Int
+
 /**
  * The name of the program that has the pty whose master is [fd]: what the shell is waiting for, or the shell itself at its prompt.
  * `null` when it cannot be known (nothing has the pty any more, or the system does not say). It never throws: it is asked about every

@@ -5,8 +5,11 @@ import app.katty.core.GitInfo
 import app.katty.core.GitReader
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
+import app.katty.core.RestorePolicy
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
+import app.katty.core.toRunning
+import app.katty.core.toTyped
 import app.katty.terminal.TerminalSession
 import app.katty.terminal.TerminalTheme
 import app.katty.terminal.themes.ITermColorSchemes
@@ -135,7 +138,9 @@ class SessionRegistry(
     fun restart(id: TerminalId) {
         val state = store.state.value
         val location = state.locate(id) ?: return
-        val spec = startingPlace(location.terminal, location.project.directory)
+        // A new shell is a plain one: what ran over the old is not started again.
+        store.setRunning(id, null)
+        val spec = startingPlace(location.terminal, location.project.directory).copy(running = null)
         val old = mutableHandles.value[id] ?: return
         stop(old)
         val generation = (generations[id] ?: 0) + 1
@@ -168,10 +173,20 @@ class SessionRegistry(
             launch { session.workingDirectory.filterNotNull().collect { store.setDirectory(spec.id, it) } }
             // What runs in the terminal is its name: asked often, since it takes two system calls and a shell tells nothing when a program ends.
             launch {
+                // A terminal that is restored starts as a shell, which is at its prompt for a moment before it has typed the program: that is not
+                // the program having ended, and what is kept of it stays until the program has been seen again, or for [RESTORE_GRACE_MS].
+                var graceUntil = if (spec.running != null) System.nanoTime() + RESTORE_GRACE_MS * 1_000_000 else 0L
                 while (isActive) {
                     val name = session.foregroundProcessName()
                     handle.processState.value = name
                     if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) mutableProcessNames.update { it + (spec.id to name) }
+                    // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
+                    if (name != null) {
+                        val command = withContext(Dispatchers.IO) { session.foregroundCommand() }
+                        val running = command?.let { withContext(Dispatchers.IO) { it.toRunning() } }
+                        if (command != null) graceUntil = 0L
+                        if (running != null || System.nanoTime() >= graceUntil) store.setRunning(spec.id, running)
+                    }
                     delay(PROCESS_POLL_MS)
                 }
             }
@@ -202,6 +217,9 @@ class SessionRegistry(
 /** How often the program that has a terminal is asked for. */
 private const val PROCESS_POLL_MS = 500L
 
+/** How long a restored terminal keeps what it is to start again while its shell has not yet got to it: a shell's startup files can be slow. */
+private const val RESTORE_GRACE_MS = 15_000L
+
 private fun shellName(): String = File(System.getenv("SHELL") ?: "/bin/zsh").name.ifEmpty { "shell" }
 
 /**
@@ -210,6 +228,8 @@ private fun shellName(): String = File(System.getenv("SHELL") ?: "/bin/zsh").nam
  */
 internal fun startingPlace(spec: TerminalSpec, projectDirectory: String): TerminalSpec =
     if (File(spec.directory).isDirectory) spec else spec.copy(directory = projectDirectory)
+
+private val RESTORE_POLICY = RestorePolicy()
 
 private fun loadColorScheme(name: String): TerminalTheme? =
     try {
@@ -221,6 +241,9 @@ private fun loadColorScheme(name: String): TerminalTheme? =
 
 private fun startShell(spec: TerminalSpec, theme: TerminalTheme?): TerminalSession {
     // A folder that is gone is not a reason for the terminal to have no shell: it starts in the user's home.
-    val directory = spec.directory.takeIf { File(it).isDirectory }
-    return TerminalSession.start(cols = 80, rows = 24, directory = directory, theme = theme)
+    // The program that ran over the shell is typed in the new one, in the folder it was in, which is the folder that the shell goes back to when
+    // it ends.
+    val running = spec.running
+    val directory = (running?.directory ?: spec.directory).takeIf { File(it).isDirectory } ?: spec.directory.takeIf { File(it).isDirectory }
+    return TerminalSession.start(cols = 80, rows = 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY))
 }

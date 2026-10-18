@@ -82,11 +82,30 @@ public sealed interface PaneNode {
 }
 
 /**
- * What is kept of a terminal. The shell is not: a terminal comes back with a new one.
+ * The program that had a terminal, over its shell, when it was last known: what a restored terminal types in its new shell to get it back. The
+ * program's own state is not kept (an editor's buffers, an unsent prompt): it is started again, not resumed, except for an agent that can pick
+ * up its conversation.
+ *
+ * @param argv The command line, the program first.
+ * @param directory Where the program was, which is not always where the shell was; `null` when it was not known.
+ * @param agent The [Agent.id] of the program when it is a coding agent, `null` for any other.
+ * @param agentSession The agent's id for its current conversation, when it could be told: what it resumes with.
+ */
+@Serializable
+public data class RunningCommand(
+    val argv: List<String>,
+    val directory: String? = null,
+    val agent: String? = null,
+    val agentSession: String? = null,
+)
+
+/**
+ * What is kept of a terminal. The shell is not: a terminal comes back with a new one, and types [running] in it.
  *
  * @param name What the user called it; `null` for the name of its agent, or of its shell.
  * @param directory Where its shell starts: where the shell was when this was last known, which a restored terminal starts in.
  * @param colorScheme The name of its color scheme; `null` for the default of the settings.
+ * @param running The program that had the terminal over its shell, `null` when it was the shell at its prompt.
  */
 @Serializable
 public data class TerminalSpec(
@@ -94,6 +113,7 @@ public data class TerminalSpec(
     val name: String? = null,
     val directory: String,
     val colorScheme: String? = null,
+    val running: RunningCommand? = null,
 )
 
 /** The terminals of the tree, in the order they are drawn: left to right, top to bottom. */

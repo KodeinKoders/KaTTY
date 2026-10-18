@@ -63,7 +63,9 @@ Gemini CLI and Copilot CLI have no command that says it, so they have no meter.
 * On macOS: ⌘K opens the command palette, ⌘D and ⌘⇧D split, ⌘W closes a terminal, ⌘N makes a workspace, ⌘F finds, ⌘⇧J goes to the next agent that waits.
 The palette lists every command with its shortcut.
 * At launch the projects, workspaces and splits come back, each terminal with a new shell where the old one was.
-The scrollback is not kept.
+The program that ran over the shell is started again in it, with its command line and its directory (`emacs notes.txt` opens the file, and leaving it leaves the shell), and an agent resumes its conversation (Claude Code: `claude --resume`).
+Editors, pagers, monitors and the agents start by themselves; any other command is only typed, and waits for you to press Return.
+The scrollback is not kept, and neither is what the program held in memory.
 
 
 == Modules
