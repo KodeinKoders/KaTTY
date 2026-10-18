@@ -68,6 +68,24 @@ class TerminalTest {
 
     private var clock = 0L
 
+    @Test
+    fun resizesTheSessionThatTakesThePlaceOfAnotherOfTheSameSize() {
+        val first = session("sleep 30")
+        val second = session("sleep 30")
+        val shown = androidx.compose.runtime.mutableStateOf(first)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            Terminal(shown.value, Modifier.fillMaxSize())
+        }.also { scenes += it }
+        scene.renderUntil("the first session to fit the scene") { first.frames.value.cols > 10 }
+        val cols = first.frames.value.cols
+        assertEquals(10, second.frames.value.cols, "The second one was never shown")
+
+        // The same composable, the same grid: only the session changes.
+        shown.value = second
+
+        scene.renderUntil("the second session to fit the scene") { second.frames.value.cols == cols }
+    }
+
     // Renders until the condition holds: what the composable does about its size and its focus is done by
     // effects, which run in the frames of the scene, and the session answers on its own threads.
     private fun ImageComposeScene.renderUntil(what: String, condition: () -> Boolean) {

@@ -242,7 +242,9 @@ public fun Terminal(
     // not resized while a window is dragged for as long as the grid is the same.
     val cols = (size.width / typography.cellWidth).toInt()
     val rows = (size.height / typography.cellHeight).toInt()
-    LaunchedEffect(cols, rows, typography) {
+    // The session is a key too: a pane shows another terminal's session in the same composable (switching workspace keeps its place, and the
+    // grid is the same size), and a session that was not shown has the size it started with, which its program is still drawn for.
+    LaunchedEffect(session, cols, rows, typography) {
         if (cols < 1 || rows < 1) return@LaunchedEffect
         // Resizing takes the lock of the terminal: not on the UI thread, which would wait for the program's output.
         withContext(Dispatchers.Default) {

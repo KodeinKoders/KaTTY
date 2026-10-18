@@ -193,6 +193,7 @@ This is how it is built.
 
 ## Pitfalls
 
+- **A pane's `Terminal` is reused for another terminal's session** (`PaneView` keys it by `handle.generation`, which is 0 for all: switching workspace keeps the place). Anything in `Terminal` that belongs to a session must have the session in its key: the resize effect did not, so a terminal that was not shown kept the 80 × 24 it started with when its place was taken by another of the same grid size, and a program restored in it (emacs) was drawn for 80 columns until the window was resized. A session that was never shown starts at 80 × 24 and is resized when it is.
 - **Concurrent Gradle builds in the same directory corrupt each other**: IntelliJ, the MCP server and a hot-reloading app all build in `build/`. Missing class files, `FileNotFoundException` in the Kotlin compiler or a `NoClassDefFoundError` after a successful build mean that happened: `./gradlew :<module>:clean` and run again.
 - A Compose composable keeps its focus when the OS window loses its own: use `LocalWindowInfo.current.isWindowFocused` as well to know whether the keys go to it.
 - libghostty-vt flags the row that the cursor leaves as dirty, even if it did not change, and its cursor does not blink unless the program asks for it (`TerminalSession.start` turns the default on).
