@@ -82,6 +82,7 @@ fun BoardWindow(
     DecoratedWindow(
         onCloseRequest = closeByUser,
         title = "KaTTY — Agent board",
+        icon = remember { AppIcon.painter() },
         state = windowState,
         // ⌘W closes the window that has the focus, as it does in any window of the system.
         onPreviewKeyEvent = { event ->

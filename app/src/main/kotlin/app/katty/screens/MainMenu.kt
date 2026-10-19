@@ -71,6 +71,7 @@ fun MainMenu(
     onPickColorScheme: () -> Unit,
     onDismiss: () -> Unit,
     onEditShortcuts: () -> Unit = {},
+    onAbout: () -> Unit = {},
 ) {
     val colors = Katty.colors
     Popup(popupPositionProvider = BelowEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
@@ -116,6 +117,8 @@ fun MainMenu(
                 CheckSetting("Font ligatures", settings.ligatures, { value -> onChange { it.copy(ligatures = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                 Caption("Shows sequences like => and != as single glyphs.")
             }
+            Separator()
+            Field("About KaTTY", "About KaTTY", onAbout, chevron = false)
         }
     }
 }
@@ -140,7 +143,7 @@ private fun Caption(text: String) {
 
 /** A field that opens a choice: its value, and a chevron. */
 @Composable
-internal fun Field(value: String, description: String, onClick: () -> Unit, leading: @Composable () -> Unit = {}) {
+internal fun Field(value: String, description: String, onClick: () -> Unit, chevron: Boolean = true, leading: @Composable () -> Unit = {}) {
     val colors = Katty.colors
     Row(
         Modifier.padding(horizontal = 4.dp).fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).border(1.dp, colors.line, RoundedCornerShape(5.dp))
@@ -152,7 +155,7 @@ internal fun Field(value: String, description: String, onClick: () -> Unit, lead
     ) {
         leading()
         OneLine(value, Modifier.weight(1f), color = colors.text)
-        Icon(KattyIcons.ChevronDown, colors.muted, size = 14.dp)
+        if (chevron) Icon(KattyIcons.ChevronDown, colors.muted, size = 14.dp)
     }
 }
 

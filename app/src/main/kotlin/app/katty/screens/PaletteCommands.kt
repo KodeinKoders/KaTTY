@@ -90,6 +90,8 @@ class PaletteHandlers(
     val uiReset: () -> Unit = {},
     /** Opens the dialog where the shortcuts are changed. */
     val editShortcuts: () -> Unit = {},
+    /** Opens the About window. */
+    val openAbout: () -> Unit = {},
     /** Opens the main menu. */
     val openMenu: () -> Unit = {},
     /** Opens the list of the agents that need the user. */
@@ -237,6 +239,7 @@ fun paletteCommands(
     command("sidebar", "Toggle project sidebar", AppShortcut.SIDEBAR.label, handlers.toggleSidebar)
     command("menu", "Open the main menu", AppShortcut.MENU.label, handlers.openMenu)
     command("edit-shortcuts", "Edit keyboard shortcuts…", action = handlers.editShortcuts)
+    command("about", "About KaTTY", action = handlers.openAbout)
     command("default-color-scheme", "Choose the default color scheme…", action = handlers.defaultColorScheme)
     command("ligatures", if (state.settings.ligatures) "Turn font ligatures off" else "Turn font ligatures on", action = handlers.toggleLigatures)
     command("usage-refresh", "Refresh the usage of the agents", action = handlers.refreshUsage)

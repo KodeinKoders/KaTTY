@@ -117,6 +117,7 @@ fun DecoratedWindowScope.KattyWindowContent(
     directories: KattyDirectories,
     bridge: WindowBridge = WindowBridge(),
     onOpenBoardWindow: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     keys: WindowKeys = WindowKeys(),
 ) {
     val state by store.state.collectAsState()
@@ -394,6 +395,7 @@ fun DecoratedWindowScope.KattyWindowContent(
         scrollToTop = { selectedSession()?.scrollToTop() },
         scrollToBottom = { selectedSession()?.scrollToBottom() },
         editShortcuts = { editingShortcuts = true },
+        openAbout = onOpenAbout,
         openAttention = { attentionOpen = true },
         uiBigger = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(1)) } },
         uiSmaller = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(-1)) } },
@@ -512,6 +514,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                             onPickColorScheme = { menuOpen = false; picking = SchemeTarget.Default },
                             onDismiss = { menuOpen = false },
                             onEditShortcuts = { menuOpen = false; editingShortcuts = true },
+                            onAbout = { menuOpen = false; onOpenAbout() },
                         )
                     }
                 }

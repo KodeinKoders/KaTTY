@@ -36,8 +36,12 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.window.DecoratedWindow
 
 fun main() {
+    // Before anything uses AWT: the menu bar of macOS is named by what this says when it starts.
+    nameApplication()
     // Before the first key is typed.
     disablePressAndHold()
+    // The logo is the icon of the Dock and of the application switcher, instead of the one of Java.
+    AppIcon.installInDock()
     val directories = KattyDirectories.default()
     val file = StateFile(directories.stateFile)
     val store = KattyStore(file.load())
@@ -87,17 +91,22 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     // Until the user opens it or closes it themselves, it is the window that opened by itself, which does not keep the focus.
     var restoredAtLaunch by remember { mutableStateOf(openedAtLaunch) }
     var boardFocusTick by remember { mutableIntStateOf(0) }
+    // The About window, from the settings menu, the palette and the About item of the application menu of macOS.
+    var aboutOpen by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) { takeAboutItem { aboutOpen = true }; onDispose { } }
     KattyTheme(dark) {
         DecoratedWindow(
             onCloseRequest = quit,
             title = "KaTTY",
+            icon = remember { AppIcon.painter() },
             state = windowState,
             onPreviewKeyEvent = windowKeys::handle,
         ) {
             UiScale(settings.effectiveUiScale) {
-                KattyWindowContent(store, registry, tracker, directories, bridge, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys)
+                KattyWindowContent(store, registry, tracker, directories, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys)
             }
         }
+        if (aboutOpen) AboutWindow(settings.effectiveUiScale, onClose = { aboutOpen = false })
         if (boardWindow) BoardWindow(store, tracker, registry, bridge, boardFocusTick, boardWindowFile, restoredAtLaunch, onClose = { boardWindow = false; restoredAtLaunch = false })
     }
 }
