@@ -186,21 +186,54 @@ class TerminalTest {
         assertEquals(0, image.getColor(WIDTH - 30, HEIGHT - 30) ushr 24, "So is the grid")
     }
 
-    @Test
-    fun theBellFlashesTheTerminalAndItGoesBack() {
-        val session = session("sleep 1; printf '\\a'; sleep 30")
+    // A scene that shows a program that rings the bell once after a second, and the window of it that the ring crosses when it has grown a little: to
+    // the right of the cursor's cell, on the first two rows. The far corner is where nothing is drawn.
+    private fun ringScene(script: String): RingScene {
+        val session = session(script)
         val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
             typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
             Terminal(session, Modifier.fillMaxSize(), bell = TerminalBell.VISUAL)
         }.also { scenes += it }
         scene.renderUntil("the terminal to fit the scene") { typography != null && session.frames.value.cols != 10 }
-        val background = session.frames.value.background.rgb
+        return RingScene(scene, session.frames.value.background.rgb, typography!!)
+    }
 
-        // A pixel that nothing is drawn on: the bottom right.
-        fun corner() = Bitmap.makeFromImage(scene.render(clock.also { clock += 16_000_000 })).getColor(WIDTH - 2, HEIGHT - 2) and 0xFFFFFF
-        assertEquals(background, corner())
-        scene.renderUntil("the flash") { corner() != background }
-        scene.renderUntil("the flash to be over") { corner() == background }
+    private inner class RingScene(val scene: ImageComposeScene, val background: Int, val typography: TerminalTypography) {
+        fun picture(): Bitmap = Bitmap.makeFromImage(scene.render(clock.also { clock += 16_000_000 }))
+
+        fun corner(picture: Bitmap) = picture.getColor(WIDTH - 2, HEIGHT - 2) and 0xFFFFFF
+
+        // How many pixels of the window differ from [before].
+        fun changed(picture: Bitmap, before: Bitmap): Int {
+            var count = 0
+            for (x in (typography.cellWidth * 1.5f).toInt()..(typography.cellWidth + typography.cellHeight).toInt()) {
+                for (y in 0..(typography.cellHeight * 2).toInt()) if (picture.getColor(x, y) != before.getColor(x, y)) count++
+            }
+            return count
+        }
+    }
+
+    private fun RingScene.checkThatTheRingComesAndGoes() {
+        val before = picture()
+        assertEquals(background, corner(before))
+        scene.renderUntil("the ring") {
+            val now = picture()
+            // The screen is not touched: that is the point of a ring and not a flash.
+            assertEquals(background, corner(now), "The far corner stays as it is while the bell rings")
+            changed(now, before) > 0
+        }
+        scene.renderUntil("the ring to be gone") { changed(picture(), before) == 0 }
+    }
+
+    @Test
+    fun theBellPulsesARingAroundTheCursorAndItGoesBack() {
+        ringScene("sleep 1; printf '\\a'; sleep 30").checkThatTheRingComesAndGoes()
+    }
+
+    @Test
+    fun theBellPulsesAtTheCursorEvenWhenTheProgramHidesIt() {
+        // Full-screen programs hide their cursor, and ring the bell all the same.
+        ringScene("printf '\\033[?25l'; sleep 1; printf '\\a'; sleep 30").checkThatTheRingComesAndGoes()
     }
 
     @Test

@@ -123,11 +123,11 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true, fontFeatures: String = "", builtinGlyphs: Boolean = true): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true, fontFeatures: String = "", builtinGlyphs: Boolean = true, bellPulse: Float = 0f): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
         typography = rememberTerminalTypography(fontSize.sp, font ?: TerminalFont.bundled(), ligatures, fontFeatures)
-        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink, builtinGlyphs = builtinGlyphs)
+        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink, builtinGlyphs = builtinGlyphs, bellPulse = { bellPulse })
     }
     scene.useScene {
         val image = scene.render()
@@ -150,6 +150,54 @@ class TerminalViewTest {
             }
             file
         }
+    }
+
+    // A screen of text with the cursor in the middle of it, as a program that rings the bell has.
+    private fun ringFrame(shape: TerminalCursorShape, visible: Boolean = true) =
+        frame(30, (0 until 8).map { row(30, *text("the quick brown fox jumps over")) }, TerminalCursor(x = 8, y = 3, visible = visible, blinking = false, shape = shape))
+
+    @Test
+    fun theRingOfTheBellGrowsAroundTheCursorAndFadesAway() {
+        val frame = ringFrame(TerminalCursorShape.BLOCK)
+        val rest = render("bell-ring-rest", frame)
+        val stages = listOf(1f, 0.6f, 0.25f).associateWith { render("bell-ring-${(it * 100).toInt()}", frame, bellPulse = it) }
+        val over = render("bell-ring-over", frame, bellPulse = 0f)
+
+        // Over, it leaves the screen as it was; and it never touches what is far from the cursor.
+        assertEquals(rest.bytes().toList(), over.bytes().toList())
+        for ((progress, rendered) in stages) {
+            assertEquals(rest.pixel(620, 250), rendered.pixel(620, 250), "The far corner at $progress")
+            assertEquals(rest.pixel(10, 250), rendered.pixel(10, 250), "The bottom left at $progress")
+        }
+        // Each stage is drawn, and they are not the same picture: the ring is bigger and fainter.
+        val pictures = stages.values.map { it.bytes().toList() }
+        assertNotEquals(rest.bytes().toList(), pictures[1])
+        assertEquals(3, pictures.toSet().size)
+    }
+
+    @Test
+    fun theRingIsAroundACursorOfAnyShapeAndWhereItWouldBeWhenItIsHidden() {
+        for (shape in TerminalCursorShape.entries) {
+            val frame = ringFrame(shape)
+            val rest = render("bell-ring-${shape.name.lowercase()}-rest", frame)
+            val ring = render("bell-ring-${shape.name.lowercase()}-60", frame, bellPulse = 0.6f)
+
+            assertNotEquals(rest.bytes().toList(), ring.bytes().toList(), "A ring around a $shape cursor")
+        }
+        val hiddenRest = render("bell-ring-hidden-rest", ringFrame(TerminalCursorShape.BLOCK, visible = false))
+        val hidden = render("bell-ring-hidden-60", ringFrame(TerminalCursorShape.BLOCK, visible = false), bellPulse = 0.6f)
+
+        assertNotEquals(hiddenRest.bytes().toList(), hidden.bytes().toList(), "A ring where the hidden cursor is")
+    }
+
+    @Test
+    fun theRingIsNotDrawnWhenTheCursorIsOutOfTheScreen() {
+        val noCursor = frame(30, (0 until 8).map { row(30, *text("the quick brown fox jumps over")) }, null)
+
+        val rest = render("bell-ring-nowhere-rest", noCursor)
+        val ring = render("bell-ring-nowhere-60", noCursor, bellPulse = 0.6f)
+
+        assertEquals(rest.bytes().toList(), ring.bytes().toList())
     }
 
     @Test

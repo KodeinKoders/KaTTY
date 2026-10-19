@@ -82,6 +82,7 @@ A middle click pastes the last selection.
 * The macOS line-editing keys work in the shell: ⌥← and ⌥→ move by word, ⌘← and ⌘→ go to the start and the end of the line, ⌘⌫ deletes to the start.
 * Dead keys and accents work, and programs that use the mouse or the Kitty keyboard protocol get them.
 A program can put text in your clipboard, and cannot read it.
+* When a program rings the terminal bell, a small ring pulses around the cursor, even if the program has hidden it, and nothing else on the screen changes.
 
 
 == Keyboard shortcuts

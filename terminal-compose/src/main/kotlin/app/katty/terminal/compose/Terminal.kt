@@ -118,7 +118,7 @@ import kotlin.math.roundToInt
  * after one to turn it off, separated by commas, and **no quotes**, which Compose ignores them with. They come after [ligatures].
  * @param builtinGlyphs Whether the box drawing, the blocks, the braille patterns and the arrows of powerline are drawn as shapes that fill
  * their cell (the default), which makes lines and blocks join whatever the font, or with the glyphs of the font.
- * @param bell What a BEL character does: the terminal flashes (the default), the system beeps, both, or nothing. The session's
+ * @param bell What a BEL character does: a ring pulses around the cursor, which is small (the default), the system beeps, both, or nothing. The session's
  * [TerminalEvent.Bell] is there for a host that does more, such as marking the tab.
  * @param secureInput When macOS keeps what is typed from the other programs (secure event input), which a key logger would otherwise
  * read: never (the default), while a program reads a password, or whenever the terminal has the keys. It also stops the programs that listen
@@ -265,8 +265,8 @@ public fun Terminal(
         onDispose { if (enabled) SecureKeyboardEntry.disable() }
     }
 
-    // The flash of the bell: the terminal is lightened for a moment.
-    val bellFlash = remember { Animatable(0f) }
+    // The pulse of the bell, from 1 when it rings to 0 when it is over: a ring grows around the cursor.
+    val bellPulse = remember { Animatable(0f) }
 
     // What a program puts in the clipboard (OSC 52): the system's goes there, and what a middle click pastes is kept here. The bell rings.
     LaunchedEffect(session, bell) {
@@ -279,8 +279,8 @@ public fun Terminal(
                 }
                 is TerminalEvent.Bell -> {
                     if (bell.visual) launch {
-                        bellFlash.snapTo(BELL_FLASH_ALPHA)
-                        bellFlash.animateTo(0f, tween(BELL_FLASH_MS))
+                        bellPulse.snapTo(1f)
+                        bellPulse.animateTo(0f, tween(BELL_PULSE_MS))
                     }
                     // A program that rings in a loop does not get a beep for each.
                     val now = System.nanoTime()
@@ -326,7 +326,7 @@ public fun Terminal(
         hoveredLink = links.hovered,
         minimumContrast = minimumContrast,
         builtinGlyphs = builtinGlyphs,
-        bellFlash = { bellFlash.value },
+        bellPulse = { bellPulse.value },
         // The background is painted here, with the padding, and not by the view, which would paint it over again where it is translucent.
         defaultBackgroundAlpha = 0f,
         modifier = modifier
@@ -607,7 +607,7 @@ public enum class TerminalBell(internal val visual: Boolean, internal val audio:
     /** Nothing. */
     NONE(false, false),
 
-    /** The terminal flashes. */
+    /** A ring pulses around the cursor, whether or not the program has hidden it. */
     VISUAL(true, false),
 
     /** The system beeps. */
@@ -617,9 +617,8 @@ public enum class TerminalBell(internal val visual: Boolean, internal val audio:
     BOTH(true, true),
 }
 
-// How much the terminal is lightened by the bell at first, and how long it takes to go back.
-private const val BELL_FLASH_ALPHA = 0.3f
-private const val BELL_FLASH_MS = 250
+// How long the ring of the bell takes to grow and fade away.
+private const val BELL_PULSE_MS = 400
 
 // The least time between two beeps.
 private const val BELL_BEEP_INTERVAL_NS = 200_000_000L

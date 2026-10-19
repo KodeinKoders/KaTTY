@@ -52,8 +52,11 @@ internal fun TerminalView(
     hoveredLink: TerminalLink? = null,
     minimumContrast: Float = 1f,
     builtinGlyphs: Boolean = true,
-    /** How much the terminal is lightened by the bell right now, from 0 to 1: read as it is drawn, so that the flash does not recompose. */
-    bellFlash: () -> Float = { 0f },
+    /**
+     * How far the pulse of the bell is, from 1 (it just rang) to 0 (it is over): a ring around the cursor. Read as it is drawn, so that the pulse
+     * does not recompose.
+     */
+    bellPulse: () -> Float = { 0f },
     /** How opaque the default background that the view paints is: 0 when the one who holds it paints it. */
     defaultBackgroundAlpha: Float = 1f,
 ) {
@@ -99,9 +102,6 @@ internal fun TerminalView(
         if (frame.searchMatches.isNotEmpty()) drawSearchMatches(frame, rows, typography)
         if (frame.selection.isNotEmpty()) drawSelection(frame, rows, typography)
 
-        val flash = bellFlash()
-        if (flash > 0f) drawRect(frame.foreground.rgb.toColor().copy(alpha = flash))
-
         frame.scrollbar?.takeIf { scrollbarAlpha > 0f }?.let { drawScrollbar(it, frame, scrollbarAlpha, scrollbarEmphasized) }
 
         if (preedit.isNotEmpty()) {
@@ -110,7 +110,57 @@ internal fun TerminalView(
         } else if (cursorShown.value) {
             drawCursor(frame, typography, focused)
         }
+        // On top of the cursor, and whether it is shown or not: a program that hides its cursor rings the bell too.
+        drawBellPulse(frame, typography, bellPulse())
     }
+}
+
+/**
+ * The ring that the bell draws around the cursor: a rectangle that starts just outside its cell (at [progress] 1, so that it is seen from the first
+ * frame) and grows outward as it fades, until it is gone (at 0). All in pixels: where it is (the stroke is centered on its edge), how thick, and
+ * how opaque.
+ *
+ * @param left Where the cursor's cell is, and how wide: two cells for a wide character.
+ * @return `null` when the pulse is over.
+ */
+internal fun bellRing(progress: Float, left: Float, top: Float, width: Float, cellHeight: Float): BellRing? {
+    if (progress <= 0f) return null
+    val shown = progress.coerceAtMost(1f)
+    val grown = (BELL_PULSE_START + (1f - BELL_PULSE_START) * (1f - shown)) * cellHeight * BELL_PULSE_GROWTH
+    val stroke = max(1f, round(cellHeight / 12f))
+    return BellRing(
+        left = left - grown, top = top - grown, width = width + 2 * grown, height = cellHeight + 2 * grown,
+        // The corners start nearly square, as the cursor's, and round as it grows.
+        radius = stroke + grown * 0.75f, stroke = stroke, alpha = shown * BELL_PULSE_ALPHA,
+    )
+}
+
+internal data class BellRing(val left: Float, val top: Float, val width: Float, val height: Float, val radius: Float, val stroke: Float, val alpha: Float)
+
+// How opaque the ring is when the bell rings, how far it grows, in cell heights, and how far outside the cell it starts, as a part of that.
+private const val BELL_PULSE_ALPHA = 0.7f
+private const val BELL_PULSE_GROWTH = 1f
+private const val BELL_PULSE_START = 0.15f
+
+private fun DrawScope.drawBellPulse(frame: TerminalFrame, typography: TerminalTypography, progress: Float) {
+    if (progress <= 0f) return
+    // Where the cursor is, shown or not; none when it is out of the screen.
+    val col = frame.cursor.x ?: return
+    val y = frame.cursor.y ?: return
+    if (y !in frame.rows.indices) return
+    val cols = if (frame.rows[y].cells.getOrNull(col)?.width == TerminalCellWidth.WIDE) 2 else 1
+    val left = round(col * typography.cellWidth)
+    val width = round((col + cols) * typography.cellWidth) - left
+    val ring = bellRing(progress, left, y * typography.cellHeight, width, typography.cellHeight) ?: return
+    // The stroke is inside the rectangle: its outer edge is the cursor cell's, then the ring's.
+    val half = ring.stroke / 2
+    drawRoundRect(
+        (frame.cursorColor ?: frame.foreground).rgb.toColor().copy(alpha = ring.alpha),
+        Offset(ring.left + half, ring.top + half),
+        Size(ring.width - ring.stroke, ring.height - ring.stroke),
+        cornerRadius = CornerRadius(ring.radius),
+        style = Stroke(width = ring.stroke),
+    )
 }
 
 /**
