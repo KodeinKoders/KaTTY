@@ -148,6 +148,8 @@ fun DecoratedWindowScope.KattyWindowContent(
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     val handles by registry.handles.collectAsState()
     val processNames by registry.processNames.collectAsState()
+    // Where each terminal is in git: a workspace says the branch that its terminals share.
+    val gits by registry.gitInfos.collectAsState()
     // What each terminal is doing comes from what its program reports (OSC 7501).
     val infos by tracker.infos.collectAsState()
     val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
@@ -574,6 +576,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                         onCloseWorkspace = closeWorkspace,
                         onNewWorkspace = newWorkspace,
                         states = agentStates,
+                        gits = gits,
                     )
                     area(Modifier.weight(1f).fillMaxWidth(), false)
                     usageBar()
@@ -582,7 +585,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                 Row(Modifier.fillMaxSize()) {
                     if (settings.sidebarCollapsed) {
                         Rail(
-                            state, store, onAddProject = addProject, states = agentStates,
+                            state, store, onAddProject = addProject, states = agentStates, gits = gits,
                             usage = { UsageList(detectedAgents.filter { it.id in settings.usageShown }, readings, usageNow, UsageVariant.RAIL, Modifier.padding(vertical = 8.dp), settings.usageHidden) },
                         )
                     } else {
@@ -598,6 +601,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                             renamingWorkspace = renamingWorkspace,
                             onRenamingWorkspace = { renamingWorkspace = it },
                             states = agentStates,
+                            gits = gits,
                             usage = { usageSection() },
                         )
                     }

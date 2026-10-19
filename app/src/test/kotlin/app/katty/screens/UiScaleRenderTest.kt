@@ -13,6 +13,7 @@ import app.katty.core.LayoutMode
 import app.katty.core.PaletteEntry
 import app.katty.core.PaletteGroup
 import app.katty.core.Settings
+import app.katty.core.terminals
 import app.katty.ui.UiScale
 import app.katty.ui.render
 import kotlin.test.Test
@@ -36,7 +37,9 @@ class UiScaleRenderTest {
     @Composable
     private fun SidebarOf(store: KattyStore) {
         val state by store.state.collectAsState()
-        Sidebar(state, store, onAddProject = {}, onRemoveProject = {}, onCloseWorkspace = {}, onReveal = {}, renamingProject = null, onRenamingProject = {}, renamingWorkspace = null, onRenamingWorkspace = {}, modifier = Modifier)
+        // The terminals of the first workspace of the second project are all in one branch: it says which.
+        val gits = state.projects.last().workspaces.first().layout.terminals().associate { it.id to app.katty.core.GitInfo("feature/auth-refactor", app.katty.core.GitKind.BRANCH) }
+        Sidebar(state, store, onAddProject = {}, onRemoveProject = {}, onCloseWorkspace = {}, onReveal = {}, renamingProject = null, onRenamingProject = {}, renamingWorkspace = null, onRenamingWorkspace = {}, modifier = Modifier, gits = gits)
     }
 
     private val entries = listOf(

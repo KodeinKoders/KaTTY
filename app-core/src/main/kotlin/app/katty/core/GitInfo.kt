@@ -22,6 +22,18 @@ public enum class GitKind {
 public data class GitInfo(val name: String, val kind: GitKind)
 
 /**
+ * The branch that every terminal of [workspace] is in, which is what the workspace says of itself: `null` when they are not all in the same one,
+ * because one is not in a repository (or its place is not known yet), or they are in different branches, worktrees or commits. A workspace with
+ * a single terminal has the one of that terminal.
+ *
+ * @param gits Where each terminal is.
+ */
+public fun Workspace.sharedGit(gits: Map<TerminalId, GitInfo?>): GitInfo? {
+    val all = layout.terminals().map { gits[it.id] ?: return null }
+    return all.firstOrNull()?.takeIf { first -> all.all { it == first } }
+}
+
+/**
  * Reads where a folder is in a git repository from the files of git, without starting it: it is read for every pane, again whenever its
  * shell changes directory and when a command ends.
  *

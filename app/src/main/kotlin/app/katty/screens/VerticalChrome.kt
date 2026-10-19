@@ -1,5 +1,9 @@
 package app.katty.screens
 
+import androidx.compose.foundation.layout.widthIn
+import app.katty.core.sharedGit
+import app.katty.core.TerminalId
+import app.katty.core.GitInfo
 import app.katty.ui.uiScaleFactor
 import app.katty.SplitLabels
 import app.katty.AppShortcut
@@ -41,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.katty.core.AgentState
 import app.katty.core.AgentStates
 import app.katty.core.KattyState
@@ -177,6 +182,7 @@ fun WorkspaceTabs(
     onNewWorkspace: () -> Unit,
     modifier: Modifier = Modifier,
     states: AgentStates = NoAgentStates,
+    gits: Map<TerminalId, GitInfo?> = emptyMap(),
 ) {
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.panel).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
@@ -185,7 +191,7 @@ fun WorkspaceTabs(
             for (workspace in project?.workspaces.orEmpty()) {
                 WorkspaceTab(
                     Modifier.reorderItem(workspaces, workspace.id), Modifier.reorderHandle(workspaces, workspace.id, enabled = renamingWorkspace != workspace.id),
-                    workspace, workspace.id == selectedWorkspace, states.strip(workspace), renamingWorkspace == workspace.id,
+                    workspace, workspace.id == selectedWorkspace, states.strip(workspace), workspace.sharedGit(gits), renamingWorkspace == workspace.id,
                     onSelect = { store.selectWorkspace(workspace.id) },
                     onRename = { onRenamingWorkspace(workspace.id) },
                     onRenamed = { name ->
@@ -212,6 +218,7 @@ private fun WorkspaceTab(
     workspace: Workspace,
     selected: Boolean,
     strip: List<AgentState>,
+    git: GitInfo?,
     renaming: Boolean,
     onSelect: () -> Unit,
     onRename: () -> Unit,
@@ -255,6 +262,8 @@ private fun WorkspaceTab(
                 InlineRename(workspace.name, onRenamed, Modifier.width(140.dp * uiScaleFactor()))
             } else {
                 Text(workspace.name, color = colors.text, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal, maxLines = 1)
+                // The branch that all of its terminals are in.
+                if (git != null) GitLabel(git, Modifier.widthIn(max = 160.dp * uiScaleFactor()), fontSize = 11.sp)
             }
         }
         menuAt?.let { at -> KattyMenu(workspaceMenu(onRename, onClose), onDismiss = { menuAt = null }, offset = at) }

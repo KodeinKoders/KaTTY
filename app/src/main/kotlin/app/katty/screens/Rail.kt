@@ -1,5 +1,8 @@
 package app.katty.screens
 
+import app.katty.core.sharedGit
+import app.katty.core.TerminalId
+import app.katty.core.GitInfo
 import app.katty.ui.uiScaleFactor
 import app.katty.ui.rememberReorderState
 import app.katty.ui.reorderItem
@@ -90,6 +93,7 @@ fun Rail(
     onAddProject: () -> Unit,
     modifier: Modifier = Modifier,
     states: AgentStates = NoAgentStates,
+    gits: Map<TerminalId, GitInfo?> = emptyMap(),
     usage: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
@@ -111,7 +115,7 @@ fun Rail(
                         open = if (open == project.id) null else project.id
                     }
                     if (open == project.id) {
-                        Flyout(project, state, store, states, onDismiss = { open = null })
+                        Flyout(project, state, store, states, gits, onDismiss = { open = null })
                     }
                 }
             }
@@ -171,7 +175,7 @@ private object BesideEnd : PopupPositionProvider {
 
 /** The workspaces of a project, in a panel that opens beside its tile. */
 @Composable
-private fun Flyout(project: Project, state: KattyState, store: KattyStore, states: AgentStates, onDismiss: () -> Unit) {
+private fun Flyout(project: Project, state: KattyState, store: KattyStore, states: AgentStates, gits: Map<TerminalId, GitInfo?>, onDismiss: () -> Unit) {
     val colors = Katty.colors
     Popup(popupPositionProvider = BesideEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
@@ -204,7 +208,10 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    OneLine(workspace.name, Modifier.weight(1f), color = colors.text)
+                    Column(Modifier.weight(1f)) {
+                        OneLine(workspace.name, color = colors.text)
+                        workspace.sharedGit(gits)?.let { GitLabel(it, fontSize = 11.sp) }
+                    }
                     for (s in states.strip(workspace)) StateGlyph(s, size = GlyphSize.SMALL)
                 }
             }

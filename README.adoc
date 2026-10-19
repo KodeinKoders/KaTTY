@@ -44,6 +44,7 @@ A click on a card brings you to that terminal.
 * When an agent you are not looking at needs you, finishes or fails, a notice appears in the window.
 KaTTY does not send macOS notifications, badges or sounds.
 * The header of each pane shows the agent or the program that runs in it, and the *git branch*, worktree or commit that the terminal is in.
+A workspace whose terminals are all in the same branch says it too, under its name in the sidebar and beside it in the tabs.
 * Closing a workspace asks first when an agent in it is still working or waiting for you.
 
 How much of this each agent supports is in <<agent-compatibility,the compatibility matrix>>.

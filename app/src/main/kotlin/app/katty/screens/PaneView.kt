@@ -310,17 +310,7 @@ internal fun PaneHeader(
             } else {
                 OneLine(title, Modifier.semantics { contentDescription = "Terminal $title" }.onDoubleClick(onRename), color = colors.text)
             }
-            if (git != null) {
-                val description = if (git.kind == GitKind.WORKTREE) "Worktree" else if (git.kind == GitKind.DETACHED) "Commit" else "Branch"
-                Row(
-                    Modifier.weight(1f, fill = false).semantics { contentDescription = "$description ${git.name}" },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Icon(if (git.kind == GitKind.WORKTREE) KattyIcons.Worktree else KattyIcons.Branch, colors.muted, size = 12.dp)
-                    Text(git.name, color = colors.muted, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+            if (git != null) GitLabel(git, Modifier.weight(1f, fill = false))
         }
         Text(
             stateLabel ?: state.label(), color = if (state == AgentState.NEEDS_INPUT || state == AgentState.ERROR) colors.input else colors.muted,

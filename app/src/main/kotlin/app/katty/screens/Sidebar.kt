@@ -1,5 +1,8 @@
 package app.katty.screens
 
+import app.katty.core.sharedGit
+import app.katty.core.TerminalId
+import app.katty.core.GitInfo
 import app.katty.ui.uiScaleFactor
 import app.katty.AppShortcut
 import androidx.compose.foundation.background
@@ -86,6 +89,7 @@ val SIDEBAR_WIDTH = 272.dp
  * @param renamingWorkspace The workspace whose name is being edited, which a new one is as soon as it exists; the window keeps it so
  * that the shortcut for a new workspace can start it too.
  * @param states What each terminal is doing: a project is shown with how many are in each state, and a workspace with the state of each.
+ * @param gits Where each terminal is in git: a workspace whose terminals are all in the same branch says which.
  * @param usage What is at the bottom of the sidebar.
  */
 @Composable
@@ -102,6 +106,7 @@ fun Sidebar(
     onRenamingWorkspace: (WorkspaceId?) -> Unit,
     modifier: Modifier = Modifier,
     states: AgentStates = NoAgentStates,
+    gits: Map<TerminalId, GitInfo?> = emptyMap(),
     usage: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
@@ -160,6 +165,7 @@ fun Sidebar(
                                 workspace = workspace,
                                 selected = workspace.id == state.selection.workspace,
                                 strip = states.strip(workspace),
+                                git = workspace.sharedGit(gits),
                                 renaming = renamingWorkspace == workspace.id,
                                 onSelect = { store.selectWorkspace(workspace.id) },
                                 onRename = { onRenamingWorkspace(workspace.id) },
@@ -257,6 +263,7 @@ private fun WorkspaceRow(
     workspace: Workspace,
     selected: Boolean,
     strip: List<AgentState>,
+    git: GitInfo?,
     renaming: Boolean,
     onSelect: () -> Unit,
     onRename: () -> Unit,
@@ -289,7 +296,11 @@ private fun WorkspaceRow(
             if (renaming) {
                 InlineRename(workspace.name, onRenamed, Modifier.weight(1f))
             } else {
-                OneLine(workspace.name, Modifier.weight(1f), color = colors.text)
+                Column(Modifier.weight(1f)) {
+                    OneLine(workspace.name, color = colors.text)
+                    // The branch that all of its terminals are in.
+                    if (git != null) GitLabel(git, fontSize = 11.sp)
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 for (state in strip) StateGlyph(state, size = GlyphSize.SMALL)

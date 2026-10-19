@@ -94,6 +94,14 @@ class SessionRegistry(
      */
     val processNames: StateFlow<Map<TerminalId, String?>> get() = mutableProcessNames
 
+    private val mutableGitInfos = MutableStateFlow<Map<TerminalId, GitInfo?>>(emptyMap())
+
+    /**
+     * Where each terminal is in git (`null` for one that is not in a repository), which is what each handle's [TerminalHandle.git] says, all in one
+     * place for the ones that want them all: a workspace says the branch that its terminals share.
+     */
+    val gitInfos: StateFlow<Map<TerminalId, GitInfo?>> get() = mutableGitInfos
+
     // What each session follows and the scheme it has now.
     private val followers = HashMap<TerminalId, Job>()
     private val schemes = HashMap<TerminalId, String>()
@@ -197,7 +205,9 @@ class SessionRegistry(
             }
             merge(session.workingDirectory.map { }, session.events.filterIsInstance<TerminalEvent.CommandFinished>().map { }).conflate().collect {
                 val directory = session.workingDirectory.value ?: spec.directory
-                handle.gitState.value = withContext(Dispatchers.IO) { GitReader.read(Path.of(directory)) }
+                val info = withContext(Dispatchers.IO) { GitReader.read(Path.of(directory)) }
+                handle.gitState.value = info
+                mutableGitInfos.update { it + (spec.id to info) }
             }
         }
         return handle
@@ -206,6 +216,7 @@ class SessionRegistry(
     private fun stop(handle: TerminalHandle) {
         followers.remove(handle.id)?.cancel()
         mutableProcessNames.update { it - handle.id }
+        mutableGitInfos.update { it - handle.id }
         schemes.remove(handle.id)
         val session = handle.session ?: return
         // Closing waits for the shell to end: not on the thread that draws.
