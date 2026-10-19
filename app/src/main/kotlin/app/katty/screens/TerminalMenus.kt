@@ -2,6 +2,7 @@ package app.katty.screens
 
 import app.katty.AppShortcut
 import app.katty.SplitLabels
+import app.katty.TerminalKeys
 import app.katty.core.KattyState
 import app.katty.core.TerminalId
 import app.katty.core.WorkspaceId
@@ -75,9 +76,9 @@ class ContextMenuActions(
  */
 fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, vertical: Boolean = false): List<MenuEntry> = menu {
     val split = SplitLabels.of(vertical)
-    action("Copy", "⌘C", enabled = hasSelection, onClick = actions.copy)
-    action("Paste", "⌘V", onClick = actions.paste)
-    action("Select all", "⌘A", onClick = actions.selectAll)
+    action("Copy", TerminalKeys.COPY, enabled = hasSelection, onClick = actions.copy)
+    action("Paste", TerminalKeys.PASTE, onClick = actions.paste)
+    action("Select all", TerminalKeys.SELECT_ALL, onClick = actions.selectAll)
     divider()
     action("Find…", AppShortcut.FIND.label, onClick = actions.find)
     action("Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, onClick = actions.clearScreen)

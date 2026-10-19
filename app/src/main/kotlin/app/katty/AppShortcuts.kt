@@ -182,6 +182,22 @@ class WindowKeys {
 }
 
 /**
+ * The keys that a terminal handles itself, before the program sees them (see `Terminal`): the palette and the context menu show them next to the
+ * same commands. They are not [AppShortcut]s, which are the window's; every one of them is also a command of the palette.
+ */
+internal object TerminalKeys {
+    const val COPY = "⌘C"
+    const val PASTE = "⌘V"
+    const val SELECT_ALL = "⌘A"
+    const val PREVIOUS_PROMPT = "⌘↑"
+    const val NEXT_PROMPT = "⌘↓"
+    const val SCROLL_PAGE_UP = "⇧PgUp"
+    const val SCROLL_PAGE_DOWN = "⇧PgDn"
+    const val SCROLL_TO_TOP = "⇧Home"
+    const val SCROLL_TO_BOTTOM = "⇧End"
+}
+
+/**
  * What the two ways of splitting are called and shown with, in a layout: the main direction is right in the horizontal one and down in the
  * vertical one, and has the shortcut without Shift.
  */

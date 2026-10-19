@@ -2,6 +2,8 @@ package app.katty.screens
 
 import app.katty.AppShortcut
 import app.katty.SplitLabels
+import app.katty.TerminalKeys
+import app.katty.core.Direction
 import app.katty.core.AgentInfo
 import app.katty.core.AgentState
 import app.katty.core.KattyState
@@ -14,6 +16,7 @@ import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
 import app.katty.core.ThemeMode
 import app.katty.core.WorkspaceId
+import app.katty.core.terminals
 
 /** What the commands of the palette do: the window gives them, since it is what holds the dialogs and the selection. */
 class PaletteHandlers(
@@ -64,6 +67,23 @@ class PaletteHandlers(
     val fontBigger: () -> Unit = {},
     val fontSmaller: () -> Unit = {},
     val fontReset: () -> Unit = {},
+    /** Moves the focus to the pane in that direction, or the nearest divider that way (the keyboard does the same). */
+    val focusPane: (Direction) -> Unit = {},
+    val resizeSplit: (Direction) -> Unit = {},
+    /** Steps through the matches of the search of the terminal, which it opens when there is none. */
+    val findNext: () -> Unit = {},
+    val findPrevious: () -> Unit = {},
+    /** What the terminal does with its own keys: copy what is selected, paste, select everything. */
+    val copy: () -> Unit = {},
+    val paste: () -> Unit = {},
+    val selectAll: () -> Unit = {},
+    /** Goes to the previous or the next prompt that the shell marked, scrolls the history by a page or to its ends. */
+    val previousPrompt: () -> Unit = {},
+    val nextPrompt: () -> Unit = {},
+    val scrollPageUp: () -> Unit = {},
+    val scrollPageDown: () -> Unit = {},
+    val scrollToTop: () -> Unit = {},
+    val scrollToBottom: () -> Unit = {},
     /** Makes the text of the application bigger or smaller by a step, or what it is by default. */
     val uiBigger: () -> Unit = {},
     val uiSmaller: () -> Unit = {},
@@ -99,6 +119,7 @@ private fun AgentState.word(): String = when (this) {
  * @param titleOf What a terminal is called: its name, its agent's, or its shell's.
  * @param vertical Whether the layout is the vertical one, where the main direction of a split is down and not right: it decides which of the
  * two ways of splitting has the shortcut without Shift.
+ * @param hasSelection Whether something is selected in the terminal: there is nothing to copy otherwise.
  */
 fun paletteCommands(
     state: KattyState,
@@ -106,6 +127,7 @@ fun paletteCommands(
     titleOf: (TerminalSpec) -> String,
     handlers: PaletteHandlers,
     vertical: Boolean = false,
+    hasSelection: Boolean = false,
 ): PaletteCommands {
     val entries = ArrayList<PaletteEntry>()
     val actions = HashMap<String, () -> Unit>()
@@ -158,6 +180,8 @@ fun paletteCommands(
         command("rename-terminal", "Rename terminal", AppShortcut.RENAME_TERMINAL.label, handlers.renameTerminal)
         command("restart-terminal", "Restart terminal", AppShortcut.RESTART_TERMINAL.label, handlers.restartTerminal)
         command("find", "Find in terminal", AppShortcut.FIND.label, handlers.find)
+        command("find-next", "Find next match", AppShortcut.FIND_NEXT.label, handlers.findNext)
+        command("find-previous", "Find previous match", AppShortcut.FIND_PREVIOUS.label, handlers.findPrevious)
         command("clear-screen", "Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, handlers.clearScreen)
         command("maximize", if (state.selection.maximized == null) "Maximize terminal" else "Restore terminal", AppShortcut.MAXIMIZE.label, handlers.maximize)
         command("color-scheme", "Change the color scheme of the terminal", action = handlers.colorScheme)
@@ -168,6 +192,27 @@ fun paletteCommands(
             command("move-terminal:${destination.id.value}", "Move terminal to “${destination.label}”") { handlers.moveTerminalTo(destination.id) }
         }
         command("close-terminal", "Close terminal", AppShortcut.CLOSE_TERMINAL.label, handlers.closeTerminal)
+        // What the terminal does with its own keys.
+        if (hasSelection) command("copy", "Copy", TerminalKeys.COPY, handlers.copy)
+        command("paste", "Paste", TerminalKeys.PASTE, handlers.paste)
+        command("select-all", "Select all", TerminalKeys.SELECT_ALL, handlers.selectAll)
+        command("previous-prompt", "Jump to the previous prompt", TerminalKeys.PREVIOUS_PROMPT, handlers.previousPrompt)
+        command("next-prompt", "Jump to the next prompt", TerminalKeys.NEXT_PROMPT, handlers.nextPrompt)
+        command("scroll-page-up", "Scroll up a page", TerminalKeys.SCROLL_PAGE_UP, handlers.scrollPageUp)
+        command("scroll-page-down", "Scroll down a page", TerminalKeys.SCROLL_PAGE_DOWN, handlers.scrollPageDown)
+        command("scroll-top", "Scroll to the top", TerminalKeys.SCROLL_TO_TOP, handlers.scrollToTop)
+        command("scroll-bottom", "Scroll to the bottom", TerminalKeys.SCROLL_TO_BOTTOM, handlers.scrollToBottom)
+        // Moving between the panes, and resizing them, is for a workspace that has more than one.
+        if ((state.selectedWorkspace?.layout?.terminals()?.size ?: 0) > 1) {
+            command("focus-left", "Focus the pane on the left", AppShortcut.FOCUS_LEFT.label) { handlers.focusPane(Direction.LEFT) }
+            command("focus-right", "Focus the pane on the right", AppShortcut.FOCUS_RIGHT.label) { handlers.focusPane(Direction.RIGHT) }
+            command("focus-up", "Focus the pane above", AppShortcut.FOCUS_UP.label) { handlers.focusPane(Direction.UP) }
+            command("focus-down", "Focus the pane below", AppShortcut.FOCUS_DOWN.label) { handlers.focusPane(Direction.DOWN) }
+            command("resize-left", "Move the divider to the left", AppShortcut.RESIZE_LEFT.label) { handlers.resizeSplit(Direction.LEFT) }
+            command("resize-right", "Move the divider to the right", AppShortcut.RESIZE_RIGHT.label) { handlers.resizeSplit(Direction.RIGHT) }
+            command("resize-up", "Move the divider up", AppShortcut.RESIZE_UP.label) { handlers.resizeSplit(Direction.UP) }
+            command("resize-down", "Move the divider down", AppShortcut.RESIZE_DOWN.label) { handlers.resizeSplit(Direction.DOWN) }
+        }
     }
     if (state.projects.sumOf { it.workspaces.size } > 1) {
         command("previous-workspace", "Previous workspace", AppShortcut.WORKSPACE_PREVIOUS.label, handlers.previousWorkspace)

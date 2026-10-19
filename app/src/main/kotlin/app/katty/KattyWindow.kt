@@ -277,6 +277,26 @@ fun DecoratedWindowScope.KattyWindowContent(
     }
     // The state of the store, not the one of the last drawing: keys that repeat come faster than that.
     val stepWorkspace: (Int) -> Unit = { delta -> store.state.value.workspaceStep(delta)?.let(goToWorkspace) }
+    // The vertical layout draws every split turned.
+    val flipped = vertical
+    val focusNeighbour = { direction: Direction ->
+        val workspace = state.selectedWorkspace
+        val from = state.selection.terminal
+        if (workspace != null && from != null) workspace.layout.neighbour(from, direction, flipped)?.let(store::focus)
+        Unit
+    }
+    // The session of the selected terminal: what the commands on the terminal's own keys act on.
+    val selectedSession = { state.selection.terminal?.let { handles[it]?.session } }
+    // The next or the previous match of the search of the terminal that is searched: a terminal that is not opens its search, since there is no match to
+    // go to (the shortcut does the same).
+    val stepFind: (Boolean) -> Unit = { forward ->
+        val searched = findingTerminal
+        if (searched == null) {
+            findingTerminal = state.selection.terminal
+        } else {
+            handles[searched]?.session?.search?.let { if (forward) it.next() else it.previous() }
+        }
+    }
     // The nearest divider of the focused pane that the arrow goes along moves one step: as the screen shows the splits, turned in the vertical layout.
     val resizeSplit: (Direction) -> Unit = { direction ->
         val current = store.state.value
@@ -353,6 +373,19 @@ fun DecoratedWindowScope.KattyWindowContent(
         toggleLigatures = { store.updateSettings { it.copy(ligatures = !it.ligatures) } },
         refreshUsage = usage::refreshNow,
         toggleCompactUsage = { setCompact(!settings.compactUsage) },
+        focusPane = focusNeighbour,
+        resizeSplit = resizeSplit,
+        findNext = { stepFind(true) },
+        findPrevious = { stepFind(false) },
+        copy = { selectedSession()?.selectedText()?.let(::copyToClipboard) },
+        paste = { selectedSession()?.let { session -> readClipboard()?.let(session::paste) } },
+        selectAll = { selectedSession()?.selectAll() },
+        previousPrompt = { selectedSession()?.scrollToPrompt(-1) },
+        nextPrompt = { selectedSession()?.scrollToPrompt(1) },
+        scrollPageUp = { selectedSession()?.scrollPage(-1) },
+        scrollPageDown = { selectedSession()?.scrollPage(1) },
+        scrollToTop = { selectedSession()?.scrollToTop() },
+        scrollToBottom = { selectedSession()?.scrollToBottom() },
         openAttention = { attentionOpen = true },
         uiBigger = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(1)) } },
         uiSmaller = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(-1)) } },
@@ -365,14 +398,6 @@ fun DecoratedWindowScope.KattyWindowContent(
         nextWorkspace = { stepWorkspace(1) },
     )
     val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
-    // The vertical layout draws every split turned.
-    val flipped = vertical
-    val focusNeighbour = { direction: Direction ->
-        val workspace = state.selectedWorkspace
-        val from = state.selection.terminal
-        if (workspace != null && from != null) workspace.layout.neighbour(from, direction, flipped)?.let(store::focus)
-        Unit
-    }
 
     // What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons.
     val blockingDialog = picking != null || closingWorkspace != null || closingTerminal != null || removing != null
@@ -410,8 +435,8 @@ fun DecoratedWindowScope.KattyWindowContent(
             AppShortcut.RESIZE_RIGHT -> if (onTerminals) resizeSplit(Direction.RIGHT)
             AppShortcut.RESIZE_UP -> if (onTerminals) resizeSplit(Direction.UP)
             AppShortcut.RESIZE_DOWN -> if (onTerminals) resizeSplit(Direction.DOWN)
-            AppShortcut.FIND_NEXT -> findingTerminal?.let { handles[it]?.session?.search?.next() }
-            AppShortcut.FIND_PREVIOUS -> findingTerminal?.let { handles[it]?.session?.search?.previous() }
+            AppShortcut.FIND_NEXT -> if (onTerminals) stepFind(true)
+            AppShortcut.FIND_PREVIOUS -> if (onTerminals) stepFind(false)
             AppShortcut.FONT_BIGGER -> store.updateSettings { it.copy(fontSize = it.fontSize + FONT_STEP) }
             AppShortcut.FONT_SMALLER -> store.updateSettings { it.copy(fontSize = it.fontSize - FONT_STEP) }
             AppShortcut.FONT_RESET -> store.updateSettings { it.copy(fontSize = Settings.DEFAULT_FONT_SIZE) }
@@ -612,7 +637,11 @@ fun DecoratedWindowScope.KattyWindowContent(
 
         if (paletteOpen) {
             val commands = remember(state, infos, handles, vertical) {
-                paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers, vertical = vertical)
+                // Whether something is selected is asked when the palette opens: that is when there is a choice to make.
+                paletteCommands(
+                    state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers, vertical = vertical,
+                    hasSelection = selectedSession()?.selectedText() != null,
+                )
             }
             CommandPalette(commands.entries, onRun = { entry -> paletteOpen = false; commands.run(entry) }, onDismiss = { paletteOpen = false })
         }

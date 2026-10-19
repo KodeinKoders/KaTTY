@@ -89,7 +89,7 @@ A program can put text in your clipboard, and cannot read it.
 
 Everything in KaTTY can be done without the mouse.
 Every shortcut uses ⌘, which never reaches the programs in your terminals.
-The palette (⌘K) lists every command with its shortcut, and many commands that have none.
+Every shortcut is also a command of the palette (⌘K), which shows its keys, and so are many things that have no shortcut.
 Escape is never used by the window, except to close what is open in front of it (the palette, a dialog, a list): it belongs to the programs in your terminals.
 
 === Projects, workspaces and panes
