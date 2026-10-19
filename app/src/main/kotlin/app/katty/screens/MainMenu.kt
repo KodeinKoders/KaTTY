@@ -70,6 +70,7 @@ fun MainMenu(
     fontFamilies: List<String>,
     onPickColorScheme: () -> Unit,
     onDismiss: () -> Unit,
+    onEditShortcuts: () -> Unit = {},
 ) {
     val colors = Katty.colors
     Popup(popupPositionProvider = BelowEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
@@ -103,6 +104,10 @@ fun MainMenu(
                 Field(settings.colorScheme, "Terminal color scheme: ${settings.colorScheme}", onPickColorScheme) {
                     if (colorScheme != null) Swatches(colorScheme)
                 }
+            }
+            Separator()
+            Section("KEYBOARD") {
+                Field("Keyboard shortcuts…", "Edit the keyboard shortcuts", onEditShortcuts)
             }
             Separator()
             Section("FONT FAMILY") {

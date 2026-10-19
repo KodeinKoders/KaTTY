@@ -53,7 +53,8 @@ class MenuBuilder {
     private val entries = ArrayList<MenuEntry>()
 
     fun action(label: String, shortcut: String? = null, danger: Boolean = false, enabled: Boolean = true, hint: String? = null, onClick: () -> Unit) {
-        entries += MenuAction(label, shortcut, danger, enabled, hint, onClick)
+        // A shortcut that is unbound is an empty text: it is shown as none.
+        entries += MenuAction(label, shortcut?.takeIf { it.isNotEmpty() }, danger, enabled, hint, onClick)
     }
 
     fun divider() {

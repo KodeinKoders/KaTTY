@@ -12,6 +12,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class AppShortcutsTest {
+    @kotlin.test.AfterTest
+    fun restoreTheShortcuts() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private fun down(
         key: Key, meta: Boolean = true, shift: Boolean = false, alt: Boolean = false, ctrl: Boolean = false, type: KeyEventType = KeyEventType.KeyDown,
     ) = KeyEvent(key = key, type = type, isMetaPressed = meta, isShiftPressed = shift, isAltPressed = alt, isCtrlPressed = ctrl)
@@ -152,5 +157,39 @@ class AppShortcutsTest {
         assertEquals("⌘D", SplitLabels.of(vertical = true).downShortcut)
         assertEquals("⌘D", SplitLabels.of(vertical = false).rightShortcut)
         assertEquals("⌘⇧D", SplitLabels.of(vertical = false).downShortcut)
+    }
+
+    @Test
+    fun aShortcutThatWasReboundIsTheNewKeysAndNotTheOldOnes() {
+        Shortcuts.map = ShortcutMap.DEFAULT.with(AppShortcut.SPLIT_MAIN, KeyBinding(java.awt.event.KeyEvent.VK_E))
+
+        assertEquals(AppShortcut.SPLIT_MAIN, down(Key.E).appShortcut())
+        assertNull(down(Key.D).appShortcut(), "⌘D is not the split any more")
+        assertEquals(AppShortcut.SPLIT_OTHER, down(Key.D, shift = true).appShortcut(), "The other ones are as they were")
+        assertEquals("⌘E", AppShortcut.SPLIT_MAIN.label)
+    }
+
+    @Test
+    fun aShortcutThatWasUnboundIsNothingAndHasNoLabel() {
+        Shortcuts.map = ShortcutMap.DEFAULT.with(AppShortcut.FIND, null)
+
+        assertNull(down(Key.F).appShortcut())
+        assertEquals("", AppShortcut.FIND.label)
+    }
+
+    @Test
+    fun theKeysThatTookTheKeysOfAnotherShortcutAreThatShortcut() {
+        Shortcuts.map = ShortcutMap.DEFAULT.with(AppShortcut.SPLIT_MAIN, null).with(AppShortcut.FIND, KeyBinding(java.awt.event.KeyEvent.VK_D))
+
+        assertEquals(AppShortcut.FIND, down(Key.D).appShortcut())
+    }
+
+    @Test
+    fun aShortcutThatTakesDigitsFollowsItsModifiers() {
+        Shortcuts.map = ShortcutMap.DEFAULT.with(AppShortcut.PANE_NUMBER, KeyBinding(java.awt.event.KeyEvent.VK_1, ctrl = true))
+
+        assertEquals(AppShortcut.PANE_NUMBER, down(Key.Four, ctrl = true).appShortcut())
+        assertNull(down(Key.Four, alt = true).appShortcut(), "⌘⌥4 is not the pane any more")
+        assertEquals(4, down(Key.Four, ctrl = true).shortcutNumber())
     }
 }

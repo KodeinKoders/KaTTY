@@ -128,7 +128,9 @@ fun AttentionPopover(
     // The selected row stays in view: its place among the lazy items is after the line that says nobody needs the user, and the label of the finished.
     LaunchedEffect(selected) {
         val at = (if (attention.needsYou.isEmpty()) 1 else 0) + selected + (if (selected >= attention.needsYou.size && attention.finished.isNotEmpty()) 1 else 0)
-        if (listState.layoutInfo.visibleItemsInfo.none { it.index == at }) listState.animateScrollToItem(at)
+        // Once the list has been measured: before that nothing is visible, and the first row would be scrolled to the top over what is above it.
+        val visible = listState.layoutInfo.visibleItemsInfo
+        if (visible.isNotEmpty() && visible.none { it.index == at }) listState.animateScrollToItem(at)
     }
     Popup(popupPositionProvider = BelowEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         // Here and not outside: the content of a popup is composed after the one that holds it, and has the node that takes the focus.
@@ -173,7 +175,7 @@ fun AttentionPopover(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Jump to next waiting agent", Modifier.weight(1f), color = colors.muted, fontSize = 12.sp)
-                Shortcut(shortcutKeys(AppShortcut.JUMP_TO_WAITING.label))
+                AppShortcut.JUMP_TO_WAITING.label.takeIf { it.isNotEmpty() }?.let { Shortcut(shortcutKeys(it)) }
             }
         }
     }

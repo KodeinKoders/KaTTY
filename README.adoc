@@ -88,7 +88,10 @@ A program can put text in your clipboard, and cannot read it.
 == Keyboard shortcuts
 
 Everything in KaTTY can be done without the mouse.
-Every shortcut uses ⌘, which never reaches the programs in your terminals.
+The shortcuts below are the defaults: every one of them can be changed, removed or put back in the *keyboard shortcuts* window, from the main menu or the palette.
+There you choose a shortcut, press the keys that you want, and it applies at once.
+A shortcut has to include ⌘, which never reaches the programs in your terminals, and KaTTY refuses the keys that a terminal or the system needs (⌘C, ⌘V, ⌘A, ⌘Q, ⌘Tab…) and asks before it takes keys from another shortcut.
+The keys that a terminal handles itself are listed there too, and are fixed.
 Every shortcut is also a command of the palette (⌘K), which shows its keys, and so are many things that have no shortcut.
 Escape is never used by the window, except to close what is open in front of it (the palette, a dialog, a list): it belongs to the programs in your terminals.
 

@@ -135,6 +135,24 @@ class MainMenuTest {
     }
 
     @Test
+    fun theMenuOpensTheDialogOfTheShortcuts() = runComposeUiTest {
+        val opened = mutableListOf<String>()
+        setContent {
+            KattyTheme(dark = false) {
+                MainMenu(
+                    settings = settings, onChange = { change -> settings = change(settings) }, colorScheme = null, fontFamilies = emptyList(),
+                    onPickColorScheme = {}, onDismiss = {}, onEditShortcuts = { opened += "shortcuts" },
+                )
+            }
+        }
+
+        onNodeWithText("KEYBOARD").assertExists()
+        onNodeWithContentDescription("Edit the keyboard shortcuts").performClick()
+
+        assertEquals(listOf("shortcuts"), opened)
+    }
+
+    @Test
     fun theTextOfTheApplicationIsMadeBiggerAndSmallerOneSizeAtATime() = runComposeUiTest {
         show()
 

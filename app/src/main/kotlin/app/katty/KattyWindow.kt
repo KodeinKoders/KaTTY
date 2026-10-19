@@ -60,6 +60,7 @@ import app.katty.core.terminals
 import app.katty.screens.AgentBoard
 import app.katty.screens.AgentToast
 import app.katty.screens.CommandPalette
+import app.katty.screens.ShortcutsDialog
 import app.katty.screens.PaletteHandlers
 import app.katty.screens.splitVisually
 import app.katty.screens.paletteCommands
@@ -128,6 +129,7 @@ fun DecoratedWindowScope.KattyWindowContent(
     var menuOpen by remember { mutableStateOf(false) }
     var attentionOpen by remember { mutableStateOf(false) }
     var paletteOpen by remember { mutableStateOf(false) }
+    var editingShortcuts by remember { mutableStateOf(false) }
     // The terminal that is selected takes the keyboard back whenever this changes: when what had it (a palette, a menu, a rename) is gone, and when a
     // terminal is opened, even if it is the one that was selected.
     var focusTick by remember { mutableIntStateOf(0) }
@@ -391,6 +393,7 @@ fun DecoratedWindowScope.KattyWindowContent(
         scrollPageDown = { selectedSession()?.scrollPage(1) },
         scrollToTop = { selectedSession()?.scrollToTop() },
         scrollToBottom = { selectedSession()?.scrollToBottom() },
+        editShortcuts = { editingShortcuts = true },
         openAttention = { attentionOpen = true },
         uiBigger = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(1)) } },
         uiSmaller = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(-1)) } },
@@ -406,7 +409,7 @@ fun DecoratedWindowScope.KattyWindowContent(
 
     // What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons.
     val blockingDialog = picking != null || closingWorkspace != null || closingTerminal != null || removing != null
-    val overlayOpen = blockingDialog || paletteOpen || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null || renamingTerminal != null
+    val overlayOpen = blockingDialog || editingShortcuts || paletteOpen || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null || renamingTerminal != null
     LaunchedEffect(overlayOpen) { if (!overlayOpen) focusTick++ }
     // A rename that nothing draws would keep the terminals from the keyboard for good: the board shows no names, and the rail no field.
     LaunchedEffect(renamingWorkspace, renamingProject, settings.view, settings.sidebarCollapsed, vertical) {
@@ -420,6 +423,8 @@ fun DecoratedWindowScope.KattyWindowContent(
     }
     // The shortcuts of the window, on the window itself: they work whatever has the focus, and when nothing has it.
     val shortcutHandler: (KeyEvent) -> Boolean = handler@{ event ->
+        // The dialog where they are changed sees every key, the ones that are shortcuts too: they are what it records.
+        if (editingShortcuts) return@handler false
         val shortcut = event.appShortcut() ?: return@handler false
         if (blockingDialog || (menuOpen && shortcut != AppShortcut.MENU) || (attentionOpen && shortcut != AppShortcut.ATTENTION) || (paletteOpen && shortcut != AppShortcut.PALETTE)) return@handler true
         val terminal = state.selection.terminal
@@ -473,6 +478,9 @@ fun DecoratedWindowScope.KattyWindowContent(
         true
     }
     SideEffect { keys.handler = shortcutHandler }
+    // What the user bound the shortcuts to, for the whole application: what shows a label draws it again when that changes.
+    val shortcutMap = remember(settings.shortcuts) { ShortcutMap.of(settings.shortcuts) }
+    SideEffect { Shortcuts.map = shortcutMap }
 
     TitleBar {
         TitleBarContent(
@@ -508,6 +516,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                             fontFamilies = families,
                             onPickColorScheme = { menuOpen = false; picking = SchemeTarget.Default },
                             onDismiss = { menuOpen = false },
+                            onEditShortcuts = { menuOpen = false; editingShortcuts = true },
                         )
                     }
                 }
@@ -642,8 +651,15 @@ fun DecoratedWindowScope.KattyWindowContent(
             }
         }
 
+        if (editingShortcuts) {
+            ShortcutsDialog(
+                map = shortcutMap,
+                onChange = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
+                onClose = { editingShortcuts = false },
+            )
+        }
         if (paletteOpen) {
-            val commands = remember(state, infos, handles, vertical) {
+            val commands = remember(state, infos, handles, vertical, shortcutMap) {
                 // Whether something is selected is asked when the palette opens: that is when there is a choice to make.
                 paletteCommands(
                     state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers, vertical = vertical,

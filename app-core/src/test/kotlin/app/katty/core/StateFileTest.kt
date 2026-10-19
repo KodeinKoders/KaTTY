@@ -81,6 +81,22 @@ class StateFileTest {
     }
 
     @Test
+    fun theShortcutsThatWereChangedSurviveBeingWrittenAndReadAndAnOldFileHasNone() {
+        var n = 0
+        val store = KattyStore(newId = { "id${n++}" })
+        store.addProject("/dev/api")
+        store.updateSettings { it.copy(shortcuts = mapOf("SPLIT_MAIN" to "meta+shift:69", "FIND" to "none")) }
+        val state = store.state.value
+
+        file.save(state)
+
+        assertEquals(mapOf("SPLIT_MAIN" to "meta+shift:69", "FIND" to "none"), file.load().settings.shortcuts)
+        // A file that was written before the setting existed has none: every shortcut is its default.
+        path.writeText(path.readText().replace(Regex(",\\s*\"shortcuts\":\\s*\\{[^}]*\\}"), ""))
+        assertEquals(emptyMap(), file.load().settings.shortcuts)
+    }
+
+    @Test
     fun noFileIsAnEmptyState() {
         assertEquals(KattyState(), file.load())
     }

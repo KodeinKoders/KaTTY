@@ -175,7 +175,7 @@ class CommandPaletteTest {
         toggleSidebar = { calls += "sidebar" }, showView = { calls += "view $it" }, setLayout = { calls += "layout $it" }, setTheme = { calls += "theme $it" },
         jumpToWaiting = { calls += "jump" }, markAllSeen = { calls += "seen" }, openBoardWindow = { calls += "boardWindow" }, openTerminal = { calls += "terminal ${it.value}" },
         openWorkspace = { calls += "workspace ${it.value}" },
-        selectProject = { calls += "selectProject ${it.value}" }, moveTerminalTo = { calls += "move ${it.value}" },
+        editShortcuts = { calls += "editShortcuts" }, selectProject = { calls += "selectProject ${it.value}" }, moveTerminalTo = { calls += "move ${it.value}" },
     )
 
     private fun commands(infos: Map<TerminalId, AgentInfo> = emptyMap()) = paletteCommands(state, infos, titleOf = { it.name ?: "zsh" }, handlers = handlers)
@@ -256,6 +256,16 @@ class CommandPaletteTest {
         }
 
         assertEquals(listOf("workspace ${workspace.value}", "terminal ${terminal.value}", "splitRight", "view BOARD", "layout VERTICAL", "theme DARK"), calls)
+    }
+
+    @Test
+    fun theDialogOfTheShortcutsIsACommandThatHasNoShortcutOfItsOwn() {
+        store.addProject("/dev/api-gateway")
+        val entry = commands().entries.single { it.label == "Edit keyboard shortcuts…" }
+
+        assertEquals(null, entry.shortcut)
+        commands().run(entry)
+        assertEquals(listOf("editShortcuts"), calls)
     }
 
     @Test

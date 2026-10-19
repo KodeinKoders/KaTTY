@@ -88,6 +88,8 @@ class PaletteHandlers(
     val uiBigger: () -> Unit = {},
     val uiSmaller: () -> Unit = {},
     val uiReset: () -> Unit = {},
+    /** Opens the dialog where the shortcuts are changed. */
+    val editShortcuts: () -> Unit = {},
     /** Opens the main menu. */
     val openMenu: () -> Unit = {},
     /** Opens the list of the agents that need the user. */
@@ -153,7 +155,7 @@ fun paletteCommands(
     }
 
     fun command(key: String, label: String, shortcut: String? = null, action: () -> Unit) =
-        add(PaletteEntry("command:$key", PaletteGroup.COMMANDS, label, shortcut = shortcut), action)
+        add(PaletteEntry("command:$key", PaletteGroup.COMMANDS, label, shortcut = shortcut?.takeIf { it.isNotEmpty() }), action)
 
     val hasWorkspace = state.selectedWorkspace != null
     val hasTerminal = state.selection.terminal != null
@@ -234,6 +236,7 @@ fun paletteCommands(
     command("board-window", "Open the board in a window", action = handlers.openBoardWindow)
     command("sidebar", "Toggle project sidebar", AppShortcut.SIDEBAR.label, handlers.toggleSidebar)
     command("menu", "Open the main menu", AppShortcut.MENU.label, handlers.openMenu)
+    command("edit-shortcuts", "Edit keyboard shortcuts…", action = handlers.editShortcuts)
     command("default-color-scheme", "Choose the default color scheme…", action = handlers.defaultColorScheme)
     command("ligatures", if (state.settings.ligatures) "Turn font ligatures off" else "Turn font ligatures on", action = handlers.toggleLigatures)
     command("usage-refresh", "Refresh the usage of the agents", action = handlers.refreshUsage)

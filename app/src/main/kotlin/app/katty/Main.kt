@@ -41,6 +41,8 @@ fun main() {
     val directories = KattyDirectories.default()
     val file = StateFile(directories.stateFile)
     val store = KattyStore(file.load())
+    // What the user bound the shortcuts to is known before the first label is drawn.
+    Shortcuts.map = ShortcutMap.of(store.state.value.settings.shortcuts)
     // The window is where it was, unless that is on a screen that is gone.
     val windowFile = WindowFile(directories.windowFile)
     val geometry = windowFile.load().sanitized(screens())

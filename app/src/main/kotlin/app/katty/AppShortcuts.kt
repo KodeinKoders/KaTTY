@@ -8,157 +8,114 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.type
+import java.awt.event.KeyEvent as Awt
+
+// A binding with Command, which every shortcut of the window has, and the other modifiers that are asked for.
+private fun cmd(key: Int, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) = KeyBinding(key, meta = true, ctrl = ctrl, alt = alt, shift = shift)
 
 /**
  * The shortcuts of the window: all of them with Command, which a program in a terminal never sees. They are the single source of what the
- * menus and the palette show next to a command ([label]) and of what the window does when the keys are pressed ([appShortcut]).
+ * menus and the palette show next to a command ([label], which follows what the user bound it to) and of what the window does when the keys are
+ * pressed ([appShortcut]).
+ *
+ * @param group Where the dialog of the shortcuts lists it, and [title] what it calls it.
+ * @param defaults What it is bound to unless the user changed it: the first is what is shown, the others are keys that mean the same without being
+ * shown (the plus is the equal sign with Shift, and the numeric keypad has its own).
+ * @param takesDigit Whether it is the digits 1 to 9 that it is bound to, with the modifiers of its binding (a workspace, a pane by its number).
  */
-internal enum class AppShortcut(private val text: String) {
-    ADD_PROJECT("⌘O"),
-    NEW_WORKSPACE("⌘N"),
-    CLOSE_WORKSPACE("⌘⇧W"),
+internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val defaults: List<KeyBinding>, val takesDigit: Boolean = false) {
+    ADD_PROJECT(ShortcutGroup.PROJECTS, "Add a project folder", listOf(cmd(Awt.VK_O))),
+    NEW_WORKSPACE(ShortcutGroup.PROJECTS, "New workspace", listOf(cmd(Awt.VK_N))),
+    CLOSE_WORKSPACE(ShortcutGroup.PROJECTS, "Close the workspace", listOf(cmd(Awt.VK_W, shift = true))),
 
     /** Splits in the main direction of the layout: right in the horizontal one, down in the vertical one. */
-    SPLIT_MAIN("⌘D"),
+    SPLIT_MAIN(ShortcutGroup.PANES, "Split in the main direction of the layout", listOf(cmd(Awt.VK_D))),
 
     /** Splits across the main direction. */
-    SPLIT_OTHER("⌘⇧D"),
-    CLOSE_TERMINAL("⌘W"),
-    RESTART_TERMINAL("⌘R"),
-    JUMP_TO_WAITING("⌘⇧J"),
+    SPLIT_OTHER(ShortcutGroup.PANES, "Split across the main direction", listOf(cmd(Awt.VK_D, shift = true))),
+    CLOSE_TERMINAL(ShortcutGroup.PANES, "Close the terminal", listOf(cmd(Awt.VK_W))),
+    RESTART_TERMINAL(ShortcutGroup.PANES, "Restart the terminal", listOf(cmd(Awt.VK_R))),
+    JUMP_TO_WAITING(ShortcutGroup.AGENTS, "Jump to the next agent that waits", listOf(cmd(Awt.VK_J, shift = true))),
 
     /** Opens the list of the agents that need the user, and closes it. */
-    ATTENTION("⌘J"),
+    ATTENTION(ShortcutGroup.AGENTS, "Show the agents that need you", listOf(cmd(Awt.VK_J))),
 
     /** Shows the agent board in place of the terminals, and the terminals in place of the board. */
-    BOARD("⌘⇧B"),
+    BOARD(ShortcutGroup.AGENTS, "Switch between the board and the terminals", listOf(cmd(Awt.VK_B, shift = true))),
 
     /** Shows the sidebar of the projects, or folds it into the rail. */
-    SIDEBAR("⌘B"),
+    SIDEBAR(ShortcutGroup.AGENTS, "Show the project sidebar, or fold it", listOf(cmd(Awt.VK_B))),
 
     /** Maximizes the pane over its workspace, or puts it back. */
-    MAXIMIZE("⌘⇧↩"),
+    MAXIMIZE(ShortcutGroup.PANES, "Maximize the pane, or put it back", listOf(cmd(Awt.VK_ENTER, shift = true))),
 
     /** Move the nearest divider of the pane's splits that is along the arrow. */
-    RESIZE_LEFT("⌘⌃←"),
-    RESIZE_RIGHT("⌘⌃→"),
-    RESIZE_UP("⌘⌃↑"),
-    RESIZE_DOWN("⌘⌃↓"),
+    RESIZE_LEFT(ShortcutGroup.PANES, "Move the divider to the left", listOf(cmd(Awt.VK_LEFT, ctrl = true))),
+    RESIZE_RIGHT(ShortcutGroup.PANES, "Move the divider to the right", listOf(cmd(Awt.VK_RIGHT, ctrl = true))),
+    RESIZE_UP(ShortcutGroup.PANES, "Move the divider up", listOf(cmd(Awt.VK_UP, ctrl = true))),
+    RESIZE_DOWN(ShortcutGroup.PANES, "Move the divider down", listOf(cmd(Awt.VK_DOWN, ctrl = true))),
 
     /** The next and the previous match of the search that is open. */
-    FIND_NEXT("⌘G"),
-    FIND_PREVIOUS("⌘⇧G"),
-    FONT_BIGGER("⌘="),
-    FONT_SMALLER("⌘-"),
-    FONT_RESET("⌘0"),
+    FIND_NEXT(ShortcutGroup.TERMINAL, "Next match of the search", listOf(cmd(Awt.VK_G))),
+    FIND_PREVIOUS(ShortcutGroup.TERMINAL, "Previous match of the search", listOf(cmd(Awt.VK_G, shift = true))),
+    FONT_BIGGER(
+        ShortcutGroup.LOOK, "Bigger terminal font",
+        listOf(
+            cmd(Awt.VK_EQUALS), cmd(Awt.VK_EQUALS, shift = true), cmd(Awt.VK_PLUS), cmd(Awt.VK_PLUS, shift = true),
+            cmd(Awt.VK_ADD), cmd(Awt.VK_ADD, shift = true),
+        ),
+    ),
+    FONT_SMALLER(ShortcutGroup.LOOK, "Smaller terminal font", listOf(cmd(Awt.VK_MINUS), cmd(Awt.VK_SUBTRACT))),
+    FONT_RESET(ShortcutGroup.LOOK, "Default terminal font size", listOf(cmd(Awt.VK_0))),
 
     /** Opens the main menu, and closes it. */
-    MENU("⌘,"),
-    PALETTE("⌘K"),
-    FOCUS_LEFT("⌘⌥←"),
-    FOCUS_RIGHT("⌘⌥→"),
-    FOCUS_UP("⌘⌥↑"),
-    FOCUS_DOWN("⌘⌥↓"),
-    CLEAR_SCREEN("⌘L"),
-    FIND("⌘F"),
-    RENAME_TERMINAL("⌘F2"),
-    RENAME_WORKSPACE("⌘⇧F2"),
+    MENU(ShortcutGroup.LOOK, "Open the main menu", listOf(cmd(Awt.VK_COMMA))),
+    PALETTE(ShortcutGroup.LOOK, "Open the command palette", listOf(cmd(Awt.VK_K))),
+    FOCUS_LEFT(ShortcutGroup.PANES, "Focus the pane on the left", listOf(cmd(Awt.VK_LEFT, alt = true))),
+    FOCUS_RIGHT(ShortcutGroup.PANES, "Focus the pane on the right", listOf(cmd(Awt.VK_RIGHT, alt = true))),
+    FOCUS_UP(ShortcutGroup.PANES, "Focus the pane above", listOf(cmd(Awt.VK_UP, alt = true))),
+    FOCUS_DOWN(ShortcutGroup.PANES, "Focus the pane below", listOf(cmd(Awt.VK_DOWN, alt = true))),
+    CLEAR_SCREEN(ShortcutGroup.TERMINAL, "Clear the screen and the scrollback", listOf(cmd(Awt.VK_L))),
+    FIND(ShortcutGroup.TERMINAL, "Find in the terminal", listOf(cmd(Awt.VK_F))),
+    RENAME_TERMINAL(ShortcutGroup.PANES, "Rename the terminal", listOf(cmd(Awt.VK_F2))),
+    RENAME_WORKSPACE(ShortcutGroup.PROJECTS, "Rename the workspace", listOf(cmd(Awt.VK_F2, shift = true))),
 
     /** Previous workspace, in the layout that lists them from top to bottom (the sidebar). */
-    WORKSPACE_UP("⌘⌥⇧↑"),
-    WORKSPACE_DOWN("⌘⌥⇧↓"),
+    WORKSPACE_UP(ShortcutGroup.PROJECTS, "Previous workspace, when they are listed in a column", listOf(cmd(Awt.VK_UP, alt = true, shift = true))),
+    WORKSPACE_DOWN(ShortcutGroup.PROJECTS, "Next workspace, when they are listed in a column", listOf(cmd(Awt.VK_DOWN, alt = true, shift = true))),
 
     /** Previous and next workspace, in the layout that lists them from left to right (the tabs). */
-    WORKSPACE_LEFT("⌘⌥⇧←"),
-    WORKSPACE_RIGHT("⌘⌥⇧→"),
+    WORKSPACE_LEFT(ShortcutGroup.PROJECTS, "Previous workspace, when they are listed in a row", listOf(cmd(Awt.VK_LEFT, alt = true, shift = true))),
+    WORKSPACE_RIGHT(ShortcutGroup.PROJECTS, "Next workspace, when they are listed in a row", listOf(cmd(Awt.VK_RIGHT, alt = true, shift = true))),
 
     /** Previous and next workspace, whatever the layout. */
-    WORKSPACE_PREVIOUS("⌘⇧["),
-    WORKSPACE_NEXT("⌘⇧]"),
+    WORKSPACE_PREVIOUS(ShortcutGroup.PROJECTS, "Previous workspace", listOf(cmd(Awt.VK_OPEN_BRACKET, shift = true))),
+    WORKSPACE_NEXT(ShortcutGroup.PROJECTS, "Next workspace", listOf(cmd(Awt.VK_CLOSE_BRACKET, shift = true))),
 
     /** The workspace of the project that has the number of the key, 9 for the last one: see [shortcutNumber]. */
-    WORKSPACE_NUMBER("⌘1…9"),
+    WORKSPACE_NUMBER(ShortcutGroup.PROJECTS, "Workspace of the project by its number", listOf(cmd(Awt.VK_1)), takesDigit = true),
 
     /** The pane that has the number of the key, in the order they are drawn. */
-    PANE_NUMBER("⌘⌥1…9"),
+    PANE_NUMBER(ShortcutGroup.PANES, "Pane by its number", listOf(cmd(Awt.VK_1, alt = true)), takesDigit = true),
 
     /** The previous and the next project, wrapping around. */
-    PROJECT_PREVIOUS("⌘⌥["),
-    PROJECT_NEXT("⌘⌥]"),
+    PROJECT_PREVIOUS(ShortcutGroup.PROJECTS, "Previous project", listOf(cmd(Awt.VK_OPEN_BRACKET, alt = true))),
+    PROJECT_NEXT(ShortcutGroup.PROJECTS, "Next project", listOf(cmd(Awt.VK_CLOSE_BRACKET, alt = true))),
     ;
 
-    /** What is shown for it: the keys, as a Mac writes them. */
-    val label: String get() = text
+    /** What is shown for it: the keys, as a Mac writes them, as the user bound it; nothing when it is unbound. */
+    val label: String get() = Shortcuts.map.label(this)
 }
 
 /**
- * What [this] event is for the window, or `null` when it is not one of its shortcuts. Only a key going down with Command is one; with Option
- * only the arrows are (the neighbouring pane), and the ones with Shift are not the ones without it.
+ * What [this] event is for the window, or `null` when it is not one of its shortcuts: a key going down whose modifiers are exactly those of the
+ * binding of a shortcut (see [Shortcuts]).
  */
 internal fun KeyEvent.appShortcut(): AppShortcut? {
-    if (type != KeyEventType.KeyDown || !isMetaPressed) return null
-    if (isCtrlPressed) {
-        // Command and Control and an arrow: the nearest divider moves. Nothing else with Control is the window's (⌘⌃F is the system's full screen).
-        if (isShiftPressed || isAltPressed) return null
-        return when (key) {
-            Key.DirectionLeft -> AppShortcut.RESIZE_LEFT
-            Key.DirectionRight -> AppShortcut.RESIZE_RIGHT
-            Key.DirectionUp -> AppShortcut.RESIZE_UP
-            Key.DirectionDown -> AppShortcut.RESIZE_DOWN
-            else -> null
-        }
-    }
-    if (isAltPressed) {
-        // Command and Option and an arrow: the neighbouring pane. With Shift too, the previous or the next workspace.
-        if (isShiftPressed) {
-            return when (key) {
-                Key.DirectionLeft -> AppShortcut.WORKSPACE_LEFT
-                Key.DirectionRight -> AppShortcut.WORKSPACE_RIGHT
-                Key.DirectionUp -> AppShortcut.WORKSPACE_UP
-                Key.DirectionDown -> AppShortcut.WORKSPACE_DOWN
-                else -> null
-            }
-        }
-        return when (key) {
-            Key.DirectionLeft -> AppShortcut.FOCUS_LEFT
-            Key.DirectionRight -> AppShortcut.FOCUS_RIGHT
-            Key.DirectionUp -> AppShortcut.FOCUS_UP
-            Key.DirectionDown -> AppShortcut.FOCUS_DOWN
-            Key.LeftBracket -> AppShortcut.PROJECT_PREVIOUS
-            Key.RightBracket -> AppShortcut.PROJECT_NEXT
-            else -> if (shortcutNumber() != null) AppShortcut.PANE_NUMBER else null
-        }
-    }
-    return when {
-        key == Key.F2 -> if (isShiftPressed) AppShortcut.RENAME_WORKSPACE else AppShortcut.RENAME_TERMINAL
-        key == Key.O && !isShiftPressed -> AppShortcut.ADD_PROJECT
-        key == Key.N && !isShiftPressed -> AppShortcut.NEW_WORKSPACE
-        key == Key.W && isShiftPressed -> AppShortcut.CLOSE_WORKSPACE
-        key == Key.J && isShiftPressed -> AppShortcut.JUMP_TO_WAITING
-        key == Key.J -> AppShortcut.ATTENTION
-        (key == Key.Enter || key == Key.NumPadEnter) && isShiftPressed -> AppShortcut.MAXIMIZE
-        key == Key.G && isShiftPressed -> AppShortcut.FIND_PREVIOUS
-        key == Key.G -> AppShortcut.FIND_NEXT
-        // The plus is the key of the equal sign with Shift: either way it is bigger.
-        key == Key.Equals || key == Key.Plus || key == Key.NumPadAdd -> AppShortcut.FONT_BIGGER
-        (key == Key.Minus || key == Key.NumPadSubtract) && !isShiftPressed -> AppShortcut.FONT_SMALLER
-        key == Key.Zero && !isShiftPressed -> AppShortcut.FONT_RESET
-        key == Key.Comma && !isShiftPressed -> AppShortcut.MENU
-        key == Key.B && isShiftPressed -> AppShortcut.BOARD
-        key == Key.B -> AppShortcut.SIDEBAR
-        key == Key.K && !isShiftPressed -> AppShortcut.PALETTE
-        key == Key.W -> AppShortcut.CLOSE_TERMINAL
-        key == Key.R && !isShiftPressed -> AppShortcut.RESTART_TERMINAL
-        key == Key.L && !isShiftPressed -> AppShortcut.CLEAR_SCREEN
-        key == Key.F && !isShiftPressed -> AppShortcut.FIND
-        key == Key.LeftBracket && isShiftPressed -> AppShortcut.WORKSPACE_PREVIOUS
-        key == Key.RightBracket && isShiftPressed -> AppShortcut.WORKSPACE_NEXT
-        !isShiftPressed && shortcutNumber() != null -> AppShortcut.WORKSPACE_NUMBER
-        key == Key.D && isShiftPressed -> AppShortcut.SPLIT_OTHER
-        key == Key.D -> AppShortcut.SPLIT_MAIN
-        else -> null
-    }
+    if (type != KeyEventType.KeyDown) return null
+    return Shortcuts.map.lookup(key.nativeKeyCode, isMetaPressed, isCtrlPressed, isAltPressed, isShiftPressed)
 }
 
 /** The digit of the key of [this] event, from 1 to 9, or `null` when it is another key. */

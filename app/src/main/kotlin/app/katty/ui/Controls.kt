@@ -2,6 +2,12 @@
 
 package app.katty.ui
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -57,9 +63,29 @@ fun KattyIconButton(
 }
 
 /** What a tooltip says of a button: what it does, and the keys that do the same in parentheses, as macOS writes them. */
-internal fun tooltipText(description: String, shortcut: String?): String = if (shortcut == null) description else "$description ($shortcut)"
+internal fun tooltipText(description: String, shortcut: String?): String =
+    if (shortcut.isNullOrEmpty()) description else "$description ($shortcut)"
 
 private const val DISABLED_ICON_ALPHA = 0.4f
+
+/**
+ * A small button with a word on it, outlined: unlike Jewel's, whose height is fixed, it grows with its text, so that it is not cut when the text of
+ * the application is bigger. [description] is what a screen reader says (the word alone may not say what it does).
+ */
+@Composable
+fun KattyTextButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, description: String = label, enabled: Boolean = true) {
+    val colors = Katty.colors
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(5.dp)
+    androidx.compose.foundation.layout.Box(
+        modifier.heightIn(min = 26.dp).clip(shape).border(1.dp, colors.line, shape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description }
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Text(label, color = if (enabled) colors.text else colors.muted, fontSize = 12.sp, maxLines = 1)
+    }
+}
 
 /** One of the choices of a [Choice]. */
 class ChoiceOption<T>(val value: T, val label: String)

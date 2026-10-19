@@ -33,6 +33,8 @@ public enum class MainView {
  * @param colorScheme The name of the default color scheme of the terminals (a terminal can have its own).
  * @param fontFamily The family of the terminals' font; `null` for the bundled JetBrains Mono.
  * @param fontSize In pixels.
+ * @param shortcuts What the user changed of the shortcuts of the window, by the name of the shortcut and the keys written as the application writes
+ * them (`meta+shift:68`, or `none` for a shortcut that has been unbound): only what is not the default, so that a default that changes is followed.
  * @param uiScale How big the text of the application is, as a multiple of its usual size (not the terminals': they have [fontSize]); one of
  * [UI_SCALES].
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
@@ -47,6 +49,7 @@ public data class Settings(
     val fontFamily: String? = null,
     val fontSize: Float = DEFAULT_FONT_SIZE,
     val uiScale: Float = DEFAULT_UI_SCALE,
+    val shortcuts: Map<String, String> = emptyMap(),
     val ligatures: Boolean = true,
     val usageShown: Set<String> = setOf("claude", "codex", "antigravity"),
     val usageHidden: Set<String> = emptySet(),

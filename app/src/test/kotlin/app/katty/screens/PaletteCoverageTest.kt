@@ -1,6 +1,9 @@
 package app.katty.screens
 
 import app.katty.AppShortcut
+import app.katty.KeyBinding
+import app.katty.ShortcutMap
+import app.katty.Shortcuts
 import app.katty.TerminalKeys
 import app.katty.core.KattyStore
 import app.katty.core.PaletteEntry
@@ -63,6 +66,21 @@ class PaletteCoverageTest {
                 if (shortcut in covered) continue
                 assertTrue(shortcut.label in shortcuts, "$shortcut (${shortcut.label}) is not a command of the palette${if (vertical) " in the vertical layout" else ""}")
             }
+        }
+    }
+
+    @Test
+    fun theKeysThatTheUserBoundAreTheOnesThePaletteShows() {
+        built()
+        try {
+            Shortcuts.map = ShortcutMap.DEFAULT.with(AppShortcut.SPLIT_MAIN, KeyBinding(java.awt.event.KeyEvent.VK_E)).with(AppShortcut.FIND, null)
+
+            val commands = commands().entries.filter { it.group == PaletteGroup.COMMANDS }
+
+            assertEquals("⌘E", commands.single { it.label == "Split right" }.shortcut)
+            assertEquals(null, commands.single { it.label == "Find in terminal" }.shortcut, "A shortcut that was unbound shows none")
+        } finally {
+            Shortcuts.map = ShortcutMap.DEFAULT
         }
     }
 
