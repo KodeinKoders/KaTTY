@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -22,16 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isAltPressed
-import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import app.katty.core.usageKey
 import app.katty.core.AgentState
@@ -43,6 +37,8 @@ import app.katty.core.CloseDecision
 import app.katty.core.Direction
 import app.katty.core.KattyDirectories
 import app.katty.core.UsageService
+import app.katty.core.Settings
+import app.katty.core.splitToNudge
 import app.katty.core.usageSources
 import app.katty.core.KattyStore
 import app.katty.core.MainView
@@ -120,6 +116,7 @@ fun DecoratedWindowScope.KattyWindowContent(
     directories: KattyDirectories,
     bridge: WindowBridge = WindowBridge(),
     onOpenBoardWindow: () -> Unit = {},
+    keys: WindowKeys = WindowKeys(),
 ) {
     val state by store.state.collectAsState()
     val settings = state.settings
@@ -131,6 +128,9 @@ fun DecoratedWindowScope.KattyWindowContent(
     var menuOpen by remember { mutableStateOf(false) }
     var attentionOpen by remember { mutableStateOf(false) }
     var paletteOpen by remember { mutableStateOf(false) }
+    // The terminal that is selected takes the keyboard back whenever this changes: when what had it (a palette, a menu, a rename) is gone, and when a
+    // terminal is opened, even if it is the one that was selected.
+    var focusTick by remember { mutableIntStateOf(0) }
     // The project that the board shows, `null` for every project.
     var boardFilter by remember { mutableStateOf<ProjectId?>(null) }
     var toast by remember { mutableStateOf<AttentionItem?>(null) }
@@ -203,18 +203,33 @@ fun DecoratedWindowScope.KattyWindowContent(
     val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
     LaunchedEffect(shown, handles.keys) { registry.setVisible(shown) }
 
+    // What shows a rename of a workspace is the sidebar (not folded into the rail) or the tabs, over the terminals and not the board: when it is
+    // not there, nothing could end the rename, and the terminals would not get the keyboard back.
+    val showWorkspaceHost = {
+        val current = store.state.value.settings
+        if (current.view != MainView.TERMINALS || (!vertical && current.sidebarCollapsed)) {
+            store.updateSettings { it.copy(view = MainView.TERMINALS, sidebarCollapsed = if (vertical) it.sidebarCollapsed else false) }
+        }
+    }
+    val showTerminals = {
+        if (store.state.value.settings.view != MainView.TERMINALS) store.updateSettings { it.copy(view = MainView.TERMINALS) }
+    }
     val addProject = {
         val folder = chooseFolder(window, "Add project folder", state.selectedProject?.directory)
         if (folder != null) {
             val before = state.projects.size
             store.addProject(folder)
             // A project that is new has a workspace with its default name, which opens for editing as a new workspace does.
-            if (store.state.value.projects.size > before) renamingWorkspace = store.state.value.selection.workspace
+            if (store.state.value.projects.size > before) {
+                showWorkspaceHost()
+                renamingWorkspace = store.state.value.selection.workspace
+            }
         }
         Unit
     }
     val newWorkspace = {
         state.selection.project?.let { project ->
+            showWorkspaceHost()
             renamingWorkspace = store.addWorkspace(project)
         }
         Unit
@@ -234,6 +249,7 @@ fun DecoratedWindowScope.KattyWindowContent(
         state.locate(id)?.project?.id?.let { store.setProjectOpen(it, true) }
         attentionOpen = false
         toast = null
+        focusTick++
     }
     // A card that is clicked in the board window: its terminal is selected here, and this window comes to the front.
     LaunchedEffect(bridge) {
@@ -249,6 +265,23 @@ fun DecoratedWindowScope.KattyWindowContent(
         bridge.focusMain.collect {
             window.toFront()
             window.requestFocus()
+        }
+    }
+    // Goes to a workspace, whatever the window is showing, and gives the keyboard to its terminal.
+    val goToWorkspace: (WorkspaceId) -> Unit = { id ->
+        store.selectWorkspace(id)
+        if (store.state.value.settings.view != MainView.TERMINALS) store.updateSettings { it.copy(view = MainView.TERMINALS) }
+        focusTick++
+    }
+    // The state of the store, not the one of the last drawing: keys that repeat come faster than that.
+    val stepWorkspace: (Int) -> Unit = { delta -> store.state.value.workspaceStep(delta)?.let(goToWorkspace) }
+    // The nearest divider of the focused pane that the arrow goes along moves one step: as the screen shows the splits, turned in the vertical layout.
+    val resizeSplit: (Direction) -> Unit = { direction ->
+        val current = store.state.value
+        val workspace = current.selectedWorkspace
+        val from = current.selection.terminal
+        if (workspace != null && from != null) {
+            workspace.layout.splitToNudge(from, direction, SPLIT_STEP, vertical)?.let { (split, ratio) -> store.setSplitRatio(workspace.id, split, ratio) }
         }
     }
     val jumpToWaiting = { attention.nextWaiting(state, state.selection.terminal)?.let(openTerminal); Unit }
@@ -272,15 +305,15 @@ fun DecoratedWindowScope.KattyWindowContent(
     val paletteHandlers = PaletteHandlers(
         addProject = addProject,
         newWorkspace = newWorkspace,
-        renameWorkspace = { renamingWorkspace = state.selection.workspace },
+        renameWorkspace = { showWorkspaceHost(); renamingWorkspace = state.selection.workspace },
         closeWorkspace = { state.selection.workspace?.let(closeWorkspace) },
         splitRight = { state.selection.terminal?.let { store.splitVisually(it, right = true, flipped = vertical) } },
         splitDown = { state.selection.terminal?.let { store.splitVisually(it, right = false, flipped = vertical) } },
-        renameTerminal = { renamingTerminal = state.selection.terminal },
+        renameTerminal = { showTerminals(); renamingTerminal = state.selection.terminal },
         closeTerminal = { state.selection.terminal?.let(closeTerminal) },
         restartTerminal = { state.selection.terminal?.let(registry::restart) },
         find = { findingTerminal = state.selection.terminal },
-        clearScrollback = { state.selection.terminal?.let { handles[it]?.session?.clearScrollback() } },
+        clearScreen = { state.selection.terminal?.let { handles[it]?.session?.clearScreen() } },
         maximize = { store.maximize(if (state.selection.maximized == null) state.selection.terminal else null) },
         colorScheme = { state.selection.terminal?.let { picking = SchemeTarget.Terminal(it) } },
         toggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
@@ -291,11 +324,43 @@ fun DecoratedWindowScope.KattyWindowContent(
         markAllSeen = tracker::markAllSeen,
         openBoardWindow = onOpenBoardWindow,
         openTerminal = openTerminal,
-        openWorkspace = { id ->
-            state.projects.firstOrNull { p -> p.workspaces.any { it.id == id } }?.let { store.selectProject(it.id) }
-            store.selectWorkspace(id)
-            store.updateSettings { it.copy(view = MainView.TERMINALS) }
+        openWorkspace = goToWorkspace,
+        selectProject = { id ->
+            store.selectProject(id)
+            store.setProjectOpen(id, true)
+            showTerminals()
+            focusTick++
         },
+        renameProject = { showWorkspaceHost(); renamingProject = state.selection.project },
+        removeProject = { removing = state.selection.project },
+        revealProject = { state.selectedProject?.directory?.let(::revealInFileManager) },
+        moveProject = { delta ->
+            val projects = state.projects
+            val from = projects.indexOfFirst { it.id == state.selection.project }
+            if (from >= 0) store.moveProject(projects[from].id, (from + delta).coerceIn(projects.indices))
+        },
+        moveWorkspace = { delta ->
+            val workspaces = state.selectedProject?.workspaces.orEmpty()
+            val from = workspaces.indexOfFirst { it.id == state.selection.workspace }
+            if (from >= 0) store.moveWorkspace(workspaces[from].id, (from + delta).coerceIn(workspaces.indices))
+        },
+        moveTerminalTo = { workspace -> state.selection.terminal?.let { store.moveTerminal(it, workspace) } },
+        useProcessName = { state.selection.terminal?.let { store.renameTerminal(it, null) } },
+        copyDirectory = { state.selection.terminal?.let { id -> state.locate(id)?.terminal?.directory?.let(::copyToClipboard) } },
+        defaultColorScheme = { picking = SchemeTarget.Default },
+        toggleLigatures = { store.updateSettings { it.copy(ligatures = !it.ligatures) } },
+        refreshUsage = usage::refreshNow,
+        toggleCompactUsage = { setCompact(!settings.compactUsage) },
+        openAttention = { attentionOpen = true },
+        uiBigger = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(1)) } },
+        uiSmaller = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(-1)) } },
+        uiReset = { store.updateSettings { it.copy(uiScale = Settings.DEFAULT_UI_SCALE) } },
+        fontBigger = { store.updateSettings { it.copy(fontSize = it.fontSize + FONT_STEP) } },
+        fontSmaller = { store.updateSettings { it.copy(fontSize = it.fontSize - FONT_STEP) } },
+        fontReset = { store.updateSettings { it.copy(fontSize = Settings.DEFAULT_FONT_SIZE) } },
+        openMenu = { menuOpen = true },
+        previousWorkspace = { stepWorkspace(-1) },
+        nextWorkspace = { stepWorkspace(1) },
     )
     val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
     // The vertical layout draws every split turned.
@@ -306,6 +371,74 @@ fun DecoratedWindowScope.KattyWindowContent(
         if (workspace != null && from != null) workspace.layout.neighbour(from, direction, flipped)?.let(store::focus)
         Unit
     }
+
+    // What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons.
+    val blockingDialog = picking != null || closingWorkspace != null || closingTerminal != null || removing != null
+    val overlayOpen = blockingDialog || paletteOpen || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null || renamingTerminal != null
+    LaunchedEffect(overlayOpen) { if (!overlayOpen) focusTick++ }
+    // A rename that nothing draws would keep the terminals from the keyboard for good: the board shows no names, and the rail no field.
+    LaunchedEffect(renamingWorkspace, renamingProject, settings.view, settings.sidebarCollapsed, vertical) {
+        val current = store.state.value.settings
+        val shown = current.view == MainView.TERMINALS && (vertical || !current.sidebarCollapsed)
+        if (renamingWorkspace != null && !shown) renamingWorkspace = null
+        if (renamingProject != null && !shown) renamingProject = null
+    }
+    LaunchedEffect(renamingTerminal, settings.view) {
+        if (renamingTerminal != null && store.state.value.settings.view != MainView.TERMINALS) renamingTerminal = null
+    }
+    // The shortcuts of the window, on the window itself: they work whatever has the focus, and when nothing has it.
+    val shortcutHandler: (KeyEvent) -> Boolean = handler@{ event ->
+        val shortcut = event.appShortcut() ?: return@handler false
+        if (blockingDialog || (menuOpen && shortcut != AppShortcut.MENU) || (attentionOpen && shortcut != AppShortcut.ATTENTION) || (paletteOpen && shortcut != AppShortcut.PALETTE)) return@handler true
+        val terminal = state.selection.terminal
+        // What acts on a terminal is for the terminals, not for the board, which shows none.
+        val onTerminals = settings.view == MainView.TERMINALS
+        when (shortcut) {
+            AppShortcut.ADD_PROJECT -> addProject()
+            AppShortcut.NEW_WORKSPACE -> newWorkspace()
+            AppShortcut.CLOSE_WORKSPACE -> closeSelectedWorkspace()
+            AppShortcut.SPLIT_MAIN -> if (onTerminals) terminal?.let { store.split(it, SplitDirection.ROW) }
+            AppShortcut.SPLIT_OTHER -> if (onTerminals) terminal?.let { store.split(it, SplitDirection.COLUMN) }
+            AppShortcut.CLOSE_TERMINAL -> if (onTerminals) terminal?.let(closeTerminal)
+            AppShortcut.RESTART_TERMINAL -> if (onTerminals) terminal?.let(registry::restart)
+            AppShortcut.JUMP_TO_WAITING -> jumpToWaiting()
+            AppShortcut.ATTENTION -> attentionOpen = !attentionOpen
+            AppShortcut.MAXIMIZE -> if (onTerminals) terminal?.let { store.maximize(if (state.selection.maximized == null) it else null) }
+            AppShortcut.RESIZE_LEFT -> if (onTerminals) resizeSplit(Direction.LEFT)
+            AppShortcut.RESIZE_RIGHT -> if (onTerminals) resizeSplit(Direction.RIGHT)
+            AppShortcut.RESIZE_UP -> if (onTerminals) resizeSplit(Direction.UP)
+            AppShortcut.RESIZE_DOWN -> if (onTerminals) resizeSplit(Direction.DOWN)
+            AppShortcut.FIND_NEXT -> findingTerminal?.let { handles[it]?.session?.search?.next() }
+            AppShortcut.FIND_PREVIOUS -> findingTerminal?.let { handles[it]?.session?.search?.previous() }
+            AppShortcut.FONT_BIGGER -> store.updateSettings { it.copy(fontSize = it.fontSize + FONT_STEP) }
+            AppShortcut.FONT_SMALLER -> store.updateSettings { it.copy(fontSize = it.fontSize - FONT_STEP) }
+            AppShortcut.FONT_RESET -> store.updateSettings { it.copy(fontSize = Settings.DEFAULT_FONT_SIZE) }
+            AppShortcut.MENU -> menuOpen = !menuOpen
+            AppShortcut.BOARD -> store.updateSettings { it.copy(view = if (it.view == MainView.BOARD) MainView.TERMINALS else MainView.BOARD) }
+            // The vertical layout has no sidebar, and the board has its own.
+            AppShortcut.SIDEBAR -> if (!vertical && onTerminals) store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) }
+            AppShortcut.PALETTE -> paletteOpen = !paletteOpen
+            AppShortcut.FOCUS_LEFT -> if (onTerminals) focusNeighbour(Direction.LEFT)
+            AppShortcut.FOCUS_RIGHT -> if (onTerminals) focusNeighbour(Direction.RIGHT)
+            AppShortcut.FOCUS_UP -> if (onTerminals) focusNeighbour(Direction.UP)
+            AppShortcut.FOCUS_DOWN -> if (onTerminals) focusNeighbour(Direction.DOWN)
+            AppShortcut.CLEAR_SCREEN -> if (onTerminals) terminal?.let { handles[it]?.session?.clearScreen() }
+            AppShortcut.FIND -> if (onTerminals) findingTerminal = terminal
+            AppShortcut.RENAME_TERMINAL -> if (terminal != null) { showTerminals(); renamingTerminal = terminal }
+            AppShortcut.RENAME_WORKSPACE -> state.selection.workspace?.let { showWorkspaceHost(); renamingWorkspace = it }
+            // The workspaces are listed in a column by the sidebar and in a row by the tabs: the arrows that go along the list are the ones that count.
+            AppShortcut.WORKSPACE_UP -> if (!vertical) stepWorkspace(-1)
+            AppShortcut.WORKSPACE_DOWN -> if (!vertical) stepWorkspace(1)
+            AppShortcut.WORKSPACE_LEFT -> if (vertical) stepWorkspace(-1)
+            AppShortcut.WORKSPACE_RIGHT -> if (vertical) stepWorkspace(1)
+            AppShortcut.WORKSPACE_PREVIOUS -> stepWorkspace(-1)
+            AppShortcut.WORKSPACE_NEXT -> stepWorkspace(1)
+            AppShortcut.WORKSPACE_NUMBER -> event.shortcutNumber()?.let { number -> store.state.value.workspaceByNumber(number)?.let(goToWorkspace) }
+            AppShortcut.PANE_NUMBER -> event.shortcutNumber()?.let { number -> store.state.value.terminalByNumber(number)?.let(openTerminal) }
+        }
+        true
+    }
+    SideEffect { keys.handler = shortcutHandler }
 
     TitleBar {
         TitleBarContent(
@@ -332,7 +465,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                     }
                 }
                 Box {
-                    KattyIconButton(KattyIcons.Menu, "Main menu", { menuOpen = !menuOpen })
+                    KattyIconButton(KattyIcons.Menu, "Main menu", { menuOpen = !menuOpen }, shortcut = AppShortcut.MENU.label)
                     if (menuOpen) {
                         MainMenu(
                             settings = settings,
@@ -348,28 +481,7 @@ fun DecoratedWindowScope.KattyWindowContent(
         )
     }
 
-    Box(
-        Modifier.fillMaxSize().background(Katty.colors.bg).onPreviewKeyEvent { event ->
-            val shortcut = event.windowShortcut() ?: return@onPreviewKeyEvent false
-            val terminal = state.selection.terminal
-            when (shortcut) {
-                WindowShortcut.ADD_PROJECT -> addProject()
-                WindowShortcut.NEW_WORKSPACE -> newWorkspace()
-                WindowShortcut.CLOSE_WORKSPACE -> closeSelectedWorkspace()
-                WindowShortcut.SPLIT_RIGHT -> terminal?.let { store.splitVisually(it, right = true, flipped = vertical) }
-                WindowShortcut.SPLIT_DOWN -> terminal?.let { store.splitVisually(it, right = false, flipped = vertical) }
-                WindowShortcut.CLOSE_TERMINAL -> terminal?.let(closeTerminal)
-                WindowShortcut.RESTART_TERMINAL -> terminal?.let(registry::restart)
-                WindowShortcut.JUMP_TO_WAITING -> jumpToWaiting()
-                WindowShortcut.PALETTE -> paletteOpen = !paletteOpen
-                WindowShortcut.FOCUS_LEFT -> focusNeighbour(Direction.LEFT)
-                WindowShortcut.FOCUS_RIGHT -> focusNeighbour(Direction.RIGHT)
-                WindowShortcut.FOCUS_UP -> focusNeighbour(Direction.UP)
-                WindowShortcut.FOCUS_DOWN -> focusNeighbour(Direction.DOWN)
-            }
-            true
-        },
-    ) {
+    Box(Modifier.fillMaxSize().background(Katty.colors.bg)) {
         if (state.projects.isEmpty()) {
             Welcome(onAddProject = addProject, detected = { DetectedAgents(detected) })
         } else {
@@ -385,7 +497,8 @@ fun DecoratedWindowScope.KattyWindowContent(
                         settings = settings,
                         store = store,
                         flipped = flipped,
-                        focusTerminals = renamingWorkspace == null && removing == null && closingWorkspace == null && closingTerminal == null && renamingTerminal == null && picking == null,
+                        focusTerminals = !overlayOpen,
+                        focusTick = focusTick,
                         actions = PaneActions(
                             renaming = renamingTerminal,
                             onRename = { renamingTerminal = it },
@@ -494,8 +607,8 @@ fun DecoratedWindowScope.KattyWindowContent(
         }
 
         if (paletteOpen) {
-            val commands = remember(state, infos, handles) {
-                paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers)
+            val commands = remember(state, infos, handles, vertical) {
+                paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers, vertical = vertical)
             }
             CommandPalette(commands.entries, onRun = { entry -> paletteOpen = false; commands.run(entry) }, onDismiss = { paletteOpen = false })
         }
@@ -556,43 +669,16 @@ fun DecoratedWindowScope.KattyWindowContent(
 /** How long a notice stays. */
 private const val TOAST_MS = 6_000L
 
+/** How much of a split a press of the resize shortcut moves, and how much the font grows or shrinks for one of the zoom ones. */
+private const val SPLIT_STEP = 0.05f
+private const val FONT_STEP = 1f
+
 /** Whose color scheme the picker chooses. */
 private sealed interface SchemeTarget {
     /** The default of the settings, which the terminals that have no scheme of their own follow. */
     data object Default : SchemeTarget
 
     data class Terminal(val id: TerminalId) : SchemeTarget
-}
-
-/** The window's own shortcuts, which the terminal does not see. */
-private enum class WindowShortcut {
-    ADD_PROJECT, NEW_WORKSPACE, CLOSE_WORKSPACE, SPLIT_RIGHT, SPLIT_DOWN, CLOSE_TERMINAL, RESTART_TERMINAL, JUMP_TO_WAITING, PALETTE, FOCUS_LEFT, FOCUS_RIGHT, FOCUS_UP, FOCUS_DOWN,
-}
-
-private fun KeyEvent.windowShortcut(): WindowShortcut? {
-    if (type != KeyEventType.KeyDown || !isMetaPressed) return null
-    if (isAltPressed) {
-        // Command and Option and an arrow: the neighbouring pane.
-        return when (key) {
-            Key.DirectionLeft -> WindowShortcut.FOCUS_LEFT
-            Key.DirectionRight -> WindowShortcut.FOCUS_RIGHT
-            Key.DirectionUp -> WindowShortcut.FOCUS_UP
-            Key.DirectionDown -> WindowShortcut.FOCUS_DOWN
-            else -> null
-        }
-    }
-    return when {
-        key == Key.O && !isShiftPressed -> WindowShortcut.ADD_PROJECT
-        key == Key.N && !isShiftPressed -> WindowShortcut.NEW_WORKSPACE
-        key == Key.W && isShiftPressed -> WindowShortcut.CLOSE_WORKSPACE
-        key == Key.J && isShiftPressed -> WindowShortcut.JUMP_TO_WAITING
-        key == Key.K && !isShiftPressed -> WindowShortcut.PALETTE
-        key == Key.W -> WindowShortcut.CLOSE_TERMINAL
-        key == Key.R && !isShiftPressed -> WindowShortcut.RESTART_TERMINAL
-        key == Key.D && isShiftPressed -> WindowShortcut.SPLIT_DOWN
-        key == Key.D -> WindowShortcut.SPLIT_RIGHT
-        else -> null
-    }
 }
 
 /** What a project without workspaces shows. */

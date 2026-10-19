@@ -859,6 +859,36 @@ public class TerminalSession private constructor(
         frameRequests.trySend(Unit)
     }
 
+    /**
+     * Clears the screen as well as the history, for the user who wants to start from a clean terminal (what ⌘K does in Terminal and iTerm2, and
+     * Ghostty's `clear_screen`):
+     * * at the prompt of a shell that marks its prompts (see `shellIntegration` of [start]) the screen and the history are erased, and Control-L is
+     * sent so that the shell draws its prompt, and what was typed on it, again at the top;
+     * * while a program runs, the history and the rows above the cursor are erased and the rest of the screen is the program's, who is not told;
+     * * on the alternate screen (an editor, a pager) nothing is done: it is the program's, and it has no history.
+     */
+    public fun clearScreen() {
+        val atPrompt = lock.withLock {
+            if (closed.get() || terminal.activeScreen == GhosttyScreen.ALTERNATE) return
+            selectionGesture.reset()
+            unselect()
+            if (inputActive) {
+                terminal.vtWrite("\u001b[H\u001b[2J\u001b[3J")
+            } else {
+                // The cursor is saved and put back: it is where the program expects it.
+                val erase = StringBuilder("\u001b7\u001b[3J")
+                for (row in 1..terminal.cursorRow) erase.append("\u001b[$row;1H\u001b[2K")
+                erase.append("\u001b8")
+                terminal.vtWrite(erase.toString())
+            }
+            snapToBottom()
+            publishAfterWrite()
+            inputActive
+        }
+        frameRequests.trySend(Unit)
+        if (atPrompt) outgoing.put(byteArrayOf(CONTROL_L))
+    }
+
     // Under the lock.
     private fun unselect() {
         if (!hasSelection) return
@@ -1631,6 +1661,9 @@ public class TerminalSession private constructor(
         // terminal, busy: more frames than a display shows are of no use.
         private val MIN_FRAME_INTERVAL = 1.seconds / 60
         private val TYPE_WITHOUT_MARKS_DELAY = 1.seconds
+
+        // What a shell takes as "clear the screen and draw the prompt again".
+        private const val CONTROL_L: Byte = 0x0C
 
         // A frame is made once the program has been silent for this long, or after SETTLE_MAX anyway. The writes
         // of a redraw are 0.02 to 0.7 ms apart when zsh draws its completion menu, and the margin is for the

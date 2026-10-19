@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
 import app.katty.core.usageKey
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -181,7 +182,7 @@ fun UsageChooser(
     val colors = Katty.colors
     Popup(popupPositionProvider = AboveEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
-            Modifier.width(248.dp).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
+            Modifier.width(248.dp * uiScaleFactor()).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
                 .border(1.dp, colors.line, RoundedCornerShape(8.dp)).heightIn(max = 460.dp).verticalScroll(rememberScrollState()).padding(6.dp)
                 .semantics { contentDescription = "Agents to show" },
         ) {

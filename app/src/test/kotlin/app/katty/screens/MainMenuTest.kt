@@ -49,6 +49,8 @@ class MainMenuTest {
         onNodeWithText("LAYOUT").assertExists()
         onNodeWithText("Auto uses Vertical when the window is taller than it is wide.").assertExists()
         onNodeWithText("THEME").assertExists()
+        onNodeWithText("INTERFACE TEXT SIZE").assertExists()
+        onNodeWithText("100%").assertExists()
         onNodeWithText("TERMINAL COLOR SCHEME").assertExists()
         onNodeWithText("FONT FAMILY").assertExists()
         onNodeWithText("Font ligatures").assertExists()
@@ -130,6 +132,36 @@ class MainMenuTest {
         assertEquals("12.5 px", formatSize(12.5f))
         assertEquals("13 px", formatSize(13f))
         assertEquals("8 px", formatSize(8f))
+    }
+
+    @Test
+    fun theTextOfTheApplicationIsMadeBiggerAndSmallerOneSizeAtATime() = runComposeUiTest {
+        show()
+
+        onNodeWithContentDescription("Increase interface text size").performClick()
+        assertEquals(1.1f, settings.uiScale)
+        onNodeWithText("110%").assertExists()
+        onNodeWithContentDescription("Increase interface text size").performClick()
+        assertEquals(1.25f, settings.uiScale)
+        onNodeWithContentDescription("Decrease interface text size").performClick()
+        onNodeWithContentDescription("Decrease interface text size").performClick()
+        onNodeWithContentDescription("Decrease interface text size").performClick()
+        assertEquals(0.9f, settings.uiScale)
+        // The terminals' own font is another setting, and does not change with it.
+        assertEquals(14f, settings.fontSize)
+    }
+
+    @Test
+    fun theStepperStopsAtTheBiggestAndTheSmallestSize() = runComposeUiTest {
+        settings = Settings(uiScale = Settings.UI_SCALES.last())
+        show()
+
+        onNodeWithContentDescription("Increase interface text size").performClick()
+        assertEquals(Settings.UI_SCALES.last(), settings.uiScale)
+        settings = Settings(uiScale = Settings.UI_SCALES.first())
+        waitForIdle()
+        onNodeWithContentDescription("Decrease interface text size").performClick()
+        assertEquals(Settings.UI_SCALES.first(), settings.uiScale)
     }
 }
 

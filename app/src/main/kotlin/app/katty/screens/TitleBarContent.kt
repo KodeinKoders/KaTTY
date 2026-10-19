@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.AppShortcut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -36,7 +37,7 @@ fun TitleBarScope.TitleBarContent(
 ) {
     val colors = Katty.colors
     Row(Modifier.align(Alignment.Start).padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (showSidebarToggle) KattyIconButton(KattyIcons.SidebarToggle, "Toggle project sidebar", onToggleSidebar)
+        if (showSidebarToggle) KattyIconButton(KattyIcons.SidebarToggle, "Toggle project sidebar", onToggleSidebar, shortcut = AppShortcut.SIDEBAR.label)
         val project = state.selectedProject
         if (view == MainView.BOARD) {
             OneLine(boardTitle, color = colors.text)

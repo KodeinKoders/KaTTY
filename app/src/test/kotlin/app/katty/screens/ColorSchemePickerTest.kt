@@ -2,7 +2,12 @@
 
 package app.katty.screens
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -55,6 +60,65 @@ class ColorSchemePickerTest {
         onNodeWithContentDescription("Solarized Light").performClick()
 
         assertEquals(listOf<String?>("Solarized Light"), chosen)
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.press(key: Key) {
+        onNode(hasSetTextAction()).performKeyInput { pressKey(key) }
+    }
+
+    @Test
+    fun theArrowsChooseTheNextAndThePreviousSchemeAtOnceAndGoRoundTheList() = runComposeUiTest {
+        var chosen by androidx.compose.runtime.mutableStateOf<String?>("Dracula")
+        setContent { KattyTheme(false) { ColorSchemePicker(entries, selected = chosen, onSelect = { chosen = it }, onClose = {}) } }
+        waitForIdle()
+
+        press(Key.DirectionDown)
+        assertEquals("Solarized Dark", chosen)
+        press(Key.DirectionDown)
+        assertEquals("Solarized Light", chosen)
+        press(Key.DirectionUp)
+        press(Key.DirectionUp)
+        assertEquals("Dracula", chosen)
+        press(Key.DirectionUp)
+        assertEquals("Atom One Light", chosen, "Up from the first goes to the last")
+    }
+
+    @Test
+    fun theDefaultIsTheRowBeforeTheFirstSchemeWhenThereIsOne() = runComposeUiTest {
+        var chosen by androidx.compose.runtime.mutableStateOf<String?>("Dracula")
+        setContent { KattyTheme(false) { ColorSchemePicker(entries, selected = chosen, onSelect = { chosen = it }, onClose = {}, defaultName = "Dracula") } }
+        waitForIdle()
+
+        press(Key.DirectionUp)
+        assertEquals(null, chosen, "The default")
+        press(Key.DirectionDown)
+        assertEquals("Dracula", chosen)
+    }
+
+    @Test
+    fun theArrowsOnlyGoThroughTheSchemesThatMatchTheSearch() = runComposeUiTest {
+        var chosen by androidx.compose.runtime.mutableStateOf<String?>("Dracula")
+        setContent { KattyTheme(false) { ColorSchemePicker(entries, selected = chosen, onSelect = { chosen = it }, onClose = {}) } }
+        onNode(hasSetTextAction()).performTextInput("light")
+        waitForIdle()
+
+        // Nothing that matches is chosen yet, so down is the first one that does, and the next one is the one after it.
+        press(Key.DirectionDown)
+        assertEquals("Solarized Light", chosen)
+        press(Key.DirectionDown)
+        assertEquals("Atom One Light", chosen)
+    }
+
+    @Test
+    fun enterAndEscapeCloseThePicker() = runComposeUiTest {
+        var closed = 0
+        setContent { KattyTheme(false) { ColorSchemePicker(entries, selected = "Dracula", onSelect = {}, onClose = { closed++ }) } }
+        waitForIdle()
+
+        press(Key.Enter)
+        press(Key.Escape)
+
+        assertEquals(2, closed)
     }
 
     @Test

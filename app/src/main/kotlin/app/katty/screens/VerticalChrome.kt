@@ -1,5 +1,8 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
+import app.katty.SplitLabels
+import app.katty.AppShortcut
 import app.katty.ui.rememberReorderState
 import app.katty.ui.reorderItem
 import app.katty.ui.reorderHandle
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -84,7 +88,7 @@ fun ProjectTabs(
     states: AgentStates = NoAgentStates,
 ) {
     val colors = Katty.colors
-    Row(modifier.fillMaxWidth().height(TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
             val projects = rememberReorderState(state.projects.map { it.id }, horizontal = true) { id, index -> store.moveProject(id, index) }
             for (project in state.projects) {
@@ -103,7 +107,7 @@ fun ProjectTabs(
                 )
             }
         }
-        KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, Modifier.padding(horizontal = 6.dp))
+        KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, Modifier.padding(horizontal = 6.dp), shortcut = AppShortcut.ADD_PROJECT.label)
     }
 }
 
@@ -126,7 +130,7 @@ private fun ProjectTab(
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
     Box(modifier) {
         Row(
-            Modifier.height(TAB_BAR_HEIGHT)
+            Modifier.heightIn(min = TAB_BAR_HEIGHT)
                 .hoverHighlight(enabled = !selected)
                 .background(if (selected) colors.sel else Color.Transparent)
                 .semantics { contentDescription = project.name; this.selected = selected }
@@ -147,7 +151,7 @@ private fun ProjectTab(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (renaming) {
-                InlineRename(project.name, onRenamed, Modifier.width(140.dp))
+                InlineRename(project.name, onRenamed, Modifier.width(140.dp * uiScaleFactor()))
             } else {
                 OneLine(project.name, color = colors.text)
             }
@@ -175,7 +179,7 @@ fun WorkspaceTabs(
     states: AgentStates = NoAgentStates,
 ) {
     val colors = Katty.colors
-    Row(modifier.fillMaxWidth().height(TAB_BAR_HEIGHT).background(colors.panel).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.panel).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
             val workspaces = rememberReorderState(project?.workspaces.orEmpty().map { it.id }, horizontal = true) { id, index -> store.moveWorkspace(id, index) }
             for (workspace in project?.workspaces.orEmpty()) {
@@ -192,11 +196,12 @@ fun WorkspaceTabs(
                 )
             }
         }
-        KattyIconButton(KattyIcons.Plus, "New workspace", onNewWorkspace, Modifier.padding(horizontal = 4.dp), enabled = project != null)
+        KattyIconButton(KattyIcons.Plus, "New workspace", onNewWorkspace, Modifier.padding(horizontal = 4.dp), enabled = project != null, shortcut = AppShortcut.NEW_WORKSPACE.label)
         Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(20.dp).background(colors.line))
         // The first is the vertical split, which is what the vertical layout is about; every split is drawn turned here.
-        KattyIconButton(KattyIcons.SplitDown, "Split down", { selectedTerminal?.let { store.splitVisually(it, right = false, flipped = true) } }, enabled = selectedTerminal != null)
-        KattyIconButton(KattyIcons.SplitRight, "Split right", { selectedTerminal?.let { store.splitVisually(it, right = true, flipped = true) } }, Modifier.padding(end = 6.dp), enabled = selectedTerminal != null)
+        val split = SplitLabels.of(vertical = true)
+        KattyIconButton(KattyIcons.SplitDown, "Split down", { selectedTerminal?.let { store.splitVisually(it, right = false, flipped = true) } }, enabled = selectedTerminal != null, shortcut = split.downShortcut)
+        KattyIconButton(KattyIcons.SplitRight, "Split right", { selectedTerminal?.let { store.splitVisually(it, right = true, flipped = true) } }, Modifier.padding(end = 6.dp), enabled = selectedTerminal != null, shortcut = split.rightShortcut)
     }
 }
 
@@ -217,7 +222,7 @@ private fun WorkspaceTab(
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
     Box(modifier) {
         Row(
-            Modifier.height(TAB_BAR_HEIGHT)
+            Modifier.heightIn(min = TAB_BAR_HEIGHT)
                 .hoverHighlight(enabled = !selected)
                 .semantics { contentDescription = workspace.name; this.selected = selected }
                 .clickable(role = Role.Tab, onClick = onSelect)
@@ -247,7 +252,7 @@ private fun WorkspaceTab(
                 for (state in strip) StateGlyph(state, size = GlyphSize.SMALL)
             }
             if (renaming) {
-                InlineRename(workspace.name, onRenamed, Modifier.width(140.dp))
+                InlineRename(workspace.name, onRenamed, Modifier.width(140.dp * uiScaleFactor()))
             } else {
                 Text(workspace.name, color = colors.text, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal, maxLines = 1)
             }

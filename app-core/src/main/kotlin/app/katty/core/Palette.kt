@@ -2,6 +2,7 @@ package app.katty.core
 
 /** The groups of the command palette, in the order they are listed. */
 public enum class PaletteGroup(public val title: String) {
+    PROJECTS("PROJECTS"),
     WORKSPACES("WORKSPACES"),
     TERMINALS("TERMINALS"),
     COMMANDS("COMMANDS"),

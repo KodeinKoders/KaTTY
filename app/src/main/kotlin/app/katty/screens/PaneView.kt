@@ -1,5 +1,7 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
+import app.katty.AppShortcut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -10,10 +12,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import app.katty.ui.LocalUnscaledDensity
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -99,7 +105,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
     val exitCode = handle?.session?.exited?.collectAsState()?.value
 
     // The focused terminal has the keyboard, unless something else is being typed in. The terminal may not be composed yet.
-    LaunchedEffect(handle, focused, context.focusTerminals, hollow) {
+    LaunchedEffect(handle, focused, context.focusTerminals, context.focusTick, hollow) {
         if (focused && context.focusTerminals && handle != null && !hollow) {
             withFrameNanos { }
             runCatching { handle.focus.requestFocus() }
@@ -119,16 +125,11 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
             // The ring is the border of the design plus the shadow around it: 2 px of the accent, 1 px of the line otherwise.
             .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.line, shape)
             .onFocusChanged { if (it.hasFocus) context.store.focus(spec.id) }
-            // Select all and clear the scrollback are the terminal's, whenever it has the focus: the window does not know whether it does.
+            // Select all is the terminal's, whenever it has the focus: in a text field of the pane, it is the field's.
             .onPreviewKeyEvent { event ->
                 val session = handle?.session ?: return@onPreviewKeyEvent false
-                if (event.type != KeyEventType.KeyDown || !event.isMetaPressed || event.isAltPressed || event.isShiftPressed) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.A -> session.selectAll()
-                    Key.L -> session.clearScrollback()
-                    Key.F -> context.actions.onFind(spec.id)
-                    else -> return@onPreviewKeyEvent false
-                }
+                if (event.type != KeyEventType.KeyDown || !event.isMetaPressed || event.isAltPressed || event.isShiftPressed || event.key != Key.A) return@onPreviewKeyEvent false
+                session.selectAll()
                 true
             },
     ) {
@@ -156,6 +157,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                     copyDirectory = { copyToClipboard(spec.directory) },
                     close = { context.actions.onClose(spec.id) },
                 ),
+                vertical = context.flipped,
             )
         }
         Box {
@@ -174,10 +176,10 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                 onRenamed = { context.actions.onRenamed(spec.id, it) },
                 trailing = {
                     if (floating) {
-                        KattyIconButton(KattyIcons.Restore, "Restore pane", { context.store.maximize(null) }, size = ButtonSize.COMPACT)
+                        KattyIconButton(KattyIcons.Restore, "Restore pane", { context.store.maximize(null) }, size = ButtonSize.COMPACT, shortcut = AppShortcut.MAXIMIZE.label)
                     } else if (context.workspace.layout.terminals().size > 1) {
                         // With one pane in the workspace there is nothing for it to be maximized over.
-                        KattyIconButton(KattyIcons.Maximize, "Maximize pane", { context.store.maximize(spec.id) }, size = ButtonSize.COMPACT)
+                        KattyIconButton(KattyIcons.Maximize, "Maximize pane", { context.store.maximize(spec.id) }, size = ButtonSize.COMPACT, shortcut = AppShortcut.MAXIMIZE.label)
                     }
                     Box {
                         KattyIconButton(KattyIcons.Kebab, "Pane menu", { paneMenu = true }, size = ButtonSize.COMPACT)
@@ -192,6 +194,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
             if (session != null) {
                 // A shell that was started again is another session: what shows it is made again.
                 key(handle.generation) {
+                    // The text of the application may be bigger or smaller than usual: the font of a terminal is its own setting.
+                    CompositionLocalProvider(LocalDensity provides (LocalUnscaledDensity.current ?: LocalDensity.current)) {
                     Terminal(
                         session,
                         if (terminalSize == null) Modifier.fillMaxSize() else Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(terminalSize),
@@ -202,6 +206,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         focusOnStart = false,
                         onContextMenu = { at -> contextAt = IntOffset(at.x.toInt(), at.y.toInt()) },
                     )
+                    }
                 }
                 contextAt?.let { at ->
                     KattyMenu(
@@ -212,11 +217,12 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                                 paste = { readClipboard()?.let(session::paste) },
                                 selectAll = session::selectAll,
                                 find = { context.actions.onFind(spec.id) },
-                                clearScrollback = session::clearScrollback,
+                                clearScreen = session::clearScreen,
                                 splitRight = { context.store.splitVisually(spec.id, right = true, flipped = context.flipped) },
                                 splitDown = { context.store.splitVisually(spec.id, right = false, flipped = context.flipped) },
                                 close = { context.actions.onClose(spec.id) },
                             ),
+                            vertical = context.flipped,
                         ),
                         onDismiss = { contextAt = null },
                         offset = at,
@@ -291,7 +297,7 @@ internal fun PaneHeader(
 ) {
     val colors = Katty.colors
     Row(
-        modifier.fillMaxWidth().height(PANE_HEADER_HEIGHT).background(colors.side).padding(start = 10.dp, end = 4.dp),
+        modifier.fillMaxWidth().heightIn(min = PANE_HEADER_HEIGHT).background(colors.side).padding(start = 10.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -300,7 +306,7 @@ internal fun PaneHeader(
         // What the terminal is and where it is take the space that the state does not.
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (renaming) {
-                InlineRename(title, onRenamed, Modifier.widthIn(max = 200.dp))
+                InlineRename(title, onRenamed, Modifier.widthIn(max = 200.dp * uiScaleFactor()))
             } else {
                 OneLine(title, Modifier.semantics { contentDescription = "Terminal $title" }.onDoubleClick(onRename), color = colors.text)
             }

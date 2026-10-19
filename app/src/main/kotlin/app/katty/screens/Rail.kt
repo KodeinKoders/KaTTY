@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
 import app.katty.ui.rememberReorderState
 import app.katty.ui.reorderItem
 import app.katty.ui.reorderHandle
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -173,7 +175,7 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
     val colors = Katty.colors
     Popup(popupPositionProvider = BesideEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
-            Modifier.width(264.dp).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
+            Modifier.width(264.dp * uiScaleFactor()).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
                 .border(1.dp, colors.line, RoundedCornerShape(8.dp)).padding(6.dp).semantics { contentDescription = "Workspaces of ${project.name}" },
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
@@ -189,7 +191,7 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
             for (workspace in project.workspaces) {
                 val selected = workspace.id == state.selection.workspace
                 Row(
-                    Modifier.reorderItem(workspaces, workspace.id).fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
+                    Modifier.reorderItem(workspaces, workspace.id).fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp))
                         .hoverHighlight(enabled = !selected)
                         .background(if (selected) colors.sel else Color.Transparent)
                         .semantics { contentDescription = workspace.name; this.selected = selected }
@@ -207,7 +209,7 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
                 }
             }
             Row(
-                Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
+                Modifier.fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
                     .clickable(role = Role.Button) {
                         store.addWorkspace(project.id)
                         onDismiss()

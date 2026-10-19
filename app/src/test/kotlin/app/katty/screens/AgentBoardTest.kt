@@ -2,7 +2,10 @@
 
 package app.katty.screens
 
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.moveTo
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.graphics.toPixelMap
@@ -20,6 +23,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.AgentInfo
 import app.katty.core.AgentReport
 import app.katty.core.AgentState
+import app.katty.core.BoardColumn
 import app.katty.core.KattyStore
 import app.katty.core.ProjectId
 import app.katty.core.SplitDirection
@@ -66,6 +70,60 @@ class AgentBoardTest {
 
     private fun androidx.compose.ui.test.ComposeUiTest.show(vertical: Boolean = false, filter: ProjectId? = null, onOpen: (TerminalId) -> Unit = {}) {
         setContent { KattyTheme(false) { AgentBoard(state.board(filter, infos), emptyMap(), now, vertical, onOpen) } }
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.press(key: androidx.compose.ui.input.key.Key) {
+        onNodeWithText("Agent board").performKeyInput { pressKey(key) }
+    }
+
+    @Test
+    fun theArrowsMoveFromCardToCardAndEnterOpensItsTerminal() = runComposeUiTest {
+        populate()
+        val opened = mutableListOf<TerminalId>()
+        show(onOpen = { opened += it })
+        waitForIdle()
+        val columns = state.board(null, infos)
+        val failed = columns.getValue(BoardColumn.NEEDS_INPUT)[0].terminal.id
+        val codex = columns.getValue(BoardColumn.NEEDS_INPUT)[1].terminal.id
+
+        // The first arrow selects the first card of the board, the one that works; then right is the column of the ones that need the user.
+        press(Key.DirectionDown)
+        waitForIdle()
+        onNodeWithContentDescription("Claude Code in api-gateway / refactor-auth").assertIsSelected()
+        press(Key.DirectionRight)
+        press(Key.DirectionDown)
+        press(Key.Enter)
+
+        assertEquals(listOf(codex), opened)
+        assertTrue(failed != codex)
+    }
+
+    @Test
+    fun enterWithNoCardSelectedOpensNothing() = runComposeUiTest {
+        populate()
+        val opened = mutableListOf<TerminalId>()
+        show(onOpen = { opened += it })
+        waitForIdle()
+
+        press(Key.Enter)
+
+        assertEquals(emptyList(), opened)
+    }
+
+    @Test
+    fun theArrowsWorkWhenTheColumnsAreStackedToo() = runComposeUiTest {
+        populate()
+        val opened = mutableListOf<TerminalId>()
+        show(vertical = true, onOpen = { opened += it })
+        waitForIdle()
+        val columns = state.board(null, infos)
+
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        press(Key.Enter)
+
+        assertEquals(listOf(columns.getValue(BoardColumn.NEEDS_INPUT)[1].terminal.id), opened)
     }
 
     @Test

@@ -517,3 +517,35 @@ class KattyStoreTest {
         assertNotNull(state.locate(state.selection.terminal!!))
     }
 }
+
+class UiScaleTest {
+    @Test
+    fun theUsualSizeIsOneAndTheScalesGoFromSmallerToBigger() {
+        assertEquals(1f, Settings().effectiveUiScale)
+        assertEquals(Settings.UI_SCALES.sorted(), Settings.UI_SCALES)
+        assertEquals(true, 1f in Settings.UI_SCALES)
+    }
+
+    @Test
+    fun steppingGoesToTheNextSizeAndStopsAtTheEnds() {
+        assertEquals(1.1f, Settings().steppedUiScale(1))
+        assertEquals(0.9f, Settings().steppedUiScale(-1))
+        assertEquals(1.25f, Settings(uiScale = 1.1f).steppedUiScale(1))
+        assertEquals(Settings.UI_SCALES.last(), Settings(uiScale = Settings.UI_SCALES.last()).steppedUiScale(1))
+        assertEquals(Settings.UI_SCALES.first(), Settings(uiScale = Settings.UI_SCALES.first()).steppedUiScale(-1))
+    }
+
+    @Test
+    fun aValueThatIsNotOneOfTheSizesIsTheNearestOne() {
+        assertEquals(1.5f, Settings(uiScale = 1.6f).effectiveUiScale)
+        assertEquals(1.75f, Settings(uiScale = 40f).effectiveUiScale, "A file edited by hand cannot make the text huge")
+        assertEquals(0.8f, Settings(uiScale = 0.01f).effectiveUiScale)
+    }
+
+    @Test
+    fun aFileWithoutTheSettingHasTheUsualSize() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString(Settings.serializer(), """{"layout":"AUTO"}""")
+
+        assertEquals(1f, json.uiScale)
+    }
+}

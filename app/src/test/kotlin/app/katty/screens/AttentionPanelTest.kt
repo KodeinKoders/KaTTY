@@ -6,7 +6,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.moveTo
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -49,12 +59,100 @@ class AttentionPanelTest {
         return Attention(needsYou = listOf(codex, claude), finished = listOf(done, gemini))
     }
 
+    private fun ComposeUiTest.press(key: Key) {
+        onNodeWithContentDescription("Agents needing attention").performKeyInput { pressKey(key) }
+    }
+
+    @Test
+    fun theFirstRowIsSelectedAndEnterGoesToItsTerminal() = runComposeUiTest {
+        val attention = attention()
+        val opened = mutableListOf<TerminalId>()
+        setContent { KattyTheme(false) { AttentionPopover(attention, now, onOpen = { opened += it }, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {}) } }
+        waitForIdle()
+
+        press(Key.Enter)
+
+        assertEquals(listOf(attention.needsYou[0].terminal.id), opened)
+    }
+
+    @Test
+    fun theArrowsMoveThroughTheAgentsThatNeedTheUserAndThroughTheFinishedOnes() = runComposeUiTest {
+        val attention = attention()
+        val opened = mutableListOf<TerminalId>()
+        setContent { KattyTheme(false) { AttentionPopover(attention, now, onOpen = { opened += it }, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {}) } }
+        waitForIdle()
+
+        // The selection stays where it was between one Enter and the next: row 1, then 3, then back to 2.
+        press(Key.DirectionDown); press(Key.Enter)
+        press(Key.DirectionDown); press(Key.DirectionDown); press(Key.Enter)
+        press(Key.DirectionUp); press(Key.Enter)
+
+        assertEquals(listOf(attention.needsYou[1], attention.finished[1], attention.finished[0]).map { it.terminal.id }, opened)
+    }
+
+    @Test
+    fun theSelectionGoesRoundTheList() = runComposeUiTest {
+        val attention = attention()
+        val opened = mutableListOf<TerminalId>()
+        setContent { KattyTheme(false) { AttentionPopover(attention, now, onOpen = { opened += it }, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {}) } }
+        waitForIdle()
+
+        press(Key.DirectionUp); press(Key.Enter)
+
+        assertEquals(listOf(attention.finished.last().terminal.id), opened)
+    }
+
+    @Test
+    fun theSelectedRowIsMarked() = runComposeUiTest {
+        val attention = attention()
+        setContent { KattyTheme(false) { AttentionPopover(attention, now, onOpen = {}, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {}) } }
+        waitForIdle()
+
+        onNodeWithContentDescription("Codex in api-gateway / refactor-auth").assertIsSelected()
+        press(Key.DirectionDown)
+        waitForIdle()
+
+        onNodeWithContentDescription("Codex in api-gateway / refactor-auth").assertIsNotSelected()
+        onNodeWithContentDescription("Claude Code in web-client / checkout-form").assertIsSelected()
+    }
+
+    @Test
+    fun escapeClosesTheList() = runComposeUiTest {
+        var dismissed = false
+        setContent { KattyTheme(false) { AttentionPopover(attention(), now, onOpen = {}, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = { dismissed = true }) } }
+        waitForIdle()
+
+        press(Key.Escape)
+
+        assertTrue(dismissed)
+    }
+
+    @Test
+    fun withNothingToOpenEnterDoesNothing() = runComposeUiTest {
+        val opened = mutableListOf<TerminalId>()
+        setContent { KattyTheme(false) { AttentionPopover(Attention(emptyList(), emptyList()), now, onOpen = { opened += it }, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {}) } }
+        waitForIdle()
+
+        press(Key.DirectionDown); press(Key.Enter)
+
+        assertEquals(emptyList(), opened)
+    }
+
     @Test
     fun theBellShowsHowManyAgentsNeedTheUser() = runComposeUiTest {
         setContent { KattyTheme(false) { AttentionBell(2, onClick = {}) } }
 
         onNodeWithContentDescription("Agents needing attention: 2").assertExists()
         onNodeWithText("2").assertExists()
+    }
+
+    @Test
+    fun theTooltipOfTheBellSaysItsShortcut() = runComposeUiTest {
+        setContent { KattyTheme(false) { AttentionBell(2, onClick = {}) } }
+
+        onNodeWithContentDescription("Agents needing attention: 2").performMouseInput { moveTo(center) }
+
+        waitUntilAtLeastOneExists(hasText("Agents needing attention: 2 (⌘J)"), timeoutMillis = 5_000)
     }
 
     @Test

@@ -10,11 +10,31 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import app.katty.core.AgentState
 import app.katty.core.BoardCard
 import app.katty.core.BoardColumn
+import app.katty.core.Direction
+import app.katty.core.stepSelection
 import app.katty.core.GitInfo
 import app.katty.core.GitKind
 import app.katty.core.TerminalId
@@ -66,6 +88,8 @@ internal fun BoardCard.identity(process: String?, shell: String) = terminalIdent
  * The board of the agents: a column for each state, and in it a card for each terminal, with what runs, where it is, since when it has been
  * in that state and what it said. It is for looking at: cards cannot be moved, and one that is clicked opens its terminal.
  *
+ * It has the keyboard when it is shown: the arrows move from card to card (see [stepSelection]) and Enter opens the terminal of the selected one.
+ *
  * @param vertical Whether the columns are stacked, as the vertical layout draws them.
  * @param onOpenWindow Opens the board in a window of its own: the header has a button for it, unless this is `null` (in that window).
  */
@@ -82,7 +106,20 @@ fun AgentBoard(
     val colors = Katty.colors
     val cards = columns.values.flatten()
     val projects = cards.map { it.project.id }.toSet().size
-    Column(modifier.fillMaxSize().background(colors.bg)) {
+    // The card that the arrows are on, none until one is pressed; it is drawn only while its card is on the board.
+    var selected by remember { mutableStateOf<TerminalId?>(null) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    Column(
+        modifier.fillMaxSize().background(colors.bg).focusRequester(focus).focusable().onKeyEvent { event ->
+            val direction = event.boardDirection()
+            when {
+                direction != null -> { selected = columns.stepSelection(selected, direction, vertical); true }
+                event.isEnter() -> { selected?.takeIf { id -> cards.any { it.terminal.id == id } }?.let(onOpen); true }
+                else -> false
+            }
+        },
+    ) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Agent board", color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -95,7 +132,7 @@ fun AgentBoard(
         }
         if (vertical) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                for ((column, list) in columns) BoardSection(column, list, handles, now, onOpen)
+                for ((column, list) in columns) BoardSection(column, list, handles, now, selected, onOpen)
             }
         } else {
             Row(Modifier.weight(1f).padding(horizontal = 12.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -103,7 +140,7 @@ fun AgentBoard(
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         BoardHeader(column, list.size)
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (card in list) Card(card, handles[card.terminal.id], now, onOpen)
+                            for (card in list) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen)
                         }
                     }
                 }
@@ -113,17 +150,17 @@ fun AgentBoard(
 }
 
 @Composable
-private fun BoardSection(column: BoardColumn, cards: List<BoardCard>, handles: Map<TerminalId, TerminalHandle>, now: Long, onOpen: (TerminalId) -> Unit) {
+private fun BoardSection(column: BoardColumn, cards: List<BoardCard>, handles: Map<TerminalId, TerminalHandle>, now: Long, selected: TerminalId?, onOpen: (TerminalId) -> Unit) {
     Column(Modifier.semantics { contentDescription = column.title }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoardHeader(column, cards.size)
-        for (card in cards) Card(card, handles[card.terminal.id], now, onOpen)
+        for (card in cards) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen)
     }
 }
 
 @Composable
 private fun BoardHeader(column: BoardColumn, count: Int) {
     val colors = Katty.colors
-    Row(Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         StateGlyph(
             when (column) {
                 BoardColumn.NOTHING -> AgentState.IDLE
@@ -138,14 +175,15 @@ private fun BoardHeader(column: BoardColumn, count: Int) {
 }
 
 @Composable
-private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, onOpen: (TerminalId) -> Unit) {
+private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, selected: Boolean, onOpen: (TerminalId) -> Unit) {
     val colors = Katty.colors
     val git: GitInfo? = handle?.git?.collectAsState()?.value
     val identity = card.identity(handle?.processName?.collectAsState()?.value, handle?.shellName ?: "shell")
     val title = identity.title
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.panel).hoverHighlight().border(1.dp, colors.line, RoundedCornerShape(8.dp))
-            .semantics { contentDescription = "$title in ${card.project.name} / ${card.workspace.name}" }
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.panel).hoverHighlight()
+            .border(if (selected) 2.dp else 1.dp, if (selected) colors.accent else colors.line, RoundedCornerShape(8.dp))
+            .semantics { contentDescription = "$title in ${card.project.name} / ${card.workspace.name}"; this.selected = selected }
             .clickable(role = Role.Button) { onOpen(card.terminal.id) }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -168,3 +206,18 @@ private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, onOpen: (T
     }
 }
 
+/** The direction of an arrow key pressed alone, `null` for any other key and for an arrow with a modifier (those are the window's). */
+internal fun KeyEvent.boardDirection(): Direction? {
+    if (type != KeyEventType.KeyDown || isMetaPressed || isAltPressed || isCtrlPressed || isShiftPressed) return null
+    return when (key) {
+        Key.DirectionLeft -> Direction.LEFT
+        Key.DirectionRight -> Direction.RIGHT
+        Key.DirectionUp -> Direction.UP
+        Key.DirectionDown -> Direction.DOWN
+        else -> null
+    }
+}
+
+/** Whether [this] is Enter going down, alone. */
+internal fun KeyEvent.isEnter(): Boolean =
+    type == KeyEventType.KeyDown && (key == Key.Enter || key == Key.NumPadEnter) && !isMetaPressed && !isAltPressed && !isCtrlPressed && !isShiftPressed

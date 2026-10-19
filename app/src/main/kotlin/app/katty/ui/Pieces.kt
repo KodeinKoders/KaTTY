@@ -43,7 +43,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
 fun KeyCap(label: String, modifier: Modifier = Modifier, onPrimary: Boolean = false) {
     val colors = Katty.colors
     Box(
-        modifier.height(20.dp).widthIn(min = 20.dp).clip(RoundedCornerShape(4.dp))
+        modifier.heightIn(min = 20.dp).widthIn(min = 20.dp).clip(RoundedCornerShape(4.dp))
             .background(if (onPrimary) Color.Transparent else colors.side)
             .border(1.dp, if (onPrimary) Color.White.copy(alpha = .5f) else colors.line, RoundedCornerShape(4.dp))
             .padding(horizontal = 6.dp),

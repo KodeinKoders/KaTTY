@@ -25,6 +25,7 @@ import app.katty.core.ThemeMode
 import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.ui.KattyTheme
+import app.katty.ui.UiScale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -75,6 +76,8 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     }
     // The board in a window of its own, when it was asked for; the main window is told what is clicked there through the bridge.
     val bridge = remember { WindowBridge() }
+    // The shortcuts of the window are handled by the window, which sees the keys before whatever has the focus.
+    val windowKeys = remember { WindowKeys() }
     // The board window comes back where it was last closed, in a file of its own, and is open again if the application was closed with it open.
     val boardWindowFile = remember { WindowFile(directories.boardWindowFile, WindowGeometry(width = BOARD_WINDOW_WIDTH, height = BOARD_WINDOW_HEIGHT)) }
     val openedAtLaunch = remember { boardWindowFile.load().open }
@@ -87,8 +90,11 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
             onCloseRequest = quit,
             title = "KaTTY",
             state = windowState,
+            onPreviewKeyEvent = windowKeys::handle,
         ) {
-            KattyWindowContent(store, registry, tracker, directories, bridge, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true })
+            UiScale(settings.effectiveUiScale) {
+                KattyWindowContent(store, registry, tracker, directories, bridge, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys)
+            }
         }
         if (boardWindow) BoardWindow(store, tracker, registry, bridge, boardFocusTick, boardWindowFile, restoredAtLaunch, onClose = { boardWindow = false; restoredAtLaunch = false })
     }

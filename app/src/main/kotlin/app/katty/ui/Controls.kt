@@ -30,6 +30,8 @@ enum class ButtonSize(val dp: Dp) {
 /**
  * An icon button: Jewel's, with an icon of the design. [description] is what a screen reader says and what the tooltip shows, since an
  * icon alone does not say what it does.
+ *
+ * @param shortcut The keys that do the same, as `⌘,`: the tooltip says them after the description (a screen reader has the description alone).
  */
 @Composable
 fun KattyIconButton(
@@ -40,8 +42,9 @@ fun KattyIconButton(
     size: ButtonSize = ButtonSize.NORMAL,
     tint: Color = Katty.colors.muted,
     enabled: Boolean = true,
+    shortcut: String? = null,
 ) {
-    Tooltip(tooltip = { Text(description) }) {
+    Tooltip(tooltip = { Text(tooltipText(description, shortcut)) }) {
         IconButton(
             onClick = onClick,
             modifier = modifier.size(size.dp).semantics { contentDescription = description; role = Role.Button },
@@ -52,6 +55,9 @@ fun KattyIconButton(
         }
     }
 }
+
+/** What a tooltip says of a button: what it does, and the keys that do the same in parentheses, as macOS writes them. */
+internal fun tooltipText(description: String, shortcut: String?): String = if (shortcut == null) description else "$description ($shortcut)"
 
 private const val DISABLED_ICON_ALPHA = 0.4f
 

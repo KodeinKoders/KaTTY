@@ -38,12 +38,15 @@ public data class Project(
  * A named group of the terminals of a project. It always has a terminal: when the last one is closed, the workspace is gone.
  *
  * @param layout The tree of the splits. The vertical mode draws it with every split turned.
+ * @param focused The terminal that had the focus last, which has it again when the workspace is selected; `null` until one had, and when it is
+ * not there any more the first terminal does.
  */
 @Serializable
 public data class Workspace(
     val id: WorkspaceId,
     val name: String,
     val layout: PaneNode,
+    val focused: TerminalId? = null,
 )
 
 /** How a split puts its two sides, in the horizontal layout. */
@@ -115,6 +118,12 @@ public data class TerminalSpec(
     val colorScheme: String? = null,
     val running: RunningCommand? = null,
 )
+
+/** The terminal that has the focus when the workspace is selected: the one that had it last, or the first one when it is gone or none had it. */
+public fun Workspace.terminalToFocus(): TerminalId? {
+    val terminals = layout.terminals()
+    return (terminals.firstOrNull { it.id == focused } ?: terminals.firstOrNull())?.id
+}
 
 /** The terminals of the tree, in the order they are drawn: left to right, top to bottom. */
 public fun PaneNode.terminals(): List<TerminalSpec> = when (this) {

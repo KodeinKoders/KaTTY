@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.SplitLabels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -90,6 +92,7 @@ fun WorkspaceArea(
     store: KattyStore,
     flipped: Boolean,
     focusTerminals: Boolean,
+    focusTick: Int = 0,
     actions: PaneActions,
     modifier: Modifier = Modifier,
     maximized: TerminalId? = null,
@@ -113,7 +116,7 @@ fun WorkspaceArea(
     // Where the panes are, to grow the floating one from there.
     val paneBounds = remember(workspace.id) { mutableStateMapOf<TerminalId, Rect>() }
     var areaBounds by remember(workspace.id) { mutableStateOf(Rect.Zero) }
-    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, shown, font, infos, paneBounds)
+    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, shown, font, infos, paneBounds, focusTick)
     Column(modifier.background(colors.bg)) {
         // The vertical layout has the workspace's name and its split buttons in its tabs.
         if (showHeader) WorkspaceHeader(workspace, selectedTerminal, store)
@@ -176,6 +179,8 @@ internal class PaneContext(
     val infos: Map<TerminalId, AgentInfo> = emptyMap(),
     /** Where each pane of the tree is, in the window's coordinates, written by the panes. */
     val paneBounds: MutableMap<TerminalId, Rect> = mutableMapOf(),
+    /** Changes when the focused terminal is to take the keyboard again, though nothing about it changed. */
+    val focusTick: Int = 0,
 )
 
 /**
@@ -207,15 +212,17 @@ private fun WorkspaceHeader(workspace: Workspace, selected: TerminalId?, store: 
     val colors = Katty.colors
     val count = workspace.layout.terminals().size
     Row(
-        Modifier.fillMaxWidth().height(WORKSPACE_HEADER_HEIGHT).background(colors.panel).padding(start = 16.dp, end = 8.dp),
+        Modifier.fillMaxWidth().heightIn(min = WORKSPACE_HEADER_HEIGHT).background(colors.panel).padding(start = 16.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         OneLine(workspace.name, color = colors.text)
         Text(if (count == 1) "1 terminal" else "$count terminals", color = colors.muted)
         Spacer(Modifier.weight(1f))
-        KattyIconButton(KattyIcons.SplitRight, "Split right", { selected?.let { store.split(it, SplitDirection.ROW) } }, enabled = selected != null)
-        KattyIconButton(KattyIcons.SplitDown, "Split down", { selected?.let { store.split(it, SplitDirection.COLUMN) } }, enabled = selected != null)
+        // This header is the horizontal layout's: its main direction is right.
+        val split = SplitLabels.of(vertical = false)
+        KattyIconButton(KattyIcons.SplitRight, "Split right", { selected?.let { store.split(it, SplitDirection.ROW) } }, enabled = selected != null, shortcut = split.rightShortcut)
+        KattyIconButton(KattyIcons.SplitDown, "Split down", { selected?.let { store.split(it, SplitDirection.COLUMN) } }, enabled = selected != null, shortcut = split.downShortcut)
     }
 }
 
@@ -240,6 +247,10 @@ private fun PaneTree(node: PaneNode, context: PaneContext) {
             // Dragging a divider is saved as it goes: the store keeps the ratio, and writes it when the dragging has stopped.
             LaunchedEffect(state, node.id) {
                 snapshotFlow { state.dividerPosition }.drop(1).collect { context.store.setSplitRatio(context.workspace.id, node.id, it) }
+            }
+            // A ratio that the store changed by itself (the keyboard moves the divider) is shown: the state is what draws the divider.
+            LaunchedEffect(node.ratio) {
+                if (kotlin.math.abs(state.dividerPosition - node.ratio) > 0.001f) state.dividerPosition = node.ratio
             }
             if (direction == SplitDirection.ROW) {
                 HorizontalSplitLayout(

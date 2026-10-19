@@ -1,5 +1,7 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
+import app.katty.AppShortcut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -77,7 +79,7 @@ fun FindBar(session: TerminalSession, onClose: () -> Unit, modifier: Modifier = 
         Icon(KattyIcons.Search, colors.muted, size = 14.dp)
         TextField(
             query,
-            Modifier.width(180.dp).focusRequester(focus).onPreviewKeyEvent { event ->
+            Modifier.width(180.dp * uiScaleFactor()).focusRequester(focus).onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
                     Key.Enter, Key.NumPadEnter -> {
@@ -93,9 +95,9 @@ fun FindBar(session: TerminalSession, onClose: () -> Unit, modifier: Modifier = 
             },
             placeholder = { Text("Find") },
         )
-        Text(state.summary(), Modifier.width(72.dp), color = colors.muted, fontSize = 12.sp, maxLines = 1)
-        KattyIconButton(KattyIcons.ChevronUp, "Previous match", { search.previous() }, size = ButtonSize.COMPACT)
-        KattyIconButton(KattyIcons.ChevronDown, "Next match", { search.next() }, size = ButtonSize.COMPACT)
-        KattyIconButton(KattyIcons.Close, "Close find", onClose, size = ButtonSize.COMPACT)
+        Text(state.summary(), Modifier.width(72.dp * uiScaleFactor()), color = colors.muted, fontSize = 12.sp, maxLines = 1)
+        KattyIconButton(KattyIcons.ChevronUp, "Previous match", { search.previous() }, size = ButtonSize.COMPACT, shortcut = AppShortcut.FIND_PREVIOUS.label)
+        KattyIconButton(KattyIcons.ChevronDown, "Next match", { search.next() }, size = ButtonSize.COMPACT, shortcut = AppShortcut.FIND_NEXT.label)
+        KattyIconButton(KattyIcons.Close, "Close find", onClose, size = ButtonSize.COMPACT, shortcut = "Esc")
     }
 }

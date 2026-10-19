@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -60,6 +62,9 @@ import app.katty.ui.Katty
 import app.katty.ui.hoverHighlight
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
+import app.katty.ui.ListKey
+import app.katty.ui.listKey
+import app.katty.ui.stepped
 import app.katty.ui.OneLine
 import app.katty.ui.SectionLabel
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +96,9 @@ internal fun TerminalColor.toColor(): Color = Color(0xFF000000.toInt() or rgb)
  * The picker of a terminal's color scheme: a search field, the schemes (all, light or dark) with a swatch for each, and a preview of the
  * selected one in a real terminal with its palette. Choosing a scheme applies it at once, and the picker stays open until it is closed.
  *
+ * The search field has the keyboard when it opens: the arrows choose the scheme before or after the chosen one (the default, when there is one,
+ * is the first), as a click would, and Enter and Escape close the picker.
+ *
  * @param selected The scheme that is chosen; `null` for the default, when there is one to choose ([defaultName] says which it is).
  * @param defaultName The name of the default scheme, when what is being chosen is the scheme of a terminal that may follow it.
  */
@@ -114,8 +122,19 @@ fun ColorSchemePicker(
 
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
+    // The rows of the list, in order: the default one is there while nothing narrows it.
+    val hasDefaultRow = defaultName != null && text.isBlank() && filter == SchemeFilter.ALL
+    val options: List<String?> = remember(shown, hasDefaultRow) { (if (hasDefaultRow) listOf<String?>(null) else emptyList()) + shown.map { it.name } }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = remember { shown.indexOfFirst { it.name == selected }.let { if (it < 0) 0 else it + if (defaultName != null) 1 else 0 } },
+    )
+    // A scheme that the arrows chose stays in view.
+    LaunchedEffect(selected) {
+        val at = options.indexOf(selected)
+        if (at >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == at }) listState.animateScrollToItem(at)
+    }
     DialogScrim(
-        modifier.focusRequester(focus).onPreviewKeyEvent { event ->
+        modifier.onPreviewKeyEvent { event ->
             if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
                 onClose()
                 true
@@ -123,16 +142,33 @@ fun ColorSchemePicker(
                 false
             }
         },
-        width = 920.dp,
+        width = 920.dp * uiScaleFactor(),
     ) {
         Column(Modifier.height(640.dp).semantics { contentDescription = "Terminal color scheme" }) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Terminal color scheme", Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
-                KattyIconButton(KattyIcons.Close, "Close", onClose)
+                KattyIconButton(KattyIcons.Close, "Close", onClose, shortcut = "Esc")
             }
             Row(Modifier.weight(1f).fillMaxWidth()) {
-                Column(Modifier.width(340.dp).fillMaxHeight().padding(start = 12.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextField(query, Modifier.fillMaxWidth().semantics { contentDescription = "Search color schemes" }, placeholder = { Text("Search schemes") })
+                Column(Modifier.width(340.dp * uiScaleFactor()).fillMaxHeight().padding(start = 12.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextField(
+                        query,
+                        Modifier.fillMaxWidth().focusRequester(focus).semantics { contentDescription = "Search color schemes" }.onPreviewKeyEvent { event ->
+                            when (event.listKey()) {
+                                ListKey.DOWN, ListKey.UP -> {
+                                    val step = if (event.listKey() == ListKey.DOWN) 1 else -1
+                                    val at = options.indexOf(selected)
+                                    // From nothing chosen: the first row going down, the last one going up.
+                                    val next = if (at < 0) (if (step > 0) 0 else options.lastIndex) else at.stepped(step, options.size)
+                                    if (options.isNotEmpty()) onSelect(options[next])
+                                    true
+                                }
+                                ListKey.ENTER -> { onClose(); true }
+                                else -> false
+                            }
+                        },
+                        placeholder = { Text("Search schemes") },
+                    )
                     Choice(
                         listOf(
                             ChoiceOption(SchemeFilter.ALL, "All ${entries.size}"),
@@ -142,12 +178,8 @@ fun ColorSchemePicker(
                         filter, { filter = it },
                     )
                     // The chosen scheme is in view when the picker opens: the list starts at it, rather than scrolls to it once it is laid out.
-                    val hasDefault = defaultName != null
-                    val listState = rememberLazyListState(
-                        initialFirstVisibleItemIndex = remember { shown.indexOfFirst { it.name == selected }.let { if (it < 0) 0 else it + if (hasDefault) 1 else 0 } },
-                    )
                     LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState) {
-                        if (defaultName != null && text.isBlank() && filter == SchemeFilter.ALL) {
+                        if (defaultName != null && hasDefaultRow) {
                             item(key = "default") { DefaultRow(defaultName, selected == null) { onSelect(null) } }
                         }
                         items(shown, key = { it.name }) { entry -> SchemeRow(entry, entry.name == selected) { onSelect(entry.name) } }
@@ -169,7 +201,7 @@ fun ColorSchemePicker(
 private fun SchemeRow(entry: ITermColorSchemeInfo, selected: Boolean, onClick: () -> Unit) {
     val colors = Katty.colors
     Row(
-        Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(6.dp))
+        Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(6.dp))
             .hoverHighlight(enabled = !selected)
             .background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = entry.name; this.selected = selected }
@@ -191,7 +223,7 @@ private fun SchemeRow(entry: ITermColorSchemeInfo, selected: Boolean, onClick: (
 private fun DefaultRow(defaultName: String, selected: Boolean, onClick: () -> Unit) {
     val colors = Katty.colors
     Row(
-        Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(6.dp))
+        Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(6.dp))
             .hoverHighlight(enabled = !selected)
             .background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = "Default"; this.selected = selected }

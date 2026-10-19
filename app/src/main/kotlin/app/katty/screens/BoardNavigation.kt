@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -62,7 +64,7 @@ fun BoardSidebar(
     agents: Int = state.allTerminals().size,
 ) {
     val colors = Katty.colors
-    Column(modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
+    Column(modifier.width(SIDEBAR_WIDTH * uiScaleFactor()).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
         SectionLabel("PROJECTS", Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             FilterRow("All projects", filter == null, { onFilter(null) }) { Text(agentCount(agents), color = colors.muted, fontSize = 11.sp) }
@@ -80,7 +82,7 @@ fun BoardSidebar(
 private fun FilterRow(label: String, selected: Boolean, onClick: () -> Unit, trailing: @Composable () -> Unit) {
     val colors = Katty.colors
     Row(
-        Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp))
+        Modifier.fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp))
             .hoverHighlight(enabled = !selected)
             .background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = label; this.selected = selected }
@@ -99,7 +101,7 @@ private fun FilterRow(label: String, selected: Boolean, onClick: () -> Unit, tra
 @Composable
 fun BoardTabs(state: KattyState, filter: ProjectId?, onFilter: (ProjectId?) -> Unit, modifier: Modifier = Modifier, states: AgentStates = NoAgentStates) {
     val colors = Katty.colors
-    Row(modifier.fillMaxWidth().height(TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line).horizontalScroll(rememberScrollState())) {
+    Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line).horizontalScroll(rememberScrollState())) {
         BoardTab("All projects", filter == null, { onFilter(null) }) {}
         for (project in state.projects) {
             BoardTab(project.name, filter == project.id, { onFilter(project.id) }) { for ((s, n) in states.counts(project)) StateCount(s, n) }
@@ -112,7 +114,7 @@ fun BoardTabs(state: KattyState, filter: ProjectId?, onFilter: (ProjectId?) -> U
 private fun BoardTab(label: String, selected: Boolean, onClick: () -> Unit, trailing: @Composable () -> Unit) {
     val colors = Katty.colors
     Row(
-        Modifier.height(TAB_BAR_HEIGHT).hoverHighlight(enabled = !selected).background(if (selected) colors.sel else Color.Transparent)
+        Modifier.heightIn(min = TAB_BAR_HEIGHT).hoverHighlight(enabled = !selected).background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = label; this.selected = selected }
             .clickable(role = Role.Tab, onClick = onClick)
             .padding(horizontal = 14.dp),

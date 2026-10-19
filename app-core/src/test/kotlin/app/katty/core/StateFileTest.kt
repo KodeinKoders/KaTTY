@@ -62,6 +62,25 @@ class StateFileTest {
     }
 
     @Test
+    fun theTerminalThatHadTheFocusInAWorkspaceSurvivesBeingWrittenAndReadAndAnOldFileHasNone() {
+        var n = 0
+        val store = KattyStore(newId = { "id${n++}" })
+        store.addProject("/dev/api")
+        val first = store.state.value.selection.terminal!!
+        val second = store.split(first, SplitDirection.ROW)!!
+        store.focus(first)
+        store.focus(second)
+        val state = store.state.value
+
+        file.save(state)
+
+        assertEquals(second, file.load().selectedWorkspace!!.focused)
+        // A file that was written before the field existed has none, and the first terminal has the focus.
+        path.writeText(path.readText().replace(Regex(""",\s*"focused":\s*("[^"]*"|null)"""), ""))
+        assertEquals(null, file.load().selectedWorkspace!!.focused)
+    }
+
+    @Test
     fun noFileIsAnEmptyState() {
         assertEquals(KattyState(), file.load())
     }

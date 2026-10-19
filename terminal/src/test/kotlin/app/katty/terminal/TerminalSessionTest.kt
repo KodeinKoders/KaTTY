@@ -457,6 +457,33 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun clearingTheScreenOfARunningProgramErasesTheHistoryAndTheRowsAboveTheCursor() {
+        val session = start("""seq 1 20; printf 'a\nb\nc\n'; sleep 30""", rows = 6)
+        session.awaitFrame { it.scrollbar != null && it.text(4) == "c" }
+
+        session.clearScreen()
+
+        // The cursor is on the row under "c": what was above it is gone, and so is the history.
+        val frame = session.awaitFrame { it.scrollbar == null && (0..4).all { row -> it.text(row) == "" } }
+        assertEquals(5, frame.cursor.y)
+    }
+
+    @Test
+    fun clearingTheScreenLeavesTheAlternateScreenToItsProgram() {
+        val session = start("""printf '\033[?1049h\033[Ha\nb\nx'; sleep 30""", rows = 5)
+        session.awaitFrame { it.text(2) == "x" }
+        val before = session.frames.value
+
+        session.clearScreen()
+        // A frame that was asked for after it, to see that nothing changed rather than that nothing had been drawn yet.
+        session.resize(79, 5, 8, 16)
+        val frame = session.awaitFrame { it !== before && it.cols == 79 }
+
+        assertEquals("a", frame.text(0))
+        assertEquals("x", frame.text(2))
+    }
+
+    @Test
     fun aClickWithoutADragSelectsNothingAndUnselects() {
         val session = selectionSession()
         session.select(0.2f, 0.5f, 4.7f, 0.5f)

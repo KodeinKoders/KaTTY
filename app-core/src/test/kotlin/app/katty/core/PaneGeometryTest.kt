@@ -80,3 +80,73 @@ class PaneGeometryTest {
         Direction.entries.forEach { assertNull(leaf("A").go("A", it)) }
     }
 }
+
+class SplitNudgeTest {
+    private var counter = 0
+    private val store = KattyStore(newId = { "id${counter++}" })
+    private val layout get() = store.state.value.selectedWorkspace!!.layout
+
+    // Left | (top / bottom): a split in a row, and in its second side a split in a column.
+    private fun built(): Triple<TerminalId, TerminalId, TerminalId> {
+        store.addProject("/a")
+        val left = store.state.value.selection.terminal!!
+        val top = store.split(left, SplitDirection.ROW)!!
+        val bottom = store.split(top, SplitDirection.COLUMN)!!
+        return Triple(left, top, bottom)
+    }
+
+    private fun rootRatio() = (layout as PaneNode.Split).ratio
+
+    @Test
+    fun rightAndDownGiveTheFirstSideMoreAndLeftAndUpLess() {
+        val (left, top, _) = built()
+        val root = (layout as PaneNode.Split).id
+
+        assertEquals(root to 0.55f, layout.splitToNudge(left, Direction.RIGHT, 0.05f))
+        assertEquals(root to 0.45f, layout.splitToNudge(left, Direction.LEFT, 0.05f))
+        // The pane that is on the right of the divider moves the same divider the same way: the arrow says where the divider goes.
+        assertEquals(root to 0.55f, layout.splitToNudge(top, Direction.RIGHT, 0.05f))
+    }
+
+    @Test
+    fun theNearestSplitAlongTheArrowIsTheOneThatMoves() {
+        val (_, top, bottom) = built()
+        val inner = ((layout as PaneNode.Split).second as PaneNode.Split).id
+
+        assertEquals(inner to 0.55f, layout.splitToNudge(top, Direction.DOWN, 0.05f))
+        assertEquals(inner to 0.45f, layout.splitToNudge(bottom, Direction.UP, 0.05f))
+        // The top and bottom panes are in a split in a row too, so the left and right arrows move that one.
+        assertEquals((layout as PaneNode.Split).id, layout.splitToNudge(bottom, Direction.LEFT, 0.05f)!!.first)
+    }
+
+    @Test
+    fun noSplitAlongTheArrowMeansNothingMoves() {
+        val (left, _, _) = built()
+
+        assertNull(layout.splitToNudge(left, Direction.DOWN, 0.05f), "The left pane is only in a split in a row")
+        assertNull(layout.splitToNudge(TerminalId("gone"), Direction.RIGHT, 0.05f))
+    }
+
+    @Test
+    fun theVerticalLayoutDrawsEverySplitTurned() {
+        val (left, top, _) = built()
+        val root = (layout as PaneNode.Split).id
+        val inner = ((layout as PaneNode.Split).second as PaneNode.Split).id
+
+        // The root is a row in the model and a column on the screen: the up and down arrows move it, and the left and right ones the inner split.
+        assertEquals(root to 0.55f, layout.splitToNudge(left, Direction.DOWN, 0.05f, flipped = true))
+        assertNull(layout.splitToNudge(left, Direction.RIGHT, 0.05f, flipped = true))
+        assertEquals(inner to 0.45f, layout.splitToNudge(top, Direction.LEFT, 0.05f, flipped = true))
+    }
+
+    @Test
+    fun theRatioStaysBetweenTheLimits() {
+        val (left, _, _) = built()
+        val root = (layout as PaneNode.Split).id
+        store.setSplitRatio(store.state.value.selection.workspace!!, root, 0.93f)
+
+        assertEquals(root to 0.95f, layout.splitToNudge(left, Direction.RIGHT, 0.05f))
+        store.setSplitRatio(store.state.value.selection.workspace!!, root, 0.07f)
+        assertEquals(root to 0.05f, layout.splitToNudge(left, Direction.LEFT, 0.05f))
+    }
+}

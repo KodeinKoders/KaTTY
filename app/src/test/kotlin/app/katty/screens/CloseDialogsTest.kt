@@ -2,7 +2,11 @@
 
 package app.katty.screens
 
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.withKeyDown
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -52,6 +56,44 @@ class CloseDialogsTest {
         onNodeWithText("Close workspace").performClick()
 
         assertEquals(listOf("cancel", "confirm"), answers)
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.dialog(answers: MutableList<String>) =
+        setContent { KattyTheme(false) { CloseWorkspaceDialog("ws", terminals, onConfirm = { answers += "confirm" }, onCancel = { answers += "cancel" }) } }
+
+    @Test
+    fun theKeyboardIsOnCancelSoEnterDestroysNothing() = runComposeUiTest {
+        val answers = mutableListOf<String>()
+        dialog(answers)
+        waitForIdle()
+
+        onNodeWithText("Cancel").performKeyInput { pressKey(Key.Enter) }
+
+        assertEquals(listOf("cancel"), answers)
+    }
+
+    @Test
+    fun tabGoesToTheRedButtonAndEnterPressesIt() = runComposeUiTest {
+        val answers = mutableListOf<String>()
+        dialog(answers)
+        waitForIdle()
+
+        onNodeWithText("Cancel").performKeyInput { pressKey(Key.Tab) }
+        onNodeWithText("Close workspace").performKeyInput { pressKey(Key.Enter) }
+
+        assertEquals(listOf("confirm"), answers)
+    }
+
+    @Test
+    fun commandAndBackspaceConfirmAtOnceAndEscapeCancels() = runComposeUiTest {
+        val answers = mutableListOf<String>()
+        dialog(answers)
+        waitForIdle()
+
+        onNodeWithText("Cancel").performKeyInput { withKeyDown(Key.MetaLeft) { pressKey(Key.Backspace) } }
+        onNodeWithText("Cancel").performKeyInput { pressKey(Key.Escape) }
+
+        assertEquals(listOf("confirm", "cancel"), answers)
     }
 
     @Test

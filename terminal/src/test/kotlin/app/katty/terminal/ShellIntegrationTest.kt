@@ -296,6 +296,30 @@ class ShellIntegrationTest {
         assertTrue("katty-shell-integration" !in line && "katty" !in line.substringAfter("]["), line)
     }
 
+    @Test
+    fun clearingTheScreenAtThePromptDrawsThePromptAndWhatWasTypedAgainAtTheTop() {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start("/bin/zsh", emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+        val events = session.collectEvents()
+        session.sendText("printf 'one\\ntwo\\n'\r")
+        await("the output and the next prompt") { events.count { it is TerminalEvent.PromptStarted } >= 1 && screen(session).any { it == "two" } }
+        // Typed and not run: it is on the line when the screen is cleared, and stays there.
+        session.sendText("echo partial")
+        await("the text typed") { screen(session).any { it.endsWith("echo partial") } }
+
+        session.clearScreen()
+
+        await("the prompt at the top, with what was typed, and nothing else") {
+            val rows = screen(session)
+            rows[0].endsWith("echo partial") && rows.drop(1).all { it.isEmpty() }
+        }
+        assertEquals(null, session.frames.value.scrollbar, "The history is gone too")
+    }
+
+    private fun screen(session: TerminalSession): List<String> =
+        session.frames.value.rows.map { row -> row.cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd() }
+
     private companion object {
         const val TIMEOUT_MS = 15_000L
     }

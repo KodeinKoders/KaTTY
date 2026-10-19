@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -72,7 +74,7 @@ fun MainMenu(
     val colors = Katty.colors
     Popup(popupPositionProvider = BelowEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
-            Modifier.width(MAIN_MENU_WIDTH).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
+            Modifier.width(MAIN_MENU_WIDTH * uiScaleFactor()).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
                 .border(1.dp, colors.line, RoundedCornerShape(8.dp)).padding(6.dp).semantics { contentDescription = "Settings" },
         ) {
             Section("LAYOUT") {
@@ -90,6 +92,11 @@ fun MainMenu(
                     settings.theme, { value -> onChange { it.copy(theme = value) } },
                     Modifier.padding(horizontal = 4.dp),
                 )
+            }
+            Separator()
+            Section("INTERFACE TEXT SIZE") {
+                UiScaleStepper(settings) { scale -> onChange { it.copy(uiScale = scale) } }
+                Caption("The text of the application, not of the terminals: their font size is below.")
             }
             Separator()
             Section("TERMINAL COLOR SCHEME") {
@@ -131,7 +138,7 @@ private fun Caption(text: String) {
 internal fun Field(value: String, description: String, onClick: () -> Unit, leading: @Composable () -> Unit = {}) {
     val colors = Katty.colors
     Row(
-        Modifier.padding(horizontal = 4.dp).fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).border(1.dp, colors.line, RoundedCornerShape(5.dp))
+        Modifier.padding(horizontal = 4.dp).fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).border(1.dp, colors.line, RoundedCornerShape(5.dp))
             .semantics { contentDescription = description }
             .clickable(role = Role.DropdownList, onClick = onClick)
             .padding(horizontal = 8.dp),
@@ -175,21 +182,43 @@ private fun FontField(family: String?, families: List<String>, onChoose: (String
 /** The size of the font: a stepper by half a pixel, which keeps to the range that can be used. */
 @Composable
 internal fun FontSizeStepper(size: Float, onChange: (Float) -> Unit) {
+    Stepper("Font size", formatSize(size), "font size", { onChange(size - FONT_STEP) }, { onChange(size + FONT_STEP) })
+}
+
+/** The size of the text of the application: a stepper through the sizes it can have, as a percentage of the usual one. */
+@Composable
+internal fun UiScaleStepper(settings: Settings, onChange: (Float) -> Unit) {
+    Stepper(
+        "Text size", formatScale(settings.effectiveUiScale), "interface text size",
+        { onChange(settings.steppedUiScale(-1)) }, { onChange(settings.steppedUiScale(1)) },
+        canDecrease = settings.steppedUiScale(-1) != settings.effectiveUiScale,
+        canIncrease = settings.steppedUiScale(1) != settings.effectiveUiScale,
+    )
+}
+
+/**
+ * A value with a button on each side that makes it smaller and bigger. [what] is what the buttons say to a screen reader: "Decrease $what".
+ * A button that cannot go further is dimmed and does nothing.
+ */
+@Composable
+private fun Stepper(
+    label: String, value: String, what: String, onDecrease: () -> Unit, onIncrease: () -> Unit, canDecrease: Boolean = true, canIncrease: Boolean = true,
+) {
     val colors = Katty.colors
-    Row(Modifier.padding(horizontal = 8.dp).fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Font size", Modifier.weight(1f).semantics { contentDescription = "Font size" }, color = colors.text)
+    Row(Modifier.padding(horizontal = 8.dp).fillMaxWidth().heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f).semantics { contentDescription = label }, color = colors.text)
         Row(Modifier.clip(RoundedCornerShape(5.dp)).border(1.dp, colors.line, RoundedCornerShape(5.dp)), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(26.dp).clickable(role = Role.Button) { onChange(size - FONT_STEP) }.semantics { contentDescription = "Decrease font size" },
+                Modifier.size(26.dp).clickable(enabled = canDecrease, role = Role.Button, onClick = onDecrease).semantics { contentDescription = "Decrease $what" },
                 contentAlignment = Alignment.Center,
-            ) { Text("−", fontSize = 15.sp, color = colors.text) }
+            ) { Text("−", fontSize = 15.sp, color = if (canDecrease) colors.text else colors.muted) }
             Box(Modifier.width(1.dp).height(26.dp).background(colors.line))
-            Text(formatSize(size), Modifier.width(56.dp), color = colors.text, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(value, Modifier.width(56.dp * uiScaleFactor()), color = colors.text, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Box(Modifier.width(1.dp).height(26.dp).background(colors.line))
             Box(
-                Modifier.size(26.dp).clickable(role = Role.Button) { onChange(size + FONT_STEP) }.semantics { contentDescription = "Increase font size" },
+                Modifier.size(26.dp).clickable(enabled = canIncrease, role = Role.Button, onClick = onIncrease).semantics { contentDescription = "Increase $what" },
                 contentAlignment = Alignment.Center,
-            ) { Text("+", fontSize = 15.sp, color = colors.text) }
+            ) { Text("+", fontSize = 15.sp, color = if (canIncrease) colors.text else colors.muted) }
         }
     }
 }
@@ -199,3 +228,5 @@ private const val FONT_STEP = 0.5f
 /** The size as the stepper shows it: `12.5 px`, and `13 px` for a whole number. */
 internal fun formatSize(size: Float): String = (if (size % 1f == 0f) size.toInt().toString() else size.toString()) + " px"
 
+/** The scale as the stepper shows it: `110%`. */
+internal fun formatScale(scale: Float): String = "${kotlin.math.round(scale * 100).toInt()}%"

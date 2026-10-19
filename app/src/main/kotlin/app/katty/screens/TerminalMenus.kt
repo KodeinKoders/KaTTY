@@ -1,5 +1,7 @@
 package app.katty.screens
 
+import app.katty.AppShortcut
+import app.katty.SplitLabels
 import app.katty.core.KattyState
 import app.katty.core.TerminalId
 import app.katty.core.WorkspaceId
@@ -33,14 +35,16 @@ class TerminalMenuActions(
  *
  * @param destinations The other workspaces of the terminal's project. There is no entry to move to when there are none.
  * @param colorSchemeHint What the terminal's color scheme is: `Default`, or the name of the one that it has.
+ * @param vertical Whether the layout is the vertical one, where the main direction of a split, which has the shortcut without Shift, is down.
  */
-fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, actions: TerminalMenuActions): List<MenuEntry> = menu {
-    action("Rename terminal", onClick = actions.rename)
+fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, actions: TerminalMenuActions, vertical: Boolean = false): List<MenuEntry> = menu {
+    val split = SplitLabels.of(vertical)
+    action("Rename terminal", AppShortcut.RENAME_TERMINAL.label, onClick = actions.rename)
     // Only a terminal that has a name of its own has one to give up.
     actions.useProcessName?.let { revert -> action("Use process name", onClick = revert) }
     divider()
-    action("Split right", "⌘D", onClick = actions.splitRight)
-    action("Split down", "⌘⇧D", onClick = actions.splitDown)
+    action("Split right", split.rightShortcut, onClick = actions.splitRight)
+    action("Split down", split.downShortcut, onClick = actions.splitDown)
     divider()
     if (destinations.isNotEmpty()) {
         submenu("Move to workspace") {
@@ -51,7 +55,7 @@ fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, a
     divider()
     action("Copy working directory", onClick = actions.copyDirectory)
     divider()
-    action("Close terminal", "⌘W", danger = true, onClick = actions.close)
+    action("Close terminal", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.close)
 }
 
 /** What the menu of right click in a terminal does. */
@@ -60,7 +64,7 @@ class ContextMenuActions(
     val paste: () -> Unit,
     val selectAll: () -> Unit,
     val find: () -> Unit,
-    val clearScrollback: () -> Unit,
+    val clearScreen: () -> Unit,
     val splitRight: () -> Unit,
     val splitDown: () -> Unit,
     val close: () -> Unit,
@@ -69,16 +73,17 @@ class ContextMenuActions(
 /**
  * The menu of a right click in a terminal. Copy is for what is selected, so it is there only to be disabled when nothing is.
  */
-fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions): List<MenuEntry> = menu {
+fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, vertical: Boolean = false): List<MenuEntry> = menu {
+    val split = SplitLabels.of(vertical)
     action("Copy", "⌘C", enabled = hasSelection, onClick = actions.copy)
     action("Paste", "⌘V", onClick = actions.paste)
     action("Select all", "⌘A", onClick = actions.selectAll)
     divider()
-    action("Find…", "⌘F", onClick = actions.find)
-    action("Clear scrollback", "⌘L", onClick = actions.clearScrollback)
+    action("Find…", AppShortcut.FIND.label, onClick = actions.find)
+    action("Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, onClick = actions.clearScreen)
     divider()
-    action("Split right", "⌘D", onClick = actions.splitRight)
-    action("Split down", "⌘⇧D", onClick = actions.splitDown)
+    action("Split right", split.rightShortcut, onClick = actions.splitRight)
+    action("Split down", split.downShortcut, onClick = actions.splitDown)
     divider()
-    action("Close terminal", "⌘W", danger = true, onClick = actions.close)
+    action("Close terminal", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.close)
 }

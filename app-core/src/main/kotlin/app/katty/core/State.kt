@@ -33,6 +33,8 @@ public enum class MainView {
  * @param colorScheme The name of the default color scheme of the terminals (a terminal can have its own).
  * @param fontFamily The family of the terminals' font; `null` for the bundled JetBrains Mono.
  * @param fontSize In pixels.
+ * @param uiScale How big the text of the application is, as a multiple of its usual size (not the terminals': they have [fontSize]); one of
+ * [UI_SCALES].
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
  * @param usageHidden The limits of those agents that are not shown, each made by [usageKey]. It is the hidden ones that are kept, so that a
  * limit that an agent starts to report later is shown.
@@ -44,6 +46,7 @@ public data class Settings(
     val colorScheme: String = DEFAULT_COLOR_SCHEME,
     val fontFamily: String? = null,
     val fontSize: Float = DEFAULT_FONT_SIZE,
+    val uiScale: Float = DEFAULT_UI_SCALE,
     val ligatures: Boolean = true,
     val usageShown: Set<String> = setOf("claude", "codex", "antigravity"),
     val usageHidden: Set<String> = emptySet(),
@@ -56,6 +59,19 @@ public data class Settings(
         public const val DEFAULT_FONT_SIZE: Float = 14f
         public const val MIN_FONT_SIZE: Float = 8f
         public const val MAX_FONT_SIZE: Float = 32f
+        public const val DEFAULT_UI_SCALE: Float = 1f
+
+        /** The sizes that the text of the application can have, from the smallest: one that is kept in the file and is not one of them is the nearest. */
+        public val UI_SCALES: List<Float> = listOf(0.8f, 0.9f, 1f, 1.1f, 1.25f, 1.5f, 1.75f)
+    }
+
+    /** [uiScale] as it is used: the one of [UI_SCALES] that is nearest to it, so that a file that was edited by hand cannot make the text unreadable. */
+    val effectiveUiScale: Float get() = UI_SCALES.minByOrNull { kotlin.math.abs(it - uiScale) } ?: DEFAULT_UI_SCALE
+
+    /** The scale that is [steps] sizes bigger than [effectiveUiScale] (smaller for a negative number), stopping at the ends of [UI_SCALES]. */
+    public fun steppedUiScale(steps: Int): Float {
+        val index = UI_SCALES.indexOf(effectiveUiScale)
+        return UI_SCALES[(index + steps).coerceIn(UI_SCALES.indices)]
     }
 }
 
@@ -108,6 +124,34 @@ public data class KattyState(
         projects.flatMap { project -> project.workspaces.flatMap { workspace -> workspace.layout.terminals().map { Location(project, workspace, it) } } }
 
     /**
+     * The workspace that is [delta] places after the selected one (before it for a negative [delta]), in the order that the sidebar, the rail and
+     * the tabs list them: the projects in their order, each with its workspaces. It goes from a project to the next, and wraps around at the ends.
+     * When the selected project has no workspace, it is the first of the next project (the last of the previous one for a negative [delta]).
+     * `null` when there is no workspace at all.
+     */
+    public fun workspaceStep(delta: Int): WorkspaceId? {
+        val all = projects.flatMap { it.workspaces }
+        if (all.isEmpty()) return null
+        val current = all.indexOfFirst { it.id == selection.workspace }
+        if (current >= 0) return all[Math.floorMod(current + delta, all.size)].id
+        val project = projects.indexOfFirst { it.id == selection.project }
+        return when {
+            delta >= 0 -> projects.drop(project + 1).flatMap { it.workspaces }.firstOrNull() ?: all.first()
+            project < 0 -> all.last()
+            else -> projects.take(project).flatMap { it.workspaces }.lastOrNull() ?: all.last()
+        }.id
+    }
+
+    /** The workspace that the shortcut of [number] (from 1) goes to, in the selected project: the one at that place, and for 9 the last one, as tabs do. */
+    public fun workspaceByNumber(number: Int): WorkspaceId? {
+        val workspaces = selectedProject?.workspaces.orEmpty()
+        return (if (number == LAST_NUMBER) workspaces.lastOrNull() else workspaces.getOrNull(number - 1))?.id
+    }
+
+    /** The terminal that has the place [number] (from 1) in the selected workspace, in the order they are drawn. */
+    public fun terminalByNumber(number: Int): TerminalId? = selectedWorkspace?.layout?.terminals()?.getOrNull(number - 1)?.id
+
+    /**
      * The state with a selection that points at something: the project, workspace and terminal that are not there are replaced by the
      * first one that is, and a maximized terminal that is not in the selected workspace is put back. What was read from a file may not be
      * consistent.
@@ -125,5 +169,8 @@ public data class KattyState(
     public companion object {
         /** The version of the file that this application writes. */
         public const val VERSION: Int = 1
+
+        /** The number of the shortcut that goes to the last workspace, whatever how many there are. */
+        public const val LAST_NUMBER: Int = 9
     }
 }

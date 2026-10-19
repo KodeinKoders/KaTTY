@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,7 +58,10 @@ import app.katty.core.PaletteMatch
 import app.katty.core.searchPalette
 import app.katty.ui.Icon
 import app.katty.ui.Katty
+import app.katty.ui.ListKey
 import app.katty.ui.hoverHighlight
+import app.katty.ui.listKey
+import app.katty.ui.stepped
 import app.katty.ui.KattyIcons
 import app.katty.ui.KeyCap
 import app.katty.ui.OneLine
@@ -79,7 +83,7 @@ internal fun highlighted(label: String, indices: List<Int>, accent: Color): Anno
 fun PaletteButton(compact: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = Katty.colors
     Row(
-        modifier.width(if (compact) 140.dp else 280.dp).height(28.dp).clip(RoundedCornerShape(6.dp)).background(colors.panel).border(1.dp, colors.line, RoundedCornerShape(6.dp))
+        modifier.width((if (compact) 140.dp else 280.dp) * uiScaleFactor()).heightIn(min = 28.dp).clip(RoundedCornerShape(6.dp)).background(colors.panel).border(1.dp, colors.line, RoundedCornerShape(6.dp))
             .semantics { contentDescription = "Open command palette" }
             // It looks like a text field, and the pointer says so, although a click opens the palette, which is where the text is typed.
             .pointerHoverIcon(PointerIcon.Text)
@@ -117,22 +121,21 @@ fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, o
 
     Box(modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f)).clickable(interactionSource = null, indication = null, onClick = onDismiss), contentAlignment = Alignment.TopCenter) {
         Column(
-            Modifier.padding(top = 90.dp).widthIn(max = 640.dp).fillMaxWidth().shadow(24.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(colors.panel)
+            Modifier.padding(top = 90.dp).widthIn(max = 640.dp * uiScaleFactor()).fillMaxWidth().shadow(24.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(colors.panel)
                 .border(1.dp, colors.line, RoundedCornerShape(12.dp)).clickable(interactionSource = null, indication = null) {}
                 .semantics { contentDescription = "Command palette" },
         ) {
-            Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(KattyIcons.Search, colors.muted, size = 18.dp)
                 TextField(
                     query,
                     Modifier.weight(1f).focusRequester(focus).onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when (event.key) {
-                            Key.DirectionDown -> { if (matches.isNotEmpty()) selected = (selected + 1) % matches.size; true }
-                            Key.DirectionUp -> { if (matches.isNotEmpty()) selected = (selected - 1 + matches.size) % matches.size; true }
-                            Key.Enter, Key.NumPadEnter -> { matches.getOrNull(selected)?.let(run); true }
-                            Key.Escape -> { onDismiss(); true }
-                            else -> false
+                        when (event.listKey()) {
+                            ListKey.DOWN -> { selected = selected.stepped(1, matches.size); true }
+                            ListKey.UP -> { selected = selected.stepped(-1, matches.size); true }
+                            ListKey.ENTER -> { matches.getOrNull(selected)?.let(run); true }
+                            ListKey.ESCAPE -> { onDismiss(); true }
+                            null -> false
                         }
                     },
                     placeholder = { Text("Search or run a command…") },
@@ -149,7 +152,7 @@ fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, o
                     PaletteRow(match, selected == index) { run(match) }
                 }
             }
-            Row(Modifier.fillMaxWidth().height(38.dp).background(colors.side).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 38.dp).background(colors.side).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 FooterHint(listOf("↑", "↓"), "Navigate")
                 FooterHint(listOf("⏎"), "Open")
                 Box(Modifier.weight(1f))
@@ -176,7 +179,7 @@ private fun PaletteRow(match: PaletteMatch, selected: Boolean, onClick: () -> Un
     val colors = Katty.colors
     val entry = match.entry
     Row(
-        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(6.dp)).hoverHighlight(enabled = !selected).background(if (selected) colors.sel else Color.Transparent)
+        Modifier.fillMaxWidth().heightIn(min = 36.dp).clip(RoundedCornerShape(6.dp)).hoverHighlight(enabled = !selected).background(if (selected) colors.sel else Color.Transparent)
             .semantics { contentDescription = "${entry.label} ${entry.context}".trim(); this.selected = selected }
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -184,7 +187,9 @@ private fun PaletteRow(match: PaletteMatch, selected: Boolean, onClick: () -> Un
     ) {
         Icon(
             when (entry.group) {
-                PaletteGroup.WORKSPACES -> KattyIcons.Folder
+                PaletteGroup.PROJECTS -> KattyIcons.Folder
+                // A workspace is a layout of panes.
+                PaletteGroup.WORKSPACES -> KattyIcons.SplitRight
                 PaletteGroup.TERMINALS -> KattyIcons.Prompt
                 PaletteGroup.COMMANDS -> KattyIcons.ArrowRight
             },

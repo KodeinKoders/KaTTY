@@ -68,3 +68,27 @@ public fun PaneNode.neighbour(from: TerminalId, direction: Direction, flipped: B
         .sortedWith(compareBy({ gap(it.value) }, { -shared(it.value) }, { centerDistance(it.value) }))
         .firstOrNull()?.key
 }
+
+/**
+ * The split that an arrow of the resize shortcut moves, and the share of its first side afterwards: the nearest split above [terminal] whose
+ * divider is along the arrow as the screen shows it (a left or right arrow moves a divider between a pane and the one beside it, an up or down
+ * arrow one between a pane and the one over or under it). The divider goes where the arrow points: right and down give the first side more,
+ * left and up less. `null` when no split above the terminal has such a divider, which is a workspace that is not split that way.
+ *
+ * @param delta How much of the split a press moves, as a fraction of it.
+ * @param flipped Whether every split is turned, which is how the vertical layout draws the tree.
+ */
+public fun PaneNode.splitToNudge(terminal: TerminalId, direction: Direction, delta: Float, flipped: Boolean = false): Pair<SplitId, Float>? {
+    // The splits above the terminal, the nearest first.
+    fun above(node: PaneNode): List<PaneNode.Split>? = when (node) {
+        is PaneNode.Leaf -> if (node.terminal.id == terminal) emptyList() else null
+        is PaneNode.Split -> (above(node.first) ?: above(node.second))?.let { it + node }
+    }
+    val wanted = if (direction == Direction.LEFT || direction == Direction.RIGHT) SplitDirection.ROW else SplitDirection.COLUMN
+    val split = above(this)?.firstOrNull { (if (flipped) it.direction.turned() else it.direction) == wanted } ?: return null
+    val sign = if (direction == Direction.RIGHT || direction == Direction.DOWN) 1f else -1f
+    return split.id to (split.ratio + sign * delta).coerceIn(MIN_SPLIT_RATIO, 1f - MIN_SPLIT_RATIO)
+}
+
+/** The smallest share that a side of a split can have: what the store keeps. */
+internal const val MIN_SPLIT_RATIO: Float = 0.05f

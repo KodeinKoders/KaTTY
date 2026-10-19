@@ -1,11 +1,12 @@
 package app.katty.screens
 
+import app.katty.AppShortcut
 import app.katty.ui.MenuEntry
 import app.katty.ui.menu
 
 /** The menu of a project, wherever it is listed: the sidebar, or the tabs of the vertical layout. */
 fun projectMenu(onNewWorkspace: () -> Unit, onRename: () -> Unit, onReveal: () -> Unit, onRemove: () -> Unit): List<MenuEntry> = menu {
-    action("New workspace", "⌘N", onClick = onNewWorkspace)
+    action("New workspace", AppShortcut.NEW_WORKSPACE.label, onClick = onNewWorkspace)
     action("Rename project…", "F2", onClick = onRename)
     action("Reveal in file manager", onClick = onReveal)
     divider()
@@ -16,5 +17,5 @@ fun projectMenu(onNewWorkspace: () -> Unit, onRename: () -> Unit, onReveal: () -
 fun workspaceMenu(onRename: () -> Unit, onClose: () -> Unit): List<MenuEntry> = menu {
     action("Rename workspace", "F2", onClick = onRename)
     divider()
-    action("Close workspace", "⌘⇧W", danger = true, onClick = onClose)
+    action("Close workspace", AppShortcut.CLOSE_WORKSPACE.label, danger = true, onClick = onClose)
 }

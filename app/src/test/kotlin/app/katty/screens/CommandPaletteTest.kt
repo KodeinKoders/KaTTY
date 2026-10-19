@@ -171,10 +171,11 @@ class CommandPaletteTest {
         addProject = { calls += "addProject" }, newWorkspace = { calls += "newWorkspace" }, renameWorkspace = { calls += "renameWorkspace" },
         closeWorkspace = { calls += "closeWorkspace" }, splitRight = { calls += "splitRight" }, splitDown = { calls += "splitDown" },
         renameTerminal = { calls += "renameTerminal" }, closeTerminal = { calls += "closeTerminal" }, restartTerminal = { calls += "restart" },
-        find = { calls += "find" }, clearScrollback = { calls += "clear" }, maximize = { calls += "maximize" }, colorScheme = { calls += "colorScheme" },
+        find = { calls += "find" }, clearScreen = { calls += "clear" }, maximize = { calls += "maximize" }, colorScheme = { calls += "colorScheme" },
         toggleSidebar = { calls += "sidebar" }, showView = { calls += "view $it" }, setLayout = { calls += "layout $it" }, setTheme = { calls += "theme $it" },
         jumpToWaiting = { calls += "jump" }, markAllSeen = { calls += "seen" }, openBoardWindow = { calls += "boardWindow" }, openTerminal = { calls += "terminal ${it.value}" },
         openWorkspace = { calls += "workspace ${it.value}" },
+        selectProject = { calls += "selectProject ${it.value}" }, moveTerminalTo = { calls += "move ${it.value}" },
     )
 
     private fun commands(infos: Map<TerminalId, AgentInfo> = emptyMap()) = paletteCommands(state, infos, titleOf = { it.name ?: "zsh" }, handlers = handlers)
@@ -221,8 +222,24 @@ class CommandPaletteTest {
         assertEquals("⌘D", shortcuts["Split right"])
         assertEquals("⌘⇧D", shortcuts["Split down"])
         assertEquals("⌘R", shortcuts["Restart terminal"])
-        assertEquals("F2", shortcuts["Rename workspace"])
+        assertEquals("⌘⇧F2", shortcuts["Rename workspace"])
+        assertEquals("⌘F2", shortcuts["Rename terminal"])
+        assertEquals("⌘L", shortcuts["Clear screen and scrollback"])
         assertEquals("⌘⇧W", shortcuts["Close workspace"])
+    }
+
+    @Test
+    fun theShortcutWithoutShiftSplitsInTheMainDirectionOfTheLayout() {
+        store.addProject("/dev/api-gateway")
+
+        fun shortcuts(vertical: Boolean) = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = handlers, vertical = vertical)
+            .entries.filter { it.group == PaletteGroup.COMMANDS }.associate { it.label to it.shortcut }
+
+        // Right in the horizontal layout, down in the vertical one: the same keys split the same way as the pane's buttons do.
+        assertEquals("⌘D", shortcuts(vertical = false)["Split right"])
+        assertEquals("⌘⇧D", shortcuts(vertical = false)["Split down"])
+        assertEquals("⌘⇧D", shortcuts(vertical = true)["Split right"])
+        assertEquals("⌘D", shortcuts(vertical = true)["Split down"])
     }
 
     @Test
@@ -239,6 +256,98 @@ class CommandPaletteTest {
         }
 
         assertEquals(listOf("workspace ${workspace.value}", "terminal ${terminal.value}", "splitRight", "view BOARD", "layout VERTICAL", "theme DARK"), calls)
+    }
+
+    @Test
+    fun theWorkspaceStepsAreThereOnlyWhenThereIsAnotherWorkspaceToGoTo() {
+        store.addProject("/dev/api")
+        assertFalse(commands().entries.any { it.label == "Next workspace" })
+
+        store.addWorkspace(state.selection.project!!)
+        val entries = commands().entries
+
+        assertEquals("⌘⇧]", entries.single { it.label == "Next workspace" }.shortcut)
+        assertEquals("⌘⇧[", entries.single { it.label == "Previous workspace" }.shortcut)
+    }
+
+    private fun labels() = commands().entries.map { it.label }
+
+    @Test
+    fun theProjectsAreListedAndChosenLikeTheWorkspaces() {
+        store.addProject("/dev/api-gateway")
+        store.addProject("/dev/web-client")
+        val entries = commands().entries
+
+        val projects = entries.filter { it.group == PaletteGroup.PROJECTS }
+
+        assertEquals(listOf("api-gateway", "web-client"), projects.map { it.label })
+        assertEquals(listOf("/dev/api-gateway", "/dev/web-client"), projects.map { it.context })
+        commands().run(projects.first())
+        assertEquals(listOf("project ${state.projects.first().id.value}"), calls.map { it.replace(Regex("^selectProject "), "project ") })
+    }
+
+    @Test
+    fun theProjectCommandsAreThereForTheSelectedProjectAndMovesOnlyWhereThereIsRoom() {
+        store.addProject("/dev/api-gateway")
+        assertTrue("Rename project" in labels())
+        assertTrue("Remove project…" in labels())
+        assertTrue("Reveal project in the file manager" in labels())
+        assertFalse("Move project up" in labels() || "Move project down" in labels(), "It is the only one")
+
+        store.addProject("/dev/web-client")
+        assertTrue("Move project up" in labels())
+        assertFalse("Move project down" in labels(), "The selected one is the last")
+    }
+
+    @Test
+    fun aWorkspaceMovesUpOrDownOnlyWhereThereIsRoom() {
+        store.addProject("/dev/api-gateway")
+        val project = state.selection.project!!
+        assertFalse("Move workspace up" in labels() || "Move workspace down" in labels())
+
+        store.addWorkspace(project)
+
+        assertTrue("Move workspace up" in labels())
+        assertFalse("Move workspace down" in labels())
+    }
+
+    @Test
+    fun aTerminalCanBeMovedToTheOtherWorkspacesOfItsProjectFromThePalette() {
+        store.addProject("/dev/api-gateway")
+        val project = state.selection.project!!
+        store.renameWorkspace(state.selection.workspace!!, "first")
+        val second = store.addWorkspace(project, "second")!!
+        store.selectWorkspace(state.projects.first().workspaces.first().id)
+        val entry = commands().entries.single { it.label == "Move terminal to “second”" }
+
+        commands().run(entry)
+
+        assertEquals(listOf("move ${second.value}"), calls)
+    }
+
+    @Test
+    fun theCommandsOfATerminalThatHasANameIncludeGivingItUp() {
+        store.addProject("/dev/api-gateway")
+        assertFalse("Use process name for the terminal" in labels())
+
+        store.renameTerminal(state.selection.terminal!!, "build")
+
+        assertTrue("Use process name for the terminal" in labels())
+    }
+
+    @Test
+    fun theSettingsAndTheUsageHaveCommandsThatSayWhatTheyDoNext() {
+        store.addProject("/dev/api-gateway")
+        assertTrue("Turn font ligatures off" in labels())
+        assertTrue("Show the usage in a compact form" in labels())
+
+        store.updateSettings { it.copy(ligatures = false, compactUsage = true) }
+
+        assertTrue("Turn font ligatures on" in labels())
+        assertTrue("Show the usage in full" in labels())
+        for (label in listOf("Choose the default color scheme…", "Refresh the usage of the agents", "Open the main menu", "Bigger terminal font", "Smaller terminal font", "Default terminal font size", "Bigger interface text", "Smaller interface text", "Default interface text size", "Show the agents that need you")) {
+            assertTrue(label in labels(), label)
+        }
     }
 
     @Test

@@ -253,7 +253,7 @@ public class KattyStore(
             if (state.selection.project == id && state.selection.workspace != null) return@edit state
             // Another project: its first workspace.
             val workspace = project.workspaces.firstOrNull()
-            state.copy(selection = Selection(id, workspace?.id, workspace?.layout?.terminals()?.firstOrNull()?.id))
+            state.copy(selection = Selection(id, workspace?.id, workspace?.terminalToFocus()))
         }
     }
 
@@ -265,7 +265,7 @@ public class KattyStore(
             // Its project is open, since the workspace that is selected is one that can be seen.
             state.copy(
                 projects = state.projects.map { if (it.id == project.id) it.copy(open = true) else it },
-                selection = Selection(project.id, id, workspace.layout.terminals().first().id),
+                selection = Selection(project.id, id, workspace.terminalToFocus()),
             )
         }
     }
@@ -275,7 +275,7 @@ public class KattyStore(
         edit { state ->
             val location = state.locate(id) ?: return@edit state
             val keepsMaximized = state.selection.maximized == id
-            state.copy(selection = Selection(location.project.id, location.workspace.id, id, maximized = if (keepsMaximized) id else null))
+            state.rememberingFocus(location, id).copy(selection = Selection(location.project.id, location.workspace.id, id, maximized = if (keepsMaximized) id else null))
         }
     }
 
@@ -284,7 +284,7 @@ public class KattyStore(
         edit { state ->
             if (id == null) return@edit state.copy(selection = state.selection.copy(maximized = null))
             val location = state.locate(id) ?: return@edit state
-            state.copy(selection = Selection(location.project.id, location.workspace.id, id, maximized = id))
+            state.rememberingFocus(location, id).copy(selection = Selection(location.project.id, location.workspace.id, id, maximized = id))
         }
     }
 
@@ -294,8 +294,17 @@ public class KattyStore(
         edit { it.copy(settings = change(it.settings).let { s -> s.copy(fontSize = s.fontSize.coerceIn(Settings.MIN_FONT_SIZE, Settings.MAX_FONT_SIZE)) }) }
     }
 
+    // The workspace of [location] keeps [id] as the terminal that had the focus last.
+    private fun KattyState.rememberingFocus(location: KattyState.Location, id: TerminalId): KattyState =
+        if (location.workspace.focused == id) this else copy(
+            projects = projects.map { project ->
+                if (project.id != location.project.id) project
+                else project.copy(workspaces = project.workspaces.map { if (it.id == location.workspace.id) it.copy(focused = id) else it })
+            },
+        )
+
     private companion object {
-        const val MIN_RATIO = 0.05f
+        const val MIN_RATIO = MIN_SPLIT_RATIO
     }
 }
 

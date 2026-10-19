@@ -28,7 +28,7 @@ class TerminalMenusTest {
         paste = { calls += "paste" },
         selectAll = { calls += "selectAll" },
         find = { calls += "find" },
-        clearScrollback = { calls += "clear" },
+        clearScreen = { calls += "clear" },
         splitRight = { calls += "splitRight" },
         splitDown = { calls += "splitDown" },
         close = { calls += "close" },
@@ -137,9 +137,22 @@ class TerminalMenusTest {
         val entries = terminalContextMenu(hasSelection = true, actions = contextActions)
 
         assertEquals(
-            listOf("Copy", "Paste", "Select all", "---", "Find…", "Clear scrollback", "---", "Split right", "Split down", "---", "Close terminal"),
+            listOf("Copy", "Paste", "Select all", "---", "Find…", "Clear screen and scrollback", "---", "Split right", "Split down", "---", "Close terminal"),
             entries.labels(),
         )
+    }
+
+    @Test
+    fun theSplitShortcutsFollowTheLayout() {
+        fun shortcuts(entries: List<MenuEntry>) = entries.filterIsInstance<MenuAction>().associate { it.label to it.shortcut }
+
+        assertEquals("⌘D", shortcuts(terminalMenu(emptyList(), "Default", menuActions))["Split right"])
+        assertEquals("⌘⇧D", shortcuts(terminalMenu(emptyList(), "Default", menuActions))["Split down"])
+        assertEquals("⌘⇧D", shortcuts(terminalMenu(emptyList(), "Default", menuActions, vertical = true))["Split right"])
+        assertEquals("⌘D", shortcuts(terminalMenu(emptyList(), "Default", menuActions, vertical = true))["Split down"])
+        assertEquals("⌘⇧D", shortcuts(terminalContextMenu(true, contextActions, vertical = true))["Split right"])
+        assertEquals("⌘D", shortcuts(terminalContextMenu(true, contextActions, vertical = true))["Split down"])
+        assertEquals("⌘F2", shortcuts(terminalMenu(emptyList(), "Default", menuActions))["Rename terminal"])
     }
 
     @Test
@@ -153,7 +166,7 @@ class TerminalMenusTest {
         val entries = terminalContextMenu(true, contextActions)
 
         assertEquals(
-            mapOf("Copy" to "⌘C", "Paste" to "⌘V", "Select all" to "⌘A", "Find…" to "⌘F", "Clear scrollback" to "⌘L", "Split right" to "⌘D", "Split down" to "⌘⇧D", "Close terminal" to "⌘W"),
+            mapOf("Copy" to "⌘C", "Paste" to "⌘V", "Select all" to "⌘A", "Find…" to "⌘F", "Clear screen and scrollback" to "⌘L", "Split right" to "⌘D", "Split down" to "⌘⇧D", "Close terminal" to "⌘W"),
             entries.filterIsInstance<MenuAction>().associate { it.label to it.shortcut },
         )
     }

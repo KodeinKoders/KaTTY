@@ -1,5 +1,7 @@
 package app.katty.screens
 
+import app.katty.ui.uiScaleFactor
+import app.katty.AppShortcut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -103,11 +106,11 @@ fun Sidebar(
 ) {
     val colors = Katty.colors
 
-    Column(modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
+    Column(modifier.width(SIDEBAR_WIDTH * uiScaleFactor()).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             SectionLabel("PROJECTS")
             Spacer(Modifier.weight(1f))
-            KattyIconButton(KattyIcons.Plus, "Add project", onAddProject)
+            KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, shortcut = AppShortcut.ADD_PROJECT.label)
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // The projects are dragged by their row, and the workspaces of the open one by theirs, each among its own.
@@ -168,7 +171,7 @@ fun Sidebar(
                             )
                         }
                         Row(
-                            Modifier.fillMaxWidth().height(30.dp).padding(start = 22.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
+                            Modifier.fillMaxWidth().heightIn(min = 30.dp).padding(start = 22.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
                                 .clickable(role = Role.Button) {
                                     onRenamingWorkspace(store.addWorkspace(project.id))
                                 }
@@ -208,7 +211,7 @@ private fun ProjectRow(
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
     Box {
         Row(
-            Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
+            Modifier.fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
                 .semantics { contentDescription = project.name; this.selected = selected }
                 .clickable(role = Role.Button, onClick = onSelect)
                 // F2 renames what has the focus, when it is in the sidebar: in a terminal it is the program's key.
@@ -264,7 +267,7 @@ private fun WorkspaceRow(
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
     Box(modifier.padding(start = 22.dp)) {
         Row(
-            Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight(enabled = !selected)
+            Modifier.fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight(enabled = !selected)
                 .background(if (selected) colors.sel else androidx.compose.ui.graphics.Color.Transparent)
                 .semantics { contentDescription = workspace.name; this.selected = selected }
                 .clickable(role = Role.Tab, onClick = onSelect)

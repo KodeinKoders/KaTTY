@@ -3,116 +3,344 @@
 :toclevels: 2
 :idprefix:
 :idseparator: -
-:source-highlighter: highlight.js
 :icons: font
 
-*A terminal manager for people who run several coding agents at once, written in Kotlin with Compose.*
+[.lead]
+*A terminal manager for people who run several coding agents at once.*
 
-KaTTY organizes terminals in projects and workspaces, and shows what each agent in them is doing: working, waiting for you, or done.
-It displays and arranges terminals, and never reads or writes what an agent says.
-The terminals are drawn on a Compose for Desktop `Canvas`, and the window is built with https://github.com/JetBrains/jewel[Jewel].
-The terminal emulation is done by https://ghostty.org[libghostty-vt], the library that Ghostty is built on, and the pseudo-terminal is handled by https://github.com/JetBrains/pty4j[pty4j].
+KaTTY keeps your terminals organized in projects and workspaces, and shows at a glance what each agent in them is doing: working, waiting for you, or done.
+You start the agents yourself, in plain terminals, with the tools you already use.
+KaTTY displays and arranges them, and never reads or writes what an agent says.
+
+It is for you if you work on several repositories, or several tasks in one repository, with Claude Code, Codex or another agent running in each, and you are tired of hunting for the window that needs you.
+
+toc::[]
 
 
-== Requirements
+== What you get
 
-* macOS on Apple Silicon.
-libghostty-vt is only built for this platform at the moment.
+=== Organize your work
+
+* A *project* is a folder on your disk.
+It holds *workspaces*, and each workspace holds terminals in a layout of splits.
+* Split a terminal right or down, drag the gap between panes to resize them, maximize one pane to focus on it, and move a terminal to another workspace of its project.
+* Rename projects, workspaces and terminals, and drag projects and workspaces to reorder them.
+* Three layouts: *horizontal*, with a sidebar that folds into a slim rail; *vertical*, with tabs along the top; and *auto*, which picks the vertical one when the window is taller than it is wide.
+* Light, dark or system theme.
+* The text of the application can be made bigger, up to 175 %, or smaller, in the main menu, for the people who read better with a larger text.
+The font of the terminals is a setting of its own.
+* The window comes back where you left it, in the same size and mode, and so does the board window.
+* The command palette (⌘K) finds any project, workspace, terminal or command, and shows the shortcut of each command.
+
+=== See what your agents are doing
+
+* Every terminal, workspace and project shows the state of its agents: working, needs you, done or failed.
+The sidebar counts how many terminals are in each state.
+* The *agent board* gathers every agent in a column for its state: nothing, working, needs input, done.
+Filter it by project, and open it in a window of its own to keep it on another screen.
+A click on a card brings you to that terminal.
+* The bell in the title bar lists the agents that need you or have finished.
+⌘⇧J jumps to the next agent that waits.
+* When an agent you are not looking at needs you, finishes or fails, a notice appears in the window.
+KaTTY does not send macOS notifications, badges or sounds.
+* The header of each pane shows the agent or the program that runs in it, and the *git branch*, worktree or commit that the terminal is in.
+* Closing a workspace asks first when an agent in it is still working or waiting for you.
+
+How much of this each agent supports is in <<agent-compatibility,the compatibility matrix>>.
+
+=== Keep an eye on your usage
+
+* Quota bars show how much of each limit of your agents you have used, and when it resets.
+They turn amber from 80 %.
+* You choose which agents and which limits are shown, and can fold them into a compact form.
+* The numbers are read from the agents' own usage commands, every two minutes or when you press refresh.
+It costs no turn, and no credential is ever read.
+
+=== Pick up where you left off
+
+* The projects, workspaces, splits, names and settings are kept as you change them.
+* When you open KaTTY again, each terminal starts a new shell in the folder where the old one was.
+* The program that was running is started again over the shell, with the same command line and in the same folder: an `emacs notes.txt` reopens the file, and leaving emacs leaves you at the shell prompt.
+* An agent that can pick up its conversation does: Claude Code is started again on its last conversation, with the same model and permission mode.
+* A program that only shows something or waits for you starts by itself: editors, pagers, monitors, terminal multiplexers, the agents, a REPL and `ssh` to a host.
+Any other command, such as `make deploy` or `rm`, is only typed at the prompt and waits for you to press Return.
+A command that starts with `sudo`, `doas` or `su` is never started again.
+* The scrollback is not kept, and neither is what a program held in memory, such as an unsent prompt or the unsaved buffers of an editor.
+
+=== A terminal you will enjoy
+
+* 811 color schemes, with a picker that has a search, a light and dark filter and a live preview, and a scheme of its own for any terminal.
+* The bundled JetBrains Mono, or any monospaced font of your system, from 8 to 32 points, with ligatures on or off.
+* Select with the mouse by word, by line or by block, or with Shift and the arrow keys.
+Copy and paste are safe: what you paste cannot run commands behind your back.
+A middle click pastes the last selection.
+* Find in the terminal (⌘F), and jump from prompt to prompt (⌘↑ and ⌘↓) with zsh and bash.
+* ⌘-click opens the links that programs print, and the addresses written in the text.
+* Images appear in the terminal: the Kitty graphics protocol, Sixel and the inline images of iTerm2.
+* The history has a scrollbar that hides when you do not use it.
+* The macOS line-editing keys work in the shell: ⌥← and ⌥→ move by word, ⌘← and ⌘→ go to the start and the end of the line, ⌘⌫ deletes to the start.
+* Dead keys and accents work, and programs that use the mouse or the Kitty keyboard protocol get them.
+A program can put text in your clipboard, and cannot read it.
+
+
+== Keyboard shortcuts
+
+Everything in KaTTY can be done without the mouse.
+Every shortcut uses ⌘, which never reaches the programs in your terminals.
+The palette (⌘K) lists every command with its shortcut, and many commands that have none.
+Escape is never used by the window, except to close what is open in front of it (the palette, a dialog, a list): it belongs to the programs in your terminals.
+
+=== Projects, workspaces and panes
+
+[cols="2,3"]
+|===
+| Shortcut | Action
+
+| ⌘O
+| Add a project folder
+
+| ⌘N
+| New workspace
+
+| ⌘⇧W
+| Close the workspace
+
+| ⌘⌥⇧↑, ⌘⌥⇧↓
+| Previous or next workspace, going on to the other projects at the ends of one (horizontal layout)
+
+| ⌘⌥⇧←, ⌘⌥⇧→
+| Previous or next workspace (vertical layout)
+
+| ⌘⇧[, ⌘⇧]
+| Previous or next workspace, in either layout
+
+| ⌘1 … ⌘8, ⌘9
+| The first to the eighth workspace of the project, and the last one
+
+| ⌘D
+| Split in the main direction of the layout: right in the horizontal layout, down in the vertical one
+
+| ⌘⇧D
+| Split the other way
+
+| ⌘⌥ and an arrow
+| Move to the neighbouring pane
+
+| ⌘⌥1 … ⌘⌥9
+| Go to the first to the ninth pane of the workspace
+
+| ⌘⌃ and an arrow
+| Move the nearest divider in that direction
+
+| ⌘⇧↩
+| Maximize the pane, or put it back
+
+| ⌘W
+| Close the terminal
+
+| ⌘R
+| Restart the terminal
+
+| ⌘F2
+| Rename the terminal
+
+| ⌘⇧F2
+| Rename the workspace
+
+| F2
+| Rename the project or the workspace that has the focus in the sidebar or the tabs
+|===
+
+When you switch to a workspace, the terminal that you used last in it has the keyboard again.
+
+=== Agents and views
+
+[cols="2,3"]
+|===
+| Shortcut | Action
+
+| ⌘J
+| Show the agents that need you or have finished: ↑ and ↓ choose one, Enter goes to its terminal, Escape closes the list
+
+| ⌘⇧J
+| Jump to the next agent that waits
+
+| ⌘⇧B
+| Switch between the agent board and the terminals
+
+| ↑ ↓ ← → and Enter
+| On the board: move from card to card, and go to the terminal of the one that is selected
+
+| ⌘W
+| In the board window: close it
+
+| ⌘B
+| Show the project sidebar, or fold it into the rail
+|===
+
+=== In a terminal
+
+[cols="2,3"]
+|===
+| Shortcut | Action
+
+| ⌘F
+| Find in the terminal
+
+| ⌘G, ⌘⇧G
+| Next or previous match
+
+| ⌘L
+| Clear the screen and the scrollback: at a prompt, the shell draws its prompt again at the top
+
+| ⌘↑, ⌘↓
+| Jump to the previous or next prompt
+
+| ⌘C, ⌘V, ⌘A
+| Copy, paste and select all
+|===
+
+=== The look and the menu
+
+[cols="2,3"]
+|===
+| Shortcut | Action
+
+| ⌘K
+| Open the command palette
+
+| ⌘,
+| Open the main menu: the layout, the theme, the font
+
+| ⌘=, ⌘-, ⌘0
+| Make the font bigger or smaller, or give it its default size
+|===
+
+In a dialog that asks you to confirm, the keyboard starts on Cancel, so that a stray Enter destroys nothing.
+Tab goes to the red button and Enter presses the button that has the keyboard, ⌘⌫ confirms at once, and Escape cancels.
+
+
+[#agent-compatibility]
+== Agent compatibility
+
+KaTTY knows these agents by name: it recognizes them, shows their logo, and finds out which of them are installed on your machine.
+What more it can do depends on what each agent offers.
+
+[cols="3,2,2,2,2,2"]
+|===
+| | Claude Code | Codex | Gemini CLI | Antigravity | Copilot CLI
+
+| Recognized, with its logo
+| Yes
+| Yes
+| Yes
+| Yes
+| Yes
+
+| Live state: working, needs you, done, failed
+| Yes
+| Untested
+| No
+| No
+| No
+
+| Bell, notice and ⌘⇧J when it needs you
+| Yes
+| Untested
+| No
+| No
+| No
+
+| Card on the agent board
+| Yes
+| Untested
+| No
+| Yes, as "Running"
+| Yes, as "Running"
+
+| Usage meter
+| Yes
+| Untested
+| No
+| Yes
+| No
+
+| Resumes its last conversation after a relaunch
+| Yes
+| No
+| No
+| No
+| No
+
+| Started again by itself after a relaunch
+| Yes
+| Untested
+| Depends on how it is installed
+| Untested
+| Untested
+|===
+
+*Yes* means it works, as far as it was tried.
+*Untested* means that it should work, and has never been tried with that agent in KaTTY.
+*No* means it is not available.
+
+* *Live state* comes from the agent itself: KaTTY does not install hooks or read the screen.
+Claude Code reports its state (from version 2.1.295).
+Codex has been reported to do it in its recent versions, but no Codex was available to try.
+Gemini CLI, Antigravity and Copilot CLI do not report anything yet: they look like plain shells in the sidebar and never call for you.
+* An agent that does not report still gets a card on the board when KaTTY recognizes the program that runs.
+The card is in the "Nothing" column and says "Running", since the agent cannot say whether it works or waits.
+Gemini CLI is the exception when it is installed as a script: the program that runs is then not called `gemini`, and KaTTY cannot tell.
+* The *usage meters* use the agents' own commands.
+Gemini CLI and Copilot CLI have no command that gives the usage without costing a turn, so they have no meter.
+Antigravity needs version 1.1.11 or later.
+* Only Claude Code resumes its conversation.
+The others start again as a new conversation.
+Gemini CLI can only resume by position and not by name, and the others were not available to check.
+* An agent that is installed as a script, as Gemini CLI can be, is typed at the prompt and waits for you to press Return instead of starting by itself.
+
+
+== Getting started
+
+There is no download yet: KaTTY is built from its sources.
+
+* A Mac with Apple Silicon, running macOS 13 or later.
+KaTTY is built for macOS 13, and has not been tried on it.
 * JDK 25.
-It is the LTS that has the final Java FFM API, which the binding to libghostty-vt uses.
-Gradle downloads it when it is missing.
-The `app` module runs on the JetBrains Runtime 25 (Jewel's window needs it for the title bar), which Gradle downloads too.
-
-NOTE: The application starts `$SHELL -l`, with `TERM=xterm-256color` and `COLORTERM=truecolor`.
-
-
-== Running
+Gradle downloads it, and the JetBrains Runtime that the window needs, when they are missing.
 
 [source,bash]
 ----
-./gradlew :app:run
+./gradlew :app:run                   # starts KaTTY
 ./gradlew :app:createDistributable   # the application bundle, in app/build/compose/binaries
 ./gradlew :app:packageDmg            # a disk image
 ----
 
-The logs are printed on the standard error stream.
-Their level is set in `app/src/main/resources/simplelogger.properties`.
+The application bundle and the disk image are not signed, so macOS will ask you to confirm that you want to open them.
 
-`./gradlew build` builds everything and runs the tests, which start programs in a pseudo-terminal, draw frames with Skia in memory and interact with the windows.
-The images that the rendering tests draw are kept in `app/build/renders` and `terminal-compose/build/renders`.
-
-The state of the application (the projects, the workspaces, the splits and the settings) is kept in `~/Library/Application Support/KaTTY/state.json`.
-The position, size and mode of the window are in `window.json` beside it, and those of the board window in `board-window.json`, so that each opens as it was closed; the board window also opens again at the next launch if it was open when the application was closed.
-`-Dkatty.support=/some/folder` makes it use another folder, to try something without touching it.
+Each terminal starts your login shell (`$SHELL -l`).
+Your projects, workspaces and settings are kept in `~/Library/Application Support/KaTTY`.
+To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`.
 
 
-== The application
+== Limitations
 
-* A *project* is a folder on your disk.
-Its *workspaces* hold terminals in a tree of splits that you can drag to resize.
-A terminal always starts as a plain shell: you start the agents, and manage git worktrees, yourself.
-* The sidebar (or the rail it folds into, or the tabs of the vertical layout) shows how many terminals of each project are in each state.
-The *board* shows the agents in a column for their state (a shell has no card), and it can be opened in a window of its own for another screen, where a click on a card selects that terminal in the main window.
-The bell lists the agents that need you.
-* The state comes from the program in the terminal, which reports it with the escape sequence `OSC 7501`, the _program status_ protocol of libghostty-vt (https://www.superlogical.com/rex/docs/build/program-status[specification]).
-A program that does not send it shows as a shell.
-* The usage of the agents is read from their own commands, which do not cost a turn: `claude -p /usage`, `agy -p /usage`, and `codex app-server`.
-No credential is read.
-Gemini CLI and Copilot CLI have no command that says it, so they have no meter.
-* Everything is set up from the main menu: the layout, the theme, the default color scheme (811 of them), the font and the ligatures.
-* On macOS: ⌘K opens the command palette, ⌘D and ⌘⇧D split, ⌘W closes a terminal, ⌘N makes a workspace, ⌘F finds, ⌘⇧J goes to the next agent that waits.
-The palette lists every command with its shortcut.
-* At launch the projects, workspaces and splits come back, each terminal with a new shell where the old one was.
-The program that ran over the shell is started again in it, with its command line and its directory (`emacs notes.txt` opens the file, and leaving it leaves the shell), and an agent resumes its conversation (Claude Code: `claude --resume`).
-Editors, pagers, monitors and the agents start by themselves; any other command is only typed, and waits for you to press Return.
-The scrollback is not kept, and neither is what the program held in memory.
+* macOS on Apple Silicon only, for now.
+* Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
+* Gemini CLI, Antigravity and Copilot CLI do not tell KaTTY what they are doing yet.
+* The Option key is not Alt in your programs: it types the characters of your keyboard layout.
+* The directory and the prompts of a terminal are followed for zsh and bash.
+fish is supported but was never tried, and nushell and elvish are not.
+* ⌘F2 needs the fn key on a Mac keyboard where F2 is the brightness key, unless F1, F2 and the others are standard function keys in the keyboard settings.
+* The logos of the agents are drawn in one color each, not in their own.
 
 
-== Modules
+== Built with
 
-[cols="1,3"]
-|===
-| Module | Role
-
-| `app`
-| The application: Jewel's decorated window, with the sidebar, the workspaces, the board, the palette and the rest of what the design draws.
-
-| `app-core`
-| What the application keeps and knows, with no Compose: the projects, workspaces and terminals and their store, the file that keeps them, git, the agents and their states, the usage of each, the palette's matching.
-
-| `terminal-compose`
-| `Terminal`, the Compose composable that draws a session with the bundled JetBrains Mono, and sends it the keys that are typed.
-
-| `terminal-themes`
-| The color schemes of the https://github.com/mbadolato/iTerm2-Color-Schemes[iTerm2-Color-Schemes] collection (811 of them, in `iterm2-color-schemes`), read from the `.itermcolors` property lists with kotlinx.serialization and xmlutil, as themes for a terminal.
-
-| `terminal`
-| `TerminalSession`, which runs a program in a pseudo-terminal, feeds its output to a terminal, and publishes what the screen looks like as immutable frames.
-It has its own model of keys and frames, so that nothing above it mentions the binding.
-
-| `ghostty-vt`
-| The binding to libghostty-vt, in Java FFM.
-The Java part is generated by jextract, and a Kotlin API hides it.
-|===
-
-The libghostty-vt library and its headers are in `libghostty-vt`, which is not a Gradle module.
-Its `README.adoc` says which Ghostty commit it was built from, and how to update it.
-
-
-== Status
-
-The terminal runs a shell with colors, text attributes, the 811 iTerm2 color schemes, wide characters, a cursor, resizing with reflow, the keyboard (including the Kitty protocol and dead keys), the mouse, the history and a scrollbar, selecting text, links, images (Kitty graphics, Sixel and iTerm2), search, focus reports, and saving and restoring a terminal.
-The application is described above.
-
-What is not done yet:
-
-* input methods other than dead keys (the candidate windows of Chinese, Japanese and Korean input);
-* the multipart inline images of iTerm2, and Sixel through tmux's passthrough;
-* the `id=` of OSC 8 links, which libghostty does not give;
-* shell integration for nushell and elvish;
-* other platforms than macOS on Apple Silicon (so the Windows buttons of the title bar cannot be tried);
-* hooks that make an agent send `OSC 7501`, for the agents that do not send it on their own: they show as shells until they do;
-* the logos of the agents in their original colors (they are drawn in one color each).
+KaTTY is written in Kotlin, with Compose for Desktop, and its window is built with https://github.com/JetBrains/jewel[Jewel].
+The terminal emulation is done by https://ghostty.org[libghostty-vt], the library that Ghostty is built on, and the pseudo-terminals by https://github.com/JetBrains/pty4j[pty4j].
+The color schemes come from the https://github.com/mbadolato/iTerm2-Color-Schemes[iTerm2-Color-Schemes] collection.
+`AGENTS.md` describes how the code is organized.
 
 
 == License

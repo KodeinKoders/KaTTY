@@ -5,6 +5,13 @@ import app.katty.core.WindowFile
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,6 +37,7 @@ import app.katty.terminals.SessionRegistry
 import app.katty.terminals.TerminalHandle
 import app.katty.ui.Katty
 import app.katty.ui.OneLine
+import app.katty.ui.UiScale
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.TitleBar
 
@@ -70,7 +78,18 @@ fun BoardWindow(
     val flush = keepWindowGeometry(windowState, windowFile, geometry, open = { !closedByUser[0] })
     // It is open from now on, for a launch that comes before anything about it changes.
     LaunchedEffect(Unit) { flush() }
-    DecoratedWindow(onCloseRequest = { closedByUser[0] = true; flush(); onClose() }, title = "KaTTY — Agent board", state = windowState) {
+    val closeByUser = { closedByUser[0] = true; flush(); onClose() }
+    DecoratedWindow(
+        onCloseRequest = closeByUser,
+        title = "KaTTY — Agent board",
+        state = windowState,
+        // ⌘W closes the window that has the focus, as it does in any window of the system.
+        onPreviewKeyEvent = { event ->
+            val close = event.type == KeyEventType.KeyDown && event.isMetaPressed && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W
+            if (close) closeByUser()
+            close
+        },
+    ) {
         LaunchedEffect(focusTick) { if (focusTick > 0) window.toFront() }
         // A window that opens takes the focus. At launch the main window is the one that is meant to have it: when this one is given it, once,
         // it is handed back. If it is never given it (the system did not), nothing is done.
@@ -86,10 +105,12 @@ fun BoardWindow(
                 onDispose { window.removeWindowFocusListener(listener) }
             }
         }
-        TitleBar { OneLine("Agent board", color = Katty.colors.text) }
-        val size = LocalWindowInfo.current.containerSize
-        val vertical = state.settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
-        BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, processes = processNames)
+        UiScale(state.settings.effectiveUiScale) {
+            TitleBar { OneLine("Agent board", color = Katty.colors.text) }
+            val size = LocalWindowInfo.current.containerSize
+            val vertical = state.settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
+            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, processes = processNames)
+        }
     }
 }
 

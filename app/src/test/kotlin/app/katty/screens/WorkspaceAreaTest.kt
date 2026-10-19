@@ -2,7 +2,14 @@
 
 package app.katty.screens
 
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -79,6 +86,39 @@ class WorkspaceAreaTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun theFocusedTerminalTakesTheKeyboardBackWhenTheFocusTickChanges() = runComposeUiTest {
+        store.addProject("/tmp")
+        registry.sync(store.state.value)
+        var tick by androidx.compose.runtime.mutableStateOf(0)
+        setContent {
+            KattyTheme(dark = false) {
+                val state by store.state.collectAsState()
+                val handles by registry.handles.collectAsState()
+                val workspace = state.selectedWorkspace
+                androidx.compose.foundation.layout.Column {
+                    // What had the keyboard: a palette's field, a rename.
+                    androidx.compose.foundation.text.BasicTextField("", {}, Modifier.testTag("other"))
+                    if (workspace != null) {
+                        WorkspaceArea(
+                            workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = true, focusTick = tick,
+                            actions = PaneActions(renaming = null, onRename = {}, onRenamed = { _, _ -> }, onClose = {}, destinations = emptyList(), onMove = { _, _ -> }),
+                        )
+                    }
+                }
+            }
+        }
+        waitUntil { runCatching { onNode(isFocused()).assertExists() }.isSuccess && runCatching { onNodeWithTag("other").assertIsNotFocused() }.isSuccess }
+        onNodeWithTag("other").requestFocus()
+        onNodeWithTag("other").assertIsFocused()
+
+        // The field closes, or the palette: nothing about the terminal changed, and it is the focused one all the same.
+        tick++
+        waitForIdle()
+
+        waitUntil { runCatching { onNodeWithTag("other").assertIsNotFocused() }.isSuccess }
     }
 
     @Test
