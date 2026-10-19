@@ -31,8 +31,7 @@ class ShortcutBindingsTest {
             AppShortcut.FIND_NEXT to "⌘G", AppShortcut.FIND_PREVIOUS to "⌘⇧G", AppShortcut.FONT_BIGGER to "⌘=", AppShortcut.FONT_SMALLER to "⌘-",
             AppShortcut.FONT_RESET to "⌘0", AppShortcut.MENU to "⌘,", AppShortcut.PALETTE to "⌘K", AppShortcut.FOCUS_LEFT to "⌘⌥←",
             AppShortcut.FOCUS_RIGHT to "⌘⌥→", AppShortcut.FOCUS_UP to "⌘⌥↑", AppShortcut.FOCUS_DOWN to "⌘⌥↓", AppShortcut.CLEAR_SCREEN to "⌘L",
-            AppShortcut.FIND to "⌘F", AppShortcut.RENAME_TERMINAL to "⌘F2", AppShortcut.RENAME_WORKSPACE to "⌘⇧F2", AppShortcut.WORKSPACE_UP to "⌘⌥⇧↑",
-            AppShortcut.WORKSPACE_DOWN to "⌘⌥⇧↓", AppShortcut.WORKSPACE_LEFT to "⌘⌥⇧←", AppShortcut.WORKSPACE_RIGHT to "⌘⌥⇧→",
+            AppShortcut.FIND to "⌘F", AppShortcut.RENAME_TERMINAL to "⌘F2", AppShortcut.RENAME_WORKSPACE to "⌘⇧F2",
             AppShortcut.WORKSPACE_PREVIOUS to "⌘⇧[", AppShortcut.WORKSPACE_NEXT to "⌘⇧]", AppShortcut.WORKSPACE_NUMBER to "⌘1…9",
             AppShortcut.PANE_NUMBER to "⌘⌥1…9", AppShortcut.PROJECT_PREVIOUS to "⌘⌥[", AppShortcut.PROJECT_NEXT to "⌘⌥]",
         )

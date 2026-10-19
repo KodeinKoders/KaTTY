@@ -82,15 +82,7 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     RENAME_TERMINAL(ShortcutGroup.PANES, "Rename the terminal", listOf(cmd(Awt.VK_F2))),
     RENAME_WORKSPACE(ShortcutGroup.PROJECTS, "Rename the workspace", listOf(cmd(Awt.VK_F2, shift = true))),
 
-    /** Previous workspace, in the layout that lists them from top to bottom (the sidebar). */
-    WORKSPACE_UP(ShortcutGroup.PROJECTS, "Previous workspace, when they are listed in a column", listOf(cmd(Awt.VK_UP, alt = true, shift = true))),
-    WORKSPACE_DOWN(ShortcutGroup.PROJECTS, "Next workspace, when they are listed in a column", listOf(cmd(Awt.VK_DOWN, alt = true, shift = true))),
-
-    /** Previous and next workspace, in the layout that lists them from left to right (the tabs). */
-    WORKSPACE_LEFT(ShortcutGroup.PROJECTS, "Previous workspace, when they are listed in a row", listOf(cmd(Awt.VK_LEFT, alt = true, shift = true))),
-    WORKSPACE_RIGHT(ShortcutGroup.PROJECTS, "Next workspace, when they are listed in a row", listOf(cmd(Awt.VK_RIGHT, alt = true, shift = true))),
-
-    /** Previous and next workspace, whatever the layout. */
+    /** Previous and next workspace, crossing projects. */
     WORKSPACE_PREVIOUS(ShortcutGroup.PROJECTS, "Previous workspace", listOf(cmd(Awt.VK_OPEN_BRACKET, shift = true))),
     WORKSPACE_NEXT(ShortcutGroup.PROJECTS, "Next workspace", listOf(cmd(Awt.VK_CLOSE_BRACKET, shift = true))),
 

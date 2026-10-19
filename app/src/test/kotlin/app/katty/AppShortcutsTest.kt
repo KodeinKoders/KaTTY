@@ -70,11 +70,9 @@ class AppShortcutsTest {
     }
 
     @Test
-    fun withShiftTheArrowsGoToTheOtherWorkspaces() {
-        assertEquals(AppShortcut.WORKSPACE_UP, down(Key.DirectionUp, alt = true, shift = true).appShortcut())
-        assertEquals(AppShortcut.WORKSPACE_DOWN, down(Key.DirectionDown, alt = true, shift = true).appShortcut())
-        assertEquals(AppShortcut.WORKSPACE_LEFT, down(Key.DirectionLeft, alt = true, shift = true).appShortcut())
-        assertEquals(AppShortcut.WORKSPACE_RIGHT, down(Key.DirectionRight, alt = true, shift = true).appShortcut())
+    fun commandOptionShiftAndAnArrowIsNothingByDefault() {
+        // It was the workspaces' once: the brackets are now, in either layout.
+        for (key in listOf(Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)) assertNull(down(key, alt = true, shift = true).appShortcut())
         assertNull(down(Key.D, alt = true, shift = true).appShortcut())
     }
 

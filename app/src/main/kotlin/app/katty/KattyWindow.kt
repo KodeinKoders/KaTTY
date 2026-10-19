@@ -463,11 +463,6 @@ fun DecoratedWindowScope.KattyWindowContent(
             AppShortcut.FIND -> if (onTerminals) findingTerminal = terminal
             AppShortcut.RENAME_TERMINAL -> if (terminal != null) { showTerminals(); renamingTerminal = terminal }
             AppShortcut.RENAME_WORKSPACE -> state.selection.workspace?.let { showWorkspaceHost(); renamingWorkspace = it }
-            // The workspaces are listed in a column by the sidebar and in a row by the tabs: the arrows that go along the list are the ones that count.
-            AppShortcut.WORKSPACE_UP -> if (!vertical) stepWorkspace(-1)
-            AppShortcut.WORKSPACE_DOWN -> if (!vertical) stepWorkspace(1)
-            AppShortcut.WORKSPACE_LEFT -> if (vertical) stepWorkspace(-1)
-            AppShortcut.WORKSPACE_RIGHT -> if (vertical) stepWorkspace(1)
             AppShortcut.WORKSPACE_PREVIOUS -> stepWorkspace(-1)
             AppShortcut.WORKSPACE_NEXT -> stepWorkspace(1)
             AppShortcut.PROJECT_PREVIOUS -> stepProject(-1)

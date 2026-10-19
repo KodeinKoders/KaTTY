@@ -110,14 +110,8 @@ Escape is never used by the window, except to close what is open in front of it 
 | ⌘⇧W
 | Close the workspace
 
-| ⌘⌥⇧↑, ⌘⌥⇧↓
-| Previous or next workspace, going on to the other projects at the ends of one (horizontal layout)
-
-| ⌘⌥⇧←, ⌘⌥⇧→
-| Previous or next workspace (vertical layout)
-
 | ⌘⇧[, ⌘⇧]
-| Previous or next workspace, in either layout
+| Previous or next workspace, going on to the other projects at the ends of one
 
 | ⌘⌥[, ⌘⌥]
 | Previous or next project, at the workspace where you left it

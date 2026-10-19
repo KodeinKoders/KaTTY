@@ -49,10 +49,6 @@ class PaletteCoverageTest {
     // What can have no command of its own, and why: a shortcut that is not in this list must be a command of the palette.
     private val covered = mapOf(
         AppShortcut.PALETTE to "it is the palette itself",
-        AppShortcut.WORKSPACE_UP to "the previous workspace command does the same, along the column of the sidebar",
-        AppShortcut.WORKSPACE_DOWN to "the next workspace command does the same, along the column of the sidebar",
-        AppShortcut.WORKSPACE_LEFT to "the previous workspace command does the same, along the row of the tabs",
-        AppShortcut.WORKSPACE_RIGHT to "the next workspace command does the same, along the row of the tabs",
         AppShortcut.WORKSPACE_NUMBER to "every workspace is an entry of the palette",
         AppShortcut.PANE_NUMBER to "every terminal is an entry of the palette",
     )
