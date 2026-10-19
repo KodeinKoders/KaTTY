@@ -5,6 +5,8 @@
 :idseparator: -
 :icons: font
 
+image::logo.png[KaTTY logo, 160, align=center]
+
 [.lead]
 *A terminal manager for people who run several coding agents at once.*
 
