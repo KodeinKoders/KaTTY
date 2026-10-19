@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import androidx.compose.foundation.layout.PaddingValues
 import app.katty.ui.uiScaleFactor
 import app.katty.AppShortcut
 import androidx.compose.foundation.background
@@ -84,6 +85,12 @@ import org.jetbrains.jewel.ui.component.Text
 val PANE_HEADER_HEIGHT = 30.dp
 
 private val PANE_RADIUS = 6.dp
+
+/**
+ * The space between a terminal and the edge of its pane, in the terminal's own background color, so that its text is not against the border. The
+ * grid is what is left, which is what the program is given: it is in `dp`, so that it does not grow with the text of the application.
+ */
+internal val TERMINAL_PADDING = 4.dp
 
 /**
  * A terminal in its pane: a header, and the terminal. The focused pane has the accent ring; a click in a terminal, or anything that gives it
@@ -202,6 +209,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         fontSize = context.settings.fontSize.sp,
                         font = context.font,
                         ligatures = context.settings.ligatures,
+                        padding = PaddingValues(TERMINAL_PADDING),
                         focusRequester = handle.focus,
                         focusOnStart = false,
                         onContextMenu = { at -> contextAt = IntOffset(at.x.toInt(), at.y.toInt()) },

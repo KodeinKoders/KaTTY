@@ -2,6 +2,10 @@
 
 package app.katty.screens
 
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
@@ -119,6 +123,30 @@ class WorkspaceAreaTest {
         waitForIdle()
 
         waitUntil { runCatching { onNodeWithTag("other").assertIsNotFocused() }.isSuccess }
+    }
+
+    @Test
+    fun aTerminalIsNotAgainstTheBorderOfItsPane() = runComposeUiTest {
+        store.addProject("/tmp")
+        show()
+        val session = registry.handles.value.values.single().session!!
+        // A line of full blocks, which fill their cells to the edge: the first of them is where the grid starts.
+        session.sendText("printf '\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588'\r")
+        waitUntil(timeoutMillis = 10_000) { session.frames.value.rows.any { row -> row.cells.count { it.text == "█" } >= 8 } }
+        waitForIdle()
+
+        val image = onRoot().captureToImage().toPixelMap()
+        val headerBottom = (onNodeWithContentDescription("Terminal zsh").getBoundsInRoot().bottom.value * density.density).toInt()
+        fun rgb(x: Int, y: Int) = image[x, y].let { (it.red * 255 + .5f).toInt() shl 16 or ((it.green * 255 + .5f).toInt() shl 8) or (it.blue * 255 + .5f).toInt() }
+        val foreground = session.frames.value.foreground.rgb
+        val accent = (app.katty.ui.KattyColors.Light.accent.let { (it.red * 255 + .5f).toInt() shl 16 or ((it.green * 255 + .5f).toInt() shl 8) or (it.blue * 255 + .5f).toInt() })
+        // Under the header: the terminal and the border of the pane, which is the accent's, as the pane has the focus.
+        val rows = (headerBottom until image.height)
+        val block = rows.mapNotNull { y -> (0 until image.width).firstOrNull { rgb(it, y) == foreground } }.minOrNull() ?: error("No block was drawn")
+        val border = rows.mapNotNull { y -> (0 until image.width).firstOrNull { rgb(it, y) == accent } }.minOrNull() ?: error("No border was drawn")
+
+        // The border is 2 dp, over the edge of the pane: the grid starts the padding after the edge, and not the border's width.
+        assertEquals((TERMINAL_PADDING.value * density.density).toInt(), block - border, "The grid starts 4 dp from the edge of the pane")
     }
 
     @Test
