@@ -275,7 +275,15 @@ fun DecoratedWindowScope.KattyWindowContent(
         if (store.state.value.settings.view != MainView.TERMINALS) store.updateSettings { it.copy(view = MainView.TERMINALS) }
         focusTick++
     }
+    // Goes to a project, at the workspace that was selected in it last, whatever the window is showing.
+    val goToProject: (ProjectId) -> Unit = { id ->
+        store.selectProject(id)
+        store.setProjectOpen(id, true)
+        showTerminals()
+        focusTick++
+    }
     // The state of the store, not the one of the last drawing: keys that repeat come faster than that.
+    val stepProject: (Int) -> Unit = { delta -> store.state.value.projectStep(delta)?.let(goToProject) }
     val stepWorkspace: (Int) -> Unit = { delta -> store.state.value.workspaceStep(delta)?.let(goToWorkspace) }
     // The vertical layout draws every split turned.
     val flipped = vertical
@@ -347,12 +355,9 @@ fun DecoratedWindowScope.KattyWindowContent(
         openBoardWindow = onOpenBoardWindow,
         openTerminal = openTerminal,
         openWorkspace = goToWorkspace,
-        selectProject = { id ->
-            store.selectProject(id)
-            store.setProjectOpen(id, true)
-            showTerminals()
-            focusTick++
-        },
+        selectProject = goToProject,
+        previousProject = { stepProject(-1) },
+        nextProject = { stepProject(1) },
         renameProject = { showWorkspaceHost(); renamingProject = state.selection.project },
         removeProject = { removing = state.selection.project },
         revealProject = { state.selectedProject?.directory?.let(::revealInFileManager) },
@@ -460,6 +465,8 @@ fun DecoratedWindowScope.KattyWindowContent(
             AppShortcut.WORKSPACE_RIGHT -> if (vertical) stepWorkspace(1)
             AppShortcut.WORKSPACE_PREVIOUS -> stepWorkspace(-1)
             AppShortcut.WORKSPACE_NEXT -> stepWorkspace(1)
+            AppShortcut.PROJECT_PREVIOUS -> stepProject(-1)
+            AppShortcut.PROJECT_NEXT -> stepProject(1)
             AppShortcut.WORKSPACE_NUMBER -> event.shortcutNumber()?.let { number -> store.state.value.workspaceByNumber(number)?.let(goToWorkspace) }
             AppShortcut.PANE_NUMBER -> event.shortcutNumber()?.let { number -> store.state.value.terminalByNumber(number)?.let(openTerminal) }
         }

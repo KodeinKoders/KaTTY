@@ -82,6 +82,10 @@ internal enum class AppShortcut(private val text: String) {
 
     /** The pane that has the number of the key, in the order they are drawn. */
     PANE_NUMBER("⌘⌥1…9"),
+
+    /** The previous and the next project, wrapping around. */
+    PROJECT_PREVIOUS("⌘⌥["),
+    PROJECT_NEXT("⌘⌥]"),
     ;
 
     /** What is shown for it: the keys, as a Mac writes them. */
@@ -121,6 +125,8 @@ internal fun KeyEvent.appShortcut(): AppShortcut? {
             Key.DirectionRight -> AppShortcut.FOCUS_RIGHT
             Key.DirectionUp -> AppShortcut.FOCUS_UP
             Key.DirectionDown -> AppShortcut.FOCUS_DOWN
+            Key.LeftBracket -> AppShortcut.PROJECT_PREVIOUS
+            Key.RightBracket -> AppShortcut.PROJECT_NEXT
             else -> if (shortcutNumber() != null) AppShortcut.PANE_NUMBER else null
         }
     }

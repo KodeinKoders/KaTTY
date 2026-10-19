@@ -259,6 +259,18 @@ class CommandPaletteTest {
     }
 
     @Test
+    fun theProjectStepsAreThereOnlyWhenThereIsAnotherProjectToGoTo() {
+        store.addProject("/dev/api-gateway")
+        assertFalse(commands().entries.any { it.label == "Next project" })
+
+        store.addProject("/dev/web-client")
+        val entries = commands().entries
+
+        assertEquals("⌘⌥]", entries.single { it.label == "Next project" }.shortcut)
+        assertEquals("⌘⌥[", entries.single { it.label == "Previous project" }.shortcut)
+    }
+
+    @Test
     fun theWorkspaceStepsAreThereOnlyWhenThereIsAnotherWorkspaceToGoTo() {
         store.addProject("/dev/api")
         assertFalse(commands().entries.any { it.label == "Next workspace" })

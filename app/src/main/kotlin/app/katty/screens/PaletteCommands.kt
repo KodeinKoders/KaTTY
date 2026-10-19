@@ -92,6 +92,9 @@ class PaletteHandlers(
     val openMenu: () -> Unit = {},
     /** Opens the list of the agents that need the user. */
     val openAttention: () -> Unit = {},
+    /** Goes to the project before or after the selected one, wrapping around. */
+    val previousProject: () -> Unit = {},
+    val nextProject: () -> Unit = {},
     /** Goes to the workspace before the selected one, crossing projects. */
     val previousWorkspace: () -> Unit = {},
     val nextWorkspace: () -> Unit = {},
@@ -213,6 +216,10 @@ fun paletteCommands(
             command("resize-up", "Move the divider up", AppShortcut.RESIZE_UP.label) { handlers.resizeSplit(Direction.UP) }
             command("resize-down", "Move the divider down", AppShortcut.RESIZE_DOWN.label) { handlers.resizeSplit(Direction.DOWN) }
         }
+    }
+    if (state.projects.size > 1) {
+        command("previous-project", "Previous project", AppShortcut.PROJECT_PREVIOUS.label, handlers.previousProject)
+        command("next-project", "Next project", AppShortcut.PROJECT_NEXT.label, handlers.nextProject)
     }
     if (state.projects.sumOf { it.workspaces.size } > 1) {
         command("previous-workspace", "Previous workspace", AppShortcut.WORKSPACE_PREVIOUS.label, handlers.previousWorkspace)

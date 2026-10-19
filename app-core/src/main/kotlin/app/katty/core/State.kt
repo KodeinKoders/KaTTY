@@ -142,6 +142,16 @@ public data class KattyState(
         }.id
     }
 
+    /**
+     * The project that is [delta] places after the selected one (before it for a negative [delta]), in the order they are listed, wrapping around at the
+     * ends. With none selected, the first (the last for a negative [delta]). `null` when there is no project.
+     */
+    public fun projectStep(delta: Int): ProjectId? {
+        if (projects.isEmpty()) return null
+        val current = projects.indexOfFirst { it.id == selection.project }
+        return if (current < 0) (if (delta >= 0) projects.first() else projects.last()).id else projects[Math.floorMod(current + delta, projects.size)].id
+    }
+
     /** The workspace that the shortcut of [number] (from 1) goes to, in the selected project: the one at that place, and for 9 the last one, as tabs do. */
     public fun workspaceByNumber(number: Int): WorkspaceId? {
         val workspaces = selectedProject?.workspaces.orEmpty()
@@ -153,8 +163,8 @@ public data class KattyState(
 
     /**
      * The state with a selection that points at something: the project, workspace and terminal that are not there are replaced by the
-     * first one that is, and a maximized terminal that is not in the selected workspace is put back. What was read from a file may not be
-     * consistent.
+     * first one that is, and a maximized terminal that is not in the selected workspace is put back, and the project keeps its selected workspace
+     * ([Project.lastWorkspace]). What was read from a file may not be consistent.
      */
     public fun normalized(): KattyState {
         val project = selectedProject ?: projects.firstOrNull()
@@ -163,7 +173,14 @@ public data class KattyState(
         val terminal = terminals.firstOrNull { it.id == selection.terminal } ?: terminals.firstOrNull()
         val maximized = selection.maximized?.takeIf { id -> terminals.any { it.id == id } }
         val normalized = Selection(project?.id, workspace?.id, terminal?.id, maximized)
-        return if (normalized == selection) this else copy(selection = normalized)
+        val result = if (normalized == selection) this else copy(selection = normalized)
+        // Every change comes through here, so a project always keeps the workspace that is selected in it, however it got selected (chosen, added,
+        // found again after the one that was selected was closed): the one that it is selected at again.
+        return if (project != null && workspace != null && project.lastWorkspace != workspace.id) {
+            result.copy(projects = result.projects.map { if (it.id == project.id) it.copy(lastWorkspace = workspace.id) else it })
+        } else {
+            result
+        }
     }
 
     public companion object {

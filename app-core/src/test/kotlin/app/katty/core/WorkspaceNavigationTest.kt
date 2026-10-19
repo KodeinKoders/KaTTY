@@ -160,4 +160,76 @@ class WorkspaceNavigationTest {
 
         assertEquals(second, state.selection.terminal)
     }
+
+    @Test
+    fun theNextProjectGoesInTheOrderTheyAreListedAndWrapsAround() {
+        val api = store.addProject("/dev/api")!!
+        val web = store.addProject("/dev/web")!!
+        val docs = store.addProject("/dev/docs")!!
+        store.selectProject(api)
+
+        assertEquals(web, state.projectStep(1))
+        store.selectProject(web)
+        assertEquals(docs, state.projectStep(1))
+        store.selectProject(docs)
+        assertEquals(api, state.projectStep(1), "After the last one, the first")
+        assertEquals(web, state.projectStep(-1))
+        store.selectProject(api)
+        assertEquals(docs, state.projectStep(-1), "Before the first one, the last")
+    }
+
+    @Test
+    fun withOneProjectItStaysAndWithNoneThereIsNone() {
+        val only = store.addProject("/dev/api")!!
+
+        assertEquals(only, state.projectStep(1))
+        assertNull(KattyState().projectStep(1))
+    }
+
+    @Test
+    fun aProjectComesBackAtTheWorkspaceThatWasSelectedInItLast() {
+        val api = store.addProject("/dev/api")!!
+        val first = state.selection.workspace!!
+        val second = store.addWorkspace(api, "second")!!
+        store.selectWorkspace(second)
+        val web = store.addProject("/dev/web")!!
+
+        store.selectProject(api)
+
+        assertEquals(second, state.selection.workspace, "Not the first one: the one it was left at")
+        assertEquals(web, state.projectStep(1))
+        store.selectWorkspace(first)
+        store.selectProject(web)
+        store.selectProject(api)
+        assertEquals(first, state.selection.workspace)
+    }
+
+    @Test
+    fun aWorkspaceThatIsGoneIsNotComeBackTo() {
+        val api = store.addProject("/dev/api")!!
+        val first = state.selection.workspace!!
+        val second = store.addWorkspace(api, "second")!!
+        store.selectWorkspace(second)
+        val web = store.addProject("/dev/web")!!
+        store.closeWorkspace(second)
+
+        store.selectProject(api)
+
+        assertEquals(first, state.selection.workspace)
+        assertEquals(web, state.projectStep(1))
+    }
+
+    @Test
+    fun focusingATerminalAlsoRemembersItsWorkspaceForItsProject() {
+        val api = store.addProject("/dev/api")!!
+        store.addWorkspace(api, "second")
+        val inSecond = state.selection.terminal.let { store.state.value.projects.first().workspaces.last().layout.terminals().first().id }
+        store.addProject("/dev/web")
+
+        store.focus(inSecond)
+        store.selectProject(state.projects.last().id)
+        store.selectProject(api)
+
+        assertEquals(state.projects.first().workspaces.last().id, state.selection.workspace)
+    }
 }

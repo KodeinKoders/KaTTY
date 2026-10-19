@@ -78,20 +78,24 @@ class KattyStoreTest {
     }
 
     @Test
-    fun choosingTheProjectThatIsSelectedKeepsItsWorkspaceAndAnotherOneGoesToItsFirst() {
+    fun choosingTheProjectThatIsSelectedKeepsItsWorkspaceAndAnotherOneGoesToTheWorkspaceItWasLeftAt() {
         val a = addProject("/a")
         val first = state.selection.workspace!!
         val second = store.addWorkspace(a, "second")!!
         val b = addProject("/b")
         val other = state.selection.workspace!!
 
-        store.selectProject(a)
-        assertEquals(first, state.selection.workspace)
-        store.selectWorkspace(second)
+        // Adding a workspace selected it, so that is where "a" was left.
         store.selectProject(a)
         assertEquals(second, state.selection.workspace)
+        // Choosing the project that is selected changes nothing.
+        store.selectProject(a)
+        assertEquals(second, state.selection.workspace)
+        store.selectWorkspace(first)
         store.selectProject(b)
         assertEquals(other, state.selection.workspace)
+        store.selectProject(a)
+        assertEquals(first, state.selection.workspace, "The workspace that was selected in it last, and not its first one by chance")
     }
 
     @Test

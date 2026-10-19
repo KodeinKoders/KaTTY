@@ -116,6 +116,9 @@ Escape is never used by the window, except to close what is open in front of it 
 | ⌘⇧[, ⌘⇧]
 | Previous or next workspace, in either layout
 
+| ⌘⌥[, ⌘⌥]
+| Previous or next project, at the workspace where you left it
+
 | ⌘1 … ⌘8, ⌘9
 | The first to the eighth workspace of the project, and the last one
 

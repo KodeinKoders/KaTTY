@@ -32,6 +32,8 @@ public data class Project(
     val workspaces: List<Workspace> = emptyList(),
     /** Whether its workspaces are listed in the sidebar. Any number of projects are open at once. */
     val open: Boolean = true,
+    /** The workspace that was selected in it last, which is selected again when the project is: the first one when it is gone or there was none. */
+    val lastWorkspace: WorkspaceId? = null,
 )
 
 /**

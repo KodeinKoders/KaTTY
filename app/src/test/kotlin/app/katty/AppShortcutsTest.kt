@@ -81,6 +81,16 @@ class AppShortcutsTest {
     }
 
     @Test
+    fun commandOptionAndTheBracketsGoToThePreviousAndTheNextProject() {
+        assertEquals(AppShortcut.PROJECT_PREVIOUS, down(Key.LeftBracket, alt = true).appShortcut())
+        assertEquals(AppShortcut.PROJECT_NEXT, down(Key.RightBracket, alt = true).appShortcut())
+        // With Shift and without Option they are the workspaces' keys, and with neither they are not taken.
+        assertEquals(AppShortcut.WORKSPACE_PREVIOUS, down(Key.LeftBracket, shift = true).appShortcut())
+        assertNull(down(Key.LeftBracket, alt = true, shift = true).appShortcut())
+        assertNull(down(Key.RightBracket, alt = true, meta = false).appShortcut())
+    }
+
+    @Test
     fun aDigitGoesToAWorkspaceAndWithOptionToAPane() {
         assertEquals(AppShortcut.WORKSPACE_NUMBER, down(Key.One).appShortcut())
         assertEquals(1, down(Key.One).shortcutNumber())

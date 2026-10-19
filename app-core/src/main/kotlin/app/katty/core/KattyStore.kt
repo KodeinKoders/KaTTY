@@ -251,8 +251,8 @@ public class KattyStore(
             val project = state.projects.firstOrNull { it.id == id } ?: return@edit state
             // The project of the selection stays as it is, with its workspace: choosing it must not take the user to its first.
             if (state.selection.project == id && state.selection.workspace != null) return@edit state
-            // Another project: its first workspace.
-            val workspace = project.workspaces.firstOrNull()
+            // Another project: the workspace that was selected in it last, or its first.
+            val workspace = project.workspaces.firstOrNull { it.id == project.lastWorkspace } ?: project.workspaces.firstOrNull()
             state.copy(selection = Selection(id, workspace?.id, workspace?.terminalToFocus()))
         }
     }
