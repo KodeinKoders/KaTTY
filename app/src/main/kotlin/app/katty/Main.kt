@@ -22,7 +22,9 @@ import app.katty.core.StatePersistence
 import app.katty.core.WindowFile
 import app.katty.core.WindowGeometry
 import app.katty.core.ThemeMode
+import app.katty.core.sessionUsageReaders
 import app.katty.terminals.AgentTracker
+import app.katty.terminals.SessionUsageTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.ui.KattyTheme
 import app.katty.ui.UiScale
@@ -62,6 +64,14 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val registry = remember { SessionRegistry(store, writer) }
     // What each of them says it is doing.
     val tracker = remember { AgentTracker(writer) }
+    // What the session of the agent in each of them has used, read from the agent's own files.
+    val sessionUsage = remember {
+        SessionUsageTracker(
+            writer, sessionUsageReaders(), { registry.processNames.value },
+            { id -> registry.handles.value[id]?.session?.foregroundCommand() },
+            { id -> store.state.value.locate(id)?.terminal?.running?.agentSession },
+        ).also { it.start() }
+    }
     DisposableEffect(Unit) { onDispose { writer.cancel() } }
     val windowState = rememberWindowState(placement = geometry.mode.toPlacement(), position = geometry.toPosition(), size = geometry.toSize())
     // Where the window is, how big and in which mode is kept as it changes, and a last time when the application quits.
@@ -69,6 +79,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val quit = {
         flushWindow()
         persistence.flush()
+        sessionUsage.stop()
         tracker.close()
         registry.close()
         exitApplication()
@@ -103,10 +114,10 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
             onPreviewKeyEvent = windowKeys::handle,
         ) {
             UiScale(settings.effectiveUiScale) {
-                KattyWindowContent(store, registry, tracker, directories, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys)
+                KattyWindowContent(store, registry, tracker, sessionUsage, directories, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys)
             }
         }
         if (aboutOpen) AboutWindow(settings.effectiveUiScale, onClose = { aboutOpen = false })
-        if (boardWindow) BoardWindow(store, tracker, registry, bridge, boardFocusTick, boardWindowFile, restoredAtLaunch, onClose = { boardWindow = false; restoredAtLaunch = false })
+        if (boardWindow) BoardWindow(store, tracker, sessionUsage, registry, bridge, boardFocusTick, boardWindowFile, restoredAtLaunch, onClose = { boardWindow = false; restoredAtLaunch = false })
     }
 }

@@ -291,7 +291,7 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | Yes
 | Yes
 | Yes
-| No
+| Yes
 |===
 
 *Yes* means it works, as far as it was tried.
@@ -305,10 +305,13 @@ The agents above only add their logo and their name, and a program that does not
 * The *usage meters* use the agents' own commands.
 Copilot CLI has no command that gives the usage without costing a turn, so it has no meter.
 Junie has none either yet: it will get one once https://youtrack.jetbrains.com/issue/JUNIE-5895/CLI-command-to-query-AI-credit-balance-and-quota[this issue] is resolved.
-OpenCode has no limit to meter.
+OpenCode has no limit to meter, but the header of its pane and its card on the board show how full the context of its session is (a ring) and what the session cost.
+They are read from OpenCode's own database, read-only: KaTTY asks OpenCode nothing and reads no credential.
+A model that OpenCode does not list (one of your own gateway) has a cost and no ring.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Antigravity, Copilot CLI and Junie resume their conversation; Codex starts again as a new conversation.
+* Claude Code, Antigravity, Copilot CLI, Junie and OpenCode resume their conversation; Codex starts again as a new conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
+OpenCode's session is the newest one of its directory, so two OpenCodes in one directory are not told apart.
 
 
 == Getting started

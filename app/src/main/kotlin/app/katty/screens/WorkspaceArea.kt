@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import app.katty.core.AgentInfo
+import app.katty.core.SessionUsage
 import app.katty.core.KattyStore
 import app.katty.core.PaneNode
 import app.katty.core.Settings
@@ -80,6 +81,7 @@ val PANE_GAP = 8.dp
  * @param focusTerminals Whether the focused terminal may take the keyboard focus: not while something else is being typed in.
  * @param actions What the window does for the panes.
  * @param infos What each terminal says it is doing: the header of a pane says it.
+ * @param usages What the session of the agent in each terminal has used: the header says it too.
  * @param showHeader Whether the workspace has a header of its own: the vertical layout has tabs instead.
  * @param maximized The terminal that floats over the area of the workspace, with the others under a scrim.
  */
@@ -99,6 +101,7 @@ fun WorkspaceArea(
     font: TerminalFont = TerminalFont.bundled(),
     showHeader: Boolean = true,
     infos: Map<TerminalId, AgentInfo> = emptyMap(),
+    usages: Map<TerminalId, SessionUsage> = emptyMap(),
 ) {
     val colors = Katty.colors
     // What the floating pane is, while it grows from its place and while it goes back to it: it outlives `maximized` by the time of the way back.
@@ -116,7 +119,7 @@ fun WorkspaceArea(
     // Where the panes are, to grow the floating one from there.
     val paneBounds = remember(workspace.id) { mutableStateMapOf<TerminalId, Rect>() }
     var areaBounds by remember(workspace.id) { mutableStateOf(Rect.Zero) }
-    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, shown, font, infos, paneBounds, focusTick)
+    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, shown, font, infos, paneBounds, focusTick, usages)
     Column(modifier.background(colors.bg)) {
         // The vertical layout has the workspace's name and its split buttons in its tabs.
         if (showHeader) WorkspaceHeader(workspace, selectedTerminal, store)
@@ -181,6 +184,8 @@ internal class PaneContext(
     val paneBounds: MutableMap<TerminalId, Rect> = mutableMapOf(),
     /** Changes when the focused terminal is to take the keyboard again, though nothing about it changed. */
     val focusTick: Int = 0,
+    /** What the session of the agent in each terminal has used: the header of a pane says it. */
+    val usages: Map<TerminalId, SessionUsage> = emptyMap(),
 )
 
 /**

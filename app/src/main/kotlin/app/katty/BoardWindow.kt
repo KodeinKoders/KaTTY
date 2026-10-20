@@ -24,6 +24,7 @@ import androidx.compose.ui.window.rememberWindowState
 import app.katty.core.AgentInfo
 import app.katty.core.AgentStates
 import app.katty.core.AgentState
+import app.katty.core.SessionUsage
 import app.katty.core.KattyState
 import app.katty.core.Orientation
 import app.katty.core.ProjectId
@@ -34,6 +35,7 @@ import app.katty.screens.AgentBoard
 import app.katty.screens.BoardTabs
 import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
+import app.katty.terminals.SessionUsageTracker
 import app.katty.terminals.TerminalHandle
 import app.katty.ui.Katty
 import app.katty.ui.OneLine
@@ -58,6 +60,7 @@ internal const val BOARD_WINDOW_HEIGHT = 720f
 fun BoardWindow(
     store: app.katty.core.KattyStore,
     tracker: AgentTracker,
+    sessionUsage: SessionUsageTracker,
     registry: SessionRegistry,
     bridge: WindowBridge,
     focusTick: Int,
@@ -67,6 +70,7 @@ fun BoardWindow(
 ) {
     val state by store.state.collectAsState()
     val infos by tracker.infos.collectAsState()
+    val usages by sessionUsage.usages.collectAsState()
     val handles by registry.handles.collectAsState()
     val now = rememberNow()
     // Where it was, unless that is on a screen that is gone.
@@ -109,7 +113,7 @@ fun BoardWindow(
             TitleBar { OneLine("Agent board", color = Katty.colors.text) }
             val size = LocalWindowInfo.current.containerSize
             val vertical = state.settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
-            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) })
+            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, usages = usages)
         }
     }
 }
@@ -127,6 +131,7 @@ fun BoardWindowContent(
     vertical: Boolean,
     onOpen: (TerminalId) -> Unit,
     modifier: Modifier = Modifier,
+    usages: Map<TerminalId, SessionUsage> = emptyMap(),
 ) {
     var chosen by remember { mutableStateOf<ProjectId?>(null) }
     // A project that was removed is not a filter any more.
@@ -135,6 +140,6 @@ fun BoardWindowContent(
     val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
     Column(modifier.fillMaxSize()) {
         BoardTabs(state, filter, { chosen = it }, states = agentStates)
-        AgentBoard(columns, handles, now, vertical, onOpen, Modifier.weight(1f))
+        AgentBoard(columns, handles, now, vertical, onOpen, Modifier.weight(1f), usages = usages)
     }
 }

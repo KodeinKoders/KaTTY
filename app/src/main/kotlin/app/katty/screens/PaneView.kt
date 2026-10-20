@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.core.AgentState
+import app.katty.core.SessionUsage
 import app.katty.core.GitInfo
 import app.katty.core.GitKind
 import app.katty.core.SplitDirection
@@ -64,6 +65,7 @@ import app.katty.readClipboard
 import app.katty.terminal.compose.Terminal
 import app.katty.ui.AgentGlyph
 import app.katty.ui.AgentTile
+import app.katty.ui.SessionUsageBadge
 import app.katty.ui.ButtonSize
 import app.katty.ui.Icon
 import app.katty.ui.glyph
@@ -174,6 +176,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                 state = report?.state ?: AgentState.IDLE,
                 stateLabel = if (exitCode != null) "Exited" else null,
                 git = handle?.git?.collectAsState()?.value,
+                usage = context.usages[spec.id],
                 modifier = Modifier.onSecondaryClick { at ->
                     context.store.focus(spec.id)
                     headerMenuAt = IntOffset(at.x.toInt(), at.y.toInt())
@@ -301,6 +304,8 @@ internal fun PaneHeader(
     renaming: Boolean = false,
     onRename: () -> Unit = {},
     onRenamed: (String?) -> Unit = {},
+    /** What the session of the agent has used. */
+    usage: SessionUsage? = null,
     trailing: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
@@ -320,6 +325,7 @@ internal fun PaneHeader(
             }
             if (git != null) GitLabel(git, Modifier.weight(1f, fill = false))
         }
+        SessionUsageBadge(usage)
         Text(
             stateLabel ?: state.label(), color = if (state == AgentState.NEEDS_INPUT || state == AgentState.ERROR) colors.input else colors.muted,
             fontSize = 12.sp, fontWeight = if (state == AgentState.NEEDS_INPUT || state == AgentState.ERROR) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1,

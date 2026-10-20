@@ -14,6 +14,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -26,6 +27,7 @@ import app.katty.core.AgentState
 import app.katty.core.BoardColumn
 import app.katty.core.KattyStore
 import app.katty.core.ProjectId
+import app.katty.core.SessionUsage
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.board
@@ -288,4 +290,14 @@ class AgentBoardTest {
         }
     }
 
+
+    @Test
+    fun aCardSaysWhatItsSessionHasUsedWhenItIsKnown() = runComposeUiTest {
+        populate()
+        val claude = state.board(null, infos).getValue(BoardColumn.WORKING).single().terminal.id
+        setContent { KattyTheme(false) { AgentBoard(state.board(null, infos), emptyMap(), now, false, {}, usages = mapOf(claude to SessionUsage(63, 4.5))) } }
+
+        onAllNodesWithContentDescription("63% of context used, $4.50 spent in this session").assertCountEquals(1)
+        onAllNodesWithContentDescription("% of context used", substring = true).assertCountEquals(1)
+    }
 }

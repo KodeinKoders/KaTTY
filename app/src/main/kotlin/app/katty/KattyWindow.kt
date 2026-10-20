@@ -92,6 +92,7 @@ import app.katty.screens.Welcome
 import app.katty.screens.WorkspaceArea
 import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
+import app.katty.terminals.SessionUsageTracker
 import app.katty.ui.glyph
 import app.katty.terminal.compose.TerminalFont
 import app.katty.terminal.themes.ITermColorSchemes
@@ -117,6 +118,7 @@ fun DecoratedWindowScope.KattyWindowContent(
     store: KattyStore,
     registry: SessionRegistry,
     tracker: AgentTracker,
+    sessionUsage: SessionUsageTracker,
     directories: KattyDirectories,
     bridge: WindowBridge = WindowBridge(),
     onOpenBoardWindow: () -> Unit = {},
@@ -158,6 +160,8 @@ fun DecoratedWindowScope.KattyWindowContent(
     val gits by registry.gitInfos.collectAsState()
     // What each terminal is doing comes from what its program reports (OSC 7501).
     val infos by tracker.infos.collectAsState()
+    // What the session of the agent in each terminal has used.
+    val usages by sessionUsage.usages.collectAsState()
     val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
     val stateOf: (TerminalId) -> AgentState = agentStates::stateOf
     LaunchedEffect(handles) { tracker.sync(handles) }
@@ -582,6 +586,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                         font = font,
                         showHeader = header,
                         infos = infos,
+                        usages = usages,
                         modifier = areaModifier,
                     )
                 }
@@ -600,7 +605,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                 // "All projects" says how many agents there are whatever the filter is.
                 val agentsOnBoard = remember(state.projects, infos) { state.board(null, infos).values.sumOf { it.size } }
                 val board: @Composable (Modifier) -> Unit = { boardModifier ->
-                    AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, modifier = boardModifier, onOpenWindow = onOpenBoardWindow)
+                    AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, usages = usages, modifier = boardModifier, onOpenWindow = onOpenBoardWindow)
                 }
                 if (vertical) {
                     Column(Modifier.fillMaxSize()) {

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.core.AgentState
+import app.katty.core.SessionUsage
 import app.katty.core.BoardCard
 import app.katty.core.BoardColumn
 import app.katty.core.Direction
@@ -59,6 +60,7 @@ import app.katty.core.terminalIdentity
 import app.katty.core.relativeTime
 import app.katty.terminals.TerminalHandle
 import app.katty.ui.AgentTile
+import app.katty.ui.SessionUsageBadge
 import app.katty.ui.CountPill
 import app.katty.ui.Icon
 import app.katty.ui.Katty
@@ -101,6 +103,7 @@ fun AgentBoard(
     onOpen: (TerminalId) -> Unit,
     modifier: Modifier = Modifier,
     onOpenWindow: (() -> Unit)? = null,
+    usages: Map<TerminalId, SessionUsage> = emptyMap(),
 ) {
     val colors = Katty.colors
     val cards = columns.values.flatten()
@@ -131,7 +134,7 @@ fun AgentBoard(
         }
         if (vertical) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                for ((column, list) in columns) BoardSection(column, list, handles, now, selected, onOpen)
+                for ((column, list) in columns) BoardSection(column, list, handles, now, selected, onOpen, usages)
             }
         } else {
             Row(Modifier.weight(1f).padding(horizontal = 12.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -139,7 +142,7 @@ fun AgentBoard(
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         BoardHeader(column, list.size)
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (card in list) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen)
+                            for (card in list) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen, usages[card.terminal.id])
                         }
                     }
                 }
@@ -149,10 +152,10 @@ fun AgentBoard(
 }
 
 @Composable
-private fun BoardSection(column: BoardColumn, cards: List<BoardCard>, handles: Map<TerminalId, TerminalHandle>, now: Long, selected: TerminalId?, onOpen: (TerminalId) -> Unit) {
+private fun BoardSection(column: BoardColumn, cards: List<BoardCard>, handles: Map<TerminalId, TerminalHandle>, now: Long, selected: TerminalId?, onOpen: (TerminalId) -> Unit, usages: Map<TerminalId, SessionUsage>) {
     Column(Modifier.semantics { contentDescription = column.title }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoardHeader(column, cards.size)
-        for (card in cards) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen)
+        for (card in cards) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen, usages[card.terminal.id])
     }
 }
 
@@ -176,7 +179,7 @@ private fun BoardHeader(column: BoardColumn, count: Int) {
 }
 
 @Composable
-private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, selected: Boolean, onOpen: (TerminalId) -> Unit) {
+private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, selected: Boolean, onOpen: (TerminalId) -> Unit, usage: SessionUsage?) {
     val colors = Katty.colors
     val git: GitInfo? = handle?.git?.collectAsState()?.value
     val identity = card.identity(handle?.processName?.collectAsState()?.value, handle?.shellName ?: "shell")
@@ -193,6 +196,7 @@ private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, selected: 
             StateGlyph(card.info.state)
             AgentTile(identity.agent.glyph(), size = TileSize.HEADER)
             OneLine(title, Modifier.weight(1f), color = colors.text)
+            SessionUsageBadge(usage)
             // An agent that has never reported has no time.
             if (card.info.since != 0L) Text(relativeTime(now, card.info.since), color = colors.muted, fontSize = 11.sp)
         }

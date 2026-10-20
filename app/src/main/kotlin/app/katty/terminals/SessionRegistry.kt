@@ -184,6 +184,10 @@ class SessionRegistry(
                 // A terminal that is restored starts as a shell, which is at its prompt for a moment before it has typed the program: that is not
                 // the program having ended, and what is kept of it stays until the program has been seen again, or for [RESTORE_GRACE_MS].
                 var graceUntil = if (spec.running != null) System.nanoTime() + RESTORE_GRACE_MS * 1_000_000 else 0L
+                // The session that a restored agent came back on: a conversation that has had no new message since is not the newest of its directory,
+                // so it is kept for that program (the first of the agent that is seen), and not for another that is started after it.
+                val resumed = spec.running?.takeIf { it.agent != null }?.let { it.agent to it.agentSession }
+                var resumedPid = 0
                 while (isActive) {
                     val name = session.foregroundProcessName()
                     handle.processState.value = name
@@ -191,7 +195,11 @@ class SessionRegistry(
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
                     if (name != null) {
                         val command = withContext(Dispatchers.IO) { session.foregroundCommand() }
-                        val running = command?.let { withContext(Dispatchers.IO) { it.toRunning() } }
+                        var running = command?.let { withContext(Dispatchers.IO) { it.toRunning() } }
+                        if (command != null && running != null && resumed?.second != null && running.agent == resumed.first) {
+                            if (resumedPid == 0) resumedPid = command.pid
+                            if (command.pid == resumedPid && running.agentSession == null) running = running.copy(agentSession = resumed.second)
+                        }
                         if (command != null) graceUntil = 0L
                         if (running != null || System.nanoTime() >= graceUntil) store.setRunning(spec.id, running)
                     }
