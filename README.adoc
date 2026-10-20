@@ -64,7 +64,7 @@ It costs no turn, and no credential is ever read.
 * The projects, workspaces, splits, names and settings are kept as you change them.
 * When you open KaTTY again, each terminal starts a new shell in the folder where the old one was.
 * The program that was running is started again over the shell, with the same command line and in the same folder: an `emacs notes.txt` reopens the file, and leaving emacs leaves you at the shell prompt.
-* An agent that can pick up its conversation does: Claude Code is started again on its last conversation, with the same model and permission mode.
+* An agent that can pick up its conversation does: Claude Code, Copilot CLI and Junie are started again on their last conversation, with the same model and permissions.
 * A program that only shows something or waits for you starts by itself: editors, pagers, monitors, terminal multiplexers, the agents, a REPL and `ssh` to a host.
 Any other command, such as `make deploy` or `rm`, is only typed at the prompt and waits for you to press Return.
 A command that starts with `sudo`, `doas` or `su` is never started again.
@@ -273,7 +273,7 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 
 | Usage meter
 | Yes
-| Untested
+| Yes
 | Yes
 | No
 | No
@@ -282,19 +282,11 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | Yes
 | No
 | No
-| Untested
-| Untested
-
-| Started again by itself after a relaunch
 | Yes
-| Untested
-| Untested
-| Untested
-| Untested
+| Yes
 |===
 
 *Yes* means it works, as far as it was tried.
-*Untested* means that it should work, and has never been tried with that agent in KaTTY.
 *No* means it is not available.
 
 * *Live state* comes from the agent itself: KaTTY does not install hooks or read the screen.

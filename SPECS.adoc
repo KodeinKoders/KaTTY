@@ -633,7 +633,7 @@ Then `agy -p /usage --output-format json --print-timeout 20s`, 30 s at most: eac
 | Codex
 | `codex app-server`, over JSON-RPC (one object a line): `initialize`, then the `initialized` notification, then `account/rateLimits/read`; 20 s at most, after which the server is ended.
 The `primary` and `secondary` windows are allowances: "Session" for about 5 hours, "Week" for about 7 days, else their length.
-This was not tried against a real Codex.
+It was checked against a real Codex by the user.
 
 | Copilot CLI
 | None: no command reports it without a turn.
@@ -776,7 +776,6 @@ Everything that can be clicked in a list (the rows of the sidebar and its "New w
 * macOS on Apple Silicon only; the Windows title bar is Jewel's but has never run.
 * A program that does not send OSC 7501 shows as a shell and has no card, an agent that KaTTY knows included.
 * Which `app` name each known agent sends is not known for sure: names are matched by substring, and only for the logo and the name.
-* The Codex usage request follows another application's code and was not tried.
 * Copilot CLI and Junie have no usage meter.
 * Junie does not send OSC 7501 yet (JUNIE-5904): it looks like a shell and has no card.
 * The scrollback and the programs of the terminals are not kept across launches.
