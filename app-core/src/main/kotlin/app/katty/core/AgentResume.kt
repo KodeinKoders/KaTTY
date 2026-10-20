@@ -19,7 +19,7 @@ public object AgentResume {
      * Only Claude Code is known: it writes `~/.claude/sessions/<pid>.json` with the `sessionId` that its conversation has now, which follows
      * `/clear` and `/resume`. The id is only given if its transcript exists (a conversation with no message has nothing to resume), and the
      * file is the one of **this** process: a file left by an older process with the same pid started before this one.
-     * Not done, and why: Codex, Copilot and Antigravity are not installed where this was written: they start again with no conversation.
+     * Not done, and why: Codex, Copilot and Antigravity are not installed where this was written, and Junie's way to resume was not looked at: they start again with no conversation.
      */
     public fun sessionId(agent: Agent, pid: Int, startedAtMillis: Long, home: File = File(System.getProperty("user.home"))): String? =
         when (agent) {

@@ -26,6 +26,7 @@ class AgentsTest {
         assertEquals(Agent.ANTIGRAVITY, Agent.fromApp("antigravity"))
         assertEquals(Agent.ANTIGRAVITY, Agent.fromApp("agy"))
         assertEquals(Agent.COPILOT, Agent.fromApp("copilot_cli"))
+        assertEquals(Agent.JUNIE, Agent.fromApp("Junie"))
         // Gemini CLI is deprecated: it is a program like any other, which reports and has a card but has no logo.
         assertNull(Agent.fromApp("gemini-cli"))
     }
@@ -39,7 +40,7 @@ class AgentsTest {
 
     @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }
