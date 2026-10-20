@@ -29,11 +29,15 @@ public object AgentResume {
      * - Antigravity writes no file for a process, but keeps `~/.gemini/antigravity-cli/presence/<conversationId>.lock` open while it has a
      * conversation (it opens it with the first message): the id is read from the files that the process has open ([openFiles]).
      *
+     * - OpenCode keeps its conversations in a database, not in a file named after the process: [cwd] and [startedAtMillis] pick the newest one
+     * of that directory that the process created or updated ([openCodeSession], which is [OpenCodeStore.sessionFor] by default).
+     *
      * Not done, and why: Codex has no file that ties a process to its conversation (a server that the terminals share holds them), and
      * neither the id of what it runs: it starts again with no conversation. Whether the files of the others follow a conversation that is
      * changed from inside the agent was not checked.
      *
      * @param openFiles The paths of the files that the process has open.
+     * @param cwd The process's own directory.
      */
     public fun sessionId(
         agent: Agent,
@@ -41,12 +45,15 @@ public object AgentResume {
         startedAtMillis: Long,
         home: File = File(System.getProperty("user.home")),
         openFiles: (Int) -> List<String> = ::openFilePaths,
+        cwd: String? = null,
+        openCodeSession: (String, Long) -> String? = { directory, startedAt -> OpenCodeStore().sessionFor(directory, startedAt) },
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
             Agent.CLAUDE -> claudeSessionId(pid, startedAtMillis, home)
             Agent.JUNIE -> junieSessionId(pid, startedAtMillis, home)
             Agent.COPILOT -> copilotSessionId(pid, startedAtMillis, home)
+            Agent.OPENCODE -> cwd?.let { openCodeSession(it, startedAtMillis) }?.takeIf(::isOpenCodeId)
             else -> null
         }
 
@@ -122,6 +129,9 @@ public object AgentResume {
     // The id goes into a command line: only what an id is made of.
     private fun isSessionId(id: String): Boolean = id.length in 8..64 && id.all { it.isLetterOrDigit() || it == '-' }
 
+    // `ses_` and what OpenCode makes the rest of an id of: it goes into a command line.
+    private fun isOpenCodeId(id: String): Boolean = Regex("ses_[A-Za-z0-9]+").matches(id)
+
     /**
      * The command line that starts [agent] again, from the one it had ([original]): the program, a few of its options that say how it was
      * run, and the conversation when there is [sessionId].
@@ -165,6 +175,7 @@ public object AgentResume {
                 Agent.JUNIE -> kept += listOf("--resume", "--session-id=$sessionId")
                 Agent.COPILOT -> kept += listOf("--resume", sessionId)
                 Agent.ANTIGRAVITY -> kept += listOf("--conversation", sessionId)
+                Agent.OPENCODE -> kept += listOf("-s", sessionId)
                 else -> Unit
             }
         }
@@ -210,6 +221,7 @@ public object AgentResume {
             "--reasoning-effort" to true,
             "--agent" to true,
         )
+        Agent.OPENCODE -> mapOf("-m" to true, "--model" to true, "--agent" to true, "--port" to true, "--hostname" to true)
         else -> emptyMap()
     }
 

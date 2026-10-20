@@ -20,6 +20,8 @@ private var warned = false
  * @property argv Its command line, the program first, as it was started (`emacs`, `notes.txt`). The environment is not read: it can hold secrets.
  * @property directory The directory it is in, which is not always the shell's: a program can change its own.
  * @property startedAtMillis When it started, in milliseconds since the epoch: what tells the files it wrote from the ones of an older program.
+ * @property executable The path of the program's executable file as the system has it (`proc_pidpath`), which is not what `argv` names when it was
+ * found on the `PATH` (`opencode`) or is a link: `null` when it could not be read.
  * @property pipeline Whether it is one of several programs of a pipeline (`git log | less`): the others are not known, so it cannot be started again as it was.
  */
 public data class ForegroundCommand(
@@ -28,6 +30,7 @@ public data class ForegroundCommand(
     val directory: String?,
     val startedAtMillis: Long,
     val pipeline: Boolean,
+    val executable: String? = null,
 )
 
 private val linker = Linker.nativeLinker()
@@ -56,6 +59,11 @@ private val procPidInfo: MethodHandle by lazy {
     )
 }
 
+// `int proc_pidpath(int pid, void *buffer, uint32_t buffersize)`
+private val procPidPath: MethodHandle by lazy {
+    libc("proc_pidpath", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT))
+}
+
 // `int proc_listpids(uint32_t type, uint32_t typeinfo, void *buffer, int buffersize)`
 private val procListPids: MethodHandle by lazy {
     libc(
@@ -82,6 +90,9 @@ private const val VNODEPATHINFO_SIZE = 2352
 private const val VNODEPATHINFO_CDIR_PATH = 152L
 private const val MAX_PATH = 1024
 
+// `PROC_PIDPATHINFO_MAXSIZE`: four times the longest path.
+private const val PIDPATH_MAX = 4096
+
 private const val MAX_GROUP_PIDS = 512
 
 /**
@@ -105,6 +116,7 @@ internal fun foregroundCommand(fd: Int, shellPid: Int): ForegroundCommand? =
                         directory = currentDirectory(arena, group),
                         startedAtMillis = startTime(arena, group),
                         pipeline = isPipeline(arena, group, shellPid),
+                        executable = executablePath(arena, group),
                     )
                 }
             }
@@ -162,6 +174,11 @@ private fun currentDirectory(arena: Arena, pid: Int): String? {
     val info = arena.allocate(VNODEPATHINFO_SIZE.toLong())
     if (procPidInfo.invokeExact(pid, PROC_PIDVNODEPATHINFO, 0L, info, VNODEPATHINFO_SIZE) as Int != VNODEPATHINFO_SIZE) return null
     return info.asSlice(VNODEPATHINFO_CDIR_PATH, MAX_PATH.toLong()).getString(0).takeIf { it.isNotEmpty() }
+}
+
+private fun executablePath(arena: Arena, pid: Int): String? {
+    val buffer = arena.allocate(PIDPATH_MAX.toLong())
+    return if (procPidPath.invokeExact(pid, buffer, PIDPATH_MAX) as Int > 0) buffer.getString(0).takeIf { it.isNotEmpty() } else null
 }
 
 private fun bsdInfo(arena: Arena, pid: Int): MemorySegment? {

@@ -216,4 +216,38 @@ class AgentResumeTest {
         assertEquals(listOf("/home/me/.local/bin/claude"), AgentResume.argv(Agent.CLAUDE, listOf("/home/me/.local/bin/claude", "a prompt"), null))
         assertEquals(listOf("codex"), AgentResume.argv(Agent.CODEX, listOf("codex", "a prompt"), "anything"))
     }
+
+    @Test
+    fun openCodeAsksForTheSessionOfItsDirectoryAndStartTime() {
+        var asked: Pair<String, Long>? = null
+
+        val found = AgentResume.sessionId(Agent.OPENCODE, 7, 9_000L, home.toFile(), "/work") { cwd, at -> asked = cwd to at; "ses_abc123" }
+
+        assertEquals("ses_abc123", found)
+        assertEquals("/work" to 9_000L, asked)
+        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 9_000L, home.toFile(), null) { _, _ -> error("No directory, no question") })
+    }
+
+    @Test
+    fun anOpenCodeIdThatIsNotMadeOfWhatItsAreMadeOfIsRefused() {
+        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 0, home.toFile(), "/work") { _, _ -> "ses_a; rm -rf ~" })
+        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 0, home.toFile(), "/work") { _, _ -> "abc123" })
+    }
+
+    @Test
+    fun resumesOpenCodeWithItsModelAndAgentAndNotItsPrompt() {
+        assertEquals(
+            listOf("opencode", "-m", "anthropic/sonnet", "--agent", "build", "--port", "4096", "-s", "ses_abc123"),
+            AgentResume.argv(
+                Agent.OPENCODE,
+                listOf("opencode", "-m", "anthropic/sonnet", "--agent", "build", "--port", "4096", "--print-logs", "fix the bug"),
+                "ses_abc123",
+            ),
+        )
+    }
+
+    @Test
+    fun openCodeWithNoSessionRerunsBare() {
+        assertEquals(listOf("opencode"), AgentResume.argv(Agent.OPENCODE, listOf("opencode", "-s", "ses_old", "a prompt"), null))
+    }
 }

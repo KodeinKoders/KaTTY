@@ -15,14 +15,15 @@ private const val MAX_COMMAND_CHARS = 2000
  * @param sessionId The id of the conversation that the agent [Agent] runs as the pid, which started at the time; by default [AgentResume.sessionId].
  */
 public fun ForegroundCommand.toRunning(
-    sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt -> AgentResume.sessionId(agent, pid, startedAt) },
+    sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt -> AgentResume.sessionId(agent, pid, startedAt, cwd = directory) },
 ): RunningCommand? {
     if (pipeline || argv.isEmpty()) return null
     val agent = Agent.fromProcess(File(argv.first()).name)
     val tooLong = argv.sumOf { it.length + 1 } > MAX_COMMAND_CHARS
+    val line = if (agent == Agent.OPENCODE) listOf(openCodeProgram(argv.first(), executable)) + argv.drop(1) else argv
     val kept = when {
-        !tooLong -> argv
-        agent != null -> listOf(argv.first())
+        !tooLong -> line
+        agent != null -> listOf(line.first())
         else -> return null
     }
     return RunningCommand(kept, directory, agent?.id, agent?.let { sessionId(it, pid, startedAtMillis) })
@@ -35,5 +36,22 @@ public fun ForegroundCommand.toRunning(
 public fun RunningCommand.toTyped(policy: RestorePolicy = RestorePolicy()): TypedCommand {
     val agent = agent?.let(Agent::byId)
     val line = if (agent != null) AgentResume.argv(agent, argv, agentSession) else argv
-    return TypedCommand(line, run = policy.runs(line))
+    // An agent that was recognized runs whatever its file is called (`opencode-v2`): `RestorePolicy` judges by the name alone.
+    return TypedCommand(line, run = agent != null || policy.runs(line))
+}
+
+/**
+ * What starts the OpenCode that [executable] is: [name] as it was typed when the `PATH` gives that same file, else [executable] itself, so that
+ * the 2.x build that was started by its own path (`opencode-v2`) is not resumed by the 1.x one that `opencode` is, which would not find its session.
+ */
+private fun openCodeProgram(name: String, executable: String?): String {
+    if (executable == null) return name
+    val onPath = if ('/' in name) File(name) else System.getenv("PATH").orEmpty().split(':').filter { it.isNotEmpty() }
+        .map { File(it, name) }.firstOrNull { it.canExecute() && it.isFile }
+    val same = onPath != null && try {
+        onPath.canonicalPath == File(executable).canonicalPath
+    } catch (_: java.io.IOException) {
+        false
+    }
+    return if (same) name else executable
 }
