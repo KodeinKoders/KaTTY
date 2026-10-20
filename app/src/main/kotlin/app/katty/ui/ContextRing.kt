@@ -58,6 +58,9 @@ fun ContextRing(percent: Int, modifier: Modifier = Modifier, size: TextUnit = 12
 /** A cost as the user reads it: two decimals, and a sign that it is under a cent. */
 fun formatUsd(usd: Double): String = if (usd > 0 && usd < 0.01) "<$0.01" else "$" + String.format(Locale.US, "%.2f", usd)
 
+/** A cost that is an estimate, which is what the agents' own prices make of it (a gateway bills its own): marked with a `~`. */
+fun formatApproxUsd(usd: Double): String = "~" + formatUsd(usd)
+
 /**
  * What a conversation has used, next to the agent's name: the ring of its context, and its cost when the agent counts it. Nothing when it
  * knows neither.
@@ -69,12 +72,12 @@ fun SessionUsageBadge(usage: SessionUsage?, modifier: Modifier = Modifier) {
     val colors = Katty.colors
     val description = listOfNotNull(
         usage.contextPercent?.let { "$it% of context used" },
-        usage.costUsd?.let { "${formatUsd(it)} spent in this session" },
+        usage.costUsd?.let { "${formatApproxUsd(it)} spent in this session" },
     ).joinToString(", ")
     Tooltip(tooltip = { Text(description) }) {
         Row(modifier.semantics { contentDescription = description }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             usage.contextPercent?.let { ContextRing(it) }
-            usage.costUsd?.let { Text(formatUsd(it), color = colors.muted, fontSize = 11.sp, maxLines = 1) }
+            usage.costUsd?.let { Text(formatApproxUsd(it), color = colors.muted, fontSize = 11.sp, maxLines = 1) }
         }
     }
 }

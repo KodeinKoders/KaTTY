@@ -297,7 +297,7 @@ class AgentBoardTest {
         val claude = state.board(null, infos).getValue(BoardColumn.WORKING).single().terminal.id
         setContent { KattyTheme(false) { AgentBoard(state.board(null, infos), emptyMap(), now, false, {}, usages = mapOf(claude to SessionUsage(63, 4.5))) } }
 
-        onAllNodesWithContentDescription("63% of context used, $4.50 spent in this session").assertCountEquals(1)
+        onAllNodesWithContentDescription("63% of context used, ~$4.50 spent in this session").assertCountEquals(1)
         onAllNodesWithContentDescription("% of context used", substring = true).assertCountEquals(1)
     }
 }

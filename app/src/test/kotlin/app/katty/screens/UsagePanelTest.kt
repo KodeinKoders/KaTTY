@@ -21,7 +21,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.katty.core.Agent
+import app.katty.core.OPEN_SESSIONS_KEY
+import app.katty.core.OpenSessions
 import app.katty.core.UsageReading
+import app.katty.core.UsageSpend
 import app.katty.core.UsageWindow
 import app.katty.ui.KattyTheme
 import app.katty.ui.render
@@ -220,14 +223,13 @@ class UsagePanelTest {
         setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"), Agent.CODEX to Path.of("/bin/codex"), Agent.COPILOT to Path.of("/bin/copilot"))) } }
 
         onNodeWithText("DETECTED ON THIS MACHINE").assertExists()
-        // Three found, and two that were not: the numbers of the two sections.
+        // Three found, and three that were not: the numbers of the two sections.
         onNodeWithText("3").assertExists()
-        onNodeWithText("2").assertExists()
         onNodeWithContentDescription("Claude Code: Detected").assertExists()
         onNodeWithContentDescription("Copilot CLI: Detected").assertExists()
         // The others are in a section that is closed: its title says how many, and none of them is listed.
         onNodeWithText("NOT FOUND").assertExists()
-        onNodeWithContentDescription("Not found: 2").assertExists()
+        onNodeWithContentDescription("Not found: 3").assertExists()
         assertEquals(0, onAllNodesWithContentDescription("Antigravity: Not found").fetchSemanticsNodes().size)
         onNodeWithText("Agents you install later appear here automatically.").assertExists()
     }
@@ -236,11 +238,11 @@ class UsagePanelTest {
     fun theSectionOfTheAgentsThatWereNotFoundOpensAndCloses() = runComposeUiTest {
         setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"))) } }
 
-        onNodeWithContentDescription("Not found: 4").performClick()
+        onNodeWithContentDescription("Not found: 5").performClick()
         waitForIdle()
         onNodeWithContentDescription("Codex: Not found").assertExists()
         onNodeWithContentDescription("Copilot CLI: Not found").assertExists()
-        onNodeWithContentDescription("Not found: 4").performClick()
+        onNodeWithContentDescription("Not found: 5").performClick()
         waitForIdle()
 
         assertEquals(0, onAllNodesWithContentDescription("Codex: Not found").fetchSemanticsNodes().size)
@@ -258,7 +260,7 @@ class UsagePanelTest {
         setContent { KattyTheme(false) { DetectedAgents(emptyMap()) } }
 
         onNodeWithText("No agent was found on this machine.").assertExists()
-        onNodeWithContentDescription("Not found: 5").assertExists()
+        onNodeWithContentDescription("Not found: 6").assertExists()
     }
 
     @Test
@@ -272,6 +274,151 @@ class UsagePanelTest {
             }
             // The bar turns amber from 80 %.
             assertTrue(rendered.count(if (dark) 0xE5A93D else 0xA85F00) > 100)
+        }
+    }
+
+    private val spendReadings = mapOf(
+        Agent.OPENCODE to UsageReading(Agent.OPENCODE, emptyList(), listOf(UsageSpend("Today", 1.5), UsageSpend("7 days", 12.0), UsageSpend("This month", 40.256))),
+    )
+
+    @Test
+    fun anAgentThatSpendsAndHasNoAllowanceShowsWhatItSpent() = runComposeUiTest {
+        setContent { KattyTheme(false) { UsageList(listOf(Agent.OPENCODE), spendReadings, now, UsageVariant.FULL, Modifier.width(240.dp)) } }
+
+        onNodeWithText("Today").assertExists()
+        onNodeWithText("~$1.50").assertExists()
+        onNodeWithText("7 days").assertExists()
+        onNodeWithText("~$12.00").assertExists()
+        onNodeWithText("This month").assertExists()
+        onNodeWithText("~$40.26").assertExists()
+        onNodeWithText("No meter").assertDoesNotExist()
+    }
+
+    @Test
+    fun theCompactAndRailListsSaySoToo() = runComposeUiTest {
+        setContent {
+            KattyTheme(false) {
+                Column {
+                    UsageList(listOf(Agent.OPENCODE), spendReadings, now, UsageVariant.COMPACT, Modifier.width(240.dp))
+                    UsageList(listOf(Agent.OPENCODE), spendReadings, now, UsageVariant.RAIL)
+                }
+            }
+        }
+
+        // Both say the same in their description.
+        assertEquals(2, onAllNodesWithContentDescription("Today: ~$1.50 spent; 7 days: ~$12.00 spent; This month: ~$40.26 spent").fetchSemanticsNodes().size)
+        // Both draw today's amount; the compact one has the other two as well.
+        assertEquals(2, onAllNodesWithText("~$1.50").fetchSemanticsNodes().size)
+        onNodeWithText("~$12.00").assertExists()
+    }
+
+    @Test
+    fun aPeriodThatIsHiddenIsNotDrawn() = runComposeUiTest {
+        setContent {
+            KattyTheme(false) {
+                UsageList(listOf(Agent.OPENCODE), spendReadings, now, UsageVariant.FULL, Modifier.width(240.dp), hidden = setOf(usageKey(Agent.OPENCODE, "Today")))
+            }
+        }
+
+        onNodeWithText("~$1.50").assertDoesNotExist()
+        onNodeWithText("~$12.00").assertExists()
+    }
+
+    @Test
+    fun withEveryPeriodHiddenTheAgentSaysSo() = runComposeUiTest {
+        val hidden = spendReadings.getValue(Agent.OPENCODE).spend.map { usageKey(Agent.OPENCODE, it.label) }.toSet()
+        setContent { KattyTheme(false) { UsageList(listOf(Agent.OPENCODE), spendReadings, now, UsageVariant.FULL, Modifier.width(240.dp), hidden = hidden) } }
+
+        onNodeWithText("No limit shown").assertExists()
+    }
+
+    @Test
+    fun theChooserListsThePeriodsToo() = runComposeUiTest {
+        val calls = mutableListOf<String>()
+        setContent {
+            KattyTheme(false) {
+                UsageSection(
+                    listOf(Agent.OPENCODE), spendReadings, shown = setOf("opencode"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> },
+                    onHidden = { a, label, hide -> calls += "${a.id} $label $hide" },
+                )
+            }
+        }
+
+        onNodeWithContentDescription("Choose agents to show").performClick()
+        onAllNodesWithText("This month").onLast().performClick()
+
+        assertEquals(listOf("opencode This month true"), calls)
+    }
+
+    @Test
+    fun theOpenSessionsLineIsAtTheTopAndSaysHowManyAndWhatTheyCost() = runComposeUiTest {
+        setContent {
+            KattyTheme(false) {
+                UsageSection(agents, readings, shown = setOf("claude"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> }, openSessions = OpenSessions(3, 7.5))
+            }
+        }
+
+        onNodeWithText("Open sessions (3)").assertExists()
+        onNodeWithText("~$7.50").assertExists()
+        val line = onNodeWithContentDescription("Open sessions (3): ~$7.50 spent").fetchSemanticsNode().boundsInRoot
+        val claude = onNodeWithContentDescription("Claude Code usage").fetchSemanticsNode().boundsInRoot
+        assertTrue(line.bottom <= claude.top, "$line $claude")
+    }
+
+    @Test
+    fun theOpenSessionsLineIsDrawnOnceInTheBarWhateverTheAgents() = runComposeUiTest {
+        setContent {
+            KattyTheme(false) {
+                UsageBarRow(agents, readings, shown = setOf("claude", "codex"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> }, openSessions = OpenSessions(2, null))
+            }
+        }
+
+        assertEquals(1, onAllNodesWithText("Open sessions (2)").fetchSemanticsNodes().size)
+        onNodeWithContentDescription("Open sessions (2)").assertExists()
+    }
+
+    @Test
+    fun theOpenSessionsLineCanBeHiddenFromTheChooser() = runComposeUiTest {
+        val calls = mutableListOf<Boolean>()
+        var hidden by androidx.compose.runtime.mutableStateOf(emptySet<String>())
+        setContent {
+            KattyTheme(false) {
+                UsageSection(
+                    agents, readings, shown = setOf("claude"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> },
+                    hidden = hidden, openSessions = OpenSessions(1, 1.0), onOpenSessions = { calls += it },
+                )
+            }
+        }
+        onNodeWithText("Open sessions (1)").assertExists()
+
+        onNodeWithContentDescription("Choose agents to show").performClick()
+        onNodeWithText("Open sessions total").performClick()
+        assertEquals(listOf(false), calls)
+        hidden = setOf(OPEN_SESSIONS_KEY)
+        waitForIdle()
+
+        onNodeWithText("Open sessions (1)").assertDoesNotExist()
+    }
+
+    @Test
+    fun noSessionMeansNoLine() = runComposeUiTest {
+        setContent { KattyTheme(false) { UsageSection(agents, readings, shown = setOf("claude"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> }) } }
+
+        assertEquals(0, onAllNodesWithContentDescription("Open sessions", substring = true).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun drawsTheSpendAndTheTotalAtBothSizes() {
+        for (dark in listOf(false, true)) for ((suffix, scale) in listOf("100" to 1f, "175" to 1.75f)) {
+            val rendered = render("usage-spend-${if (dark) "dark" else "light"}-$suffix", 1500, 700, dark = dark) {
+                app.katty.ui.UiScale(scale) {
+                    Row {
+                        UsageSection(listOf(Agent.CLAUDE, Agent.OPENCODE), readings + spendReadings, setOf("claude", "opencode"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> }, modifier = Modifier.width(272.dp * scale), openSessions = OpenSessions(3, 7.5))
+                        UsageSection(listOf(Agent.CLAUDE, Agent.OPENCODE), readings + spendReadings, setOf("claude", "opencode"), compact = true, now = now, onCompact = {}, onShown = { _, _ -> }, modifier = Modifier.width(272.dp * scale), openSessions = OpenSessions(3, 7.5))
+                    }
+                }
+            }
+            assertTrue(rendered.count(if (dark) 0xE5A93D else 0xA85F00) > 100, "The bar of Claude Code is drawn ($dark, $suffix)")
         }
     }
 }

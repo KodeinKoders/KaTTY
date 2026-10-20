@@ -26,9 +26,18 @@ import kotlin.math.roundToInt
 public data class UsageWindow(val label: String, val percentUsed: Int, val resetsAt: Instant?)
 
 /**
- * What an agent says of its usage: each of its allowances, which the widget shows with a bar of its own. [primary] is the one that is the nearest to being used up.
+ * What an agent has spent in a period, for an agent that has no allowance to meter.
+ *
+ * @param label What the period is called: `Today`, `7 days`, `This month`.
+ * @param usd What it cost, in dollars, as the agent counts it.
  */
-public data class UsageReading(val agent: Agent, val windows: List<UsageWindow>) {
+public data class UsageSpend(val label: String, val usd: Double)
+
+/**
+ * What an agent says of its usage: each of its allowances, which the widget shows with a bar of its own, and what it spent, for the agents that
+ * count money and have no allowance. [primary] is the allowance that is the nearest to being used up.
+ */
+public data class UsageReading(val agent: Agent, val windows: List<UsageWindow>, val spend: List<UsageSpend> = emptyList()) {
     /** The allowance that is the nearest to being used up. */
     val primary: UsageWindow? get() = windows.maxByOrNull { it.percentUsed }
 }

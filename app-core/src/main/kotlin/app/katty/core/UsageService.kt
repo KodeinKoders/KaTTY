@@ -10,6 +10,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -254,9 +256,37 @@ public class UsageService(
     }
 }
 
+/**
+ * What OpenCode spent today, over the last 7 days and this month, from its own database ([OpenCodeStore.spend]): what the assistant's answers
+ * cost, in all the sessions. A period that cannot be read is no reading for the agent.
+ *
+ * @param zone Where a day and a month start.
+ */
+public class OpenCodeUsageSource internal constructor(
+    private val store: OpenCodeStore,
+    private val clock: () -> Instant,
+    private val zone: ZoneId,
+) : UsageSource {
+    public constructor() : this(OpenCodeStore(), Instant::now, ZoneId.systemDefault())
+
+    override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
+        val now = clock().atZone(zone)
+        val today = now.toLocalDate().atStartOfDay(zone)
+        val periods = listOf(
+            "Today" to today,
+            "7 days" to now.minusDays(7),
+            "This month" to today.withDayOfMonth(1),
+        )
+        val spend = periods.map { (label, since) -> UsageSpend(label, store.spend(since.toInstant().toEpochMilli()) ?: return@withContext null) }
+        UsageReading(Agent.OPENCODE, windows = emptyList(), spend = spend)
+    }
+}
+
 /** The sources of the agents that are installed, which have a command that reports their usage. */
 public fun usageSources(detected: Map<Agent, Path>, directory: Path): Map<Agent, UsageSource> = buildMap {
     detected[Agent.CLAUDE]?.let { put(Agent.CLAUDE, ClaudeUsageSource(it, directory)) }
     detected[Agent.ANTIGRAVITY]?.let { put(Agent.ANTIGRAVITY, AntigravityUsageSource(it, directory)) }
     detected[Agent.CODEX]?.let { put(Agent.CODEX, CodexUsageSource(listOf(it.toString(), "app-server"), directory)) }
+    // It has no allowance: what it spent is read from its database.
+    detected[Agent.OPENCODE]?.let { put(Agent.OPENCODE, OpenCodeUsageSource()) }
 }

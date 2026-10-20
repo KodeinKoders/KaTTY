@@ -308,6 +308,8 @@ Junie has none either yet: it will get one once https://youtrack.jetbrains.com/i
 OpenCode has no limit to meter, but the header of its pane and its card on the board show how full the context of its session is (a ring) and what the session cost.
 They are read from OpenCode's own database, read-only: KaTTY asks OpenCode nothing and reads no credential.
 A model that OpenCode does not list (one of your own gateway) has a cost and no ring.
+In the usage panel OpenCode shows what it spent today, over the last 7 days and this month, over all its sessions.
+Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
 * Claude Code, Antigravity, Copilot CLI, Junie and OpenCode resume their conversation; Codex starts again as a new conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.

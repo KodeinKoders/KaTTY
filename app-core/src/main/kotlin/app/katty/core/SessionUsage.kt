@@ -37,3 +37,25 @@ public class OpenCodeUsageReader internal constructor(private val store: OpenCod
 
 /** The readers of the agents that have one. */
 public fun sessionUsageReaders(): Map<Agent, SessionUsageReader> = mapOf(Agent.OPENCODE to OpenCodeUsageReader())
+
+/**
+ * What the open sessions of every agent cost together.
+ *
+ * @param sessions How many terminals have a session that was read.
+ * @param usd The sum of the costs that are known, `null` when no session says its cost.
+ */
+public data class OpenSessions(val sessions: Int, val usd: Double?)
+
+/**
+ * The total of the sessions of the terminals that are in this state, whatever the agent: a terminal that was closed has left it, and so has one
+ * whose agent ended (the tracker drops it). `null` when there is no session to count.
+ */
+public fun KattyState.openSessionsCost(usages: Map<TerminalId, SessionUsage>): OpenSessions? {
+    val open = allTerminals().mapNotNull { usages[it.terminal.id] }
+    if (open.isEmpty()) return null
+    val costs = open.mapNotNull { it.costUsd }
+    return OpenSessions(open.size, if (costs.isEmpty()) null else costs.sum())
+}
+
+/** What [Settings.usageHidden] keeps when the user hides the total of the open sessions: it belongs to no agent. */
+public const val OPEN_SESSIONS_KEY: String = "open-sessions"

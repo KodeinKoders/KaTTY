@@ -87,8 +87,8 @@ class PaneHeaderTest {
             }
         }
 
-        onNodeWithContentDescription("42% of context used, $1.23 spent in this session").assertExists()
-        onNodeWithText("$1.23").assertExists()
+        onNodeWithContentDescription("42% of context used, ~$1.23 spent in this session").assertExists()
+        onNodeWithText("~$1.23").assertExists()
     }
 
     @Test

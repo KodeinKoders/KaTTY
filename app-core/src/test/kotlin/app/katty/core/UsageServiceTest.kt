@@ -244,10 +244,10 @@ class UsageServiceTest {
     }
 
     @Test
-    fun theSourcesAreOnlyForTheAgentsThatHaveACommand() {
+    fun theSourcesAreOnlyForTheAgentsThatHaveACommandOrADatabase() {
         val detected = Agent.entries.associateWith { Path.of("/bin/${it.executable}") }
 
-        assertEquals(setOf(Agent.CLAUDE, Agent.CODEX, Agent.ANTIGRAVITY), usageSources(detected, directory).keys)
+        assertEquals(setOf(Agent.CLAUDE, Agent.CODEX, Agent.ANTIGRAVITY, Agent.OPENCODE), usageSources(detected, directory).keys)
         assertEquals(emptySet(), usageSources(emptyMap(), directory).keys)
     }
 }
