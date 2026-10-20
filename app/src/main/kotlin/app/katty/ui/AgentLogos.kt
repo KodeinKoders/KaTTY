@@ -55,4 +55,11 @@ object AgentLogos {
         ),
         grid = 24f, fillType = PathFillType.EvenOdd,
     )
+
+    /** From Simple Icons (CC0 1.0), `opencode`: a frame with a narrower opening. */
+    val OpenCode = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M22 24H2V0h20zM17 4.8H7v14.4h10z"),
+        grid = 24f, fillType = PathFillType.EvenOdd,
+    )
 }

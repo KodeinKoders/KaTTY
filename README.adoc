@@ -231,11 +231,11 @@ In a dialog that asks you to confirm, the keyboard starts on the red button: Ent
 KaTTY knows these agents by name: it recognizes them, shows their logo, and finds out which of them are installed on your machine.
 What more it can do depends on what each agent offers.
 
-The *minimum version* is the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501): older versions look like plain shells in the sidebar, and so do Copilot CLI and Junie, which do not report yet.
+The *minimum version* is the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501): older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie and OpenCode, which do not report yet.
 
-[cols="3,2,2,2,2,2"]
+[cols="3,2,2,2,2,2,2"]
 |===
-| | Claude Code | Codex | Antigravity | Copilot CLI | Junie
+| | Claude Code | Codex | Antigravity | Copilot CLI | Junie | OpenCode
 
 | Minimum version
 | 2.1.295
@@ -243,8 +243,10 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | 1.4.0
 | None yet
 | None yet
+| None yet
 
 | Recognized, with its logo
+| Yes
 | Yes
 | Yes
 | Yes
@@ -257,11 +259,13 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | Yes
 | No
 | No
+| No
 
 | Bell, notice and ⌘⇧J when it needs you
 | Yes
 | Yes
 | Yes
+| No
 | No
 | No
 
@@ -271,11 +275,13 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | Yes
 | No
 | No
+| No
 
 | Usage meter
 | Yes
 | Yes
 | Yes
+| No
 | No
 | No
 
@@ -285,19 +291,21 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | Yes
 | Yes
 | Yes
+| No
 |===
 
 *Yes* means it works, as far as it was tried.
 *No* means it is not available.
 
 * *Live state* comes from the agent itself: KaTTY does not install hooks or read the screen.
-An agent that does not report, such as Copilot CLI, Junie or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
+An agent that does not report, such as Copilot CLI, Junie, OpenCode or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
 Copilot CLI will be compatible once https://github.com/github/copilot-cli/issues/5112[this issue] is resolved, and Junie once https://youtrack.jetbrains.com/issue/JUNIE-5904/Support-OSC-7501-Program-Status-escape-sequences-in-Junie-CLI[this one] is.
 * The *agent board* is not a list of known agents: any program that reports its state (OSC 7501) gets a card, whatever it is.
 The agents above only add their logo and their name, and a program that does not report has no card.
 * The *usage meters* use the agents' own commands.
 Copilot CLI has no command that gives the usage without costing a turn, so it has no meter.
 Junie has none either yet: it will get one once https://youtrack.jetbrains.com/issue/JUNIE-5895/CLI-command-to-query-AI-credit-balance-and-quota[this issue] is resolved.
+OpenCode has no limit to meter.
 Antigravity needs version 1.1.11 or later.
 * Claude Code, Antigravity, Copilot CLI and Junie resume their conversation; Codex starts again as a new conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
@@ -330,7 +338,7 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 
 * macOS on Apple Silicon only, for now.
 * Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
-* Copilot CLI and Junie do not tell KaTTY what they are doing yet.
+* Copilot CLI, Junie and OpenCode do not tell KaTTY what they are doing yet.
 * The Option key is not Alt in your programs: it types the characters of your keyboard layout.
 * The directory and the prompts of a terminal are followed for zsh and bash.
 fish is supported but was never tried, and nushell and elvish are not.

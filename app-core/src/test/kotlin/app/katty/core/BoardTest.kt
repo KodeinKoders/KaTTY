@@ -80,6 +80,16 @@ class BoardTest {
     }
 
     @Test
+    fun openCodeIsOnTheBoardByItsProgramAtRest() {
+        store.addProject("/a")
+        val opencode = state.selection.terminal!!
+
+        val board = state.board(null, emptyMap(), mapOf(opencode to "opencode"))
+
+        assertEquals(listOf(opencode), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
+    }
+
+    @Test
     fun theOneThatArrivedInAColumnFirstComesFirst() {
         store.addProject("/a")
         val a = state.selection.terminal!!

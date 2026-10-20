@@ -16,6 +16,7 @@ class RestorePolicyTest {
         assertTrue(policy.runs(listOf("htop")))
         assertTrue(policy.runs(listOf("claude", "--resume", "x")))
         assertTrue(policy.runs(listOf("/Users/me/.local/bin/claude")))
+        assertTrue(policy.runs(listOf("/opt/homebrew/bin/opencode")))
     }
 
     @Test
