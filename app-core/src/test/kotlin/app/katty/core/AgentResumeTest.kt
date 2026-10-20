@@ -64,7 +64,85 @@ class AgentResumeTest {
     @Test
     fun otherAgentsHaveNoWayToTellYet() {
         assertNull(AgentResume.sessionId(Agent.CODEX, 1, 0, home.toFile()))
-        assertNull(AgentResume.sessionId(Agent.COPILOT, 1, 0, home.toFile()))
+        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 1, 0, home.toFile()))
+    }
+
+    private val junieId = "session-261020-153615-196j"
+
+    private fun junieProcess(pid: Int, sessionId: String = junieId, startedAt: Long = 1_000_000L) {
+        home.resolve(".junie/processes").createDirectories()
+        home.resolve(".junie/processes/$pid-$sessionId-0e590669f6b8.json")
+            .writeText("""{"pid":$pid,"sessionId":"$sessionId","projectPath":"/some/dir","startedAt":$startedAt}""")
+    }
+
+    private fun junieEvents(sessionId: String = junieId) {
+        home.resolve(".junie/sessions/$sessionId").createDirectories()
+        home.resolve(".junie/sessions/$sessionId/events.jsonl").writeText("{}")
+    }
+
+    @Test
+    fun junieSessionIsTheOneThatTheFileOfItsProcessNames() {
+        junieProcess(4242)
+        junieEvents()
+        // Another process's file, whose pid starts the same.
+        junieProcess(42420, sessionId = "session-261020-100607-1hef")
+        junieEvents("session-261020-100607-1hef")
+
+        assertEquals(junieId, AgentResume.sessionId(Agent.JUNIE, 4242, 1_000_000L, home.toFile()))
+    }
+
+    @Test
+    fun noJunieSessionWithoutAMessageOrFromAnOlderProcess() {
+        junieProcess(4242)
+        assertNull(AgentResume.sessionId(Agent.JUNIE, 4242, 1_000_000L, home.toFile()), "A conversation with no message has nothing to resume")
+
+        junieEvents()
+        assertNull(AgentResume.sessionId(Agent.JUNIE, 4242, 1_000_000L + 60_000, home.toFile()), "The file of a killed process that had the pid")
+    }
+
+    private val copilotId = "35486de2-1c3f-414d-ba83-54d5ea8fae11"
+
+    private fun copilotLock(pid: Int, sessionId: String = copilotId, at: Long = 1_000_000L, events: Boolean = true) {
+        val directory = home.resolve(".copilot/session-state/$sessionId").createDirectories()
+        val lock = directory.resolve("inuse.$pid.lock")
+        lock.writeText("$pid")
+        lock.toFile().setLastModified(at)
+        if (events) directory.resolve("events.jsonl").writeText("{}")
+    }
+
+    @Test
+    fun copilotSessionIsTheOneThatItsProcessHolds() {
+        copilotLock(4242)
+        copilotLock(4243, sessionId = "07b629d8-7b88-491f-9c3a-a88cca83bb16")
+
+        assertEquals(copilotId, AgentResume.sessionId(Agent.COPILOT, 4242, 1_000_000L, home.toFile()))
+    }
+
+    @Test
+    fun noCopilotSessionWithoutAMessageOrFromAnOlderProcess() {
+        copilotLock(4242, events = false)
+        assertNull(AgentResume.sessionId(Agent.COPILOT, 4242, 1_000_000L, home.toFile()), "A conversation with no message has nothing to resume")
+
+        copilotLock(4242)
+        assertNull(AgentResume.sessionId(Agent.COPILOT, 4242, 1_000_000L + 60_000, home.toFile()), "The lock of a killed process that had the pid")
+    }
+
+    @Test
+    fun resumesJunieThroughItsCommandAndNotTheBinaryOfItsVersion() {
+        val binary = "/Users/me/.local/share/junie/versions/3659.7/Applications/junie.app/Contents/MacOS/junie"
+        assertEquals(
+            listOf("junie", "--brave", "--model=opus", "--resume", "--session-id=$junieId"),
+            AgentResume.argv(Agent.JUNIE, listOf(binary, "--brave", "--model=opus", "--session-id=other", "fix the bug"), junieId),
+        )
+        assertEquals(listOf("junie"), AgentResume.argv(Agent.JUNIE, listOf(binary), null))
+    }
+
+    @Test
+    fun resumesCopilotWithTheOptionsThatSayHowItRanAndNotThePrompt() {
+        assertEquals(
+            listOf("copilot", "--yolo", "--model", "gpt-5", "--resume", copilotId),
+            AgentResume.argv(Agent.COPILOT, listOf("copilot", "--yolo", "--model", "gpt-5", "--resume", "old-name", "-i", "fix the bug"), copilotId),
+        )
     }
 
     @Test

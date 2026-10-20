@@ -16,14 +16,24 @@ public object AgentResume {
      * The id of the conversation that the agent [agent] is in, which runs as [pid] since [startedAtMillis], or `null` when it cannot be told
      * or the agent has no way to resume by id. [home] is the user's home.
      *
-     * Only Claude Code is known: it writes `~/.claude/sessions/<pid>.json` with the `sessionId` that its conversation has now, which follows
-     * `/clear` and `/resume`. The id is only given if its transcript exists (a conversation with no message has nothing to resume), and the
-     * file is the one of **this** process: a file left by an older process with the same pid started before this one.
-     * Not done, and why: Codex, Copilot and Antigravity are not installed where this was written, and Junie's way to resume was not looked at: they start again with no conversation.
+     * Each agent says it in a file of its own, none of them documented, so each can stop working with a new version (there is then no id,
+     * and the agent starts a new conversation). The id is only given when the conversation has a message (one with none has nothing to
+     * resume), and when the file is the one of **this** process: a process that is killed leaves its file, and a later one can have its pid.
+     *
+     * - Claude Code writes `~/.claude/sessions/<pid>.json` with the `sessionId` that its conversation has now, which follows `/clear` and
+     * `/resume`.
+     * - Junie writes `~/.junie/processes/<pid>-<sessionId>-<hash>.json` while it runs, with `pid`, `sessionId` and `startedAt`.
+     * - Copilot CLI makes `~/.copilot/session-state/<sessionId>/inuse.<pid>.lock` while it runs.
+     *
+     * Not done, and why: Codex is not installed where this was written, and Antigravity says which conversation a process has in no file
+     * (only in the ones that it keeps open): they start again with no conversation. Whether Junie's and Copilot's files follow a conversation
+     * that is changed from inside the agent was not checked.
      */
     public fun sessionId(agent: Agent, pid: Int, startedAtMillis: Long, home: File = File(System.getProperty("user.home"))): String? =
         when (agent) {
             Agent.CLAUDE -> claudeSessionId(pid, startedAtMillis, home)
+            Agent.JUNIE -> junieSessionId(pid, startedAtMillis, home)
+            Agent.COPILOT -> copilotSessionId(pid, startedAtMillis, home)
             else -> null
         }
 
@@ -37,7 +47,7 @@ public object AgentResume {
         val id = record.string("sessionId")?.takeIf(::isSessionId) ?: return null
         // A file of an older process that had this pid: this one writes its own at start.
         val startedAt = (record["startedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull
-        if (startedAt != null && startedAtMillis > 0 && startedAt < startedAtMillis - STALE_MARGIN_MS) return null
+        if (startedAt != null && isOlder(startedAt, startedAtMillis)) return null
         val projects = home.resolve(".claude/projects")
         // Its folder is named after the directory it ran in, every character that is not a letter or a digit a dash: one stat. A name that
         // was made another way is looked for in all of them.
@@ -45,6 +55,38 @@ public object AgentResume {
         if (directory != null && projects.resolve("$directory/$id.jsonl").isFile) return id
         return id.takeIf { projects.listFiles { f -> f.isDirectory }?.any { it.resolve("$id.jsonl").isFile } == true }
     }
+
+    private fun junieSessionId(pid: Int, startedAtMillis: Long, home: File): String? {
+        val sessions = home.resolve(".junie/sessions")
+        return home.resolve(".junie/processes").listFiles { f -> f.isFile && f.name.startsWith("$pid-") && f.name.endsWith(".json") }.orEmpty()
+            .mapNotNull { file ->
+                val record = try {
+                    Json.parseToJsonElement(file.readText()).jsonObject
+                } catch (_: Exception) {
+                    return@mapNotNull null
+                }
+                val startedAt = (record["startedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull
+                if (startedAt != null && isOlder(startedAt, startedAtMillis)) return@mapNotNull null
+                record.string("sessionId")?.takeIf(::isSessionId)?.let { it to (startedAt ?: 0L) }
+            }
+            // A conversation with a message has its events.
+            .filter { (id, _) -> sessions.resolve("$id/events.jsonl").isFile }
+            .maxByOrNull { it.second }?.first
+    }
+
+    private fun copilotSessionId(pid: Int, startedAtMillis: Long, home: File): String? =
+        home.resolve(".copilot/session-state").listFiles { f -> f.isDirectory }.orEmpty()
+            .mapNotNull { directory ->
+                val lock = directory.resolve("inuse.$pid.lock")
+                // The lock is made when the process takes the conversation: one older than the process is another's that had the pid.
+                if (!lock.isFile || isOlder(lock.lastModified(), startedAtMillis)) return@mapNotNull null
+                // A conversation with a message has its events.
+                directory.takeIf { isSessionId(it.name) && it.resolve("events.jsonl").isFile }?.let { it.name to lock.lastModified() }
+            }
+            .maxByOrNull { it.second }?.first
+
+    // Whether what was written at [writtenAt] comes from before the process that started at [startedAtMillis] (unknown when it is 0).
+    private fun isOlder(writtenAt: Long, startedAtMillis: Long): Boolean = startedAtMillis > 0 && writtenAt < startedAtMillis - STALE_MARGIN_MS
 
     private fun JsonObject.string(key: String): String? = (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.jsonPrimitive?.content
 
@@ -60,7 +102,9 @@ public object AgentResume {
      * one that takes it. What is kept is a list of options that are known, and the next word of the ones that take one.
      */
     public fun argv(agent: Agent, original: List<String>, sessionId: String?): List<String> {
-        val program = original.firstOrNull() ?: agent.executable
+        // Junie's command is a script that starts a binary of its version (`~/.local/share/junie/versions/3659.7/…/junie`): that is the
+        // program that runs, and it is gone after an update, and started without the script it misses what the script sets.
+        val program = original.firstOrNull()?.takeIf { agent != Agent.JUNIE } ?: agent.executable
         val kept = ArrayList<String>()
         kept += program
         val known = knownOptions(agent)
@@ -89,6 +133,8 @@ public object AgentResume {
         if (sessionId != null) {
             when (agent) {
                 Agent.CLAUDE -> kept += listOf("--resume", sessionId)
+                Agent.JUNIE -> kept += listOf("--resume", "--session-id=$sessionId")
+                Agent.COPILOT -> kept += listOf("--resume", sessionId)
                 else -> Unit
             }
         }
@@ -107,6 +153,23 @@ public object AgentResume {
             "--model" to true,
             "--permission-mode" to true,
             "--effort" to true,
+        )
+        Agent.JUNIE -> mapOf(
+            "--brave" to false,
+            "--model" to true,
+            "--effort" to true,
+            "--provider" to true,
+        )
+        Agent.COPILOT -> mapOf(
+            "--allow-all" to false,
+            "--yolo" to false,
+            "--allow-all-tools" to false,
+            "--allow-all-paths" to false,
+            "--allow-all-urls" to false,
+            "--experimental" to false,
+            "--model" to true,
+            "--reasoning-effort" to true,
+            "--agent" to true,
         )
         else -> emptyMap()
     }

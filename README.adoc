@@ -282,8 +282,8 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | Yes
 | No
 | No
-| No
-| No
+| Untested
+| Untested
 
 | Started again by itself after a relaunch
 | Yes
@@ -306,9 +306,8 @@ The agents above only add their logo and their name, and a program that does not
 Copilot CLI has no command that gives the usage without costing a turn, so it has no meter.
 Junie has none either yet: it will get one once https://youtrack.jetbrains.com/issue/JUNIE-5895/CLI-command-to-query-AI-credit-balance-and-quota[this issue] is resolved.
 Antigravity needs version 1.1.11 or later.
-* Only Claude Code resumes its conversation.
-The others start again as a new conversation.
-The others were not available to check.
+* Claude Code, Copilot CLI and Junie resume their conversation; Codex and Antigravity start again as a new conversation.
+KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
 
 
 == Getting started
