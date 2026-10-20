@@ -32,11 +32,11 @@ class AgentDetectionTest {
     @Test
     fun findsTheAgentsThatAreInstalled() {
         val claude = program("bin", "claude")
-        val gemini = program("bin", "gemini")
+        val copilot = program("bin", "copilot")
 
         val found = AgentDetection.detect(path("bin"))
 
-        assertEquals(mapOf(Agent.CLAUDE to claude, Agent.GEMINI to gemini), found)
+        assertEquals(mapOf(Agent.CLAUDE to claude, Agent.COPILOT to copilot), found)
     }
 
     @Test

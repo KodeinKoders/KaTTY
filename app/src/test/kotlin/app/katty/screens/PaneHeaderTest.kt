@@ -68,7 +68,7 @@ class PaneHeaderTest {
                     PaneHeader("Claude Code", AgentGlyph.CLAUDE, AgentState.WORKING, GitInfo("refactor-auth", GitKind.BRANCH), Modifier.fillMaxWidth())
                     PaneHeader("Codex", AgentGlyph.CODEX, AgentState.NEEDS_INPUT, GitInfo("rate-limit-key", GitKind.WORKTREE), Modifier.fillMaxWidth())
                     PaneHeader("zsh", AgentGlyph.SHELL, AgentState.IDLE, GitInfo("refactor-auth", GitKind.BRANCH), Modifier.fillMaxWidth())
-                    PaneHeader("Gemini CLI", AgentGlyph.GEMINI, AgentState.DONE, null, Modifier.fillMaxWidth())
+                    PaneHeader("Copilot CLI", AgentGlyph.COPILOT, AgentState.DONE, null, Modifier.fillMaxWidth())
                 }
             }
         }

@@ -15,14 +15,13 @@ import androidx.compose.ui.unit.dp
 import app.katty.core.Agent
 
 /**
- * What an agent is drawn as: its logo ([AgentLogos]) in a color of its own, which is the brand's where the brand has one (Claude's orange,
- * Gemini's blue) and the design's otherwise.
+ * What an agent is drawn as: its logo ([AgentLogos]) in a color of its own, which is the brand's where the brand has one (Claude's orange) and
+ * the design's otherwise.
  */
 enum class AgentGlyph(val icon: KattyIcon, val tint: Color) {
     CLAUDE(AgentLogos.Claude, Color(0xFFD97757)),
     CODEX(AgentLogos.Codex, Color(0xFF2E9E6B)),
     ANTIGRAVITY(AgentLogos.Antigravity, Color(0xFF8A63D2)),
-    GEMINI(AgentLogos.Gemini, Color(0xFF3574F0)),
     COPILOT(AgentLogos.Copilot, Color(0xFF0E8A9A)),
 
     /** A shell, and a program that is not one of the agents. */
@@ -51,7 +50,6 @@ fun AgentTile(glyph: AgentGlyph, modifier: Modifier = Modifier, size: TileSize =
 fun Agent?.glyph(): AgentGlyph = when (this) {
     Agent.CLAUDE -> AgentGlyph.CLAUDE
     Agent.CODEX -> AgentGlyph.CODEX
-    Agent.GEMINI -> AgentGlyph.GEMINI
     Agent.ANTIGRAVITY -> AgentGlyph.ANTIGRAVITY
     Agent.COPILOT -> AgentGlyph.COPILOT
     null -> AgentGlyph.SHELL

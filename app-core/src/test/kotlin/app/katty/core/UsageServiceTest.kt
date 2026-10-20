@@ -59,7 +59,7 @@ class UsageServiceTest {
     fun anAgentWithoutASourceHasNoMeter() {
         val service = UsageService(scope, mapOf(Agent.CLAUDE to UsageSource { reading(Agent.CLAUDE, 1) }), interval = 60_000.milliseconds)
 
-        service.want(setOf(Agent.GEMINI, Agent.COPILOT))
+        service.want(setOf(Agent.COPILOT))
         Thread.sleep(100)
 
         assertEquals(emptyMap(), service.readings.value)

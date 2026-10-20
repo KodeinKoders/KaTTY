@@ -63,7 +63,8 @@ class TitlesTest {
 
     @Test
     fun theProgramsAreMatchedByName() {
-        assertEquals(Agent.GEMINI, Agent.fromProcess("gemini"))
+        assertEquals(Agent.CODEX, Agent.fromProcess("codex"))
+        assertNull(Agent.fromProcess("gemini"))
         assertNull(Agent.fromProcess("emacs"))
         assertNull(Agent.fromProcess(null))
         assertNull(Agent.fromProcess(""))

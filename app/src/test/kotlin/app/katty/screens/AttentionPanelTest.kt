@@ -55,8 +55,8 @@ class AttentionPanelTest {
         val codex = item("api-gateway", "refactor-auth", AgentState.NEEDS_INPUT, "codex", 2, "Apply this patch? 1. Yes  2. No, tell me what to change")
         val claude = item("web-client", "checkout-form", AgentState.ERROR, "claude-code", 14, "Failed: build error in CartSummary.tsx.")
         val done = item("api-gateway", "release-notes", AgentState.DONE, "claude-code", 8, "Changelog for v2.4 drafted and committed.")
-        val gemini = item("docs-site", "getting-started", AgentState.DONE, "gemini-cli", 21, "Rewrote the install guide, 3 files changed.")
-        return Attention(needsYou = listOf(codex, claude), finished = listOf(done, gemini))
+        val copilot = item("docs-site", "getting-started", AgentState.DONE, "copilot-cli", 21, "Rewrote the install guide, 3 files changed.")
+        return Attention(needsYou = listOf(codex, claude), finished = listOf(done, copilot))
     }
 
     private fun ComposeUiTest.press(key: Key) {
@@ -185,7 +185,7 @@ class AttentionPanelTest {
         setContent { KattyTheme(false) { AttentionPopover(list, now, onOpen = { opened += it }, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {}) } }
 
         onNodeWithContentDescription("Codex in api-gateway / refactor-auth").performClick()
-        onNodeWithContentDescription("Gemini CLI in docs-site / getting-started").performClick()
+        onNodeWithContentDescription("Copilot CLI in docs-site / getting-started").performClick()
 
         assertEquals(listOf(list.needsYou[0].terminal.id, list.finished[1].terminal.id), opened)
     }

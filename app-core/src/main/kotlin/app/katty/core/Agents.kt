@@ -12,7 +12,6 @@ import app.katty.terminal.TerminalProgramStatus
 public enum class Agent(public val id: String, public val displayName: String, public val executable: String) {
     CLAUDE("claude", "Claude Code", "claude"),
     CODEX("codex", "Codex", "codex"),
-    GEMINI("gemini", "Gemini CLI", "gemini"),
     ANTIGRAVITY("antigravity", "Antigravity", "agy"),
     COPILOT("copilot", "Copilot CLI", "copilot"),
     ;
@@ -27,7 +26,6 @@ public enum class Agent(public val id: String, public val displayName: String, p
             return when {
                 "claude" in name -> CLAUDE
                 "codex" in name -> CODEX
-                "gemini" in name -> GEMINI
                 "antigravity" in name || name == "agy" -> ANTIGRAVITY
                 "copilot" in name -> COPILOT
                 else -> null

@@ -38,15 +38,6 @@ object AgentLogos {
         grid = 24f, fillType = PathFillType.EvenOdd,
     )
 
-    /** From Simple Icons (CC0 1.0), `googlegemini`. */
-    val Gemini = KattyIcon(
-        strokes = emptyList(),
-        fills = listOf(
-            "M 11.04 19.32 Q 12 21.51 12 24 q 0 -2.49 .93 -4.68 .96 -2.19 2.58 -3.81 t 3.81 -2.55 Q 21.51 12 24 12 q -2.49 0 -4.68 -.93 a 12.3 12.3 0 0 1 -3.81 -2.58 12.3 12.3 0 0 1 -2.58 -3.81 Q 12 2.49 12 0 q 0 2.49 -.96 4.68 -.93 2.19 -2.55 3.81 a 12.3 12.3 0 0 1 -3.81 2.58 Q 2.49 12 0 12 q 2.49 0 4.68 .96 2.19 .93 3.81 2.55 t 2.55 3.81",
-        ),
-        grid = 24f,
-    )
-
     /** From Simple Icons (CC0 1.0), `githubcopilot`. */
     val Copilot = KattyIcon(
         strokes = emptyList(),

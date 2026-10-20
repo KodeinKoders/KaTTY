@@ -64,7 +64,7 @@ class AgentResumeTest {
     @Test
     fun otherAgentsHaveNoWayToTellYet() {
         assertNull(AgentResume.sessionId(Agent.CODEX, 1, 0, home.toFile()))
-        assertNull(AgentResume.sessionId(Agent.GEMINI, 1, 0, home.toFile()))
+        assertNull(AgentResume.sessionId(Agent.COPILOT, 1, 0, home.toFile()))
     }
 
     @Test

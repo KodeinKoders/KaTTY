@@ -39,7 +39,7 @@ class UsagePanelTest {
         Agent.CODEX to UsageReading(Agent.CODEX, listOf(UsageWindow("Session", 41, now.plusSeconds((2 * 60 + 10) * 60)))),
     )
 
-    private val agents = listOf(Agent.CLAUDE, Agent.CODEX, Agent.GEMINI)
+    private val agents = listOf(Agent.CLAUDE, Agent.CODEX, Agent.COPILOT)
 
     @Test
     fun theFullListHasThePercentAndWhenItStartsAgainOfTheMostUsedAllowance() = runComposeUiTest {
@@ -61,7 +61,7 @@ class UsagePanelTest {
     fun anAgentWithoutAMeterIsListedAsSuch() = runComposeUiTest {
         setContent { KattyTheme(false) { UsageList(agents, readings, now, UsageVariant.FULL, Modifier.width(240.dp)) } }
 
-        onNodeWithText("Gemini CLI").assertExists()
+        onNodeWithText("Copilot CLI").assertExists()
         onNodeWithText("No meter").assertExists()
     }
 
@@ -72,7 +72,7 @@ class UsagePanelTest {
         onNodeWithText("82%").assertExists()
         onNodeWithText("40%").assertExists()
         onNodeWithContentDescription("Session: 82% used, resets in 53 minutes; Week: 40% used, resets in 3 days").assertExists()
-        onNodeWithContentDescription("Gemini CLI: usage not available").assertExists()
+        onNodeWithContentDescription("Copilot CLI: usage not available").assertExists()
     }
 
     @Test
@@ -217,19 +217,18 @@ class UsagePanelTest {
 
     @Test
     fun theWelcomeListsTheAgentsThatWereFoundAndFoldsTheOthers() = runComposeUiTest {
-        setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"), Agent.GEMINI to Path.of("/bin/gemini"))) } }
+        setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"), Agent.CODEX to Path.of("/bin/codex"), Agent.COPILOT to Path.of("/bin/copilot"))) } }
 
         onNodeWithText("DETECTED ON THIS MACHINE").assertExists()
-        // Two found, and three that were not: the numbers of the two sections.
-        onNodeWithText("2").assertExists()
+        // Three found, and one that was not: the numbers of the two sections.
         onNodeWithText("3").assertExists()
+        onNodeWithText("1").assertExists()
         onNodeWithContentDescription("Claude Code: Detected").assertExists()
-        onNodeWithContentDescription("Gemini CLI: Detected").assertExists()
+        onNodeWithContentDescription("Copilot CLI: Detected").assertExists()
         // The others are in a section that is closed: its title says how many, and none of them is listed.
         onNodeWithText("NOT FOUND").assertExists()
-        onNodeWithContentDescription("Not found: 3").assertExists()
+        onNodeWithContentDescription("Not found: 1").assertExists()
         assertEquals(0, onAllNodesWithContentDescription("Antigravity: Not found").fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithContentDescription("Codex: Not found").fetchSemanticsNodes().size)
         onNodeWithText("Agents you install later appear here automatically.").assertExists()
     }
 
@@ -237,11 +236,11 @@ class UsagePanelTest {
     fun theSectionOfTheAgentsThatWereNotFoundOpensAndCloses() = runComposeUiTest {
         setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"))) } }
 
-        onNodeWithContentDescription("Not found: 4").performClick()
+        onNodeWithContentDescription("Not found: 3").performClick()
         waitForIdle()
         onNodeWithContentDescription("Codex: Not found").assertExists()
         onNodeWithContentDescription("Copilot CLI: Not found").assertExists()
-        onNodeWithContentDescription("Not found: 4").performClick()
+        onNodeWithContentDescription("Not found: 3").performClick()
         waitForIdle()
 
         assertEquals(0, onAllNodesWithContentDescription("Codex: Not found").fetchSemanticsNodes().size)
@@ -259,7 +258,7 @@ class UsagePanelTest {
         setContent { KattyTheme(false) { DetectedAgents(emptyMap()) } }
 
         onNodeWithText("No agent was found on this machine.").assertExists()
-        onNodeWithContentDescription("Not found: 5").assertExists()
+        onNodeWithContentDescription("Not found: 4").assertExists()
     }
 
     @Test
@@ -267,8 +266,8 @@ class UsagePanelTest {
         for (dark in listOf(false, true)) {
             val rendered = render("usage-${if (dark) "dark" else "light"}", 1100, 520, dark = dark) {
                 Row {
-                    UsageSection(agents, readings, setOf("claude", "codex", "gemini"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> }, modifier = Modifier.width(272.dp))
-                    UsageSection(agents, readings, setOf("claude", "codex", "gemini"), compact = true, now = now, onCompact = {}, onShown = { _, _ -> }, modifier = Modifier.width(272.dp))
+                    UsageSection(agents, readings, setOf("claude", "codex", "copilot"), compact = false, now = now, onCompact = {}, onShown = { _, _ -> }, modifier = Modifier.width(272.dp))
+                    UsageSection(agents, readings, setOf("claude", "codex", "copilot"), compact = true, now = now, onCompact = {}, onShown = { _, _ -> }, modifier = Modifier.width(272.dp))
                 }
             }
             // The bar turns amber from 80 %.

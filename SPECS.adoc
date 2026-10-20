@@ -56,7 +56,7 @@ The user starts agents, and manages git worktrees, from the shell.
 | A node of the tree of a workspace, with two sides and a ratio.
 
 | Agent
-| A coding agent that runs in a terminal: Claude Code, Codex, Gemini CLI, Antigravity, Copilot CLI.
+| A coding agent that runs in a terminal: Claude Code, Codex, Antigravity, Copilot CLI.
 
 | Report
 | What a program says of itself with the escape sequence OSC 7501.
@@ -304,7 +304,7 @@ A terminal is called, in this order:
 
 . the name the user gave it;
 . the agent that reports in it (OSC 7501): its name, or what the program calls itself when it is not a known agent (it is on the board all the same);
-. the agent that runs in it, known by its program (`claude`, `codex`, `gemini`, `agy`, `copilot`): its name;
+. the agent that runs in it, known by its program (`claude`, `codex`, `agy`, `copilot`): its name;
 . the program that runs in it, as the system names it: `emacs` while the user runs emacs;
 . the shell (`zsh`): what is left at the prompt, so the title goes back to it when the program quits.
 
@@ -404,11 +404,6 @@ Seeing it removes its `done` and `error` records, and the terminal is at rest.
 | `codex`
 | `#2E9E6B`
 
-| Gemini CLI
-| `gemini`
-| `gemini`
-| `#3574F0`
-
 | Antigravity
 | `antigravity`
 | `agy`
@@ -422,7 +417,7 @@ Seeing it removes its `done` and `error` records, and the terminal is at rest.
 
 A report's `app` is an agent when it contains the agent's name, without regard for the case and the punctuation (`claude-code` is Claude Code), or is `agy`.
 Another program keeps its own name and the neutral tile (tint `#6E7280`).
-The tile of an agent shows its logo as a single-color shape in a color of its own (Claude Code's orange, Gemini's blue; the design's colors for the others).
+The tile of an agent shows its logo as a single-color shape in a color of its own (Claude Code's orange; the design's colors for the others).
 The logos are the trademarks of their owners and are only there to tell which agent a terminal runs; their path data comes from Simple Icons (CC0 1.0) and Lobe Icons (MIT), see `AgentLogos.kt`.
 Some of the originals are gradients or have several colors: the tiles draw them in one.
 
@@ -585,7 +580,7 @@ It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, an
 * The Board view has a column for each state, in this order: Nothing, Working, Needs input (with the failures), Done, each with its glyph, title and number of cards.
 * Only a terminal whose program reports (OSC 7501) has a card, whatever the program is: it is not matched against a list, and a shell and a program that says nothing have none.
 A terminal goes on being a card, at rest, after what it finished was seen and taken off (which removes the records), until the shell has the terminal again.
-The agents that KaTTY knows by name (Claude Code, Codex, Gemini CLI, Antigravity, Copilot CLI) only add to a card: their logo and name, where another program has the neutral tile and the name it gave.
+The agents that KaTTY knows by name (Claude Code, Codex, Antigravity, Copilot CLI) only add to a card: their logo and name, where another program has the neutral tile and the name it gave.
 The "Nothing" column is for a program at rest; its card says "At rest.".
 In a column, the card that arrived in it first is at the top (the oldest first), and cards that arrived together keep the order of the tree.
 * The time on a card, and so its place, is since it arrived in its **column**, not in its state: a wait that becomes a failure (both are "Needs input") keeps it.
@@ -635,7 +630,7 @@ Then `agy -p /usage --output-format json --print-timeout 20s`, 30 s at most: eac
 The `primary` and `secondary` windows are allowances: "Session" for about 5 hours, "Week" for about 7 days, else their length.
 This was not tried against a real Codex.
 
-| Gemini CLI, Copilot CLI
+| Copilot CLI
 | None: no command reports it without a turn.
 |===
 
@@ -774,7 +769,7 @@ Everything that can be clicked in a list (the rows of the sidebar and its "New w
 * A program that does not send OSC 7501 shows as a shell and has no card, an agent that KaTTY knows included.
 * Which `app` name each known agent sends is not known for sure: names are matched by substring, and only for the logo and the name.
 * The Codex usage request follows another application's code and was not tried.
-* Gemini CLI and Copilot CLI have no usage meter.
+* Copilot CLI has no usage meter.
 * The scrollback and the programs of the terminals are not kept across launches.
 * Panes cannot be moved within a workspace, only to another one.
 * The agents' logos are drawn in one color, even where the original has gradients, and the application has no icon.
