@@ -37,12 +37,15 @@ enum class GlyphSize(val dp: Dp, val mark: Boolean) {
  * exclamation mark for Needs input, with a check for Done, with a cross for a failure, and a hollow ring for Nothing.
  *
  * What it says is always told in words next to it or by the control that holds it: it has no description.
+ *
+ * @param spinning Whether Working is the ring that turns (the default), or false for a glyph that labels a group, such as a column of the board, which is
+ * not itself working: it is then a filled circle with three dots, like the other states, and does not move.
  */
 @Composable
-fun StateGlyph(state: AgentState, modifier: Modifier = Modifier, size: GlyphSize = GlyphSize.NORMAL) {
+fun StateGlyph(state: AgentState, modifier: Modifier = Modifier, size: GlyphSize = GlyphSize.NORMAL, spinning: Boolean = true) {
     val colors = Katty.colors
     val reduced = LocalReducedMotion.current
-    val angle = if (state == AgentState.WORKING && !reduced) {
+    val angle = if (state == AgentState.WORKING && spinning && !reduced) {
         val transition = rememberInfiniteTransition(label = "working")
         val turn by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Restart), label = "turn")
         turn
@@ -54,7 +57,10 @@ fun StateGlyph(state: AgentState, modifier: Modifier = Modifier, size: GlyphSize
         val side = this.size.minDimension
         when (state) {
             AgentState.IDLE -> ring(colors.idle, width = with(density) { 1.5.dp.toPx() }, side)
-            AgentState.WORKING -> {
+            AgentState.WORKING -> if (!spinning) {
+                disc(colors.work, side)
+                if (size.mark) ellipsis(colors.onStatus, side)
+            } else {
                 val width = with(density) { (if (size == GlyphSize.SMALL) 1.5.dp else 2.dp).toPx() }
                 // A ring whose top is open, turned.
                 rotate(angle) { arc(colors.work, width, side) }
@@ -94,6 +100,11 @@ private fun DrawScope.exclamation(color: Color, side: Float) {
     val width = 1.4f * unit
     drawLine(color, Offset(side / 2, 3f * unit), Offset(side / 2, 6.6f * unit), strokeWidth = width, cap = StrokeCap.Round)
     drawCircle(color, radius = 0.75f * unit, center = Offset(side / 2, 8.8f * unit))
+}
+
+private fun DrawScope.ellipsis(color: Color, side: Float) {
+    val unit = side / 12f
+    for (x in listOf(3.4f, 6f, 8.6f)) drawCircle(color, radius = 0.8f * unit, center = Offset(x * unit, 6f * unit))
 }
 
 private fun DrawScope.check(color: Color, side: Float) {

@@ -103,12 +103,12 @@ class DesignSystemTest {
     }
 
     @Test
-    fun theWorkingRingSpinsUnlessTheSystemAsksForLessMotion() {
+    fun theWorkingRingSpinsUnlessTheSystemAsksForLessMotionOrItOnlyLabelsAGroup() {
         // Two frames of one scene, a quarter of a turn apart.
-        fun frames(reduced: Boolean): Pair<List<Byte>, List<Byte>> {
+        fun frames(reduced: Boolean, spinning: Boolean = true): Pair<List<Byte>, List<Byte>> {
             val scene = ImageComposeScene(width = 40, height = 40, density = Density(2f)) {
                 KattyTheme(dark = false, reducedMotion = reduced) {
-                    Box(Modifier.fillMaxSize().background(Katty.colors.bg), Alignment.Center) { StateGlyph(AgentState.WORKING) }
+                    Box(Modifier.fillMaxSize().background(Katty.colors.bg), Alignment.Center) { StateGlyph(AgentState.WORKING, spinning = spinning) }
                 }
             }
             try {
@@ -122,9 +122,23 @@ class DesignSystemTest {
 
         val spinning = frames(reduced = false)
         val still = frames(reduced = true)
+        // The glyph of a column of the board labels it: the column is not working, its cards are.
+        val label = frames(reduced = false, spinning = false)
 
         assertNotEquals(spinning.first, spinning.second)
         assertEquals(still.first, still.second)
+        assertEquals(label.first, label.second)
+    }
+
+    @Test
+    fun theWorkingGlyphThatLabelsAColumnIsAFilledCircleLikeTheOtherStates() {
+        fun glyph(name: String, size: GlyphSize, spinning: Boolean) =
+            render(name, 40, 40) { Box(Modifier.fillMaxSize().background(Katty.colors.bg), Alignment.Center) { StateGlyph(AgentState.WORKING, size = size, spinning = spinning) } }.bytes().toList()
+
+        val badge = glyph("glyph-working-badge", GlyphSize.NORMAL, spinning = false)
+
+        assertNotEquals(glyph("glyph-working-ring", GlyphSize.NORMAL, spinning = true), badge)
+        assertNotEquals(glyph("glyph-working-badge-small", GlyphSize.SMALL, spinning = false), badge)
     }
 
     @Test

@@ -167,6 +167,8 @@ private fun BoardHeader(column: BoardColumn, count: Int) {
                 BoardColumn.NEEDS_INPUT -> AgentState.NEEDS_INPUT
                 BoardColumn.DONE -> AgentState.DONE
             },
+            // The cards of the column work, the column does not: it is a round badge like the others, not the ring that turns.
+            spinning = false,
         )
         Text(column.title, Modifier.weight(1f), color = colors.text, fontWeight = FontWeight.SemiBold)
         CountPill(count)
