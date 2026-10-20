@@ -73,8 +73,7 @@ import org.jetbrains.jewel.ui.component.Text
 
 /** What a card says when its program said nothing: in words that say what the state is, since the card has no more to say. */
 internal fun BoardCard.defaultNote(): String = when (info.state) {
-    // A card is an agent's: one that is at rest after what it said was taken off, or that never said anything, is not a shell.
-    AgentState.IDLE -> if (info.report.reporting || info.since != 0L) "At rest." else "Running, it does not report its state."
+    AgentState.IDLE -> "At rest."
     AgentState.WORKING -> "Working."
     AgentState.NEEDS_INPUT -> "Waiting for you."
     AgentState.ERROR -> "Failed."

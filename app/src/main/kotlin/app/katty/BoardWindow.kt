@@ -68,7 +68,6 @@ fun BoardWindow(
     val state by store.state.collectAsState()
     val infos by tracker.infos.collectAsState()
     val handles by registry.handles.collectAsState()
-    val processNames by registry.processNames.collectAsState()
     val now = rememberNow()
     // Where it was, unless that is on a screen that is gone.
     val geometry = remember { windowFile.load().sanitized(screens()) }
@@ -110,7 +109,7 @@ fun BoardWindow(
             TitleBar { OneLine("Agent board", color = Katty.colors.text) }
             val size = LocalWindowInfo.current.containerSize
             val vertical = state.settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
-            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, processes = processNames)
+            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) })
         }
     }
 }
@@ -128,13 +127,12 @@ fun BoardWindowContent(
     vertical: Boolean,
     onOpen: (TerminalId) -> Unit,
     modifier: Modifier = Modifier,
-    processes: Map<TerminalId, String?> = emptyMap(),
 ) {
     var chosen by remember { mutableStateOf<ProjectId?>(null) }
     // A project that was removed is not a filter any more.
     val filter = chosen?.takeIf { id -> state.projects.any { it.id == id } }
     val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
-    val columns = remember(state.projects, infos, processes, filter) { state.board(filter, infos, processes) }
+    val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
     Column(modifier.fillMaxSize()) {
         BoardTabs(state, filter, { chosen = it }, states = agentStates)
         AgentBoard(columns, handles, now, vertical, onOpen, Modifier.weight(1f))

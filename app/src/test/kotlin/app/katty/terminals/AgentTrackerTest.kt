@@ -130,6 +130,31 @@ class AgentTrackerTest {
     }
 
     @Test
+    fun aProgramThatIsNotAKnownAgentStaysAtRestAfterItsDoneWasSeen() {
+        scripts += "${report("state=done", "app=my-tool")}; sleep 60"
+        val id = start()
+        await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
+
+        tracker.markSeen(id)
+
+        await("at rest, still reporting") { tracker.infos.value[id]?.let { it.state == AgentState.IDLE && it.report.reporting } == true }
+        assertEquals("my-tool", tracker.infos.value.getValue(id).report.app)
+        assertNull(tracker.infos.value.getValue(id).report.agent)
+    }
+
+    @Test
+    fun aProgramThatNamesNothingStaysAtRestAfterItsDoneWasSeen() {
+        scripts += "${report("state=done")}; sleep 60"
+        val id = start()
+        await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
+
+        tracker.markSeen(id)
+
+        await("at rest, still reporting") { tracker.infos.value[id]?.let { it.state == AgentState.IDLE && it.report.reporting } == true }
+        assertNull(tracker.infos.value.getValue(id).report.app)
+    }
+
+    @Test
     fun theAgentIsForgottenWhenTheShellHasTheTerminalAgain() {
         // It reports, waits, and then the shell takes the terminal: the agent has ended.
         val shell = System.getenv("SHELL") ?: "/bin/zsh"
@@ -139,7 +164,7 @@ class AgentTrackerTest {
         tracker.markSeen(id)
         await("at rest, still the agent") { tracker.infos.value[id]?.let { it.state == AgentState.IDLE && it.report.app == "claude-code" } == true }
 
-        await("the shell has the terminal, the agent is gone") { tracker.infos.value[id]?.report?.app == null }
+        await("the shell has the terminal, the agent is gone") { tracker.infos.value[id]?.report?.reporting == false }
 
         assertEquals(AgentState.IDLE, tracker.infos.value.getValue(id).state)
     }
@@ -159,7 +184,7 @@ class AgentTrackerTest {
         tracker.markSeen(id)
 
         await("at rest") { tracker.infos.value[id]?.state == AgentState.IDLE }
-        assertNull(tracker.infos.value.getValue(id).report.app, "a shell is shown as an agent")
+        assertEquals(false, tracker.infos.value.getValue(id).report.reporting, "a shell is shown as an agent")
     }
 
     @Test

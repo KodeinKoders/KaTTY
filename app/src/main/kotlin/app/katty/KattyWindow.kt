@@ -150,7 +150,6 @@ fun DecoratedWindowScope.KattyWindowContent(
     var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     val handles by registry.handles.collectAsState()
-    val processNames by registry.processNames.collectAsState()
     // Where each terminal is in git: a workspace says the branch that its terminals share.
     val gits by registry.gitInfos.collectAsState()
     // What each terminal is doing comes from what its program reports (OSC 7501).
@@ -575,9 +574,9 @@ fun DecoratedWindowScope.KattyWindowContent(
             if (settings.view == MainView.BOARD) {
                 // A project that was removed is not a filter any more.
                 val filter = boardFilter?.takeIf { id -> state.projects.any { it.id == id } }
-                val columns = remember(state.projects, infos, processNames, filter) { state.board(filter, infos, processNames) }
+                val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
                 // "All projects" says how many agents there are whatever the filter is.
-                val agentsOnBoard = remember(state.projects, infos, processNames) { state.board(null, infos, processNames).values.sumOf { it.size } }
+                val agentsOnBoard = remember(state.projects, infos) { state.board(null, infos).values.sumOf { it.size } }
                 val board: @Composable (Modifier) -> Unit = { boardModifier ->
                     AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, modifier = boardModifier, onOpenWindow = onOpenBoardWindow)
                 }

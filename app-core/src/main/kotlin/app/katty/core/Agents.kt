@@ -5,6 +5,7 @@ import app.katty.terminal.TerminalProgramStatus
 
 /**
  * The coding agents that the application knows by name: their name, as the user sees it, and the program that runs them.
+ * They are not what decides that a terminal is on the board (any program that reports is): they give a logo, a name, a usage reading and a resume.
  *
  * [id] is what the settings keep, and what a program's name is matched against: see [fromApp].
  */
@@ -45,13 +46,17 @@ public enum class Agent(public val id: String, public val displayName: String, p
  *
  * @param app What the program calls itself, as it said it, `null` when it did not say.
  * @param note One line of the program's own words about what it does or waits for: the text is the program's, shown as it is.
+ * @param reporting Whether a program is reporting at all, which is what puts a terminal on the board: a shell at its prompt reports nothing.
+ * A program that only says it is at rest, with no name, reports.
  */
-public data class AgentReport(val state: AgentState, val app: String? = null, val note: String? = null) {
+public data class AgentReport(
+    val state: AgentState,
+    val app: String? = null,
+    val note: String? = null,
+    val reporting: Boolean = app != null || state != AgentState.IDLE,
+) {
     /** The agent that [app] is, `null` for a program that is not a known one, and for a terminal that says nothing. */
     val agent: Agent? get() = app?.let(Agent::fromApp)
-
-    /** Whether a program is reporting at all: a shell at its prompt reports nothing. */
-    val reporting: Boolean get() = app != null || state != AgentState.IDLE
 }
 
 /**
@@ -68,7 +73,7 @@ public fun summarize(records: List<TerminalProgramStatus>): AgentReport {
     val note = (top.message.ifBlank { top.title }).trim().ifEmpty { null }
     // The program is the one that the most important record names, else any record that names one.
     val app = ranked.firstOrNull { it.app.isNotEmpty() }?.app
-    return AgentReport(top.state.toAgentState(), app, note)
+    return AgentReport(top.state.toAgentState(), app, note, reporting = true)
 }
 
 internal fun TerminalProgramState.toAgentState(): AgentState = when (this) {

@@ -48,9 +48,10 @@ class AgentTracker(
 
     private val follows = HashMap<TerminalId, Follow>()
 
-    // The agent that a terminal has said it runs, by the `app` of its last report that named one: what it says is gone when what it finished
-    // is seen and taken off, and it still runs. It lasts until the shell has the terminal again, which is when the agent has ended.
-    private val rememberedApp = HashMap<TerminalId, String>()
+    // The terminals whose program has reported, with the `app` of its last report that named one (`null` when none did): what it says is gone
+    // when what it finished is seen and taken off, and it still runs. It lasts until the shell has the terminal again, which is when the
+    // program has ended.
+    private val reporters = HashMap<TerminalId, String?>()
 
     // What the records of each terminal come to, without what is remembered.
     private val latest = HashMap<TerminalId, app.katty.core.AgentReport>()
@@ -66,7 +67,7 @@ class AgentTracker(
             val session = handles[id]?.session
             if (session == null || follows.getValue(id).session !== session) {
                 follows.remove(id)?.let { it.job.cancel(); it.processJob.cancel() }
-                rememberedApp.remove(id)
+                reporters.remove(id)
                 latest.remove(id)
                 atShell.remove(id)
                 mutableInfos.value = mutableInfos.value - id
@@ -91,7 +92,7 @@ class AgentTracker(
     private fun programChanged(id: TerminalId, shell: Boolean) {
         val report = synchronized(this) {
             val changed = if (shell) atShell.add(id) else atShell.remove(id)
-            if (shell) rememberedApp.remove(id)
+            if (shell) reporters.remove(id)
             if (!changed) return
             latest[id]
         } ?: return
@@ -102,12 +103,12 @@ class AgentTracker(
         var transition: AgentTransition? = null
         mutableInfos.value = synchronized(this) {
             latest[id] = summary
-            // A report that names a program says which agent the terminal runs; one at rest that names none (what is left when a `done` was
-            // seen) is that agent, at rest, until the shell has the terminal again.
-            // Only while an agent can be running: a terminal that the shell has runs none, whatever a record that is still there says.
+            // A report says that a program runs in the terminal, and may name it; no record at all (what is left when a `done` was seen) is
+            // that program, at rest, until the shell has the terminal again.
+            // Only while a program can be running: a terminal that the shell has runs none, whatever a record that is still there says.
             val shell = id in atShell
-            if (!shell) summary.app?.let { rememberedApp[id] = it }
-            val report = if (summary.app == null && summary.state == AgentState.IDLE && !shell) rememberedApp[id]?.let { summary.copy(app = it) } ?: summary else summary
+            if (!shell && summary.reporting) reporters[id] = summary.app ?: reporters[id]
+            val report = if (!summary.reporting && !shell && id in reporters) summary.copy(app = reporters[id], reporting = true) else summary
             val before = mutableInfos.value[id]
             // Since when it is in this column, not in this state: a wait that becomes a failure stays where it is on the board.
             val since = if (before != null && before.state.column() == report.state.column()) before.since else clock()

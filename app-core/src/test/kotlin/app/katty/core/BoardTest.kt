@@ -32,7 +32,7 @@ class BoardTest {
     }
 
     @Test
-    fun onlyTheTerminalsThatRunAKnownAgentAreOnTheBoard() {
+    fun onlyTheTerminalsWhoseProgramReportsAreOnTheBoard() {
         store.addProject("/a")
         val shell = state.selection.terminal!!
         val silent = store.split(shell, SplitDirection.ROW)!!
@@ -42,62 +42,41 @@ class BoardTest {
         val board = state.board(
             null,
             mapOf(
-                // A shell that reports nothing, a program that reports but is not an agent, and an agent that reports: only the last has a card.
+                // A shell that reports nothing has no card; a program that is not a known agent has one, as has an agent.
                 shell to AgentInfo(AgentReport(AgentState.IDLE), 0),
-                editor to AgentInfo(AgentReport(AgentState.WORKING, "vim"), 0),
+                editor to AgentInfo(AgentReport(AgentState.WORKING, "terraform"), 0),
                 agent to info(AgentState.IDLE, 1),
+                // A program that only says it is at rest, with no name, reports too.
+                silent to AgentInfo(AgentReport(AgentState.IDLE, reporting = true), 2),
             ),
         )
 
-        assertEquals(listOf(agent), board.values.flatten().map { it.terminal.id })
-        assertEquals(listOf(agent), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
+        assertEquals(setOf(silent, editor, agent), board.values.flatten().map { it.terminal.id }.toSet())
+        assertEquals(listOf(editor), board.getValue(BoardColumn.WORKING).map { it.terminal.id })
+        assertEquals(listOf(agent, silent), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
         assertEquals(emptyList(), state.board(null, emptyMap()).values.flatten())
     }
 
     @Test
-    fun anAgentThatWasSeenIsStillOnTheBoardBecauseItIsStillRunning() {
+    fun aProgramAtRestAfterItsReportWasSeenIsStillOnTheBoard() {
         store.addProject("/a")
-        val claude = state.selection.terminal!!
-        val shell = store.split(claude, SplitDirection.ROW)!!
-        // What is left of a terminal when its `done` was seen and taken off: at rest, and the record that named the program is gone.
-        val afterSeen = AgentInfo(AgentReport(AgentState.IDLE), 5)
-        val infos = mapOf(claude to afterSeen, shell to AgentInfo(AgentReport(AgentState.IDLE), 6))
+        val tool = state.selection.terminal!!
+        // What the tracker makes of a terminal whose `done` was seen and taken off: no record, and still reporting, whatever it names.
+        val named = AgentInfo(AgentReport(AgentState.IDLE, "my-tool", reporting = true), 5)
+        val unnamed = AgentInfo(AgentReport(AgentState.IDLE, reporting = true), 5)
 
-        val board = state.board(null, infos, mapOf(claude to "claude", shell to "zsh"))
-
-        assertEquals(listOf(claude), board.values.flatten().map { it.terminal.id })
-        assertEquals(listOf(claude), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
-        // Without the program, nothing says that it is an agent: the cause of the card that went.
-        assertEquals(emptyList(), state.board(null, infos).values.flatten())
+        assertEquals(listOf(tool), state.board(null, mapOf(tool to named)).getValue(BoardColumn.NOTHING).map { it.terminal.id })
+        assertEquals(listOf(tool), state.board(null, mapOf(tool to unnamed)).getValue(BoardColumn.NOTHING).map { it.terminal.id })
     }
 
     @Test
-    fun anAgentAtRestThatStillNamesItselfIsOnTheBoardWhateverItsProgramIsCalled() {
-        store.addProject("/a")
-        val claude = state.selection.terminal!!
-        // Native Claude Code is a file named after its version: the program that has the terminal is `2.1.302`, which says nothing.
-        val seen = AgentInfo(AgentReport(AgentState.IDLE, "claude-code"), 5)
-
-        val board = state.board(null, mapOf(claude to seen), mapOf(claude to "2.1.302"))
-
-        assertEquals(listOf(claude), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
-    }
-
-    @Test
-    fun anAgentThatNeverReportedIsOnTheBoardByItsProgramAndOtherProgramsAreNot() {
+    fun aProgramThatNeverReportedHasNoCardWhateverItIsCalled() {
         store.addProject("/a")
         val codex = state.selection.terminal!!
-        val editor = store.split(codex, SplitDirection.ROW)!!
-        val named = store.split(editor, SplitDirection.ROW)!!
 
-        val board = state.board(null, mapOf(named to info(AgentState.WORKING, 9)), mapOf(codex to "codex", editor to "vim", named to "zsh"))
-
-        assertEquals(listOf(codex), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
-        // It has no time: it never said anything.
-        assertEquals(0L, board.getValue(BoardColumn.NOTHING).single().info.since)
-        // What an agent reported counts whatever the program is now.
-        assertEquals(listOf(named), board.getValue(BoardColumn.WORKING).map { it.terminal.id })
-        assertEquals(setOf(codex, named), board.values.flatten().map { it.terminal.id }.toSet())
+        // `codex` is a known agent, but a card comes from what a program says, not from its name.
+        assertEquals(emptyList(), state.board(null, mapOf(codex to AgentInfo(AgentReport(AgentState.IDLE), 0))).values.flatten())
+        assertEquals(emptyList(), state.board(null, emptyMap()).values.flatten())
     }
 
     @Test
@@ -113,16 +92,15 @@ class BoardTest {
     }
 
     @Test
-    fun equalTimesKeepTheOrderOfTheTreeAndAnAgentThatNeverReportedComesFirst() {
+    fun equalTimesKeepTheOrderOfTheTree() {
         store.addProject("/a")
         val a = state.selection.terminal!!
         val b = store.split(a, SplitDirection.ROW)!!
-        val c = store.split(b, SplitDirection.ROW)!!
 
-        val board = state.board(null, mapOf(a to info(AgentState.IDLE, 50), b to info(AgentState.IDLE, 50)), mapOf(c to "claude"))
+        val board = state.board(null, mapOf(b to info(AgentState.IDLE, 50), a to info(AgentState.IDLE, 50)))
 
-        // `c` has no report and so no time: it is the oldest. `a` and `b` arrived together and stay as the tree has them.
-        assertEquals(listOf(c, a, b), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
+        // They arrived together and stay as the tree has them.
+        assertEquals(listOf(a, b), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
     }
 
     @Test

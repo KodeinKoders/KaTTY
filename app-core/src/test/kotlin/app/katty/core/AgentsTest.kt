@@ -102,6 +102,9 @@ class AgentsTest {
     fun aTerminalThatReportsIsOneThatHasAProgramOrAState() {
         assertTrue(summarize(listOf(record(TerminalProgramState.IDLE, "claude-code"))).reporting)
         assertTrue(summarize(listOf(record(TerminalProgramState.WORKING))).reporting)
+        // A program that only says it is at rest, with no name, still reports.
+        assertTrue(summarize(listOf(record(TerminalProgramState.IDLE))).reporting)
+        assertFalse(summarize(emptyList()).reporting)
     }
 
     @Test

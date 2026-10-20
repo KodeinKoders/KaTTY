@@ -190,20 +190,26 @@ class AgentBoardTest {
     }
 
     @Test
-    fun anAgentAtRestAfterBeingSeenAndOneThatNeverReportedAreNotCalledShells() = runComposeUiTest {
-        val project = plainProject("/dev/api-gateway")
+    fun aProgramAtRestAfterBeingSeenIsNotCalledAShell() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
         val seen = state.selection.terminal!!
-        val silent = store.split(seen, SplitDirection.ROW)!!
-        check(project.value.isNotEmpty())
-        val processes = mapOf(seen to "claude", silent to "codex")
-        infos = mapOf(seen to AgentInfo(AgentReport(AgentState.IDLE), now - 3 * 60_000))
-        setContent { KattyTheme(false) { AgentBoard(state.board(null, infos, processes), emptyMap(), now, false, onOpen = {}) } }
+        infos = mapOf(seen to AgentInfo(AgentReport(AgentState.IDLE, reporting = true), now - 3 * 60_000))
+        setContent { KattyTheme(false) { AgentBoard(state.board(null, infos), emptyMap(), now, false, onOpen = {}) } }
 
         onNodeWithText("At rest.").assertExists()
-        onNodeWithText("Running, it does not report its state.").assertExists()
         onNodeWithText("Idle shell, waiting at the prompt.").assertDoesNotExist()
-        // The one that has been at rest for 3 minutes says so, and the one that never said anything has no time at all.
         onNodeWithText("3 min").assertExists()
+    }
+
+    @Test
+    fun aProgramThatIsNotAKnownAgentHasACardTitledByItsName() = runComposeUiTest {
+        plainProject("/dev/api-gateway")
+        val tool = state.selection.terminal!!
+        infos = mapOf(tool to AgentInfo(AgentReport(AgentState.WORKING, "my-tool", "Compiling"), now - 60_000))
+        setContent { KattyTheme(false) { AgentBoard(state.board(null, infos), emptyMap(), now, false, onOpen = {}) } }
+
+        onNodeWithText("my-tool").assertExists()
+        onNodeWithText("Compiling").assertExists()
     }
 
     @Test

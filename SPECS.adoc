@@ -303,7 +303,7 @@ The focused terminal takes the keyboard, except while something else has it: a n
 A terminal is called, in this order:
 
 . the name the user gave it;
-. the agent that reports in it (OSC 7501): its name, or what the program calls itself when it is not a known agent;
+. the agent that reports in it (OSC 7501): its name, or what the program calls itself when it is not a known agent (it is on the board all the same);
 . the agent that runs in it, known by its program (`claude`, `codex`, `gemini`, `agy`, `copilot`): its name;
 . the program that runs in it, as the system names it: `emacs` while the user runs emacs;
 . the shell (`zsh`): what is left at the prompt, so the title goes back to it when the program quits.
@@ -583,10 +583,11 @@ It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, an
 == Board
 
 * The Board view has a column for each state, in this order: Nothing, Working, Needs input (with the failures), Done, each with its glyph, title and number of cards.
-* Only a terminal that runs one of the known agents has a card: a shell and a program that is not an agent have none.
-A terminal runs an agent when its report names one (OSC 7501, with the `app` of an agent), and it goes on running that agent, at rest, after what it finished was seen and taken off (which removes the record that named it), until the shell has the terminal again; an agent that never reports is on the board when the program that has the terminal is called after it (`codex`, `agy`…), which is only a fallback: native Claude Code's program is named by its version (`2.1.302`).
-The "Nothing" column is for an agent at rest or that has not reported; its card says "At rest." or "Running, it does not report its state.", and has no time when the agent never reported.
-In a column, the card that arrived in it first is at the top (the oldest first); an agent that has never reported has no time and comes first, and cards that arrived together keep the order of the tree.
+* Only a terminal whose program reports (OSC 7501) has a card, whatever the program is: it is not matched against a list, and a shell and a program that says nothing have none.
+A terminal goes on being a card, at rest, after what it finished was seen and taken off (which removes the records), until the shell has the terminal again.
+The agents that KaTTY knows by name (Claude Code, Codex, Gemini CLI, Antigravity, Copilot CLI) only add to a card: their logo and name, where another program has the neutral tile and the name it gave.
+The "Nothing" column is for a program at rest; its card says "At rest.".
+In a column, the card that arrived in it first is at the top (the oldest first), and cards that arrived together keep the order of the tree.
 * The time on a card, and so its place, is since it arrived in its **column**, not in its state: a wait that becomes a failure (both are "Needs input") keeps it.
 * A card has the state's glyph, the tile, the title (as the pane's), how long ago, `project / workspace`, the branch or worktree, and the note on two lines at most.
 Without a note, it says "At rest.", "Working.", "Waiting for you.", "Failed." or "Finished.".
@@ -770,8 +771,8 @@ Everything that can be clicked in a list (the rows of the sidebar and its "New w
 == Limits
 
 * macOS on Apple Silicon only; the Windows title bar is Jewel's but has never run.
-* An agent that does not send OSC 7501 shows as a shell.
-* Which `app` name each agent sends is not known for sure: names are matched by substring.
+* A program that does not send OSC 7501 shows as a shell and has no card, an agent that KaTTY knows included.
+* Which `app` name each known agent sends is not known for sure: names are matched by substring, and only for the logo and the name.
 * The Codex usage request follows another application's code and was not tried.
 * Gemini CLI and Copilot CLI have no usage meter.
 * The scrollback and the programs of the terminals are not kept across launches.
