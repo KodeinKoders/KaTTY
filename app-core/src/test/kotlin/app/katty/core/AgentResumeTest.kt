@@ -62,9 +62,8 @@ class AgentResumeTest {
     }
 
     @Test
-    fun otherAgentsHaveNoWayToTellYet() {
+    fun codexHasNoWayToTellYet() {
         assertNull(AgentResume.sessionId(Agent.CODEX, 1, 0, home.toFile()))
-        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 1, 0, home.toFile()))
     }
 
     private val junieId = "session-261020-153615-196j"
@@ -142,6 +141,51 @@ class AgentResumeTest {
         assertEquals(
             listOf("copilot", "--yolo", "--model", "gpt-5", "--resume", copilotId),
             AgentResume.argv(Agent.COPILOT, listOf("copilot", "--yolo", "--model", "gpt-5", "--resume", "old-name", "-i", "fix the bug"), copilotId),
+        )
+    }
+
+    private val agyId = "fce62e9f-7482-4729-b7e4-29217410c9ee"
+
+    private fun agyConversation(id: String = agyId) {
+        home.resolve(".gemini/antigravity-cli/conversations").createDirectories()
+        home.resolve(".gemini/antigravity-cli/conversations/$id.db").writeText("")
+    }
+
+    private fun agyOpen(vararg ids: String) = ids.flatMap { id ->
+        listOf("$home/.gemini/antigravity-cli/brain/$id", "$home/.gemini/antigravity-cli/conversations/$id.db", "$home/.gemini/antigravity-cli/presence/$id.lock")
+    } + "$home/.gemini/antigravity-cli/history.jsonl"
+
+    @Test
+    fun antigravitySessionIsTheOneWhoseLockTheProcessHoldsOpen() {
+        agyConversation()
+        val open = mapOf(4242 to agyOpen(agyId), 4243 to agyOpen("07b629d8-7b88-491f-9c3a-a88cca83bb16"))
+
+        assertEquals(agyId, AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { open[it].orEmpty() })
+    }
+
+    @Test
+    fun noAntigravitySessionWithoutAnOpenLockOrWithMoreThanOne() {
+        agyConversation()
+        agyConversation("07b629d8-7b88-491f-9c3a-a88cca83bb16")
+
+        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { listOf("$home/.gemini/antigravity-cli/history.jsonl") }, "No message yet")
+        assertNull(
+            AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { agyOpen(agyId, "07b629d8-7b88-491f-9c3a-a88cca83bb16") },
+            "Two conversations cannot be told apart",
+        )
+        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { agyOpen("x; rm -rf ~") }, "The id goes into a command line")
+    }
+
+    @Test
+    fun noAntigravitySessionWhoseConversationIsNotOnDisk() {
+        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { agyOpen(agyId) })
+    }
+
+    @Test
+    fun resumesAntigravityWithTheOptionsThatSayHowItRanAndNotThePrompt() {
+        assertEquals(
+            listOf("agy", "--dangerously-skip-permissions", "--model", "gemini", "--conversation", agyId),
+            AgentResume.argv(Agent.ANTIGRAVITY, listOf("agy", "--dangerously-skip-permissions", "--model", "gemini", "--conversation", "old", "-c", "-i", "fix"), agyId),
         )
     }
 

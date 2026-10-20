@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import app.katty.terminal.openFilePaths
 import java.io.File
 
 /**
@@ -25,12 +26,24 @@ public object AgentResume {
      * - Junie writes `~/.junie/processes/<pid>-<sessionId>-<hash>.json` while it runs, with `pid`, `sessionId` and `startedAt`.
      * - Copilot CLI makes `~/.copilot/session-state/<sessionId>/inuse.<pid>.lock` while it runs.
      *
-     * Not done, and why: Codex is not installed where this was written, and Antigravity says which conversation a process has in no file
-     * (only in the ones that it keeps open): they start again with no conversation. Whether Junie's and Copilot's files follow a conversation
-     * that is changed from inside the agent was not checked.
+     * - Antigravity writes no file for a process, but keeps `~/.gemini/antigravity-cli/presence/<conversationId>.lock` open while it has a
+     * conversation (it opens it with the first message): the id is read from the files that the process has open ([openFiles]).
+     *
+     * Not done, and why: Codex has no file that ties a process to its conversation (a server that the terminals share holds them), and
+     * neither the id of what it runs: it starts again with no conversation. Whether the files of the others follow a conversation that is
+     * changed from inside the agent was not checked.
+     *
+     * @param openFiles The paths of the files that the process has open.
      */
-    public fun sessionId(agent: Agent, pid: Int, startedAtMillis: Long, home: File = File(System.getProperty("user.home"))): String? =
+    public fun sessionId(
+        agent: Agent,
+        pid: Int,
+        startedAtMillis: Long,
+        home: File = File(System.getProperty("user.home")),
+        openFiles: (Int) -> List<String> = ::openFilePaths,
+    ): String? =
         when (agent) {
+            Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
             Agent.CLAUDE -> claudeSessionId(pid, startedAtMillis, home)
             Agent.JUNIE -> junieSessionId(pid, startedAtMillis, home)
             Agent.COPILOT -> copilotSessionId(pid, startedAtMillis, home)
@@ -54,6 +67,22 @@ public object AgentResume {
         val directory = record.string("cwd")?.replace(Regex("[^A-Za-z0-9]"), "-")
         if (directory != null && projects.resolve("$directory/$id.jsonl").isFile) return id
         return id.takeIf { projects.listFiles { f -> f.isDirectory }?.any { it.resolve("$id.jsonl").isFile } == true }
+    }
+
+    private fun antigravitySessionId(pid: Int, home: File, openFiles: (Int) -> List<String>): String? {
+        val root = home.resolve(".gemini/antigravity-cli")
+        val presence = root.resolve("presence").path + File.separator
+        // The files may be given by a path that goes through a link (`/var` is `/private/var`): the name is what counts.
+        val ids = openFiles(pid)
+            .filter { it.startsWith(presence) || it.contains("/.gemini/antigravity-cli/presence/") }
+            .map { File(it).name }
+            .filter { it.endsWith(".lock") }
+            .map { it.removeSuffix(".lock") }
+            .filter(::isSessionId)
+            .distinct()
+        // More than one (the process is in another's conversation too) cannot be told apart: a new conversation is better than another's.
+        val id = ids.singleOrNull() ?: return null
+        return id.takeIf { root.resolve("conversations/$id.db").isFile }
     }
 
     private fun junieSessionId(pid: Int, startedAtMillis: Long, home: File): String? {
@@ -135,6 +164,7 @@ public object AgentResume {
                 Agent.CLAUDE -> kept += listOf("--resume", sessionId)
                 Agent.JUNIE -> kept += listOf("--resume", "--session-id=$sessionId")
                 Agent.COPILOT -> kept += listOf("--resume", sessionId)
+                Agent.ANTIGRAVITY -> kept += listOf("--conversation", sessionId)
                 else -> Unit
             }
         }
@@ -159,6 +189,15 @@ public object AgentResume {
             "--model" to true,
             "--effort" to true,
             "--provider" to true,
+        )
+        Agent.ANTIGRAVITY -> mapOf(
+            "--dangerously-skip-permissions" to false,
+            "--sandbox" to false,
+            "--model" to true,
+            "--effort" to true,
+            "--mode" to true,
+            "--agent" to true,
+            "--project" to true,
         )
         Agent.COPILOT -> mapOf(
             "--allow-all" to false,

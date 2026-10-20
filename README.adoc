@@ -64,7 +64,7 @@ It costs no turn, and no credential is ever read.
 * The projects, workspaces, splits, names and settings are kept as you change them.
 * When you open KaTTY again, each terminal starts a new shell in the folder where the old one was.
 * The program that was running is started again over the shell, with the same command line and in the same folder: an `emacs notes.txt` reopens the file, and leaving emacs leaves you at the shell prompt.
-* An agent that can pick up its conversation does: Claude Code, Copilot CLI and Junie are started again on their last conversation, with the same model and permissions.
+* An agent that can pick up its conversation does: Claude Code, Antigravity, Copilot CLI and Junie are started again on their last conversation, with the same model and permissions.
 * A program that only shows something or waits for you starts by itself: editors, pagers, monitors, terminal multiplexers, the agents, a REPL and `ssh` to a host.
 Any other command, such as `make deploy` or `rm`, is only typed at the prompt and waits for you to press Return.
 A command that starts with `sudo`, `doas` or `su` is never started again.
@@ -281,7 +281,7 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | Resumes its last conversation after a relaunch
 | Yes
 | No
-| No
+| Yes
 | Yes
 | Yes
 |===
@@ -298,7 +298,7 @@ The agents above only add their logo and their name, and a program that does not
 Copilot CLI has no command that gives the usage without costing a turn, so it has no meter.
 Junie has none either yet: it will get one once https://youtrack.jetbrains.com/issue/JUNIE-5895/CLI-command-to-query-AI-credit-balance-and-quota[this issue] is resolved.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Copilot CLI and Junie resume their conversation; Codex and Antigravity start again as a new conversation.
+* Claude Code, Antigravity, Copilot CLI and Junie resume their conversation; Codex starts again as a new conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
 
 
