@@ -170,6 +170,17 @@ class AgentTrackerTest {
     }
 
     @Test
+    fun anAgentThatEndedAtRestLeavesNoCard() {
+        // It reports `idle`, which the terminal keeps after the program ends, and the shell has the terminal.
+        val shell = System.getenv("SHELL") ?: "/bin/zsh"
+        scripts += "${report("state=idle", "app=antigravity")}; sleep 1; exec $shell -f -i"
+        val id = start()
+        await("reporting, at rest") { tracker.infos.value[id]?.report?.reporting == true }
+
+        await("the shell has the terminal, the card is gone") { tracker.infos.value[id]?.report?.reporting == false }
+    }
+
+    @Test
     fun anAgentThatEndedBeforeItsFinishedStateWasSeenLeavesNoGhostOfItInTheShell() {
         // It reports `done` and ends: the shell has the terminal, and the `done` record is still there. Seeing it then must leave a plain
         // shell, not "that agent at rest" for a terminal that runs a shell.

@@ -1,6 +1,7 @@
 package app.katty.terminals
 
 import app.katty.core.AgentInfo
+import app.katty.core.AgentReport
 import app.katty.core.AgentState
 import app.katty.core.TerminalId
 import app.katty.core.column
@@ -108,7 +109,12 @@ class AgentTracker(
             // Only while a program can be running: a terminal that the shell has runs none, whatever a record that is still there says.
             val shell = id in atShell
             if (!shell && summary.reporting) reporters[id] = summary.app ?: reporters[id]
-            val report = if (!summary.reporting && !shell && id in reporters) summary.copy(app = reporters[id], reporting = true) else summary
+            val report = when {
+                !summary.reporting && !shell && id in reporters -> summary.copy(app = reporters[id], reporting = true)
+                // An `idle` record outlives its program (only `working` and `blocked` go with it): at the shell it is no program at rest.
+                shell && summary.state == AgentState.IDLE -> AgentReport(AgentState.IDLE)
+                else -> summary
+            }
             val before = mutableInfos.value[id]
             // Since when it is in this column, not in this state: a wait that becomes a failure stays where it is on the board.
             val since = if (before != null && before.state.column() == report.state.column()) before.since else clock()
