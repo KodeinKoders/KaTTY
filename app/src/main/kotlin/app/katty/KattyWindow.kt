@@ -69,6 +69,7 @@ import app.katty.screens.AttentionPopover
 import app.katty.screens.BoardSidebar
 import app.katty.screens.BoardTabs
 import app.katty.screens.CloseLastTerminalDialog
+import app.katty.screens.CloseTerminalDialog
 import app.katty.screens.DetectedAgents
 import app.katty.screens.UsageBarRow
 import app.katty.screens.UsageList
@@ -77,6 +78,7 @@ import app.katty.screens.UsageVariant
 import app.katty.screens.ColorSchemePicker
 import app.katty.screens.MainMenu
 import app.katty.screens.CloseWorkspaceDialog
+import app.katty.screens.RestartTerminalDialog
 import app.katty.screens.PaneActions
 import app.katty.screens.ProjectTabs
 import app.katty.screens.Rail
@@ -149,6 +151,7 @@ fun DecoratedWindowScope.KattyWindowContent(
     // What the user has to confirm before it is closed.
     var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
+    var restartingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     val handles by registry.handles.collectAsState()
     // Where each terminal is in git: a workspace says the branch that its terminals share.
     val gits by registry.gitInfos.collectAsState()
@@ -244,9 +247,15 @@ fun DecoratedWindowScope.KattyWindowContent(
     val closeWorkspace: (WorkspaceId) -> Unit = { id ->
         if (state.closeWorkspaceDecision(id, stateOf) == CloseDecision.NOW) store.closeWorkspace(id) else closingWorkspace = id
     }
-    val closeTerminal: (TerminalId) -> Unit = { id ->
-        if (state.closeTerminalDecision(id, stateOf) == CloseDecision.NOW) store.closeTerminal(id) else closingTerminal = id
+    // A program other than the shell has the terminal: closing or restarting it would stop it.
+    val running: (TerminalId) -> Boolean = { id ->
+        val handle = handles[id]
+        handle?.session?.exited?.value == null && handle?.processName?.value.let { it != null && it != handle?.shellName }
     }
+    val closeTerminal: (TerminalId) -> Unit = { id ->
+        if (state.closeTerminalDecision(id, stateOf, running) == CloseDecision.NOW) store.closeTerminal(id) else closingTerminal = id
+    }
+    val restartTerminal: (TerminalId) -> Unit = { id -> if (running(id)) restartingTerminal = id else registry.restart(id) }
     // Goes to a terminal, whatever the window is showing.
     val openTerminal: (TerminalId) -> Unit = { id ->
         store.updateSettings { it.copy(view = MainView.TERMINALS) }
@@ -345,7 +354,7 @@ fun DecoratedWindowScope.KattyWindowContent(
         splitDown = { state.selection.terminal?.let { store.splitVisually(it, right = false, flipped = vertical) } },
         renameTerminal = { showTerminals(); renamingTerminal = state.selection.terminal },
         closeTerminal = { state.selection.terminal?.let(closeTerminal) },
-        restartTerminal = { state.selection.terminal?.let(registry::restart) },
+        restartTerminal = { state.selection.terminal?.let(restartTerminal) },
         find = { findingTerminal = state.selection.terminal },
         clearScreen = { state.selection.terminal?.let { handles[it]?.session?.clearScreen() } },
         maximize = { store.maximize(if (state.selection.maximized == null) state.selection.terminal else null) },
@@ -411,7 +420,7 @@ fun DecoratedWindowScope.KattyWindowContent(
     val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
 
     // What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons.
-    val blockingDialog = picking != null || closingWorkspace != null || closingTerminal != null || removing != null
+    val blockingDialog = picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null
     val overlayOpen = blockingDialog || editingShortcuts || paletteOpen || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null || renamingTerminal != null
     LaunchedEffect(overlayOpen) { if (!overlayOpen) focusTick++ }
     // A rename that nothing draws would keep the terminals from the keyboard for good: the board shows no names, and the rail no field.
@@ -440,7 +449,7 @@ fun DecoratedWindowScope.KattyWindowContent(
             AppShortcut.SPLIT_MAIN -> if (onTerminals) terminal?.let { store.split(it, SplitDirection.ROW) }
             AppShortcut.SPLIT_OTHER -> if (onTerminals) terminal?.let { store.split(it, SplitDirection.COLUMN) }
             AppShortcut.CLOSE_TERMINAL -> if (onTerminals) terminal?.let(closeTerminal)
-            AppShortcut.RESTART_TERMINAL -> if (onTerminals) terminal?.let(registry::restart)
+            AppShortcut.RESTART_TERMINAL -> if (onTerminals) terminal?.let(restartTerminal)
             AppShortcut.JUMP_TO_WAITING -> jumpToWaiting()
             AppShortcut.ATTENTION -> attentionOpen = !attentionOpen
             AppShortcut.MAXIMIZE -> if (onTerminals) terminal?.let { store.maximize(if (state.selection.maximized == null) it else null) }
@@ -555,7 +564,7 @@ fun DecoratedWindowScope.KattyWindowContent(
                             finding = findingTerminal,
                             onFind = { findingTerminal = it },
                             onFindClosed = { findingTerminal = null },
-                            onReopen = registry::restart,
+                            onReopen = restartTerminal,
                             onColorScheme = { picking = SchemeTarget.Terminal(it) },
                         ),
                         maximized = state.selection.maximized,
@@ -706,12 +715,19 @@ fun DecoratedWindowScope.KattyWindowContent(
             if (location == null) {
                 closingTerminal = null
             } else {
-                CloseLastTerminalDialog(
-                    workspaceName = location.workspace.name,
-                    terminal = describe(location.terminal),
-                    onConfirm = { store.closeTerminal(id); closingTerminal = null },
-                    onCancel = { closingTerminal = null },
-                )
+                val summary = describe(location.terminal)
+                val confirm = { store.closeTerminal(id); closingTerminal = null }
+                val cancel = { closingTerminal = null }
+                if (location.workspace.layout.terminals().size == 1) CloseLastTerminalDialog(location.workspace.name, summary, confirm, cancel)
+                else CloseTerminalDialog(summary, confirm, cancel)
+            }
+        }
+        restartingTerminal?.let { id ->
+            val location = state.locate(id)
+            if (location == null) {
+                restartingTerminal = null
+            } else {
+                RestartTerminalDialog(describe(location.terminal), onConfirm = { registry.restart(id); restartingTerminal = null }, onCancel = { restartingTerminal = null })
             }
         }
         removing?.let { id ->

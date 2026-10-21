@@ -38,8 +38,8 @@ import org.jetbrains.jewel.ui.component.Text
  * A question that the user has to answer before something that cannot be undone: it is over a scrim that covers the window, and
  * Escape cancels. The button that confirms is red, as what it does is destroy.
  *
- * The keyboard is on Cancel when it opens, so that a stray Enter destroys nothing: Tab goes to the red button and Enter presses the one that
- * has the focus. Command and Backspace confirm at once, as the shortcut of something that is deliberate.
+ * The keyboard is on the red button when it opens, so that Enter confirms (the dialog answers a deliberate Command + W or R) and Shift + Tab
+ * goes to Cancel; Enter presses the one that has the focus. Escape cancels, and Command and Backspace confirm at once.
  *
  * @param title What is asked, as "Close “refactor-auth”?".
  * @param message What will happen.
@@ -56,8 +56,8 @@ fun ConfirmDialog(
     details: (@Composable () -> Unit)? = null,
 ) {
     val colors = Katty.colors
-    val cancelFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { cancelFocus.requestFocus() }
+    val confirmFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { confirmFocus.requestFocus() }
     DialogScrim(
         modifier.onPreviewKeyEvent { event ->
             when {
@@ -83,9 +83,9 @@ fun ConfirmDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedButton(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus)) { Text("Cancel") }
+                OutlinedButton(onClick = onCancel) { Text("Cancel") }
                 // A destructive action is red: Jewel's default button is the accent's, so the red one is drawn here.
-                DestructiveButton(confirmLabel, onConfirm)
+                DestructiveButton(confirmLabel, onConfirm, Modifier.focusRequester(confirmFocus))
             }
         }
     }

@@ -3,6 +3,8 @@
 package app.katty.screens
 
 import androidx.compose.ui.input.key.Key
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.withKeyDown
@@ -62,26 +64,48 @@ class CloseDialogsTest {
         setContent { KattyTheme(false) { CloseWorkspaceDialog("ws", terminals, onConfirm = { answers += "confirm" }, onCancel = { answers += "cancel" }) } }
 
     @Test
-    fun theKeyboardIsOnCancelSoEnterDestroysNothing() = runComposeUiTest {
+    fun theKeyboardIsOnTheRedButtonSoEnterConfirms() = runComposeUiTest {
         val answers = mutableListOf<String>()
         dialog(answers)
         waitForIdle()
 
+        onNodeWithText("Close workspace").performKeyInput { pressKey(Key.Enter) }
+
+        assertEquals(listOf("confirm"), answers)
+    }
+
+    @Test
+    fun shiftTabGoesToCancelAndEnterPressesIt() = runComposeUiTest {
+        val answers = mutableListOf<String>()
+        dialog(answers)
+        waitForIdle()
+
+        onNodeWithText("Close workspace").performKeyInput { withKeyDown(Key.ShiftLeft) { pressKey(Key.Tab) } }
         onNodeWithText("Cancel").performKeyInput { pressKey(Key.Enter) }
 
         assertEquals(listOf("cancel"), answers)
     }
 
     @Test
-    fun tabGoesToTheRedButtonAndEnterPressesIt() = runComposeUiTest {
+    fun closingAndRestartingATerminalSayWhatIsStopped() = runComposeUiTest {
         val answers = mutableListOf<String>()
-        dialog(answers)
+        var restart by androidx.compose.runtime.mutableStateOf(false)
+        setContent {
+            KattyTheme(false) {
+                if (restart) RestartTerminalDialog(terminals[0], onConfirm = { answers += "restart" }, onCancel = {})
+                else CloseTerminalDialog(terminals[0], onConfirm = { answers += "close" }, onCancel = {})
+            }
+        }
+        onNodeWithText("Close the terminal?").assertExists()
+        onNodeWithText("“Claude Code” is still running in it and will be stopped.").assertExists()
+        onNodeWithText("Close terminal").performClick()
+
+        restart = true
         waitForIdle()
+        onNodeWithText("Restart the terminal?").assertExists()
+        onNodeWithText("Restart terminal").performClick()
 
-        onNodeWithText("Cancel").performKeyInput { pressKey(Key.Tab) }
-        onNodeWithText("Close workspace").performKeyInput { pressKey(Key.Enter) }
-
-        assertEquals(listOf("confirm"), answers)
+        assertEquals(listOf("close", "restart"), answers)
     }
 
     @Test
@@ -90,8 +114,8 @@ class CloseDialogsTest {
         dialog(answers)
         waitForIdle()
 
-        onNodeWithText("Cancel").performKeyInput { withKeyDown(Key.MetaLeft) { pressKey(Key.Backspace) } }
-        onNodeWithText("Cancel").performKeyInput { pressKey(Key.Escape) }
+        onNodeWithText("Close workspace").performKeyInput { withKeyDown(Key.MetaLeft) { pressKey(Key.Backspace) } }
+        onNodeWithText("Close workspace").performKeyInput { pressKey(Key.Escape) }
 
         assertEquals(listOf("confirm", "cancel"), answers)
     }
@@ -102,7 +126,7 @@ class CloseDialogsTest {
         setContent { KattyTheme(false) { CloseLastTerminalDialog("refactor-auth", terminals[0], onConfirm = { answers += "confirm" }, onCancel = {}) } }
 
         onNodeWithText("Close the last terminal?").assertExists()
-        onNodeWithText("This is the only terminal in “refactor-auth”. Closing it deletes the workspace and stops the agent that is still working.").assertExists()
+        onNodeWithText("This is the only terminal in “refactor-auth”. Closing it deletes the workspace and stops “Claude Code”, which is still running.").assertExists()
         onNodeWithText("Delete workspace").performClick()
 
         assertEquals(listOf("confirm"), answers)

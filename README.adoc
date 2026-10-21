@@ -220,8 +220,8 @@ When you switch to a workspace, the terminal that you used last in it has the ke
 | Make the font bigger or smaller, or give it its default size
 |===
 
-In a dialog that asks you to confirm, the keyboard starts on Cancel, so that a stray Enter destroys nothing.
-Tab goes to the red button and Enter presses the button that has the keyboard, ⌘⌫ confirms at once, and Escape cancels.
+Closing or restarting a terminal asks first while a program other than the shell runs in it.
+In a dialog that asks you to confirm, the keyboard starts on the red button: Enter confirms, Escape cancels, Shift+Tab goes to Cancel, and ⌘⌫ confirms at once.
 
 
 [#agent-compatibility]

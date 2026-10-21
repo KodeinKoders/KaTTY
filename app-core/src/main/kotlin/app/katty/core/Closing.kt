@@ -24,13 +24,15 @@ public fun KattyState.closeWorkspaceDecision(id: WorkspaceId, stateOf: (Terminal
 }
 
 /**
- * What closing the terminal [id] needs: asking only for the last terminal of a workspace whose agent is active, since closing it deletes
- * the workspace. Closing a terminal that has company is the user's gesture on that terminal.
+ * What closing the terminal [id] needs: asking when a program runs in it (it would be stopped), and for the last terminal of a workspace
+ * whose agent is active, since closing it deletes the workspace. A shell at its prompt closes at once.
+ *
+ * @param running Whether a program other than the shell has the terminal.
  */
-public fun KattyState.closeTerminalDecision(id: TerminalId, stateOf: (TerminalId) -> AgentState): CloseDecision {
+public fun KattyState.closeTerminalDecision(id: TerminalId, stateOf: (TerminalId) -> AgentState, running: (TerminalId) -> Boolean): CloseDecision {
     val location = locate(id) ?: return CloseDecision.NOW
     val alone = location.workspace.layout.terminals().size == 1
-    return if (alone && stateOf(id).isActive()) CloseDecision.CONFIRM else CloseDecision.NOW
+    return if (running(id) || (alone && stateOf(id).isActive())) CloseDecision.CONFIRM else CloseDecision.NOW
 }
 
 /** Whether closing the project [id] ends an agent that is active: its removal asks in any case, and says it. */

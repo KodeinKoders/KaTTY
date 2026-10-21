@@ -51,13 +51,39 @@ fun CloseWorkspaceDialog(workspaceName: String, terminals: List<TerminalSummary>
     )
 }
 
-/** Asked before the last terminal of a workspace is closed with its agent active: closing it deletes the workspace. */
+/** Asked before the last terminal of a workspace is closed with a program in it: closing it deletes the workspace. */
 @Composable
 fun CloseLastTerminalDialog(workspaceName: String, terminal: TerminalSummary, onConfirm: () -> Unit, onCancel: () -> Unit) {
     ConfirmDialog(
         title = "Close the last terminal?",
-        message = "This is the only terminal in “$workspaceName”. Closing it deletes the workspace and stops the agent that is still working.",
+        message = "This is the only terminal in “$workspaceName”. Closing it deletes the workspace and stops “${terminal.title}”, which is still running.",
         confirmLabel = "Delete workspace",
+        onConfirm = onConfirm,
+        onCancel = onCancel,
+        details = { SummaryRow(terminal) },
+    )
+}
+
+/** Asked before a terminal is closed while a program runs in it: the program is stopped. */
+@Composable
+fun CloseTerminalDialog(terminal: TerminalSummary, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    ConfirmDialog(
+        title = "Close the terminal?",
+        message = "“${terminal.title}” is still running in it and will be stopped.",
+        confirmLabel = "Close terminal",
+        onConfirm = onConfirm,
+        onCancel = onCancel,
+        details = { SummaryRow(terminal) },
+    )
+}
+
+/** Asked before a terminal is restarted while a program runs in it: the program is stopped and a new shell takes its place. */
+@Composable
+fun RestartTerminalDialog(terminal: TerminalSummary, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    ConfirmDialog(
+        title = "Restart the terminal?",
+        message = "“${terminal.title}” is still running in it and will be stopped, and a new shell starts in its place.",
+        confirmLabel = "Restart terminal",
         onConfirm = onConfirm,
         onCancel = onCancel,
         details = { SummaryRow(terminal) },

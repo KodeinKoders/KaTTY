@@ -8,6 +8,8 @@ class ClosingTest {
     private val store = KattyStore(newId = { "id${counter++}" })
     private val state get() = store.state.value
 
+    private val none: (TerminalId) -> Boolean = { false }
+
     private fun statesOf(vararg states: Pair<TerminalId, AgentState>): (TerminalId) -> AgentState = { id -> states.toMap()[id] ?: AgentState.IDLE }
 
     @Test
@@ -52,17 +54,27 @@ class ClosingTest {
         store.addProject("/a")
         val only = state.selection.terminal!!
 
-        assertEquals(CloseDecision.CONFIRM, state.closeTerminalDecision(only, statesOf(only to AgentState.NEEDS_INPUT)))
-        assertEquals(CloseDecision.NOW, state.closeTerminalDecision(only, statesOf(only to AgentState.IDLE)))
+        assertEquals(CloseDecision.CONFIRM, state.closeTerminalDecision(only, statesOf(only to AgentState.NEEDS_INPUT), none))
+        assertEquals(CloseDecision.NOW, state.closeTerminalDecision(only, statesOf(only to AgentState.IDLE), none))
     }
 
     @Test
-    fun aTerminalThatHasCompanyClosesAtOnceWhateverItDoes() {
+    fun aTerminalThatHasCompanyAndRunsNoProgramClosesAtOnceWhateverItsAgentDoes() {
         store.addProject("/a")
         val first = state.selection.terminal!!
         store.split(first, SplitDirection.ROW)
 
-        assertEquals(CloseDecision.NOW, state.closeTerminalDecision(first, statesOf(first to AgentState.WORKING)))
+        assertEquals(CloseDecision.NOW, state.closeTerminalDecision(first, statesOf(first to AgentState.WORKING), none))
+    }
+
+    @Test
+    fun aTerminalThatRunsAProgramAsksEvenWithCompany() {
+        store.addProject("/a")
+        val first = state.selection.terminal!!
+        val second = store.split(first, SplitDirection.ROW)!!
+
+        assertEquals(CloseDecision.CONFIRM, state.closeTerminalDecision(first, statesOf(), { it == first }))
+        assertEquals(CloseDecision.NOW, state.closeTerminalDecision(second, statesOf(), { it == first }))
     }
 
     @Test
