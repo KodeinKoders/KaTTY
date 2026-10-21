@@ -232,13 +232,24 @@ KaTTY knows these agents by name: it recognizes them, shows their logo, and find
 What more it can do depends on what each agent offers.
 
 Where a row gives a version, it is the *minimum version*: the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501).
-Older versions look like plain shells in the sidebar, and so do Copilot CLI and Junie, which do not report yet.
+Older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie and Aider, which do not report yet.
 
-[cols="3,2,2,2,2,2,2,2"]
+[cols="3,2,2,2,2,2,2,2,2"]
 |===
-| | Claude Code | Codex | Antigravity | Copilot CLI | Junie | OpenCode | Crush
+| | Claude Code | Codex | Antigravity | Copilot CLI | Junie | OpenCode | Crush | Aider
 
 | Recognized, with its logo
+| Yes
+| Yes
+| Yes
+| Yes
+| Yes
+| Yes
+| Yes
+| Yes
+
+| Restarts with its command line options
+| Yes
 | Yes
 | Yes
 | Yes
@@ -255,6 +266,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | No
 | 2.1.0
 | 0.98.0
+| No
 
 | Usage meter
 | 2.1.118
@@ -263,6 +275,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | No
 | No
 | 1.2.0
+| No
 | No
 
 | Resumes last conversation after relaunch
@@ -273,6 +286,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | Yes*
 | 1.2.0
 | 0.51.0
+| 0.35.0
 |===
 
 *Yes* means it works, as far as it was tried, and a version number means it works from that version on.
@@ -281,7 +295,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 WARNING: A star after Yes (Yes*) means that resuming relies on files that the agent does not document (where it writes the identifier of its conversation), and may therefore break when the agent changes them: it then starts a new conversation.
 
 * *Live state* comes from the agent itself: KaTTY does not install hooks or read the screen.
-An agent that does not report, such as Copilot CLI, Junie or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
+An agent that does not report, such as Copilot CLI, Junie, Aider or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
 Copilot CLI will be compatible once https://github.com/github/copilot-cli/issues/5112[this issue] is resolved, and Junie once https://youtrack.jetbrains.com/issue/JUNIE-5904/Support-OSC-7501-Program-Status-escape-sequences-in-Junie-CLI[this one] is.
 * The *agent board* is not a list of known agents: any program that reports its state (OSC 7501) gets a card, whatever it is.
 The agents above only add their logo and their name, and a program that does not report has no card.
@@ -295,10 +309,12 @@ A model that OpenCode does not list (one of your own gateway) has a cost and no 
 In the usage panel OpenCode shows what it spent today, over the last 7 days and this month, over all its sessions.
 Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode and Crush resume their conversation; Codex starts again as a new conversation.
+* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush and Aider resume their conversation; Codex starts again as a new conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
 OpenCode's and Crush's session is the newest one of its directory, so two of them in one directory are not told apart.
 A Crush started with `--data-dir` keeps its conversations where KaTTY does not look: it starts a new one.
+Aider has no conversation to find: it is started again with `--restore-chat-history`, which loads the chat that it keeps in the directory (`.aider.chat.history.md`).
+Two Aiders in the same directory are not supported by Aider itself, which writes both chats to that one file: both come back with the two mixed.
 
 
 == Getting started
@@ -328,7 +344,7 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 
 * macOS on Apple Silicon only, for now.
 * Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
-* Copilot CLI and Junie do not tell KaTTY what they are doing yet.
+* Copilot CLI, Junie and Aider do not tell KaTTY what they are doing yet.
 * The Option key is not Alt in your programs: it types the characters of your keyboard layout.
 * The directory and the prompts of a terminal are followed for zsh and bash.
 fish is supported but was never tried, and nushell and elvish are not.

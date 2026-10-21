@@ -18,9 +18,14 @@ public fun ForegroundCommand.toRunning(
     sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt -> AgentResume.sessionId(agent, pid, startedAt, cwd = directory) },
 ): RunningCommand? {
     if (pipeline || argv.isEmpty()) return null
-    val agent = Agent.fromProcess(File(argv.first()).name)
+    val agent = Agent.fromCommand(argv)
     val tooLong = argv.sumOf { it.length + 1 } > MAX_COMMAND_CHARS
-    val line = if (agent == Agent.OPENCODE) listOf(openCodeProgram(argv.first(), executable)) + argv.drop(1) else argv
+    val line = when (agent) {
+        Agent.OPENCODE -> listOf(openCodeProgram(argv.first(), executable)) + argv.drop(1)
+        // The script is what is typed, not the interpreter that runs it (`Python`, from a path that a Homebrew update removes).
+        Agent.AIDER -> if (File(argv.first()).name == agent.executable) argv else argv.drop(1)
+        else -> argv
+    }
     val kept = when {
         !tooLong -> line
         agent != null -> listOf(line.first())

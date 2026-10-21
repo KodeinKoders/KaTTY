@@ -1,6 +1,7 @@
 package app.katty.terminals
 
 import androidx.compose.ui.focus.FocusRequester
+import app.katty.core.Agent
 import app.katty.core.GitInfo
 import app.katty.core.GitReader
 import app.katty.core.KattyState
@@ -189,12 +190,14 @@ class SessionRegistry(
                 val resumed = spec.running?.takeIf { it.agent != null }?.let { it.agent to it.agentSession }
                 var resumedPid = 0
                 while (isActive) {
-                    val name = session.foregroundProcessName()
+                    val systemName = session.foregroundProcessName()
+                    // A program that is a script has its interpreter's name (Aider is `Python`): the agent that it is says its own.
+                    val command = if (systemName != null) withContext(Dispatchers.IO) { session.foregroundCommand() } else null
+                    val name = command?.let { Agent.fromCommand(it.argv) }?.takeIf { it.interpreted }?.executable ?: systemName
                     handle.processState.value = name
                     if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) mutableProcessNames.update { it + (spec.id to name) }
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
                     if (name != null) {
-                        val command = withContext(Dispatchers.IO) { session.foregroundCommand() }
                         var running = command?.let { withContext(Dispatchers.IO) { it.toRunning() } }
                         if (command != null && running != null && resumed?.second != null && running.agent == resumed.first) {
                             if (resumedPid == 0) resumedPid = command.pid

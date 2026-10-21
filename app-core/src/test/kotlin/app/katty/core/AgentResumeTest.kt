@@ -215,6 +215,7 @@ class AgentResumeTest {
     fun withNoSessionTheAgentStartsAFreshConversation() {
         assertEquals(listOf("/home/me/.local/bin/claude"), AgentResume.argv(Agent.CLAUDE, listOf("/home/me/.local/bin/claude", "a prompt"), null))
         assertEquals(listOf("codex"), AgentResume.argv(Agent.CODEX, listOf("codex", "a prompt"), "anything"))
+        assertEquals(listOf("codex"), AgentResume.argv(Agent.CODEX, listOf("codex", "resume", "--last"), null))
     }
 
     @Test
@@ -270,5 +271,26 @@ class AgentResumeTest {
             AgentResume.argv(Agent.CRUSH, listOf("crush", "--yolo", "--continue", "--cwd", "/work", "-s", "old"), "aac2da97-b49c-412f-8847-0302db8a3994"),
         )
         assertEquals(listOf("crush"), AgentResume.argv(Agent.CRUSH, listOf("crush", "--continue"), null))
+    }
+
+    @Test
+    fun aiderIsStartedWithItsChatHistoryAndTheFilesItKeepsItIn() {
+        assertEquals(
+            listOf("aider", "--yes-always", "--chat-history-file", "/work/chat.md", "--restore-chat-history"),
+            AgentResume.argv(Agent.AIDER, listOf("aider", "--yes-always", "--message", "go", "--api-key", "x=secret", "--chat-history-file", "/work/chat.md", "main.kt"), null),
+        )
+        assertEquals(listOf("aider", "--restore-chat-history"), AgentResume.argv(Agent.AIDER, listOf("aider"), null))
+    }
+
+    @Test
+    fun codexKeepsHowItWasRunAndNotItsPromptItsConfigurationOverridesOrItsImages() {
+        assertEquals(
+            listOf("codex", "--model", "gpt-5", "-s", "workspace-write", "--ask-for-approval", "never", "--search", "--add-dir", "/data"),
+            AgentResume.argv(
+                Agent.CODEX,
+                listOf("codex", "-c", "token=\"secret\"", "--model", "gpt-5", "-s", "workspace-write", "--ask-for-approval", "never", "-i", "a.png", "b.png", "--search", "--worktree", "--add-dir", "/data", "fix it"),
+                null,
+            ),
+        )
     }
 }

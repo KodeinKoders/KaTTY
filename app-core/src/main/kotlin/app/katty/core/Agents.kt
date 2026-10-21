@@ -2,6 +2,7 @@ package app.katty.core
 
 import app.katty.terminal.TerminalProgramState
 import app.katty.terminal.TerminalProgramStatus
+import java.io.File
 
 /**
  * The coding agents that the application knows by name: their name, as the user sees it, and the program that runs them.
@@ -9,7 +10,7 @@ import app.katty.terminal.TerminalProgramStatus
  *
  * [id] is what the settings keep, and what a program's name is matched against: see [fromApp].
  */
-public enum class Agent(public val id: String, public val displayName: String, public val executable: String) {
+public enum class Agent(public val id: String, public val displayName: String, public val executable: String, public val interpreted: Boolean = false) {
     CLAUDE("claude", "Claude Code", "claude"),
     CODEX("codex", "Codex", "codex"),
     ANTIGRAVITY("antigravity", "Antigravity", "agy"),
@@ -17,6 +18,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
     JUNIE("junie", "Junie", "junie"),
     OPENCODE("opencode", "OpenCode", "opencode"),
     CRUSH("crush", "Crush", "crush"),
+    AIDER("aider", "Aider", "aider", interpreted = true),
     ;
 
     public companion object {
@@ -34,6 +36,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
                 "junie" in name -> JUNIE
                 "opencode" in name -> OPENCODE
                 "crush" in name -> CRUSH
+                "aider" in name -> AIDER
                 else -> null
             }
         }
@@ -42,6 +45,16 @@ public enum class Agent(public val id: String, public val displayName: String, p
 
         /** The agent whose program is called [process] (`claude`, `agy`…), `null` for any other program. */
         public fun fromProcess(process: String?): Agent? = process?.let { name -> entries.firstOrNull { it.executable.equals(name, ignoreCase = true) } }
+
+        /**
+         * The agent that runs as [argv], a command line as the system has it: its program, or, for an agent that is a script (Aider is Python), the
+         * script that an interpreter (`python3.12`, `Python`) was given first: `Python /opt/homebrew/bin/aider --model x` is Aider, whose process is called `Python`.
+         */
+        public fun fromCommand(argv: List<String>): Agent? {
+            val program = argv.firstOrNull()?.let { File(it).name } ?: return null
+            if (!Regex("(?i)python[0-9.]*").matches(program)) return fromProcess(program)
+            return argv.getOrNull(1)?.let { File(it).name }?.let { script -> entries.firstOrNull { it.interpreted && it.executable == script } }
+        }
     }
 }
 

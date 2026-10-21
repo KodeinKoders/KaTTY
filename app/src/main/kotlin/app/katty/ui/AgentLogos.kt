@@ -69,4 +69,11 @@ object AgentLogos {
         fills = listOf("M4 4.5 14 12 4 19.5V15l5-3-5-3zM12 17h8v2.5h-8z"),
         grid = 24f,
     )
+
+    /** Drawn for KaTTY, not Aider's logo (none is published as an icon set): a capital A. */
+    val Aider = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M12 3 3 21h3.4l1.5-3.6h8.2l1.5 3.6H21zM9.2 14.4 12 7.9l2.8 6.5z"),
+        grid = 24f, fillType = PathFillType.EvenOdd,
+    )
 }

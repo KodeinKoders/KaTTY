@@ -33,6 +33,8 @@ class AgentsTest {
         assertEquals(Agent.OPENCODE, Agent.fromProcess("opencode"))
         assertEquals(Agent.CRUSH, Agent.fromApp("crush"))
         assertEquals(Agent.CRUSH, Agent.fromProcess("crush"))
+        assertEquals(Agent.AIDER, Agent.fromApp("aider"))
+        assertEquals(Agent.AIDER, Agent.fromProcess("aider"))
     }
 
     @Test
@@ -43,8 +45,21 @@ class AgentsTest {
     }
 
     @Test
+    fun aScriptIsTheAgentWhenAnInterpreterWasGivenItFirst() {
+        // What the system says of a running Aider: the process is the interpreter, its first argument the script.
+        assertEquals(Agent.AIDER, Agent.fromCommand(listOf("/opt/homebrew/Cellar/python@3.12/Frameworks/Python.app/Contents/MacOS/Python", "/opt/homebrew/bin/aider", "--model", "x")))
+        assertEquals(Agent.AIDER, Agent.fromCommand(listOf("python3.12", "/home/me/.venv/bin/aider")))
+        assertEquals(Agent.CLAUDE, Agent.fromCommand(listOf("/home/me/.local/bin/claude", "a prompt")))
+        // A script of another name is no agent, and neither is a program that is not an interpreter given `aider`.
+        assertNull(Agent.fromCommand(listOf("python3", "/home/me/build.py")))
+        assertNull(Agent.fromCommand(listOf("python3", "-m", "aider")))
+        assertNull(Agent.fromCommand(listOf("emacs", "aider")))
+        assertNull(Agent.fromCommand(emptyList()))
+    }
+
+    @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }

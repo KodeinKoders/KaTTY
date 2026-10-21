@@ -80,4 +80,17 @@ class RunningCommandsTest {
         assertNull(running.agentSession, "No database, no session: it reruns bare")
         assertEquals(listOf("opencode"), running.toTyped().argv)
     }
+
+    @Test
+    fun anAiderIsKeptByItsScriptAndComesBackWithItsChat() {
+        val python = "/opt/homebrew/Cellar/python@3.12/Frameworks/Python.app/Contents/MacOS/Python"
+
+        val running = command(python, "/opt/homebrew/bin/aider", "--model", "sonnet", "--message", "fix it").toRunning { _, _, _ -> null }!!
+
+        assertEquals("aider", running.agent)
+        assertEquals(listOf("/opt/homebrew/bin/aider", "--model", "sonnet", "--message", "fix it"), running.argv)
+        // The prompt is not typed again, the chat of the directory is loaded, and it runs by itself.
+        assertEquals(listOf("/opt/homebrew/bin/aider", "--model", "sonnet", "--restore-chat-history"), running.toTyped().argv)
+        assertEquals(true, running.toTyped().run)
+    }
 }

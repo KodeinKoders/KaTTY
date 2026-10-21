@@ -35,6 +35,10 @@ public object AgentResume {
      * - Crush keeps its conversations in a database for each project, like OpenCode: [cwd] and [startedAtMillis] pick the newest one of that
      * project that the process created or updated ([crushSession], which is [CrushStore.sessionFor] by default).
      *
+     * - Aider has no conversation id: it keeps the chat of a directory in `.aider.chat.history.md` there and loads it with `--restore-chat-history`
+     * (0.35.0 and later), which is what it is started with. Two Aiders in one directory write the same file, which Aider does not support: both
+     * come back with the two chats mixed.
+     *
      * Not done, and why: Codex has no file that ties a process to its conversation (a server that the terminals share holds them), and
      * neither the id of what it runs: it starts again with no conversation. Whether the files of the others follow a conversation that is
      * changed from inside the agent was not checked.
@@ -174,6 +178,8 @@ public object AgentResume {
                 else -> { kept += word; index++ }
             }
         }
+        // Aider has no ids: it keeps the chat of a directory in a file there and loads it when it is asked to.
+        if (agent == Agent.AIDER) kept += "--restore-chat-history"
         if (sessionId != null) {
             when (agent) {
                 Agent.CLAUDE -> kept += listOf("--resume", sessionId)
@@ -200,6 +206,28 @@ public object AgentResume {
             "--model" to true,
             "--permission-mode" to true,
             "--effort" to true,
+        )
+        // `-c key=value` is left out (a configuration override can hold a secret), and so are `--worktree` (it would make another one) and `-i`
+        // (it takes several files).
+        Agent.CODEX -> mapOf(
+            "--dangerously-bypass-approvals-and-sandbox" to false,
+            "--approve-for-me" to false,
+            "--oss" to false,
+            "--search" to false,
+            "--no-alt-screen" to false,
+            "--strict-config" to false,
+            "--model" to true,
+            "-m" to true,
+            "--sandbox" to true,
+            "-s" to true,
+            "--ask-for-approval" to true,
+            "-a" to true,
+            "--profile" to true,
+            "-p" to true,
+            "--local-provider" to true,
+            "--add-dir" to true,
+            "--enable" to true,
+            "--disable" to true,
         )
         Agent.JUNIE -> mapOf(
             "--brave" to false,
@@ -229,6 +257,24 @@ public object AgentResume {
         )
         Agent.OPENCODE -> mapOf("-m" to true, "--model" to true, "--agent" to true, "--port" to true, "--hostname" to true)
         Agent.CRUSH -> mapOf("--yolo" to false, "-y" to false, "--debug" to false, "-d" to false, "--cwd" to true, "-c" to true, "--data-dir" to true, "-D" to true)
+        Agent.AIDER -> mapOf(
+            "--architect" to false,
+            "--yes-always" to false,
+            "--no-git" to false,
+            "--no-auto-commits" to false,
+            "--watch-files" to false,
+            "--vim" to false,
+            "--dark-mode" to false,
+            "--light-mode" to false,
+            "--model" to true,
+            "--editor-model" to true,
+            "--weak-model" to true,
+            "--edit-format" to true,
+            "--reasoning-effort" to true,
+            // Where the chat is kept: the history that comes back is the one of these files.
+            "--chat-history-file" to true,
+            "--input-history-file" to true,
+        )
         else -> emptyMap()
     }
 
