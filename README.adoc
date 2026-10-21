@@ -231,78 +231,83 @@ In a dialog that asks you to confirm, the keyboard starts on the red button: Ent
 KaTTY knows these agents by name: it recognizes them, shows their logo, and finds out which of them are installed on your machine.
 What more it can do depends on what each agent offers.
 
-Where a row gives a version, it is the *minimum version*: the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501).
+Where a cell gives a version, it is the *minimum version*: the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501).
 Older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie, Aider, Goose and Cline, which do not report yet.
 
-[cols="3,2,2,2,2,2,2,2,2,2,2"]
+[cols="2h,3,3,2,4"]
 |===
-| | Claude Code | Codex | Antigravity | Copilot CLI | Junie | OpenCode | Crush | Aider | Goose | Cline
+| | Recognized, with its logo, and restarted with its command line options | Live state report and card on the agent board | Usage meter | Resumes last conversation after relaunch
 
-| Recognized, with its logo
+| Claude Code
 | Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-
-| Restarts with its command line options
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-| Yes
-
-| Live state report and card on the agent board
 | 2.1.295
+| 2.1.118
+| Yes (undocumented)
+
+| Codex
+| Yes
 | 0.163.0
+| 0.48.0
+| No
+
+| Antigravity
+| Yes
 | 1.4.0
+| 1.1.11
+| Yes (undocumented)
+
+| Copilot CLI
+| Yes
 | No
 | No
+| 1.0.22
+
+| Junie
+| Yes
+| No
+| No
+| Yes (undocumented)
+
+| OpenCode
+| Yes
 | 2.1.0
+| 1.2.0
+| 2.1.0
+
+| Crush
+| Yes
 | 0.98.0
 | No
-| No
-| No
+| 0.51.0 (one per dir)
 
-| Usage meter
-| 2.1.118
-| 0.48.0
-| 1.1.11
+| Aider
+| Yes
 | No
 | No
-| 1.2.0
-| No
-| No
-| No
-| No
+| 0.35.0 (one per dir)
 
-| Resumes last conversation after relaunch
-| Yes*
+| Goose
+| Yes
 | No
-| Yes*
-| 1.0.22
-| Yes*
-| 2.1.0
-| 0.51.0
-| 0.35.0
-| 1.13.0
+| No
+| 1.13.0 (one per dir)
+
+| Cline
+| Yes
+| No
+| No
 | 3.0.66
 |===
 
 *Yes* means it works, as far as it was tried, and a version number means it works from that version on.
 *No* means it is not available.
 
-WARNING: A star after Yes (Yes*) means that resuming relies on files that the agent does not document (where it writes the identifier of its conversation), and may therefore break when the agent changes them: it then starts a new conversation.
+NOTE: *one per dir* means that only one conversation of that agent can be resumed for each directory.
+Crush and Goose give KaTTY nothing that ties a running process to its conversation, so it takes the newest conversation of the directory since the process started.
+Aider keeps one chat file for each directory, which every Aider started there writes to.
+Two of that agent in the same directory therefore come back on the same conversation (Aider: on the two chats mixed).
+
+WARNING: *Yes (undocumented)* means that resuming relies on files that the agent does not document (where it writes the identifier of its conversation), and may therefore break when the agent changes them: it then starts a new conversation.
 
 * *Live state* comes from the agent itself: KaTTY does not install hooks or read the screen.
 An agent that does not report, such as Copilot CLI, Junie, Aider, Goose, Cline or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
