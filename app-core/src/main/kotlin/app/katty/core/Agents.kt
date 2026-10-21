@@ -21,6 +21,11 @@ public enum class Agent(
      * directory are not told apart, and neither is resumed from the directory (see [RunningCommand.apartFromOthers]).
      */
     public val byDirectory: Boolean = false,
+    /**
+     * For an agent that is a script that a launcher starts with a runtime (`exec -a $0 node index.js`, so that its process is `node` and its first word is
+     * the launcher's, whatever it is called): a part of the path of the script, which says whose it is.
+     */
+    public val scriptContains: String? = null,
 ) {
     CLAUDE("claude", "Claude Code", "claude"),
     CODEX("codex", "Codex", "codex"),
@@ -36,6 +41,7 @@ public enum class Agent(
     PI("pi", "Pi", "pi"),
     OMP("omp", "Oh My Pi", "omp"),
     OPENHANDS("openhands", "OpenHands", "openhands", byDirectory = true),
+    CURSOR("cursor", "Cursor Agent", "cursor-agent", interpreted = true, byDirectory = true, scriptContains = "/cursor-agent/"),
     ;
 
     /** What the program that runs it can be called: its [executable] and its [aliases]. */
@@ -64,6 +70,7 @@ public enum class Agent(
                 name == "pi" -> PI
                 name == "omp" -> OMP
                 "openhands" in name -> OPENHANDS
+                "cursoragent" in name -> CURSOR
                 else -> null
             }
         }
@@ -79,6 +86,8 @@ public enum class Agent(
          * whose process is called `Python`.
          */
         public fun fromCommand(argv: List<String>): Agent? {
+            // Whatever the launcher is called (`cursor-agent`, `agent`), the script it runs says whose it is.
+            entries.firstOrNull { agent -> agent.scriptContains != null && argv.drop(1).any { it.endsWith("/index.js") && agent.scriptContains in it } }?.let { return it }
             val program = argv.firstOrNull()?.let { File(it).name } ?: return null
             if (!Regex("(?i)(python[0-9.]*|node)").matches(program)) return fromProcess(program)
             return argv.getOrNull(1)?.let { File(it).name }?.let { script -> entries.firstOrNull { it.interpreted && script in it.names } }

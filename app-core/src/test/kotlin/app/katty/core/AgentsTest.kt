@@ -50,6 +50,9 @@ class AgentsTest {
         assertNull(Agent.fromApp("compass"))
         assertEquals(Agent.OPENHANDS, Agent.fromApp("openhands"))
         assertEquals(Agent.OPENHANDS, Agent.fromProcess("openhands"))
+        assertEquals(Agent.CURSOR, Agent.fromProcess("cursor-agent"))
+        assertEquals(Agent.CURSOR, Agent.fromApp("cursor-agent"))
+        assertNull(Agent.fromProcess("agent"))
         // `pi` is in other names: only the whole name is Pi.
         assertEquals(Agent.COPILOT, Agent.fromApp("copilot"))
         assertNull(Agent.fromApp("pipeline"))
@@ -74,6 +77,11 @@ class AgentsTest {
         assertEquals(Agent.AIDER, Agent.fromCommand(listOf("python3.12", "/home/me/.venv/bin/aider")))
         // Cline is a Node script: what the system says of a running one is `node /opt/homebrew/bin/cline`.
         assertEquals(Agent.CLINE, Agent.fromCommand(listOf("node", "/opt/homebrew/bin/cline", "--yolo")))
+        // Cursor's agent runs `node --use-system-ca …/index.js` from a launcher whose first word is however it was called: the script says whose it is.
+        val script = "/Users/me/.local/share/cursor-agent/versions/2026.10.19-6bbf2c4/index.js"
+        assertEquals(Agent.CURSOR, Agent.fromCommand(listOf("/Users/me/.local/bin/cursor-agent", "--use-system-ca", script)))
+        assertEquals(Agent.CURSOR, Agent.fromCommand(listOf("/Users/me/.local/bin/agent", "--use-system-ca", script, "--force")))
+        assertNull(Agent.fromCommand(listOf("/Users/me/.local/bin/agent", "--use-system-ca", "/Users/me/app/index.js")))
         // Kilo Code is Node's too, and its script has two names.
         assertEquals(Agent.KILO, Agent.fromCommand(listOf("node", "/opt/homebrew/bin/kilo")))
         assertEquals(Agent.KILO, Agent.fromCommand(listOf("node", "/opt/homebrew/bin/kilocode", "--auto")))
@@ -104,7 +112,7 @@ class AgentsTest {
 
     @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode", "pi", "omp", "openhands"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode", "pi", "omp", "openhands", "cursor"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }

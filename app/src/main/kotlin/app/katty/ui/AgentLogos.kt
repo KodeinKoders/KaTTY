@@ -120,4 +120,11 @@ object AgentLogos {
         fills = listOf("M5 4h3.200v6.300h7.600V4H19v16h-3.200v-6.700H8.200V20H5z"),
         grid = 24f,
     )
+
+    /** Drawn for KaTTY, not Cursor's logo (none is published as an icon set): the arrow of a pointer. */
+    val Cursor = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M5 3 20 10.200 13.200 12.300 10.800 19z"),
+        grid = 24f,
+    )
 }

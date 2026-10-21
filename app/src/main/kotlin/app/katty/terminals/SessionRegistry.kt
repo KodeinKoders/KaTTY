@@ -220,9 +220,9 @@ class SessionRegistry(
                             ambiguous = apart != running
                             running = apart
                         }
-                        // omp says itself what session its terminal is in, and `fresh` for none (after `/new`): not knowing is not what that is, so the session it came
-                        // back on is not put back.
-                        if (command != null && running != null && resumed?.second != null && running.agent == resumed.first && running.agent != Agent.OMP.id &&
+                        // omp says itself what session its terminal is in, and `fresh` for none (after `/new`), and a Cursor agent whose chat is empty is the same: not
+                        // knowing is not what that is, so the session it came back on is not put back.
+                        if (command != null && running != null && resumed?.second != null && running.agent == resumed.first && running.agent != Agent.OMP.id && running.agent != Agent.CURSOR.id &&
                             // What an Aider comes back on is the chat of the directory, and the other Aider loads the same one: it is not the one that was resumed.
                             !(ambiguous && running.agent == Agent.AIDER.id)
                         ) {

@@ -27,6 +27,8 @@ public fun ForegroundCommand.toRunning(
     val line = when (agent) {
         Agent.OPENCODE -> listOf(openCodeProgram(argv.first(), executable)) + argv.drop(1)
         // The script is what is typed, not the interpreter that runs it (`Python`, from a path that a Homebrew update removes; `node`).
+        // The launcher runs `node --use-system-ca …/index.js <what was typed>`: what is typed is the launcher and what was typed after it.
+        Agent.CURSOR -> argv.indexOfFirst { it.endsWith("/index.js") }.let { script -> if (script < 0) argv else listOf(argv.first()) + argv.drop(script + 1) }
         else -> if (agent?.interpreted == true && File(argv.first()).name !in agent.names) argv.drop(1) else argv
     }
     val kept = when {

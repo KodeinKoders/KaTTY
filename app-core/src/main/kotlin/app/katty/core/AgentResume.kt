@@ -69,6 +69,11 @@ public object AgentResume {
      * is: the newest of the directory that was made since the process started, else the id on its command line ([argv]: `--resume <id>`, which is how it is
      * started again), else for a `--resume` with no id the newest that was written to since ([openHandsSession], which is [OpenHandsStore.sessionFor]).
      *
+     * - Cursor's agent makes its chat when it starts and `/new-chat` makes another at once (`~/.cursor/chats/<MD5 of the directory>/<id>/meta.json`, with
+     * `hasConversation`), and an empty chat is no conversation: the newest chat of the directory that the process made, when it has a conversation; else the one of
+     * its command line (`--resume <id>`); else for `--continue` the newest written to since ([cursorSession], which is [CursorStore.sessionFor] by default). `null` is
+     * an empty chat, and the registry does not put an older one back.
+     *
      * Whether the files of the others follow a conversation that is changed from inside the agent was not checked.
      *
      * @param openFiles The paths of the files that the process has open.
@@ -93,6 +98,7 @@ public object AgentResume {
         argv: List<String> = emptyList(),
         ompSession: (String, Long, String?, List<String>) -> String? = { directory, startedAt, terminal, arguments -> OmpStore().sessionFor(directory, startedAt, terminal, arguments) },
         openHandsSession: (String, Long, List<String>) -> String? = { directory, startedAt, arguments -> OpenHandsStore().sessionFor(directory, startedAt, arguments) },
+        cursorSession: (String, Long, List<String>) -> String? = { directory, startedAt, arguments -> CursorStore().sessionFor(directory, startedAt, arguments) },
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
@@ -106,6 +112,8 @@ public object AgentResume {
             Agent.CLINE -> cwd?.let { clineSession(it, startedAtMillis, groupPids) }?.takeIf(::isUnderscoreId)
             // OpenHands keeps nothing of which process a conversation is: its directory, when it was made and its own command line are what there is.
             Agent.OPENHANDS -> cwd?.let { openHandsSession(it, startedAtMillis, argv) }?.takeIf(::isSessionId)
+            // Cursor's chat is made when the program starts, and an empty one is no conversation: `null` is an empty chat, and is not a reason to guess.
+            Agent.CURSOR -> cwd?.let { cursorSession(it, startedAtMillis, argv) }?.takeIf(::isSessionId)
             // Aider has no conversation to name: it loads the chat of the directory. What stands for it is a word that says it is to be loaded, so that it can be taken off.
             Agent.AIDER -> AIDER_HISTORY
             // omp keeps what session each terminal is in, and says `fresh` for one with no conversation: that is `null`, and it is not a reason to guess.
@@ -215,18 +223,13 @@ public object AgentResume {
         if (agent == Agent.KILO) {
             // Its options are the interface's. Another command (`kilo run`, `kilo serve`) is not a conversation to come back to, and the project that
             // `kilo [project]` is given is where the process already is.
-            // The value of an option that has one (`--port 4096`) is not the command.
-            val takesValue = knownOptions(agent).filterValues { it }.keys
-            var command: String? = null
-            var skip = false
-            for (word in original.drop(1)) {
-                when {
-                    skip -> skip = false
-                    word.startsWith("-") -> skip = word.substringBefore('=') in takesValue && '=' !in word
-                    else -> { command = word; break }
-                }
-            }
+            val command = firstCommand(original, agent)
             if (command in KILO_COMMANDS) return listOf(program, command!!)
+        }
+        if (agent == Agent.CURSOR) {
+            // `login`, `models`, `update`… are not a conversation. `agent`, `resume` and `ls` start or resume the interface: what it was in replaces them.
+            val command = firstCommand(original, agent)
+            if (command in CURSOR_COMMANDS) return listOf(program, command!!)
         }
         if (agent == Agent.GOOSE) {
             // Its options belong to the `session` command, which is what a bare `goose` runs as well. Another command (`goose run`,
@@ -274,6 +277,7 @@ public object AgentResume {
                 // Its option takes its value with an `=`: without it, `--resume` opens the picker, and the id would be taken for a message.
                 Agent.OMP -> kept += "--resume=$sessionId"
                 Agent.OPENHANDS -> kept += listOf("--resume", sessionId)
+                Agent.CURSOR -> kept += listOf("--resume", sessionId)
                 else -> Unit
             }
         }
@@ -345,6 +349,25 @@ public object AgentResume {
         Agent.CRUSH -> mapOf("--yolo" to false, "-y" to false, "--debug" to false, "-d" to false, "--cwd" to true, "-c" to true, "--data-dir" to true, "-D" to true)
         // `-p` is the plan mode here and `-k` the API key, which is not kept. `--thinking` may have no value, and then the next word cannot be
         // told from a prompt. `--worktree` would make another one, and `--zen` runs the session in the background.
+        // `--api-key` and the headers could hold a secret, `--print` and its formats are not the interface, `--worktree` would make another one, and `--resume` and
+        // `--continue` are replaced by what it was in.
+        Agent.CURSOR -> mapOf(
+            "--model" to true,
+            "--mode" to true,
+            "--sandbox" to true,
+            "--workspace" to true,
+            "--add-dir" to true,
+            "--plugin-dir" to true,
+            "--endpoint" to true,
+            "-e" to true,
+            "--plan" to false,
+            "--force" to false,
+            "-f" to false,
+            "--yolo" to false,
+            "--auto-review" to false,
+            "--approve-mcps" to false,
+            "--trust" to false,
+        )
         // `--prompt` would be sent twice, `--worktree` would make another one, and `--fork` would make another conversation of the one it comes back on.
         Agent.KILO -> mapOf(
             "--auto" to false,
@@ -449,6 +472,26 @@ public object AgentResume {
         )
         else -> emptyMap()
     }
+
+    // The first word that is not an option nor the value of one: the command, when it is one.
+    private fun firstCommand(original: List<String>, agent: Agent): String? {
+        val takesValue = knownOptions(agent).filterValues { it }.keys
+        var skip = false
+        for (word in original.drop(1)) {
+            when {
+                skip -> skip = false
+                word.startsWith("-") -> skip = word.substringBefore('=') in takesValue && '=' !in word
+                else -> return word
+            }
+        }
+        return null
+    }
+
+    // What `cursor-agent --help` lists as commands, but the ones that start or resume the interface.
+    private val CURSOR_COMMANDS = setOf(
+        "persist", "install-shell-integration", "uninstall-shell-integration", "login", "logout", "mcp", "plugin", "worker", "status", "whoami", "models", "team",
+        "bedrock", "about", "update", "create-chat", "generate-rule", "rule", "help",
+    )
 
     // What `kilo --help` lists as commands: the first word of a command line that is one of them is not a project to start in.
     private val KILO_COMMANDS = setOf(

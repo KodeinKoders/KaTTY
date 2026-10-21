@@ -184,6 +184,22 @@ class RunningCommandsTest {
 
     @Test
     fun theAgentsThatAreGuessedByTheirDirectoryAreTheOnesThatHaveNothingElseToGoBy() {
-        assertEquals(setOf(Agent.CRUSH, Agent.GOOSE, Agent.AIDER, Agent.OPENHANDS), Agent.entries.filter { it.byDirectory }.toSet())
+        assertEquals(setOf(Agent.CRUSH, Agent.GOOSE, Agent.AIDER, Agent.OPENHANDS, Agent.CURSOR), Agent.entries.filter { it.byDirectory }.toSet())
+    }
+
+    @Test
+    fun aCursorAgentComesBackAsItsLauncherWithHowItWasRunOnItsChatAndNotWhatSeededOrResumedIt() {
+        val script = "/Users/me/.local/share/cursor-agent/versions/2026.10.19-6bbf2c4/index.js"
+        val running = command("/Users/me/.local/bin/agent", "--use-system-ca", script, "--force", "--model", "gpt-5", "--api-key", "sk-secret", "--continue", "fix it")
+            .toRunning { _, _, _ -> "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2" }!!
+
+        assertEquals("cursor", running.agent)
+        // The node flag and the script are not typed: they are what the launcher runs. The key and the prompt are not typed again.
+        assertEquals(listOf("/Users/me/.local/bin/agent", "--force", "--model", "gpt-5", "--api-key", "sk-secret", "--continue", "fix it"), running.argv)
+        assertEquals(
+            listOf("/Users/me/.local/bin/agent", "--force", "--model", "gpt-5", "--resume", "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2"),
+            running.toTyped().argv,
+        )
+        assertEquals(true, running.toTyped().run)
     }
 }

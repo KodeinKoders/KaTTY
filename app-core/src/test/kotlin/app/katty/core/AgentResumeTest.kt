@@ -493,4 +493,37 @@ class AgentResumeTest {
         assertEquals(listOf("openhands"), AgentResume.argv(Agent.OPENHANDS, listOf("openhands", "-t", "go"), null))
         assertEquals(listOf("openhands", "web"), AgentResume.argv(Agent.OPENHANDS, listOf("openhands", "web", "--port", "12000"), "22a2ff2b-1255-419b-9636-5045c8977380"))
     }
+
+    @Test
+    fun cursorAsksForItsChatWithItsDirectoryStartAndCommandLine() {
+        var asked: List<Any>? = null
+        val argv = listOf("/Users/me/.local/bin/cursor-agent", "--resume", "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2")
+
+        val found = AgentResume.sessionId(
+            Agent.CURSOR, 7, 9_000L, home.toFile(), cwd = "/work", argv = argv,
+            cursorSession = { cwd, at, arguments -> asked = listOf(cwd, at, arguments); "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2" },
+        )
+
+        assertEquals("11a1677b-658c-48c7-9c10-d0bfa8ee6fb2", found)
+        assertEquals(listOf("/work", 9_000L, argv), asked)
+        assertNull(AgentResume.sessionId(Agent.CURSOR, 7, 0, home.toFile(), cwd = null, cursorSession = { _, _, _ -> error("No directory, no question") }))
+        assertNull(AgentResume.sessionId(Agent.CURSOR, 7, 0, home.toFile(), cwd = "/work", cursorSession = { _, _, _ -> "1; rm -rf ~" }), "The id goes into a command line")
+    }
+
+    @Test
+    fun resumesCursorOnItsChatAndTheCommandsThatAreNotTheInterfaceAreNotOne() {
+        assertEquals(
+            listOf("cursor-agent", "--plan", "--trust", "--resume", "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2"),
+            AgentResume.argv(
+                Agent.CURSOR,
+                listOf("cursor-agent", "--plan", "-p", "--output-format", "json", "--trust", "-H", "X: secret", "--worktree", "w", "--continue", "go"),
+                "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2",
+            ),
+        )
+        // `resume` and `ls` and `agent` start the interface: they are replaced by the chat it was in, or by nothing.
+        assertEquals(listOf("cursor-agent"), AgentResume.argv(Agent.CURSOR, listOf("cursor-agent", "resume"), null))
+        assertEquals(listOf("cursor-agent", "--resume", "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2"), AgentResume.argv(Agent.CURSOR, listOf("cursor-agent", "ls"), "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2"))
+        assertEquals(listOf("cursor-agent", "models"), AgentResume.argv(Agent.CURSOR, listOf("cursor-agent", "models"), "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2"))
+        assertEquals(listOf("cursor-agent", "persist"), AgentResume.argv(Agent.CURSOR, listOf("cursor-agent", "--model", "gpt-5", "persist"), null))
+    }
 }
