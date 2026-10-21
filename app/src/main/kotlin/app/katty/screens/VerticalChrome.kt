@@ -1,6 +1,7 @@
 package app.katty.screens
 
 import androidx.compose.foundation.layout.widthIn
+import app.katty.core.Ide
 import app.katty.core.sharedGit
 import app.katty.core.TerminalId
 import app.katty.core.GitInfo
@@ -90,6 +91,8 @@ fun ProjectTabs(
     onRenamingProject: (ProjectId?) -> Unit,
     onNewWorkspace: (ProjectId) -> Unit,
     modifier: Modifier = Modifier,
+    ides: List<Ide> = emptyList(),
+    onOpenIn: (ProjectId, Ide) -> Unit = { _, _ -> },
     states: AgentStates = NoAgentStates,
 ) {
     val colors = Katty.colors
@@ -109,6 +112,8 @@ fun ProjectTabs(
                     onNewWorkspace = { onNewWorkspace(project.id) },
                     onRemove = { onRemoveProject(project.id) },
                     onReveal = { onReveal(project.id) },
+                    ides = ides,
+                    onOpenIn = { onOpenIn(project.id, it) },
                 )
             }
         }
@@ -130,6 +135,8 @@ private fun ProjectTab(
     onNewWorkspace: () -> Unit,
     onRemove: () -> Unit,
     onReveal: () -> Unit,
+    ides: List<Ide>,
+    onOpenIn: (Ide) -> Unit,
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
@@ -162,7 +169,7 @@ private fun ProjectTab(
             }
             for ((state, count) in counts) StateCount(state, count)
         }
-        menuAt?.let { at -> KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove), onDismiss = { menuAt = null }, offset = at) }
+        menuAt?.let { at -> KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove, ides, onOpenIn), onDismiss = { menuAt = null }, offset = at) }
     }
 }
 

@@ -52,6 +52,7 @@ import app.katty.core.TerminalSpec
 import app.katty.core.attention
 import app.katty.core.terminalIdentity
 import app.katty.core.board
+import app.katty.core.Ide
 import app.katty.core.closeTerminalDecision
 import app.katty.core.closeWorkspaceDecision
 import app.katty.core.WorkspaceId
@@ -166,6 +167,14 @@ fun DecoratedWindowScope.KattyWindowContent(
     var detectTick by remember { mutableStateOf(0) }
     val detected by produceState(emptyMap<Agent, java.nio.file.Path>(), loginPath, detectTick) {
         value = withContext(Dispatchers.IO) { AgentDetection.detect(loginPath ?: System.getenv("PATH").orEmpty()) }
+    }
+    // The editors that are installed: LaunchServices knows, and is asked again when the window gets the focus, with the agents.
+    val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { installedIdes() } }
+    val ides = installedIdes.keys.toList()
+    val openProjectIn: (ProjectId, Ide) -> Unit = { id, ide ->
+        val directory = state.projects.firstOrNull { it.id == id }?.directory
+        val bundleId = installedIdes[ide]
+        if (directory != null && bundleId != null) openInApplication(bundleId, directory)
     }
     val usageScope = rememberCoroutineScope()
     val sources = remember(detected) { usageSources(detected, directories.usageDirectory) }
@@ -374,6 +383,8 @@ fun DecoratedWindowScope.KattyWindowContent(
         renameProject = { showWorkspaceHost(); renamingProject = state.selection.project },
         removeProject = { removing = state.selection.project },
         revealProject = { state.selectedProject?.directory?.let(::revealInFileManager) },
+        ides = ides,
+        openProjectIn = { ide -> state.selection.project?.let { openProjectIn(it, ide) } },
         moveProject = { delta ->
             val projects = state.projects
             val from = projects.indexOfFirst { it.id == state.selection.project }
@@ -610,6 +621,8 @@ fun DecoratedWindowScope.KattyWindowContent(
                         onAddProject = addProject,
                         onRemoveProject = { removing = it },
                         onReveal = reveal,
+                        ides = ides,
+                        onOpenIn = openProjectIn,
                         renamingProject = renamingProject,
                         onRenamingProject = { renamingProject = it },
                         onNewWorkspace = { project -> renamingWorkspace = store.addWorkspace(project) },
@@ -645,6 +658,8 @@ fun DecoratedWindowScope.KattyWindowContent(
                             onRemoveProject = { removing = it },
                             onCloseWorkspace = closeWorkspace,
                             onReveal = reveal,
+                            ides = ides,
+                            onOpenIn = openProjectIn,
                             renamingProject = renamingProject,
                             onRenamingProject = { renamingProject = it },
                             renamingWorkspace = renamingWorkspace,

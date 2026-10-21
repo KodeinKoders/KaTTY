@@ -50,6 +50,7 @@ import app.katty.core.AgentStates
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
 import app.katty.core.NoAgentStates
+import app.katty.core.Ide
 import app.katty.core.Project
 import app.katty.core.ProjectId
 import app.katty.core.Workspace
@@ -91,6 +92,7 @@ val SIDEBAR_WIDTH = 272.dp
  * @param states What each terminal is doing: a project is shown with how many are in each state, and a workspace with the state of each.
  * @param gits Where each terminal is in git: a workspace whose terminals are all in the same branch says which.
  * @param usage What is at the bottom of the sidebar.
+ * @param ides The editors that are installed: a project's menu opens its folder in them, through [onOpenIn].
  */
 @Composable
 fun Sidebar(
@@ -108,6 +110,8 @@ fun Sidebar(
     states: AgentStates = NoAgentStates,
     gits: Map<TerminalId, GitInfo?> = emptyMap(),
     usage: @Composable () -> Unit = {},
+    ides: List<Ide> = emptyList(),
+    onOpenIn: (ProjectId, Ide) -> Unit = { _, _ -> },
 ) {
     val colors = Katty.colors
 
@@ -149,6 +153,8 @@ fun Sidebar(
                         onNewWorkspace = { onRenamingWorkspace(store.addWorkspace(project.id)) },
                         onRemove = { onRemoveProject(project.id) },
                         onReveal = { onReveal(project.id) },
+                        ides = ides,
+                        onOpenIn = { onOpenIn(project.id, it) },
                     )
                     if (open) {
                         Text(
@@ -212,6 +218,8 @@ private fun ProjectRow(
     onNewWorkspace: () -> Unit,
     onRemove: () -> Unit,
     onReveal: () -> Unit,
+    ides: List<Ide>,
+    onOpenIn: (Ide) -> Unit,
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
@@ -251,7 +259,7 @@ private fun ProjectRow(
             }
         }
         menuAt?.let { at ->
-            KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove), onDismiss = { menuAt = null }, offset = at)
+            KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove, ides, onOpenIn), onDismiss = { menuAt = null }, offset = at)
         }
     }
 }

@@ -1,14 +1,23 @@
 package app.katty.screens
 
 import app.katty.AppShortcut
+import app.katty.core.Ide
 import app.katty.ui.MenuEntry
 import app.katty.ui.menu
 
 /** The menu of a project, wherever it is listed: the sidebar, or the tabs of the vertical layout. */
-fun projectMenu(onNewWorkspace: () -> Unit, onRename: () -> Unit, onReveal: () -> Unit, onRemove: () -> Unit): List<MenuEntry> = menu {
+fun projectMenu(
+    onNewWorkspace: () -> Unit,
+    onRename: () -> Unit,
+    onReveal: () -> Unit,
+    onRemove: () -> Unit,
+    ides: List<Ide> = emptyList(),
+    onOpenIn: (Ide) -> Unit = {},
+): List<MenuEntry> = menu {
     action("New workspace", AppShortcut.NEW_WORKSPACE.label, onClick = onNewWorkspace)
     action("Rename project…", "F2", onClick = onRename)
     action("Reveal in file manager", onClick = onReveal)
+    if (ides.isNotEmpty()) submenu("Open in") { for (ide in ides) action(ide.displayName) { onOpenIn(ide) } }
     divider()
     action("Remove project…", danger = true, onClick = onRemove)
 }

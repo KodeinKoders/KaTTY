@@ -6,6 +6,7 @@ import app.katty.TerminalKeys
 import app.katty.core.Direction
 import app.katty.core.AgentInfo
 import app.katty.core.AgentState
+import app.katty.core.Ide
 import app.katty.core.KattyState
 import app.katty.core.LayoutMode
 import app.katty.core.MainView
@@ -50,6 +51,9 @@ class PaletteHandlers(
     val renameProject: () -> Unit = {},
     val removeProject: () -> Unit = {},
     val revealProject: () -> Unit = {},
+    /** The editors that are installed, and what opens the selected project's folder in one: they have no shortcut. */
+    val ides: List<Ide> = emptyList(),
+    val openProjectIn: (Ide) -> Unit = {},
     val moveProject: (Int) -> Unit = {},
     /** Moves the selected workspace one place up or down in its project: -1 or 1. */
     val moveWorkspace: (Int) -> Unit = {},
@@ -169,6 +173,7 @@ fun paletteCommands(
         val index = state.projects.indexOf(project)
         command("rename-project", "Rename project", action = handlers.renameProject)
         command("reveal-project", "Reveal project in the file manager", action = handlers.revealProject)
+        for (ide in handlers.ides) command("open-in-${ide.name.lowercase()}", "Open project in ${ide.displayName}") { handlers.openProjectIn(ide) }
         if (index > 0) command("project-up", "Move project up") { handlers.moveProject(-1) }
         if (index < state.projects.lastIndex) command("project-down", "Move project down") { handlers.moveProject(1) }
         command("remove-project", "Remove project…", action = handlers.removeProject)

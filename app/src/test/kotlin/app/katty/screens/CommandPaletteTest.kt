@@ -20,6 +20,7 @@ import app.katty.core.AgentState
 import app.katty.core.KattyStore
 import app.katty.core.MainView
 import app.katty.core.PaletteEntry
+import app.katty.core.Ide
 import app.katty.core.PaletteGroup
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
@@ -319,6 +320,28 @@ class CommandPaletteTest {
         store.addProject("/dev/web-client")
         assertTrue("Move project up" in labels())
         assertFalse("Move project down" in labels(), "The selected one is the last")
+    }
+
+    @Test
+    fun theSelectedProjectIsOpenedInTheEditorsThatAreInstalledWithNoShortcut() {
+        val opened = mutableListOf<Ide>()
+        val withIdes = PaletteHandlers(
+            addProject = {}, newWorkspace = {}, renameWorkspace = {}, closeWorkspace = {}, splitRight = {}, splitDown = {}, renameTerminal = {},
+            closeTerminal = {}, restartTerminal = {}, find = {}, clearScreen = {}, maximize = {}, colorScheme = {}, toggleSidebar = {}, showView = {},
+            setLayout = {}, setTheme = {}, jumpToWaiting = {}, markAllSeen = {}, openBoardWindow = {}, openTerminal = {}, openWorkspace = {},
+            ides = listOf(Ide.INTELLIJ_IDEA, Ide.VS_CODE), openProjectIn = { opened += it },
+        )
+        fun commands() = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = withIdes)
+        assertTrue(commands().entries.none { it.label.startsWith("Open project in") }, "There is no project")
+
+        store.addProject("/dev/api-gateway")
+        val entries = commands().entries.filter { it.label.startsWith("Open project in") }
+
+        assertEquals(listOf("Open project in IntelliJ IDEA", "Open project in Visual Studio Code"), entries.map { it.label })
+        assertTrue(entries.all { it.shortcut == null })
+        commands().run(entries.last())
+        assertEquals(listOf(Ide.VS_CODE), opened)
+        assertTrue(labels().none { it.startsWith("Open project in") }, "None is installed")
     }
 
     @Test
