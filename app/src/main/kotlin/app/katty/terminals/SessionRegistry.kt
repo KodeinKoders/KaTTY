@@ -208,7 +208,9 @@ class SessionRegistry(
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
                     if (name != null) {
                         var running = command?.let { withContext(Dispatchers.IO) { it.toRunning(reportedSession = reportedSession.get()) } }
-                        if (command != null && running != null && resumed?.second != null && running.agent == resumed.first) {
+                        // omp says itself what session its terminal is in, and `fresh` for none (after `/new`): not knowing is not what that is, so the session it came
+                        // back on is not put back.
+                        if (command != null && running != null && resumed?.second != null && running.agent == resumed.first && running.agent != Agent.OMP.id) {
                             if (resumedPid == 0) resumedPid = command.pid
                             // An OpenCode that has not worked has said nothing of its session, and its directory only says the newest one: that may be another
                             // OpenCode's, so the session it came back on stays until it says its own.

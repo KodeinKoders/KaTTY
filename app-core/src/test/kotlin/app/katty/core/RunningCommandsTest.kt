@@ -127,4 +127,21 @@ class RunningCommandsTest {
         assertEquals(true, running.toTyped().run)
     }
 
+
+    @Test
+    fun anOmpComesBackWithItsOptionsOnTheSessionOfItsTerminalAndNotWithWhatOpenedIt() {
+        val running = command("omp", "--model", "opus", "--api-key", "sk-secret", "--continue", "--thinking", "high", "fix it").toRunning { _, _, _ -> "01a15f68-e895-7281-9c21-4abd1f48cab2" }!!
+
+        assertEquals("omp", running.agent)
+        // The key is not typed again, `--continue` is replaced by the session it was in, and the prompt is not sent twice.
+        assertEquals(listOf("omp", "--model", "opus", "--thinking", "high", "--resume=01a15f68-e895-7281-9c21-4abd1f48cab2"), running.toTyped().argv)
+        assertEquals(true, running.toTyped().run)
+    }
+
+    @Test
+    fun anOmpWithNoConversationComesBackAsItWasStartedWithNone() {
+        val running = command("omp", "--model", "opus").toRunning { _, _, _ -> null }!!
+
+        assertEquals(listOf("omp", "--model", "opus"), running.toTyped().argv)
+    }
 }

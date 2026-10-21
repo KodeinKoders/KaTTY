@@ -61,6 +61,10 @@ public object AgentResume {
      * resumes the same one), and the one they are in after `/new` is not it: they came back on an older conversation, which is worse than a new one.
      * They start again with no conversation.
      *
+     * - omp (oh-my-pi, Pi's fork) writes a file for each terminal with the session that it is in ([tty]: `~/.omp/agent/terminal-sessions/ttys018`), which follows
+     * `/new` and `/resume` and says `fresh` for a session with no conversation ([ompSession], which is [OmpStore.sessionFor] by default). Both are no session:
+     * nothing is resumed, and the registry does not put an older one back. It keeps its command line ([argv]).
+     *
      * Whether the files of the others follow a conversation that is changed from inside the agent was not checked.
      *
      * @param openFiles The paths of the files that the process has open.
@@ -81,6 +85,9 @@ public object AgentResume {
         reportedSession: String? = null,
         openCodeRoot: (String) -> String? = { OpenCodeStore().rootOf(it) },
         kiloSession: (String, Long, List<String>) -> String? = { directory, startedAt, paths -> KiloStore().sessionFor(directory, startedAt, paths) },
+        tty: String? = null,
+        argv: List<String> = emptyList(),
+        ompSession: (String, Long, String?, List<String>) -> String? = { directory, startedAt, terminal, arguments -> OmpStore().sessionFor(directory, startedAt, terminal, arguments) },
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
@@ -92,6 +99,8 @@ public object AgentResume {
             Agent.CRUSH -> cwd?.let { crushSession(it, startedAtMillis) }?.takeIf(::isSessionId)
             Agent.GOOSE -> cwd?.let { gooseSession(it, startedAtMillis) }?.takeIf(::isUnderscoreId)
             Agent.CLINE -> cwd?.let { clineSession(it, startedAtMillis, groupPids) }?.takeIf(::isUnderscoreId)
+            // omp keeps what session each terminal is in, and says `fresh` for one with no conversation: that is `null`, and it is not a reason to guess.
+            Agent.OMP -> cwd?.let { ompSession(it, startedAtMillis, tty, argv) }?.takeIf(::isSessionId)
             // Its database and its log are what the process has open: the script that has the terminal and the native program that it started.
             Agent.KILO -> cwd?.let { kiloSession(it, startedAtMillis, groupPids.ifEmpty { listOf(pid) }.flatMap(openFiles)) }?.takeIf(::isOpenCodeId)
             else -> null
@@ -248,6 +257,8 @@ public object AgentResume {
                 Agent.GOOSE -> kept += listOf("--resume", "--session-id", sessionId)
                 Agent.CLINE -> kept += listOf("--id", sessionId)
                 Agent.KILO -> kept += listOf("--session", sessionId)
+                // Its option takes its value with an `=`: without it, `--resume` opens the picker, and the id would be taken for a message.
+                Agent.OMP -> kept += "--resume=$sessionId"
                 else -> Unit
             }
         }
@@ -329,6 +340,40 @@ public object AgentResume {
             "--agent" to true,
             "--port" to true,
             "--hostname" to true,
+        )
+        // `--api-key` and the system prompts would be in the command line; `--goal`, `--from-claude`, `--from-codex`, `--print` and `--mode` are not how it
+        // started the conversation that it comes back on; `--no-session` would not save it; `--restore` and `--continue` are replaced by what it was in.
+        Agent.OMP -> mapOf(
+            "--model" to true,
+            "--smol" to true,
+            "--slow" to true,
+            "--plan" to true,
+            "--provider" to true,
+            "--profile" to true,
+            "--cwd" to true,
+            "--thinking" to true,
+            "--service-tier" to true,
+            "--tools" to true,
+            "--skills" to true,
+            "--models" to true,
+            "--add-dir" to true,
+            "--session-dir" to true,
+            "--config" to true,
+            "--prewalk-into" to true,
+            "--plan-yolo-into" to true,
+            "--prewalk" to false,
+            "--no-prewalk" to false,
+            "--plan-yolo" to false,
+            "--allow-home" to false,
+            "--no-tools" to false,
+            "--no-lsp" to false,
+            "--no-pty" to false,
+            "--hide-thinking" to false,
+            "--advisor" to false,
+            "--no-extensions" to false,
+            "--no-skills" to false,
+            "--no-rules" to false,
+            "--no-title" to false,
         )
         Agent.CLINE -> mapOf(
             "--plan" to false,

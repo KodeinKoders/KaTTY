@@ -1,5 +1,6 @@
 package app.katty.core
 
+import app.katty.core.sqlite.SqliteDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -284,6 +285,56 @@ public class OpenCodeUsageSource internal constructor(
     }
 }
 
+/**
+ * What omp spent today, over the last 7 days and this month, from its own statistics database (`~/.omp/stats.db`): what each of its requests cost.
+ *
+ * Its `omp stats -j` prints the last 24 hours and nothing else (it has no option for a range, and the series are by hour and by day in UTC), so the periods
+ * are not read from what it prints. What the command does that matters is **to bring the database up to date**: omp does not keep it while it runs, it reads the
+ * files of the sessions when `omp stats` runs, from where it left (a third of a second when there is nothing new). So the command is run, its output is left
+ * alone, and the database is read, **read-only**, with the same periods as the other agents. A command that fails, or a database that cannot be read, is no
+ * reading for the agent: a database that is not up to date would be a wrong number.
+ *
+ * @param zone Where a day and a month start.
+ */
+public class OmpUsageSource internal constructor(
+    private val executable: Path,
+    private val directory: Path,
+    private val database: Path,
+    private val runner: CommandRunner,
+    private val clock: () -> Instant,
+    private val zone: ZoneId,
+) : UsageSource {
+    public constructor(executable: Path, directory: Path) : this(
+        executable, directory, Path.of(System.getProperty("user.home"), ".omp", "stats.db"), ProcessCommandRunner, Instant::now, ZoneId.systemDefault(),
+    )
+
+    override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
+        runner.run(listOf(executable.toString(), "stats", "-j"), directory, TIMEOUT_MS)?.takeIf { it.exitCode == 0 } ?: return@withContext null
+        if (!Files.exists(database)) return@withContext null
+        val now = clock().atZone(zone)
+        val today = now.toLocalDate().atStartOfDay(zone)
+        val periods = listOf(
+            "Today" to today,
+            "7 days" to now.minusDays(7),
+            "This month" to today.withDayOfMonth(1),
+        )
+        val spend = try {
+            SqliteDatabase.open(database).use { db ->
+                periods.map { (label, since) ->
+                    UsageSpend(label, db.query("SELECT COALESCE(SUM(cost_total), 0) FROM messages WHERE timestamp >= ?", since.toInstant().toEpochMilli()) { it.double(0) ?: 0.0 }.first())
+                }
+            }
+        } catch (e: Exception) {
+            null
+        } ?: return@withContext null
+        UsageReading(Agent.OMP, windows = emptyList(), spend = spend)
+    }
+
+    private companion object {
+        const val TIMEOUT_MS = 30_000L
+    }
+}
+
 /** The sources of the agents that are installed, which have a command that reports their usage. */
 public fun usageSources(detected: Map<Agent, Path>, directory: Path): Map<Agent, UsageSource> = buildMap {
     detected[Agent.CLAUDE]?.let { put(Agent.CLAUDE, ClaudeUsageSource(it, directory)) }
@@ -291,5 +342,7 @@ public fun usageSources(detected: Map<Agent, Path>, directory: Path): Map<Agent,
     detected[Agent.CODEX]?.let { put(Agent.CODEX, CodexUsageSource(listOf(it.toString(), "app-server"), directory)) }
     // It has no allowance: what it spent is read from its database.
     detected[Agent.OPENCODE]?.let { put(Agent.OPENCODE, OpenCodeUsageSource()) }
+    // It has no allowance either: what it spent is read from its statistics database, which its own command brings up to date.
+    detected[Agent.OMP]?.let { put(Agent.OMP, OmpUsageSource(it, directory)) }
     detected[Agent.KILO]?.let { put(Agent.KILO, OpenCodeUsageSource(OpenCodeStore.kilo(), Instant::now, ZoneId.systemDefault(), Agent.KILO)) }
 }

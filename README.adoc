@@ -309,6 +309,12 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI, Jun
 | 1.1.0
 | No
 | No
+
+| Oh My Pi (omp)
+| Yes
+| 18.8.7
+| 16.1.15
+| 18.4.9
 |===
 
 *Yes* means it works, as far as it was tried, and a version number means it works from that version on.
@@ -336,15 +342,17 @@ OpenCode and Kilo Code (whose command line is OpenCode's) have no limit to meter
 They are read from the agent's own database, read-only: KaTTY asks them nothing and reads no credential. Kilo Code's `kilo stats` is not used: it starts a process that writes a log file each time, and prints boxes for people to read, where the database says the same without that.
 A model that the agent does not list (one of your own gateway, or Kilo's `kilo-auto/free`) has a cost and no ring.
 In the usage panel they show what they spent today, over the last 7 days and this month, over all their sessions.
+Oh My Pi does the same, from its own statistics database (`~/.omp/stats.db`): its `omp stats -j` prints the last 24 hours and nothing else, so KaTTY runs that command only to bring the database up to date (omp does not keep it while it runs, and it takes a third of a second), and reads the periods from the database. The first time, omp makes the database.
 Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline and Kilo Code resume their conversation.
+* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline, Kilo Code and Oh My Pi resume their conversation.
 Codex and Pi start again with no conversation, on purpose: each can start a new conversation inside the program that runs (`/new`), nothing tells which one it is in, and coming back on an older one is worse than a new one.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
 OpenCode's session is the last one that it reported as working or waiting, so two OpenCodes in one directory are told apart once each has worked (before that, and before 2.1.0, it is the newest one of the directory).
 Crush's and Goose's session is the newest one of its directory, so two of them in one directory are not told apart.
 Cline's is the one that its own client has used, so two Clines in one directory are told apart (before 3.0.66 a Cline does not tell its daemon which process it is, and is looked for by its directory, like the others).
 Kilo Code's is the one that the log of its own process names when it makes a session (the log is among the files the process has open, and says `sessionId=…`), so two Kilos in one directory are told apart then; a Kilo whose log says nothing is guessed like the others, by the newest conversation of its directory.
+Oh My Pi (omp) writes down which session each terminal is in (`~/.omp/agent/terminal-sessions/<tty>`), and KaTTY reads it, so two omps in one directory are told apart and `/new` and `/resume` are followed. A session that has no conversation yet (`fresh`: a new omp, or after `/new`) is not resumed: it starts again with none. An omp started with its own `--profile` keeps that file elsewhere and starts again with none; with its `autoResume` setting on (off by default) omp itself resumes the newest session of the directory.
 Pi hides its command line (it renames its process and empties it), so KaTTY cannot know the options it was started with: it comes back as `pi`.
 A Crush or a Cline started with `--data-dir` keeps its conversations where KaTTY does not look: it starts a new one.
 Aider has no conversation to find: it is started again with `--restore-chat-history`, which loads the chat that it keeps in the directory (`.aider.chat.history.md`).

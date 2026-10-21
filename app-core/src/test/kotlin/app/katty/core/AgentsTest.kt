@@ -45,6 +45,9 @@ class AgentsTest {
         assertEquals(Agent.KILO, Agent.fromProcess("kilocode"))
         assertEquals(Agent.PI, Agent.fromApp("pi"))
         assertEquals(Agent.PI, Agent.fromProcess("pi"))
+        assertEquals(Agent.OMP, Agent.fromApp("omp"))
+        assertEquals(Agent.OMP, Agent.fromProcess("omp"))
+        assertNull(Agent.fromApp("compass"))
         // `pi` is in other names: only the whole name is Pi.
         assertEquals(Agent.COPILOT, Agent.fromApp("copilot"))
         assertNull(Agent.fromApp("pipeline"))
@@ -99,7 +102,7 @@ class AgentsTest {
 
     @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode", "pi"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode", "pi", "omp"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }

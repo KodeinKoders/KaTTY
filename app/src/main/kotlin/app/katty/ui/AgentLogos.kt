@@ -106,4 +106,11 @@ object AgentLogos {
         fills = listOf("M4 5h16v2.600h-3.100V19h-3V7.600h-3.800V19h-3V7.600H4z"),
         grid = 24f,
     )
+
+    /** Drawn for KaTTY, not omp's logo (none is published as an icon set): a ring with a dot, the O of its name. */
+    val Omp = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 6.200a5.800 5.800 0 1 1 0 11.600 5.800 5.800 0 0 1 0-11.600zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"),
+        grid = 24f, fillType = PathFillType.EvenOdd,
+    )
 }

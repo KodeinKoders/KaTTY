@@ -105,6 +105,19 @@ class ForegroundCommandTest {
     }
 
     @Test
+    fun hasTheNameOfTheTerminalThatTheProgramHasAndNotOnlyWhatItIsCalled() {
+        val session = shell()
+        session.sendText("sleep 37\r")
+
+        val command = session.awaitCommand("sleep") { it.argv.firstOrNull() == "sleep" }
+
+        // What `ps` says of the terminal of the program, which is what the program itself calls it.
+        val ps = ProcessBuilder("ps", "-o", "tty=", "-p", command.pid.toString()).start().inputStream.bufferedReader().readText().trim()
+        assertTrue(ps.startsWith("ttys"), "ps says: $ps")
+        assertEquals(ps, command.tty)
+    }
+
+    @Test
     fun isNotAPipelineBecauseTheProgramRunsOthersItself() {
         val session = shell()
         session.sendText("sh -c 'sleep 34; :'\r")

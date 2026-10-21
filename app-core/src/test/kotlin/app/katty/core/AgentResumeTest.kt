@@ -435,5 +435,33 @@ class AgentResumeTest {
         }
         assertEquals(listOf("codex"), AgentResume.argv(Agent.CODEX, listOf("codex", "resume", "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"), "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"))
     }
-}
 
+    @Test
+    fun ompAsksForItsSessionWithItsTerminalAndItsCommandLine() {
+        var asked: List<Any?>? = null
+        val argv = listOf("omp", "--model", "opus")
+
+        val found = AgentResume.sessionId(
+            Agent.OMP, 7, 9_000L, home.toFile(), cwd = "/work", tty = "ttys018", argv = argv,
+            ompSession = { cwd, at, terminal, arguments -> asked = listOf(cwd, at, terminal, arguments); "01a15f68-e895-7281-9c21-4abd1f48cab2" },
+        )
+
+        assertEquals("01a15f68-e895-7281-9c21-4abd1f48cab2", found)
+        assertEquals(listOf("/work", 9_000L, "ttys018", argv), asked)
+        assertNull(AgentResume.sessionId(Agent.OMP, 7, 0, home.toFile(), cwd = null, ompSession = { _, _, _, _ -> error("No directory, no question") }))
+        assertNull(AgentResume.sessionId(Agent.OMP, 7, 0, home.toFile(), cwd = "/work", ompSession = { _, _, _, _ -> "1; rm -rf ~" }), "The id goes into a command line")
+    }
+
+    @Test
+    fun resumesOmpWithItsIdAfterAnEqualSignAndKeepsHowItWasStarted() {
+        assertEquals(
+            listOf("omp", "--profile", "work", "--no-lsp", "--resume=01a15f68-e895-7281-9c21-4abd1f48cab2"),
+            AgentResume.argv(
+                Agent.OMP,
+                listOf("omp", "--profile", "work", "-r", "old", "--system-prompt", "be brief", "--no-lsp", "--goal", "ship", "message"),
+                "01a15f68-e895-7281-9c21-4abd1f48cab2",
+            ),
+        )
+        assertEquals(listOf("omp", "--thinking=high"), AgentResume.argv(Agent.OMP, listOf("omp", "--thinking=high", "--continue"), null))
+    }
+}

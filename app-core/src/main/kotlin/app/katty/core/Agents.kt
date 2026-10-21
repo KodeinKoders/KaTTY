@@ -29,6 +29,7 @@ public enum class Agent(
     CLINE("cline", "Cline", "cline", interpreted = true),
     KILO("kilocode", "Kilo Code", "kilo", interpreted = true, aliases = listOf("kilocode")),
     PI("pi", "Pi", "pi"),
+    OMP("omp", "Oh My Pi", "omp"),
     ;
 
     /** What the program that runs it can be called: its [executable] and its [aliases]. */
@@ -55,6 +56,7 @@ public enum class Agent(
                 "kilocode" in name || name == "kilo" -> KILO
                 // Only the whole name: `pi` is in a name like `copilot`.
                 name == "pi" -> PI
+                name == "omp" -> OMP
                 else -> null
             }
         }

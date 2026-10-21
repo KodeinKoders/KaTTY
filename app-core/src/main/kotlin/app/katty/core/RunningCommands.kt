@@ -18,7 +18,7 @@ private const val MAX_COMMAND_CHARS = 2000
 public fun ForegroundCommand.toRunning(
     reportedSession: String? = null,
     sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt ->
-        AgentResume.sessionId(agent, pid, startedAt, cwd = directory, groupPids = groupPids, reportedSession = reportedSession)
+        AgentResume.sessionId(agent, pid, startedAt, cwd = directory, groupPids = groupPids, reportedSession = reportedSession, tty = tty, argv = argv)
     },
 ): RunningCommand? {
     if (pipeline || argv.isEmpty()) return null
