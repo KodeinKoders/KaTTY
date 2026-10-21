@@ -293,4 +293,45 @@ class AgentResumeTest {
             ),
         )
     }
+
+    @Test
+    fun gooseAsksForTheSessionOfItsDirectoryAndStartTime() {
+        var asked: Pair<String, Long>? = null
+
+        val found = AgentResume.sessionId(Agent.GOOSE, 7, 9_000L, home.toFile(), cwd = "/work", gooseSession = { cwd, at -> asked = cwd to at; "20261021_5" })
+
+        assertEquals("20261021_5", found)
+        assertEquals("/work" to 9_000L, asked)
+        assertNull(AgentResume.sessionId(Agent.GOOSE, 7, 9_000L, home.toFile(), cwd = null, gooseSession = { _, _ -> error("No directory, no question") }))
+        assertNull(AgentResume.sessionId(Agent.GOOSE, 7, 0, home.toFile(), cwd = "/work", gooseSession = { _, _ -> "1; rm -rf ~" }), "The id goes into a command line")
+    }
+
+    @Test
+    fun resumesGooseOnItsSessionWithItsModelAndNotItsNameOrItsExtensions() {
+        assertEquals(
+            listOf("goose", "session", "--model", "claude", "--provider", "anthropic", "--resume", "--session-id", "20261021_5"),
+            AgentResume.argv(
+                Agent.GOOSE,
+                listOf("goose", "s", "--name", "work", "--model", "claude", "--with-extension", "KEY=secret cmd", "--provider", "anthropic", "--resume"),
+                "20261021_5",
+            ),
+        )
+        // With no conversation to come back to it is a new session, not the most recent one of any directory.
+        assertEquals(listOf("goose", "session"), AgentResume.argv(Agent.GOOSE, listOf("goose", "session"), null))
+    }
+
+    @Test
+    fun anotherCommandOfGooseIsNotAConversationAndComesBackWithoutItsArguments() {
+        assertEquals(listOf("goose", "run"), AgentResume.argv(Agent.GOOSE, listOf("goose", "run", "-i", "instructions.md"), "20261021_5"))
+    }
+
+    @Test
+    fun aGooseThatWasStartedWithNoCommandIsASessionAndComesBackOnItsConversation() {
+        // `goose` alone runs its default session: that is how it is most often started.
+        assertEquals(
+            listOf("goose", "session", "--resume", "--session-id", "20261021_5"),
+            AgentResume.argv(Agent.GOOSE, listOf("goose"), "20261021_5"),
+        )
+        assertEquals(listOf("goose", "session"), AgentResume.argv(Agent.GOOSE, listOf("goose"), null))
+    }
 }

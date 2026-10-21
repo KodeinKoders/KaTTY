@@ -35,6 +35,8 @@ class AgentsTest {
         assertEquals(Agent.CRUSH, Agent.fromProcess("crush"))
         assertEquals(Agent.AIDER, Agent.fromApp("aider"))
         assertEquals(Agent.AIDER, Agent.fromProcess("aider"))
+        assertEquals(Agent.GOOSE, Agent.fromApp("goose"))
+        assertEquals(Agent.GOOSE, Agent.fromProcess("goose"))
     }
 
     @Test
@@ -59,7 +61,7 @@ class AgentsTest {
 
     @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }

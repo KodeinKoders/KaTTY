@@ -76,4 +76,13 @@ object AgentLogos {
         fills = listOf("M12 3 3 21h3.4l1.5-3.6h8.2l1.5 3.6H21zM9.2 14.4 12 7.9l2.8 6.5z"),
         grid = 24f, fillType = PathFillType.EvenOdd,
     )
+
+    /** Drawn for KaTTY, not Goose's logo (none is published as an icon set): a goose, head and beak on a neck over a body. */
+    val Goose = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf(
+            "M15.800 2.400a2.700 2.700 0 1 1 0 5.400 2.700 2.700 0 0 1 0-5.400zM18.200 3.700 22.800 5.200 18.200 6.600zM14 7h3.400L14.600 13.500H10.600zM2 9.500 7 12.500H4.200zM3.500 15c0-2 2.500-3.500 7-3.500 3 0 5.500.800 6.800 2.500L19.500 13.500l-.9 3c-1.200 2.500-3.800 4-7.100 4C6.800 20.500 3.500 18.500 3.500 15z",
+        ),
+        grid = 24f,
+    )
 }

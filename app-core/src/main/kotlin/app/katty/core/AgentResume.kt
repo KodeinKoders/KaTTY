@@ -39,6 +39,10 @@ public object AgentResume {
      * (0.35.0 and later), which is what it is started with. Two Aiders in one directory write the same file, which Aider does not support: both
      * come back with the two chats mixed.
      *
+     * - Goose keeps its conversations in one database, like OpenCode: [cwd] and [startedAtMillis] pick the newest one of that directory that
+     * the process created or updated ([gooseSession], which is [GooseStore.sessionFor] by default), and it is started again with
+     * `session --resume --session-id`.
+     *
      * Not done, and why: Codex has no file that ties a process to its conversation (a server that the terminals share holds them), and
      * neither the id of what it runs: it starts again with no conversation. Whether the files of the others follow a conversation that is
      * changed from inside the agent was not checked.
@@ -55,6 +59,7 @@ public object AgentResume {
         cwd: String? = null,
         openCodeSession: (String, Long) -> String? = { directory, startedAt -> OpenCodeStore().sessionFor(directory, startedAt) },
         crushSession: (String, Long) -> String? = { directory, startedAt -> CrushStore().sessionFor(directory, startedAt) },
+        gooseSession: (String, Long) -> String? = { directory, startedAt -> GooseStore().sessionFor(directory, startedAt) },
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
@@ -63,6 +68,7 @@ public object AgentResume {
             Agent.COPILOT -> copilotSessionId(pid, startedAtMillis, home)
             Agent.OPENCODE -> cwd?.let { openCodeSession(it, startedAtMillis) }?.takeIf(::isOpenCodeId)
             Agent.CRUSH -> cwd?.let { crushSession(it, startedAtMillis) }?.takeIf(::isSessionId)
+            Agent.GOOSE -> cwd?.let { gooseSession(it, startedAtMillis) }?.takeIf(::isGooseId)
             else -> null
         }
 
@@ -138,6 +144,9 @@ public object AgentResume {
     // The id goes into a command line: only what an id is made of.
     private fun isSessionId(id: String): Boolean = id.length in 8..64 && id.all { it.isLetterOrDigit() || it == '-' }
 
+    // What Goose makes its ids of (`20261021_5`): it goes into a command line.
+    private fun isGooseId(id: String): Boolean = id.length in 1..64 && id.all { it.isLetterOrDigit() || it == '_' || it == '-' }
+
     // `ses_` and what OpenCode makes the rest of an id of: it goes into a command line.
     private fun isOpenCodeId(id: String): Boolean = Regex("ses_[A-Za-z0-9]+").matches(id)
 
@@ -155,6 +164,13 @@ public object AgentResume {
         val program = original.firstOrNull()?.takeIf { agent != Agent.JUNIE } ?: agent.executable
         val kept = ArrayList<String>()
         kept += program
+        if (agent == Agent.GOOSE) {
+            // Its options belong to the `session` command, which is what a bare `goose` runs as well. Another command (`goose run`,
+            // `goose acp`) is not a conversation to come back to.
+            val command = original.drop(1).firstOrNull { !it.startsWith("-") }
+            if (command != null && command != "session" && command != "s") return listOf(program, command)
+            kept += "session"
+        }
         val known = knownOptions(agent)
         var index = 1
         while (index < original.size) {
@@ -188,6 +204,7 @@ public object AgentResume {
                 Agent.ANTIGRAVITY -> kept += listOf("--conversation", sessionId)
                 Agent.OPENCODE -> kept += listOf("-s", sessionId)
                 Agent.CRUSH -> kept += listOf("--session", sessionId)
+                Agent.GOOSE -> kept += listOf("--resume", "--session-id", sessionId)
                 else -> Unit
             }
         }
@@ -257,6 +274,16 @@ public object AgentResume {
         )
         Agent.OPENCODE -> mapOf("-m" to true, "--model" to true, "--agent" to true, "--port" to true, "--hostname" to true)
         Agent.CRUSH -> mapOf("--yolo" to false, "-y" to false, "--debug" to false, "-d" to false, "--cwd" to true, "-c" to true, "--data-dir" to true, "-D" to true)
+        Agent.GOOSE -> mapOf(
+            "--debug" to false,
+            "--no-profile" to false,
+            "--model" to true,
+            "--provider" to true,
+            "--max-turns" to true,
+            "--max-tool-repetitions" to true,
+            "--with-builtin" to true,
+            "--container" to true,
+        )
         Agent.AIDER -> mapOf(
             "--architect" to false,
             "--yes-always" to false,
