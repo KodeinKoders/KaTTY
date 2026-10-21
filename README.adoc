@@ -231,19 +231,12 @@ In a dialog that asks you to confirm, the keyboard starts on the red button: Ent
 KaTTY knows these agents by name: it recognizes them, shows their logo, and finds out which of them are installed on your machine.
 What more it can do depends on what each agent offers.
 
-The *minimum version* is the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501): older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie and OpenCode, which do not report yet.
+Where a row gives a version, it is the *minimum version*: the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501).
+Older versions look like plain shells in the sidebar, and so do Copilot CLI and Junie, which do not report yet.
 
 [cols="3,2,2,2,2,2,2"]
 |===
 | | Claude Code | Codex | Antigravity | Copilot CLI | Junie | OpenCode
-
-| Minimum version
-| 2.1.295
-| 0.163.0
-| 1.4.0
-| None yet
-| None yet
-| None yet
 
 | Recognized, with its logo
 | Yes
@@ -254,55 +247,50 @@ The *minimum version* is the first one that tells KaTTY what it is doing, by rep
 | Yes
 
 | Live state: working, needs you, done, failed
-| Yes
-| Yes
-| Yes
+| 2.1.295
+| 0.163.0
+| 1.4.0
 | No
 | No
-| No
-
-| Bell, notice and ⌘⇧J when it needs you
-| Yes
-| Yes
-| Yes
-| No
-| No
-| No
+| 2.1.0
 
 | Card on the agent board
-| Yes
-| Yes
-| Yes
+| 2.1.295
+| 0.163.0
+| 1.4.0
 | No
 | No
-| No
+| 2.1.0
 
 | Usage meter
-| Yes
-| Yes
-| Yes
+| 2.1.118
+| 0.48.0
+| 1.1.11
 | No
 | No
-| No
+| 1.2.0
 
 | Resumes its last conversation after a relaunch
-| Yes
+| Yes*
 | No
-| Yes
-| Yes
-| Yes
-| Yes
+| Yes*
+| 1.0.22
+| Yes*
+| 1.2.0
 |===
 
-*Yes* means it works, as far as it was tried.
+*Yes* means it works, as far as it was tried, and a version number means it works from that version on.
 *No* means it is not available.
 
+WARNING: A star after Yes (Yes*) means that resuming relies on files that the agent does not document (where it writes the identifier of its conversation), and may therefore break when the agent changes them: it then starts a new conversation.
+
 * *Live state* comes from the agent itself: KaTTY does not install hooks or read the screen.
-An agent that does not report, such as Copilot CLI, Junie, OpenCode or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
+An agent that does not report, such as Copilot CLI, Junie or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
 Copilot CLI will be compatible once https://github.com/github/copilot-cli/issues/5112[this issue] is resolved, and Junie once https://youtrack.jetbrains.com/issue/JUNIE-5904/Support-OSC-7501-Program-Status-escape-sequences-in-Junie-CLI[this one] is.
 * The *agent board* is not a list of known agents: any program that reports its state (OSC 7501) gets a card, whatever it is.
 The agents above only add their logo and their name, and a program that does not report has no card.
 * The *usage meters* use the agents' own commands.
+Claude Code is asked `claude -p /usage`, Antigravity `agy -p /usage` and Codex `codex app-server` (its `account/rateLimits/read` request); none of them costs a turn.
 Copilot CLI has no command that gives the usage without costing a turn, so it has no meter.
 Junie has none either yet: it will get one once https://youtrack.jetbrains.com/issue/JUNIE-5895/CLI-command-to-query-AI-credit-balance-and-quota[this issue] is resolved.
 OpenCode has no limit to meter, but the header of its pane and its card on the board show how full the context of its session is (a ring) and what the session cost.
@@ -343,7 +331,7 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 
 * macOS on Apple Silicon only, for now.
 * Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
-* Copilot CLI, Junie and OpenCode do not tell KaTTY what they are doing yet.
+* Copilot CLI and Junie do not tell KaTTY what they are doing yet.
 * The Option key is not Alt in your programs: it types the characters of your keyboard layout.
 * The directory and the prompts of a terminal are followed for zsh and bash.
 fish is supported but was never tried, and nushell and elvish are not.
