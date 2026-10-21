@@ -68,6 +68,18 @@ class KattyStoreTest {
     }
 
     @Test
+    fun allProjectsAreOpenedAndClosedAtOnce() {
+        addProject("/a")
+        val b = addProject("/b")
+        store.setProjectOpen(b, false)
+
+        store.setAllProjectsOpen(true)
+        assertEquals(listOf(true, true), state.projects.map { it.open })
+        store.setAllProjectsOpen(false)
+        assertEquals(listOf(false, false), state.projects.map { it.open })
+    }
+
+    @Test
     fun closingAProjectDoesNotMoveTheSelection() {
         val a = addProject("/a")
         val selection = state.selection

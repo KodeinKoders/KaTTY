@@ -97,6 +97,11 @@ public class KattyStore(
         edit { state -> state.copy(projects = state.projects.map { if (it.id == id && it.open != open) it.copy(open = open) else it }) }
     }
 
+    /** Opens or closes every project in the sidebar at once. */
+    public fun setAllProjectsOpen(open: Boolean) {
+        edit { state -> state.copy(projects = state.projects.map { if (it.open != open) it.copy(open = open) else it }) }
+    }
+
     // ----- Workspaces
 
     /**

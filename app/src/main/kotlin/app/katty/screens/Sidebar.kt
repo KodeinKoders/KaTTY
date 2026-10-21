@@ -119,6 +119,8 @@ fun Sidebar(
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             SectionLabel("PROJECTS")
             Spacer(Modifier.weight(1f))
+            KattyIconButton(KattyIcons.ChevronsDown, "Open all projects", { store.setAllProjectsOpen(true) })
+            KattyIconButton(KattyIcons.ChevronsUp, "Close all projects", { store.setAllProjectsOpen(false) })
             KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, shortcut = AppShortcut.ADD_PROJECT.label)
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
