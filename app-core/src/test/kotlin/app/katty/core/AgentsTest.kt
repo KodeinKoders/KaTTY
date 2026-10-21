@@ -31,6 +31,8 @@ class AgentsTest {
         assertNull(Agent.fromApp("gemini-cli"))
         assertEquals(Agent.OPENCODE, Agent.fromApp("opencode"))
         assertEquals(Agent.OPENCODE, Agent.fromProcess("opencode"))
+        assertEquals(Agent.CRUSH, Agent.fromApp("crush"))
+        assertEquals(Agent.CRUSH, Agent.fromProcess("crush"))
     }
 
     @Test
@@ -42,7 +44,7 @@ class AgentsTest {
 
     @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }

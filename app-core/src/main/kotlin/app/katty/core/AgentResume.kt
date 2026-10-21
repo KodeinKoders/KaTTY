@@ -32,6 +32,9 @@ public object AgentResume {
      * - OpenCode keeps its conversations in a database, not in a file named after the process: [cwd] and [startedAtMillis] pick the newest one
      * of that directory that the process created or updated ([openCodeSession], which is [OpenCodeStore.sessionFor] by default).
      *
+     * - Crush keeps its conversations in a database for each project, like OpenCode: [cwd] and [startedAtMillis] pick the newest one of that
+     * project that the process created or updated ([crushSession], which is [CrushStore.sessionFor] by default).
+     *
      * Not done, and why: Codex has no file that ties a process to its conversation (a server that the terminals share holds them), and
      * neither the id of what it runs: it starts again with no conversation. Whether the files of the others follow a conversation that is
      * changed from inside the agent was not checked.
@@ -47,6 +50,7 @@ public object AgentResume {
         openFiles: (Int) -> List<String> = ::openFilePaths,
         cwd: String? = null,
         openCodeSession: (String, Long) -> String? = { directory, startedAt -> OpenCodeStore().sessionFor(directory, startedAt) },
+        crushSession: (String, Long) -> String? = { directory, startedAt -> CrushStore().sessionFor(directory, startedAt) },
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
@@ -54,6 +58,7 @@ public object AgentResume {
             Agent.JUNIE -> junieSessionId(pid, startedAtMillis, home)
             Agent.COPILOT -> copilotSessionId(pid, startedAtMillis, home)
             Agent.OPENCODE -> cwd?.let { openCodeSession(it, startedAtMillis) }?.takeIf(::isOpenCodeId)
+            Agent.CRUSH -> cwd?.let { crushSession(it, startedAtMillis) }?.takeIf(::isSessionId)
             else -> null
         }
 
@@ -176,6 +181,7 @@ public object AgentResume {
                 Agent.COPILOT -> kept += listOf("--resume", sessionId)
                 Agent.ANTIGRAVITY -> kept += listOf("--conversation", sessionId)
                 Agent.OPENCODE -> kept += listOf("-s", sessionId)
+                Agent.CRUSH -> kept += listOf("--session", sessionId)
                 else -> Unit
             }
         }
@@ -222,6 +228,7 @@ public object AgentResume {
             "--agent" to true,
         )
         Agent.OPENCODE -> mapOf("-m" to true, "--model" to true, "--agent" to true, "--port" to true, "--hostname" to true)
+        Agent.CRUSH -> mapOf("--yolo" to false, "-y" to false, "--debug" to false, "-d" to false, "--cwd" to true, "-c" to true, "--data-dir" to true, "-D" to true)
         else -> emptyMap()
     }
 

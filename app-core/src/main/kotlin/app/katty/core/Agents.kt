@@ -16,6 +16,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
     COPILOT("copilot", "Copilot CLI", "copilot"),
     JUNIE("junie", "Junie", "junie"),
     OPENCODE("opencode", "OpenCode", "opencode"),
+    CRUSH("crush", "Crush", "crush"),
     ;
 
     public companion object {
@@ -32,6 +33,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
                 "copilot" in name -> COPILOT
                 "junie" in name -> JUNIE
                 "opencode" in name -> OPENCODE
+                "crush" in name -> CRUSH
                 else -> null
             }
         }

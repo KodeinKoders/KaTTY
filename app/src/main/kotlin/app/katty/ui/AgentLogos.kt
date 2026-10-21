@@ -62,4 +62,11 @@ object AgentLogos {
         fills = listOf("M22 24H2V0h20zM17 4.8H7v14.4h10z"),
         grid = 24f, fillType = PathFillType.EvenOdd,
     )
+
+    /** Drawn for KaTTY, not Charm's logo (none is published as an icon set): a prompt chevron over a bar. */
+    val Crush = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M4 4.5 14 12 4 19.5V15l5-3-5-3zM12 17h8v2.5h-8z"),
+        grid = 24f,
+    )
 }

@@ -234,11 +234,12 @@ What more it can do depends on what each agent offers.
 Where a row gives a version, it is the *minimum version*: the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501).
 Older versions look like plain shells in the sidebar, and so do Copilot CLI and Junie, which do not report yet.
 
-[cols="3,2,2,2,2,2,2"]
+[cols="3,2,2,2,2,2,2,2"]
 |===
-| | Claude Code | Codex | Antigravity | Copilot CLI | Junie | OpenCode
+| | Claude Code | Codex | Antigravity | Copilot CLI | Junie | OpenCode | Crush
 
 | Recognized, with its logo
+| Yes
 | Yes
 | Yes
 | Yes
@@ -253,6 +254,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | No
 | No
 | 2.1.0
+| 0.98.0
 
 | Card on the agent board
 | 2.1.295
@@ -261,6 +263,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | No
 | No
 | 2.1.0
+| 0.98.0
 
 | Usage meter
 | 2.1.118
@@ -269,6 +272,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | No
 | No
 | 1.2.0
+| No
 
 | Resumes its last conversation after a relaunch
 | Yes*
@@ -277,6 +281,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | 1.0.22
 | Yes*
 | 1.2.0
+| 0.51.0
 |===
 
 *Yes* means it works, as far as it was tried, and a version number means it works from that version on.
@@ -299,9 +304,10 @@ A model that OpenCode does not list (one of your own gateway) has a cost and no 
 In the usage panel OpenCode shows what it spent today, over the last 7 days and this month, over all its sessions.
 Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Antigravity, Copilot CLI, Junie and OpenCode resume their conversation; Codex starts again as a new conversation.
+* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode and Crush resume their conversation; Codex starts again as a new conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
-OpenCode's session is the newest one of its directory, so two OpenCodes in one directory are not told apart.
+OpenCode's and Crush's session is the newest one of its directory, so two of them in one directory are not told apart.
+A Crush started with `--data-dir` keeps its conversations where KaTTY does not look: it starts a new one.
 
 
 == Getting started

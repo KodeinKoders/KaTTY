@@ -160,7 +160,7 @@ class AgentResumeTest {
         agyConversation()
         val open = mapOf(4242 to agyOpen(agyId), 4243 to agyOpen("07b629d8-7b88-491f-9c3a-a88cca83bb16"))
 
-        assertEquals(agyId, AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { open[it].orEmpty() })
+        assertEquals(agyId, AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile(), openFiles = { open[it].orEmpty() }))
     }
 
     @Test
@@ -168,17 +168,17 @@ class AgentResumeTest {
         agyConversation()
         agyConversation("07b629d8-7b88-491f-9c3a-a88cca83bb16")
 
-        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { listOf("$home/.gemini/antigravity-cli/history.jsonl") }, "No message yet")
+        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile(), openFiles = { listOf("$home/.gemini/antigravity-cli/history.jsonl") }), "No message yet")
         assertNull(
-            AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { agyOpen(agyId, "07b629d8-7b88-491f-9c3a-a88cca83bb16") },
+            AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile(), openFiles = { agyOpen(agyId, "07b629d8-7b88-491f-9c3a-a88cca83bb16") }),
             "Two conversations cannot be told apart",
         )
-        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { agyOpen("x; rm -rf ~") }, "The id goes into a command line")
+        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile(), openFiles = { agyOpen("x; rm -rf ~") }), "The id goes into a command line")
     }
 
     @Test
     fun noAntigravitySessionWhoseConversationIsNotOnDisk() {
-        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile()) { agyOpen(agyId) })
+        assertNull(AgentResume.sessionId(Agent.ANTIGRAVITY, 4242, 0, home.toFile(), openFiles = { agyOpen(agyId) }))
     }
 
     @Test
@@ -221,17 +221,17 @@ class AgentResumeTest {
     fun openCodeAsksForTheSessionOfItsDirectoryAndStartTime() {
         var asked: Pair<String, Long>? = null
 
-        val found = AgentResume.sessionId(Agent.OPENCODE, 7, 9_000L, home.toFile(), "/work") { cwd, at -> asked = cwd to at; "ses_abc123" }
+        val found = AgentResume.sessionId(Agent.OPENCODE, 7, 9_000L, home.toFile(), cwd = "/work", openCodeSession = { cwd, at -> asked = cwd to at; "ses_abc123" })
 
         assertEquals("ses_abc123", found)
         assertEquals("/work" to 9_000L, asked)
-        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 9_000L, home.toFile(), null) { _, _ -> error("No directory, no question") })
+        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 9_000L, home.toFile(), cwd = null, openCodeSession = { _, _ -> error("No directory, no question") }))
     }
 
     @Test
     fun anOpenCodeIdThatIsNotMadeOfWhatItsAreMadeOfIsRefused() {
-        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 0, home.toFile(), "/work") { _, _ -> "ses_a; rm -rf ~" })
-        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 0, home.toFile(), "/work") { _, _ -> "abc123" })
+        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 0, home.toFile(), cwd = "/work", openCodeSession = { _, _ -> "ses_a; rm -rf ~" }))
+        assertNull(AgentResume.sessionId(Agent.OPENCODE, 7, 0, home.toFile(), cwd = "/work", openCodeSession = { _, _ -> "abc123" }))
     }
 
     @Test
@@ -249,5 +249,26 @@ class AgentResumeTest {
     @Test
     fun openCodeWithNoSessionRerunsBare() {
         assertEquals(listOf("opencode"), AgentResume.argv(Agent.OPENCODE, listOf("opencode", "-s", "ses_old", "a prompt"), null))
+    }
+
+    @Test
+    fun crushAsksForTheSessionOfItsDirectoryAndStartTime() {
+        var asked: Pair<String, Long>? = null
+
+        val found = AgentResume.sessionId(Agent.CRUSH, 7, 9_000L, home.toFile(), cwd = "/work", crushSession = { cwd, at -> asked = cwd to at; "aac2da97-b49c-412f-8847-0302db8a3994" })
+
+        assertEquals("aac2da97-b49c-412f-8847-0302db8a3994", found)
+        assertEquals("/work" to 9_000L, asked)
+        assertNull(AgentResume.sessionId(Agent.CRUSH, 7, 9_000L, home.toFile(), cwd = null, crushSession = { _, _ -> error("No directory, no question") }))
+        assertNull(AgentResume.sessionId(Agent.CRUSH, 7, 0, home.toFile(), cwd = "/work", crushSession = { _, _ -> "x; rm -rf ~" }), "The id goes into a command line")
+    }
+
+    @Test
+    fun resumesCrushOnItsSessionWithItsModeAndNotWhatPicksAnotherOne() {
+        assertEquals(
+            listOf("crush", "--yolo", "--cwd", "/work", "--session", "aac2da97-b49c-412f-8847-0302db8a3994"),
+            AgentResume.argv(Agent.CRUSH, listOf("crush", "--yolo", "--continue", "--cwd", "/work", "-s", "old"), "aac2da97-b49c-412f-8847-0302db8a3994"),
+        )
+        assertEquals(listOf("crush"), AgentResume.argv(Agent.CRUSH, listOf("crush", "--continue"), null))
     }
 }
