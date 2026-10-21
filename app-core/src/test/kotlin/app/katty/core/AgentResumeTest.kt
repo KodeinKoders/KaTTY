@@ -334,4 +334,33 @@ class AgentResumeTest {
         )
         assertEquals(listOf("goose", "session"), AgentResume.argv(Agent.GOOSE, listOf("goose"), null))
     }
+
+    @Test
+    fun clineKeepsHowItWasRunAndNotItsKeyItsSystemPromptOrItsPrompt() {
+        assertEquals(
+            listOf("cline", "-p", "--provider", "anthropic", "--compaction", "basic"),
+            AgentResume.argv(Agent.CLINE, listOf("cline", "-p", "-k", "sk-secret", "--provider", "anthropic", "-s", "be brief", "--compaction", "basic", "fix it"), null),
+        )
+    }
+
+    @Test
+    fun clineAsksForTheSessionOfItsDirectoryAndStartTime() {
+        var asked: Triple<String, Long, List<Int>>? = null
+
+        val found = AgentResume.sessionId(Agent.CLINE, 7, 9_000L, home.toFile(), cwd = "/work", groupPids = listOf(10, 11), clineSession = { cwd, at, pids -> asked = Triple(cwd, at, pids); "1792591989752_0vnpk" })
+
+        assertEquals("1792591989752_0vnpk", found)
+        // The processes of the group go with the question: the native program that the hub knows is not the one that has the terminal.
+        assertEquals(Triple("/work", 9_000L, listOf(10, 11)), asked)
+        assertNull(AgentResume.sessionId(Agent.CLINE, 7, 9_000L, home.toFile(), cwd = null, clineSession = { _, _, _ -> error("No directory, no question") }))
+        assertNull(AgentResume.sessionId(Agent.CLINE, 7, 0, home.toFile(), cwd = "/work", clineSession = { _, _, _ -> "1_a; rm -rf ~" }), "The id goes into a command line")
+    }
+
+    @Test
+    fun resumesClineOnItsSessionByItsId() {
+        assertEquals(
+            listOf("cline", "--yolo", "-m", "sonnet", "--id", "1792591989752_0vnpk"),
+            AgentResume.argv(Agent.CLINE, listOf("cline", "--yolo", "--id", "old_one", "-m", "sonnet", "-k", "sk-secret", "fix it"), "1792591989752_0vnpk"),
+        )
+    }
 }

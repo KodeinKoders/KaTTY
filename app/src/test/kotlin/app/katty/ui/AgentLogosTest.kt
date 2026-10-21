@@ -11,7 +11,7 @@ class AgentLogosTest {
     @Test
     fun everyAgentHasALogoThatIsDrawn() {
         for (dark in listOf(false, true)) {
-            val rendered = render("agent-logos-${if (dark) "dark" else "light"}", 1400, 160, dark = dark) {
+            val rendered = render("agent-logos-${if (dark) "dark" else "light"}", AgentGlyph.entries.size * 130 + 50, 160, dark = dark) {
                 Row(androidx.compose.ui.Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     for (glyph in AgentGlyph.entries) Icon(glyph.icon, glyph.tint, size = 48.dp)
                 }

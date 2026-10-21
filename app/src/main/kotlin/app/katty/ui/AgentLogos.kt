@@ -85,4 +85,11 @@ object AgentLogos {
         ),
         grid = 24f,
     )
+
+    /** Drawn for KaTTY, not Cline's logo (none is published as an icon set): a robot's head, with an antenna and two eyes. */
+    val Cline = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M11 2h2v2.500h-2zM4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM8 10a1.500 1.500 0 1 0 0 3 1.500 1.500 0 0 0 0-3zM16 10a1.500 1.500 0 1 0 0 3 1.500 1.500 0 0 0 0-3z"),
+        grid = 24f, fillType = PathFillType.EvenOdd,
+    )
 }

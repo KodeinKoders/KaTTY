@@ -20,6 +20,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
     CRUSH("crush", "Crush", "crush"),
     AIDER("aider", "Aider", "aider", interpreted = true),
     GOOSE("goose", "Goose", "goose"),
+    CLINE("cline", "Cline", "cline", interpreted = true),
     ;
 
     public companion object {
@@ -39,6 +40,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
                 "crush" in name -> CRUSH
                 "aider" in name -> AIDER
                 "goose" in name -> GOOSE
+                "cline" in name -> CLINE
                 else -> null
             }
         }
@@ -49,12 +51,13 @@ public enum class Agent(public val id: String, public val displayName: String, p
         public fun fromProcess(process: String?): Agent? = process?.let { name -> entries.firstOrNull { it.executable.equals(name, ignoreCase = true) } }
 
         /**
-         * The agent that runs as [argv], a command line as the system has it: its program, or, for an agent that is a script (Aider is Python), the
-         * script that an interpreter (`python3.12`, `Python`) was given first: `Python /opt/homebrew/bin/aider --model x` is Aider, whose process is called `Python`.
+         * The agent that runs as [argv], a command line as the system has it: its program, or, for an agent that is a script (Aider is Python, Cline
+         * is Node), the script that an interpreter (`python3.12`, `Python`, `node`) was given first: `Python /opt/homebrew/bin/aider --model x` is Aider,
+         * whose process is called `Python`.
          */
         public fun fromCommand(argv: List<String>): Agent? {
             val program = argv.firstOrNull()?.let { File(it).name } ?: return null
-            if (!Regex("(?i)python[0-9.]*").matches(program)) return fromProcess(program)
+            if (!Regex("(?i)(python[0-9.]*|node)").matches(program)) return fromProcess(program)
             return argv.getOrNull(1)?.let { File(it).name }?.let { script -> entries.firstOrNull { it.interpreted && it.executable == script } }
         }
     }

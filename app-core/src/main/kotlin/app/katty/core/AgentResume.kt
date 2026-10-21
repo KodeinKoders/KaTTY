@@ -43,6 +43,11 @@ public object AgentResume {
      * the process created or updated ([gooseSession], which is [GooseStore.sessionFor] by default), and it is started again with
      * `session --resume --session-id`.
      *
+     * - Cline keeps its sessions in a database, and its sessions run in a daemon that the terminals share, so the `pid` of its rows says nothing of
+     * the process. What does is the hub's record of its clients: the one that registered with a pid of the process's group ([groupPids]: the native
+     * program is a child of the script that has the terminal) is the one whose last session is the terminal's ([clineSession], which is
+     * [ClineStore.sessionFor] by default), and `--id` resumes it. A Cline that is not in the hub is looked for by [cwd] and [startedAtMillis].
+     *
      * Not done, and why: Codex has no file that ties a process to its conversation (a server that the terminals share holds them), and
      * neither the id of what it runs: it starts again with no conversation. Whether the files of the others follow a conversation that is
      * changed from inside the agent was not checked.
@@ -60,6 +65,8 @@ public object AgentResume {
         openCodeSession: (String, Long) -> String? = { directory, startedAt -> OpenCodeStore().sessionFor(directory, startedAt) },
         crushSession: (String, Long) -> String? = { directory, startedAt -> CrushStore().sessionFor(directory, startedAt) },
         gooseSession: (String, Long) -> String? = { directory, startedAt -> GooseStore().sessionFor(directory, startedAt) },
+        clineSession: (String, Long, List<Int>) -> String? = { directory, startedAt, pids -> ClineStore().sessionFor(directory, startedAt, pids) },
+        groupPids: List<Int> = emptyList(),
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
@@ -68,7 +75,8 @@ public object AgentResume {
             Agent.COPILOT -> copilotSessionId(pid, startedAtMillis, home)
             Agent.OPENCODE -> cwd?.let { openCodeSession(it, startedAtMillis) }?.takeIf(::isOpenCodeId)
             Agent.CRUSH -> cwd?.let { crushSession(it, startedAtMillis) }?.takeIf(::isSessionId)
-            Agent.GOOSE -> cwd?.let { gooseSession(it, startedAtMillis) }?.takeIf(::isGooseId)
+            Agent.GOOSE -> cwd?.let { gooseSession(it, startedAtMillis) }?.takeIf(::isUnderscoreId)
+            Agent.CLINE -> cwd?.let { clineSession(it, startedAtMillis, groupPids) }?.takeIf(::isUnderscoreId)
             else -> null
         }
 
@@ -144,8 +152,8 @@ public object AgentResume {
     // The id goes into a command line: only what an id is made of.
     private fun isSessionId(id: String): Boolean = id.length in 8..64 && id.all { it.isLetterOrDigit() || it == '-' }
 
-    // What Goose makes its ids of (`20261021_5`): it goes into a command line.
-    private fun isGooseId(id: String): Boolean = id.length in 1..64 && id.all { it.isLetterOrDigit() || it == '_' || it == '-' }
+    // What Goose and Cline make their ids of (`20261021_5`, `1792591989752_0vnpk`): it goes into a command line.
+    private fun isUnderscoreId(id: String): Boolean = id.length in 1..64 && id.all { it.isLetterOrDigit() || it == '_' || it == '-' }
 
     // `ses_` and what OpenCode makes the rest of an id of: it goes into a command line.
     private fun isOpenCodeId(id: String): Boolean = Regex("ses_[A-Za-z0-9]+").matches(id)
@@ -205,6 +213,7 @@ public object AgentResume {
                 Agent.OPENCODE -> kept += listOf("-s", sessionId)
                 Agent.CRUSH -> kept += listOf("--session", sessionId)
                 Agent.GOOSE -> kept += listOf("--resume", "--session-id", sessionId)
+                Agent.CLINE -> kept += listOf("--id", sessionId)
                 else -> Unit
             }
         }
@@ -274,6 +283,30 @@ public object AgentResume {
         )
         Agent.OPENCODE -> mapOf("-m" to true, "--model" to true, "--agent" to true, "--port" to true, "--hostname" to true)
         Agent.CRUSH -> mapOf("--yolo" to false, "-y" to false, "--debug" to false, "-d" to false, "--cwd" to true, "-c" to true, "--data-dir" to true, "-D" to true)
+        // `-p` is the plan mode here and `-k` the API key, which is not kept. `--thinking` may have no value, and then the next word cannot be
+        // told from a prompt. `--worktree` would make another one, and `--zen` runs the session in the background.
+        Agent.CLINE -> mapOf(
+            "--plan" to false,
+            "-p" to false,
+            "--yolo" to false,
+            "-y" to false,
+            "--tui" to false,
+            "-i" to false,
+            "--auto-approve" to true,
+            "--compaction" to true,
+            "--provider" to true,
+            "-P" to true,
+            "--model" to true,
+            "-m" to true,
+            "--cwd" to true,
+            "-c" to true,
+            "--retries" to true,
+            "--timeout" to true,
+            "-t" to true,
+            "--config" to true,
+            "--data-dir" to true,
+            "--hooks-dir" to true,
+        )
         Agent.GOOSE -> mapOf(
             "--debug" to false,
             "--no-profile" to false,

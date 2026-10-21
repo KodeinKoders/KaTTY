@@ -93,6 +93,18 @@ class ForegroundCommandTest {
     }
 
     @Test
+    fun hasEveryProcessOfItsGroupAndNotOnlyTheProgram() {
+        val session = shell()
+        session.sendText("sh -c 'sleep 36; :'\r")
+        session.awaitCommand("sh") { it.argv.firstOrNull() == "sh" }
+
+        // The program, and the `sleep` that it started and that stayed in its group.
+        val command = session.awaitCommand("the child to be in the group") { it.groupPids.size >= 2 }
+
+        assertTrue(command.pid in command.groupPids)
+    }
+
+    @Test
     fun isNotAPipelineBecauseTheProgramRunsOthersItself() {
         val session = shell()
         session.sendText("sh -c 'sleep 34; :'\r")

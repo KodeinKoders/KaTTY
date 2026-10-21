@@ -15,15 +15,15 @@ private const val MAX_COMMAND_CHARS = 2000
  * @param sessionId The id of the conversation that the agent [Agent] runs as the pid, which started at the time; by default [AgentResume.sessionId].
  */
 public fun ForegroundCommand.toRunning(
-    sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt -> AgentResume.sessionId(agent, pid, startedAt, cwd = directory) },
+    sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt -> AgentResume.sessionId(agent, pid, startedAt, cwd = directory, groupPids = groupPids) },
 ): RunningCommand? {
     if (pipeline || argv.isEmpty()) return null
     val agent = Agent.fromCommand(argv)
     val tooLong = argv.sumOf { it.length + 1 } > MAX_COMMAND_CHARS
     val line = when (agent) {
         Agent.OPENCODE -> listOf(openCodeProgram(argv.first(), executable)) + argv.drop(1)
-        // The script is what is typed, not the interpreter that runs it (`Python`, from a path that a Homebrew update removes).
-        Agent.AIDER -> if (File(argv.first()).name == agent.executable) argv else argv.drop(1)
+        // The script is what is typed, not the interpreter that runs it (`Python`, from a path that a Homebrew update removes; `node`).
+        Agent.AIDER, Agent.CLINE -> if (File(argv.first()).name == agent.executable) argv else argv.drop(1)
         else -> argv
     }
     val kept = when {

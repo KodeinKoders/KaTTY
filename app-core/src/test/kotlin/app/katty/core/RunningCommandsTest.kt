@@ -93,4 +93,15 @@ class RunningCommandsTest {
         assertEquals(listOf("/opt/homebrew/bin/aider", "--model", "sonnet", "--restore-chat-history"), running.toTyped().argv)
         assertEquals(true, running.toTyped().run)
     }
+
+    @Test
+    fun aClineIsKeptByItsScriptAndComesBackWithHowItWasRunAndNotItsPromptOrKey() {
+        val running = command("node", "/opt/homebrew/bin/cline", "--yolo", "-m", "sonnet", "-k", "sk-secret", "fix it").toRunning { _, _, _ -> null }!!
+
+        assertEquals("cline", running.agent)
+        assertEquals(listOf("/opt/homebrew/bin/cline", "--yolo", "-m", "sonnet", "-k", "sk-secret", "fix it"), running.argv)
+        // The key is the user's, and the prompt would be sent twice: neither is typed again.
+        assertEquals(listOf("/opt/homebrew/bin/cline", "--yolo", "-m", "sonnet"), running.toTyped().argv)
+        assertEquals(true, running.toTyped().run)
+    }
 }

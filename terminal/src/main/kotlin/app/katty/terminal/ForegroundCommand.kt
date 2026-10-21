@@ -22,6 +22,8 @@ private var warned = false
  * @property startedAtMillis When it started, in milliseconds since the epoch: what tells the files it wrote from the ones of an older program.
  * @property executable The path of the program's executable file as the system has it (`proc_pidpath`), which is not what `argv` names when it was
  * found on the `PATH` (`opencode`) or is a link: `null` when it could not be read.
+ * @property groupPids The pids of every process of its group: the program, and what it started that stayed in the group (a launcher script that
+ * runs the real program as a child: `node /opt/homebrew/bin/cline` and the native `.cline` that registers with its daemon). Empty when it could not be read.
  * @property pipeline Whether it is one of several programs of a pipeline (`git log | less`): the others are not known, so it cannot be started again as it was.
  */
 public data class ForegroundCommand(
@@ -31,6 +33,7 @@ public data class ForegroundCommand(
     val startedAtMillis: Long,
     val pipeline: Boolean,
     val executable: String? = null,
+    val groupPids: List<Int> = emptyList(),
 )
 
 private val linker = Linker.nativeLinker()
@@ -117,6 +120,7 @@ internal fun foregroundCommand(fd: Int, shellPid: Int): ForegroundCommand? =
                         startedAtMillis = startTime(arena, group),
                         pipeline = isPipeline(arena, group, shellPid),
                         executable = executablePath(arena, group),
+                        groupPids = groupPids(arena, group),
                     )
                 }
             }
@@ -204,4 +208,12 @@ private fun isPipeline(arena: Arena, group: Int, shellPid: Int): Boolean {
         if (info.get(ValueLayout.JAVA_INT, BSDINFO_PPID) == shellPid) shellChildren++
     }
     return shellChildren > 1
+}
+
+// Every process whose group is [group].
+private fun groupPids(arena: Arena, group: Int): List<Int> {
+    val buffer = arena.allocate(MAX_GROUP_PIDS * 4L)
+    val bytes = procListPids.invokeExact(PROC_PGRP_ONLY, group, buffer, MAX_GROUP_PIDS * 4) as Int
+    if (bytes <= 0) return emptyList()
+    return List(bytes / 4) { buffer.getAtIndex(ValueLayout.JAVA_INT, it.toLong()) }.filter { it > 0 }
 }
