@@ -232,7 +232,7 @@ KaTTY knows these agents by name: it recognizes them, shows their logo, and find
 What more it can do depends on what each agent offers.
 
 Where a cell gives a version, it is the *minimum version*: the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501).
-Older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie, Aider, Goose, Cline and Kilo Code, which do not report yet.
+Older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie, Aider, Goose, Cline, Kilo Code and OpenHands, which do not report yet.
 
 [cols="2h,3,3,2,4"]
 |===
@@ -315,20 +315,27 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI, Jun
 | 18.8.7
 | 16.1.15
 | 18.4.9
+
+| OpenHands
+| Yes
+| No
+| No
+| 1.7.1 (one per dir)
 |===
 
 *Yes* means it works, as far as it was tried, and a version number means it works from that version on.
 *No* means it is not available.
 
-NOTE: *one per dir* means that only one conversation of that agent can be resumed for each directory.
-Crush and Goose give KaTTY nothing that ties a running process to its conversation, so it takes the newest conversation of the directory since the process started.
+NOTE: *one per dir* means that two of that agent in the same directory cannot be told apart.
+Crush, Goose and OpenHands give KaTTY nothing that ties a running process to its conversation, so it takes the newest conversation of the directory since the process started.
 Aider keeps one chat file for each directory, which every Aider started there writes to.
-Two of that agent in the same directory therefore come back on the same conversation (Aider: on the two chats mixed).
+When another terminal of KaTTY runs the same agent in the same directory, KaTTY resumes neither: they come back with no conversation, and not each on the other's.
+A terminal that KaTTY itself started on a conversation of its own (`--resume`, `--session`) keeps that one.
 
 WARNING: *Yes (undocumented)* means that resuming relies on files that the agent does not document (where it writes the identifier of its conversation), and may therefore break when the agent changes them: it then starts a new conversation.
 
 * *Live state* comes from the agent itself: KaTTY does not install hooks or read the screen.
-An agent that does not report, such as Copilot CLI, Junie, Aider, Goose, Cline or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
+An agent that does not report, such as Copilot CLI, Junie, Aider, Goose, Cline, OpenHands or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
 Copilot CLI will be compatible once https://github.com/github/copilot-cli/issues/5112[this issue] is resolved, and Junie once https://youtrack.jetbrains.com/issue/JUNIE-5904/Support-OSC-7501-Program-Status-escape-sequences-in-Junie-CLI[this one] is.
 Goose reports its state since https://github.com/aaif-goose/goose/pull/12928[this change], which is merged but not in a release yet (1.55.0 does not have it): it will be compatible with the next one.
 Kilo Code does not report its state yet: https://github.com/Kilo-Org/kilocode/issues/14973[this request] to emit it is open.
@@ -345,18 +352,19 @@ In the usage panel they show what they spent today, over the last 7 days and thi
 Oh My Pi does the same, from its own statistics database (`~/.omp/stats.db`): its `omp stats -j` prints the last 24 hours and nothing else, so KaTTY runs that command only to bring the database up to date (omp does not keep it while it runs, and it takes a third of a second), and reads the periods from the database. The first time, omp makes the database.
 Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline, Kilo Code and Oh My Pi resume their conversation.
+* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline, Kilo Code, Oh My Pi and OpenHands resume their conversation.
 Codex and Pi start again with no conversation, on purpose: each can start a new conversation inside the program that runs (`/new`), nothing tells which one it is in, and coming back on an older one is worse than a new one.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
 OpenCode's session is the last one that it reported as working or waiting, so two OpenCodes in one directory are told apart once each has worked (before that, and before 2.1.0, it is the newest one of the directory).
 Crush's and Goose's session is the newest one of its directory, so two of them in one directory are not told apart.
+OpenHands keeps nothing of which process a conversation is, so its conversation is the newest one of the directory that was made since the process started (`/new` is followed once a message has been sent), else the one it was resumed with: two OpenHands in one directory are not told apart, and a `/new` with no message after it is not seen (it comes back on the conversation before).
 Cline's is the one that its own client has used, so two Clines in one directory are told apart (before 3.0.66 a Cline does not tell its daemon which process it is, and is looked for by its directory, like the others).
 Kilo Code's is the one that the log of its own process names when it makes a session (the log is among the files the process has open, and says `sessionId=…`), so two Kilos in one directory are told apart then; a Kilo whose log says nothing is guessed like the others, by the newest conversation of its directory.
 Oh My Pi (omp) writes down which session each terminal is in (`~/.omp/agent/terminal-sessions/<tty>`), and KaTTY reads it, so two omps in one directory are told apart and `/new` and `/resume` are followed. A session that has no conversation yet (`fresh`: a new omp, or after `/new`) is not resumed: it starts again with none. An omp started with its own `--profile` keeps that file elsewhere and starts again with none; with its `autoResume` setting on (off by default) omp itself resumes the newest session of the directory.
 Pi hides its command line (it renames its process and empties it), so KaTTY cannot know the options it was started with: it comes back as `pi`.
 A Crush or a Cline started with `--data-dir` keeps its conversations where KaTTY does not look: it starts a new one.
 Aider has no conversation to find: it is started again with `--restore-chat-history`, which loads the chat that it keeps in the directory (`.aider.chat.history.md`).
-Two Aiders in the same directory are not supported by Aider itself, which writes both chats to that one file: both come back with the two mixed.
+Two Aiders in the same directory are not supported by Aider itself, which writes both chats to that one file: neither loads it when it comes back, so that they do not both come back with the two mixed.
 
 
 == Getting started
@@ -386,7 +394,7 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 
 * macOS on Apple Silicon only, for now.
 * Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
-* Copilot CLI, Junie, Aider, Goose, Cline and Kilo Code do not tell KaTTY what they are doing yet.
+* Copilot CLI, Junie, Aider, Goose, Cline, Kilo Code and OpenHands do not tell KaTTY what they are doing yet.
 * The Option key is not Alt in your programs: it types the characters of your keyboard layout.
 * The directory and the prompts of a terminal are followed for zsh and bash.
 fish is supported but was never tried, and nushell and elvish are not.

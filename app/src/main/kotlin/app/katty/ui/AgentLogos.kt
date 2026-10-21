@@ -113,4 +113,11 @@ object AgentLogos {
         fills = listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 6.200a5.800 5.800 0 1 1 0 11.600 5.800 5.800 0 0 1 0-11.600zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"),
         grid = 24f, fillType = PathFillType.EvenOdd,
     )
+
+    /** Drawn for KaTTY, not OpenHands' logo (none is published as an icon set): the letter H, for hands. */
+    val OpenHands = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M5 4h3.200v6.300h7.600V4H19v16h-3.200v-6.700H8.200V20H5z"),
+        grid = 24f,
+    )
 }

@@ -16,6 +16,11 @@ public enum class Agent(
     public val executable: String,
     public val interpreted: Boolean = false,
     public val aliases: List<String> = emptyList(),
+    /**
+     * Whether its conversation is looked for by its directory (the newest one there), which says nothing of which process it belongs to: two of it in one
+     * directory are not told apart, and neither is resumed from the directory (see [RunningCommand.apartFromOthers]).
+     */
+    public val byDirectory: Boolean = false,
 ) {
     CLAUDE("claude", "Claude Code", "claude"),
     CODEX("codex", "Codex", "codex"),
@@ -23,13 +28,14 @@ public enum class Agent(
     COPILOT("copilot", "Copilot CLI", "copilot"),
     JUNIE("junie", "Junie", "junie"),
     OPENCODE("opencode", "OpenCode", "opencode"),
-    CRUSH("crush", "Crush", "crush"),
-    AIDER("aider", "Aider", "aider", interpreted = true),
-    GOOSE("goose", "Goose", "goose"),
+    CRUSH("crush", "Crush", "crush", byDirectory = true),
+    AIDER("aider", "Aider", "aider", interpreted = true, byDirectory = true),
+    GOOSE("goose", "Goose", "goose", byDirectory = true),
     CLINE("cline", "Cline", "cline", interpreted = true),
     KILO("kilocode", "Kilo Code", "kilo", interpreted = true, aliases = listOf("kilocode")),
     PI("pi", "Pi", "pi"),
     OMP("omp", "Oh My Pi", "omp"),
+    OPENHANDS("openhands", "OpenHands", "openhands", byDirectory = true),
     ;
 
     /** What the program that runs it can be called: its [executable] and its [aliases]. */
@@ -57,6 +63,7 @@ public enum class Agent(
                 // Only the whole name: `pi` is in a name like `copilot`.
                 name == "pi" -> PI
                 name == "omp" -> OMP
+                "openhands" in name -> OPENHANDS
                 else -> null
             }
         }

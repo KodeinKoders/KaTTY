@@ -9,6 +9,7 @@ import app.katty.core.KattyStore
 import app.katty.core.RestorePolicy
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
+import app.katty.core.apartFromOthers
 import app.katty.core.sessionOf
 import app.katty.core.toRunning
 import app.katty.core.toTyped
@@ -208,9 +209,23 @@ class SessionRegistry(
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
                     if (name != null) {
                         var running = command?.let { withContext(Dispatchers.IO) { it.toRunning(reportedSession = reportedSession.get()) } }
+                        // An agent that only guesses its conversation by its directory cannot tell it from another's when another terminal runs the same agent there:
+                        // it comes back on none (an OpenCode, unless it reported its session, guesses as well).
+                        var ambiguous = false
+                        if (running != null) {
+                            val agent = running.agent?.let(Agent::byId)
+                            val guessed = agent?.byDirectory == true || (agent == Agent.OPENCODE && reportedSession.get() == null)
+                            val others = store.state.value.allTerminals().filter { it.terminal.id != spec.id }.map { it.terminal.running }
+                            val apart = running.apartFromOthers(others, guessed)
+                            ambiguous = apart != running
+                            running = apart
+                        }
                         // omp says itself what session its terminal is in, and `fresh` for none (after `/new`): not knowing is not what that is, so the session it came
                         // back on is not put back.
-                        if (command != null && running != null && resumed?.second != null && running.agent == resumed.first && running.agent != Agent.OMP.id) {
+                        if (command != null && running != null && resumed?.second != null && running.agent == resumed.first && running.agent != Agent.OMP.id &&
+                            // What an Aider comes back on is the chat of the directory, and the other Aider loads the same one: it is not the one that was resumed.
+                            !(ambiguous && running.agent == Agent.AIDER.id)
+                        ) {
                             if (resumedPid == 0) resumedPid = command.pid
                             // An OpenCode that has not worked has said nothing of its session, and its directory only says the newest one: that may be another
                             // OpenCode's, so the session it came back on stays until it says its own.

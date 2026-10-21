@@ -85,7 +85,7 @@ class RunningCommandsTest {
     fun anAiderIsKeptByItsScriptAndComesBackWithItsChat() {
         val python = "/opt/homebrew/Cellar/python@3.12/Frameworks/Python.app/Contents/MacOS/Python"
 
-        val running = command(python, "/opt/homebrew/bin/aider", "--model", "sonnet", "--message", "fix it").toRunning { _, _, _ -> null }!!
+        val running = command(python, "/opt/homebrew/bin/aider", "--model", "sonnet", "--message", "fix it").toRunning()!!
 
         assertEquals("aider", running.agent)
         assertEquals(listOf("/opt/homebrew/bin/aider", "--model", "sonnet", "--message", "fix it"), running.argv)
@@ -143,5 +143,47 @@ class RunningCommandsTest {
         val running = command("omp", "--model", "opus").toRunning { _, _, _ -> null }!!
 
         assertEquals(listOf("omp", "--model", "opus"), running.toTyped().argv)
+    }
+
+    @Test
+    fun anOpenHandsComesBackOnItsConversationWithHowItWasRunAndNotWhatSeededOrResumedIt() {
+        val running = command("openhands", "--always-approve", "-t", "fix it", "--resume", "11111111-2222-3333-4444-555555555555", "--last")
+            .toRunning { _, _, _ -> "22a2ff2b-1255-419b-9636-5045c8977380" }!!
+
+        assertEquals("openhands", running.agent)
+        // The task is not given again, and the id it was resumed with is the one it is in now.
+        assertEquals(listOf("openhands", "--always-approve", "--resume", "22a2ff2b-1255-419b-9636-5045c8977380"), running.toTyped().argv)
+        assertEquals(true, running.toTyped().run)
+    }
+
+    private fun running(agent: String, directory: String?, session: String? = "ses_1") = RunningCommand(listOf(agent), directory, agent, session)
+
+    @Test
+    fun anAgentGuessedByItsDirectoryComesBackOnNoneWhenAnotherTerminalRunsTheSameAgentThere() {
+        val crush = running("crush", "/work", "aac2da97-b49c-412f-8847-0302db8a3994")
+
+        // Another Crush in the same directory: the newest conversation of the directory may be that one's.
+        assertEquals(crush.copy(agentSession = null), crush.apartFromOthers(listOf(running("crush", "/work", "other")), guessed = true))
+        // Another directory, another agent, or nothing at all, leave it as it is.
+        assertEquals(crush, crush.apartFromOthers(listOf(running("crush", "/elsewhere")), guessed = true))
+        assertEquals(crush, crush.apartFromOthers(listOf(running("goose", "/work")), guessed = true))
+        assertEquals(crush, crush.apartFromOthers(listOf(null, RunningCommand(listOf("emacs"), "/work")), guessed = true))
+        assertEquals(crush, crush.apartFromOthers(emptyList(), guessed = true))
+    }
+
+    @Test
+    fun anAgentThatKnowsItsConversationKeepsItWhateverIsInTheDirectory() {
+        // Claude Code has its own file for each process: `guessed` is false, and the other one in the directory changes nothing.
+        val claude = running("claude", "/work", "7a1c2b3d-0000-4000-8000-000000000001")
+
+        assertEquals(claude, claude.apartFromOthers(listOf(running("claude", "/work")), guessed = false))
+        // Nor is there anything to take off when there is no conversation, or when the directory is not known.
+        assertEquals(running("crush", "/work", null), running("crush", "/work", null).apartFromOthers(listOf(running("crush", "/work")), guessed = true))
+        assertEquals(running("crush", null), running("crush", null).apartFromOthers(listOf(running("crush", null)), guessed = true))
+    }
+
+    @Test
+    fun theAgentsThatAreGuessedByTheirDirectoryAreTheOnesThatHaveNothingElseToGoBy() {
+        assertEquals(setOf(Agent.CRUSH, Agent.GOOSE, Agent.AIDER, Agent.OPENHANDS), Agent.entries.filter { it.byDirectory }.toSet())
     }
 }

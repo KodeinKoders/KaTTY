@@ -65,6 +65,10 @@ public object AgentResume {
      * `/new` and `/resume` and says `fresh` for a session with no conversation ([ompSession], which is [OmpStore.sessionFor] by default). Both are no session:
      * nothing is resumed, and the registry does not put an older one back. It keeps its command line ([argv]).
      *
+     * - OpenHands keeps a folder for each conversation (`~/.openhands/conversations/<id>`, with the directory it works in) and nothing of which process one
+     * is: the newest of the directory that was made since the process started, else the id on its command line ([argv]: `--resume <id>`, which is how it is
+     * started again), else for a `--resume` with no id the newest that was written to since ([openHandsSession], which is [OpenHandsStore.sessionFor]).
+     *
      * Whether the files of the others follow a conversation that is changed from inside the agent was not checked.
      *
      * @param openFiles The paths of the files that the process has open.
@@ -88,6 +92,7 @@ public object AgentResume {
         tty: String? = null,
         argv: List<String> = emptyList(),
         ompSession: (String, Long, String?, List<String>) -> String? = { directory, startedAt, terminal, arguments -> OmpStore().sessionFor(directory, startedAt, terminal, arguments) },
+        openHandsSession: (String, Long, List<String>) -> String? = { directory, startedAt, arguments -> OpenHandsStore().sessionFor(directory, startedAt, arguments) },
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
@@ -99,6 +104,10 @@ public object AgentResume {
             Agent.CRUSH -> cwd?.let { crushSession(it, startedAtMillis) }?.takeIf(::isSessionId)
             Agent.GOOSE -> cwd?.let { gooseSession(it, startedAtMillis) }?.takeIf(::isUnderscoreId)
             Agent.CLINE -> cwd?.let { clineSession(it, startedAtMillis, groupPids) }?.takeIf(::isUnderscoreId)
+            // OpenHands keeps nothing of which process a conversation is: its directory, when it was made and its own command line are what there is.
+            Agent.OPENHANDS -> cwd?.let { openHandsSession(it, startedAtMillis, argv) }?.takeIf(::isSessionId)
+            // Aider has no conversation to name: it loads the chat of the directory. What stands for it is a word that says it is to be loaded, so that it can be taken off.
+            Agent.AIDER -> AIDER_HISTORY
             // omp keeps what session each terminal is in, and says `fresh` for one with no conversation: that is `null`, and it is not a reason to guess.
             Agent.OMP -> cwd?.let { ompSession(it, startedAtMillis, tty, argv) }?.takeIf(::isSessionId)
             // Its database and its log are what the process has open: the script that has the terminal and the native program that it started.
@@ -198,6 +207,11 @@ public object AgentResume {
         val program = original.firstOrNull()?.takeIf { agent != Agent.JUNIE } ?: agent.executable
         val kept = ArrayList<String>()
         kept += program
+        if (agent == Agent.OPENHANDS) {
+            // `openhands serve`, `web`, `mcp`… are not a conversation to come back to.
+            val command = original.drop(1).firstOrNull { !it.startsWith("-") }
+            if (command in OPENHANDS_COMMANDS) return listOf(program, command!!)
+        }
         if (agent == Agent.KILO) {
             // Its options are the interface's. Another command (`kilo run`, `kilo serve`) is not a conversation to come back to, and the project that
             // `kilo [project]` is given is where the process already is.
@@ -245,7 +259,7 @@ public object AgentResume {
             }
         }
         // Aider has no ids: it keeps the chat of a directory in a file there and loads it when it is asked to.
-        if (agent == Agent.AIDER) kept += "--restore-chat-history"
+        if (agent == Agent.AIDER && sessionId != null) kept += "--restore-chat-history"
         if (sessionId != null) {
             when (agent) {
                 Agent.CLAUDE -> kept += listOf("--resume", sessionId)
@@ -259,6 +273,7 @@ public object AgentResume {
                 Agent.KILO -> kept += listOf("--session", sessionId)
                 // Its option takes its value with an `=`: without it, `--resume` opens the picker, and the id would be taken for a message.
                 Agent.OMP -> kept += "--resume=$sessionId"
+                Agent.OPENHANDS -> kept += listOf("--resume", sessionId)
                 else -> Unit
             }
         }
@@ -375,6 +390,13 @@ public object AgentResume {
             "--no-rules" to false,
             "--no-title" to false,
         )
+        // `--task` and `--file` would seed the conversation again, `--headless` and `--json` are not the interface, and `--resume` and `--last` are replaced by what it was in.
+        Agent.OPENHANDS -> mapOf(
+            "--always-approve" to false,
+            "--llm-approve" to false,
+            "--exit-without-confirmation" to false,
+            "--override-with-envs" to false,
+        )
         Agent.CLINE -> mapOf(
             "--plan" to false,
             "-p" to false,
@@ -434,6 +456,12 @@ public object AgentResume {
         "import", "github", "pr", "session", "plugin", "plug", "db", "console", "cloud", "roll-call", "profile", "auto", "remote", "daemon", "config",
         "worktree", "help",
     )
+
+    // What `openhands --help` lists as commands.
+    private val OPENHANDS_COMMANDS = setOf("acp", "serve", "web", "mcp", "cloud", "login", "logout", "view")
+
+    /** What [sessionId] says for Aider: the chat of the directory is to be loaded when it starts again. */
+    internal const val AIDER_HISTORY = "history"
 
     private const val STALE_MARGIN_MS = 5_000L
 }

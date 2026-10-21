@@ -277,9 +277,12 @@ class AgentResumeTest {
     fun aiderIsStartedWithItsChatHistoryAndTheFilesItKeepsItIn() {
         assertEquals(
             listOf("aider", "--yes-always", "--chat-history-file", "/work/chat.md", "--restore-chat-history"),
-            AgentResume.argv(Agent.AIDER, listOf("aider", "--yes-always", "--message", "go", "--api-key", "x=secret", "--chat-history-file", "/work/chat.md", "main.kt"), null),
+            AgentResume.argv(Agent.AIDER, listOf("aider", "--yes-always", "--message", "go", "--api-key", "x=secret", "--chat-history-file", "/work/chat.md", "main.kt"), "history"),
         )
-        assertEquals(listOf("aider", "--restore-chat-history"), AgentResume.argv(Agent.AIDER, listOf("aider"), null))
+        assertEquals(listOf("aider", "--restore-chat-history"), AgentResume.argv(Agent.AIDER, listOf("aider"), "history"))
+        // With nothing that says the chat is to be loaded (another Aider is in the directory), it starts with none.
+        assertEquals(listOf("aider"), AgentResume.argv(Agent.AIDER, listOf("aider"), null))
+        assertEquals("history", AgentResume.sessionId(Agent.AIDER, 7, 0, home.toFile(), cwd = "/work"))
     }
 
     @Test
@@ -463,5 +466,31 @@ class AgentResumeTest {
             ),
         )
         assertEquals(listOf("omp", "--thinking=high"), AgentResume.argv(Agent.OMP, listOf("omp", "--thinking=high", "--continue"), null))
+    }
+
+    @Test
+    fun openHandsAsksForItsConversationWithItsDirectoryStartAndCommandLine() {
+        var asked: List<Any>? = null
+        val argv = listOf("openhands", "--resume", "22a2ff2b-1255-419b-9636-5045c8977380")
+
+        val found = AgentResume.sessionId(
+            Agent.OPENHANDS, 7, 9_000L, home.toFile(), cwd = "/work", argv = argv,
+            openHandsSession = { cwd, at, arguments -> asked = listOf(cwd, at, arguments); "22a2ff2b-1255-419b-9636-5045c8977380" },
+        )
+
+        assertEquals("22a2ff2b-1255-419b-9636-5045c8977380", found)
+        assertEquals(listOf("/work", 9_000L, argv), asked)
+        assertNull(AgentResume.sessionId(Agent.OPENHANDS, 7, 0, home.toFile(), cwd = null, openHandsSession = { _, _, _ -> error("No directory, no question") }))
+        assertNull(AgentResume.sessionId(Agent.OPENHANDS, 7, 0, home.toFile(), cwd = "/work", openHandsSession = { _, _, _ -> "1; rm -rf ~" }), "The id goes into a command line")
+    }
+
+    @Test
+    fun resumesOpenHandsOnItsConversationAndOtherCommandsAreNotOne() {
+        assertEquals(
+            listOf("openhands", "--llm-approve", "--resume", "22a2ff2b-1255-419b-9636-5045c8977380"),
+            AgentResume.argv(Agent.OPENHANDS, listOf("openhands", "--llm-approve", "-t", "go", "--resume", "--last", "--headless"), "22a2ff2b-1255-419b-9636-5045c8977380"),
+        )
+        assertEquals(listOf("openhands"), AgentResume.argv(Agent.OPENHANDS, listOf("openhands", "-t", "go"), null))
+        assertEquals(listOf("openhands", "web"), AgentResume.argv(Agent.OPENHANDS, listOf("openhands", "web", "--port", "12000"), "22a2ff2b-1255-419b-9636-5045c8977380"))
     }
 }

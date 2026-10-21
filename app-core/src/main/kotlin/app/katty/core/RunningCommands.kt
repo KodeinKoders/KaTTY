@@ -63,3 +63,16 @@ private fun openCodeProgram(name: String, executable: String?): String {
     }
     return if (same) name else executable
 }
+
+/**
+ * This command, with the conversation taken off when it was only guessed by the directory ([guessed]: the agent has no more than that to go by) and another
+ * of [others], the programs of the other terminals, is the same agent in the same directory: the guess cannot say which of them it is, and the one that
+ * comes back on the other's conversation is worse than the one that comes back on none. A command that was started on a conversation of its own
+ * (restored with `--resume <id>`) is not told apart by this: the registry keeps that one.
+ *
+ * @param others What the other terminals run (`null` for one that runs nothing).
+ */
+public fun RunningCommand.apartFromOthers(others: Collection<RunningCommand?>, guessed: Boolean): RunningCommand {
+    if (!guessed || agent == null || agentSession == null || directory == null) return this
+    return if (others.any { it != null && it.agent == agent && it.directory == directory }) copy(agentSession = null) else this
+}
