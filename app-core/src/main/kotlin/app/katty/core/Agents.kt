@@ -28,6 +28,7 @@ public enum class Agent(
     GOOSE("goose", "Goose", "goose"),
     CLINE("cline", "Cline", "cline", interpreted = true),
     KILO("kilocode", "Kilo Code", "kilo", interpreted = true, aliases = listOf("kilocode")),
+    PI("pi", "Pi", "pi"),
     ;
 
     /** What the program that runs it can be called: its [executable] and its [aliases]. */
@@ -52,6 +53,8 @@ public enum class Agent(
                 "goose" in name -> GOOSE
                 "cline" in name -> CLINE
                 "kilocode" in name || name == "kilo" -> KILO
+                // Only the whole name: `pi` is in a name like `copilot`.
+                name == "pi" -> PI
                 else -> null
             }
         }

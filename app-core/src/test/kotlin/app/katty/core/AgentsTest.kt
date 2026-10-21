@@ -43,6 +43,14 @@ class AgentsTest {
         assertEquals(Agent.KILO, Agent.fromApp("kilo"))
         assertEquals(Agent.KILO, Agent.fromProcess("kilo"))
         assertEquals(Agent.KILO, Agent.fromProcess("kilocode"))
+        assertEquals(Agent.PI, Agent.fromApp("pi"))
+        assertEquals(Agent.PI, Agent.fromProcess("pi"))
+        // `pi` is in other names: only the whole name is Pi.
+        assertEquals(Agent.COPILOT, Agent.fromApp("copilot"))
+        assertNull(Agent.fromApp("pipeline"))
+        assertNull(Agent.fromProcess("pip"))
+        // What the system says of a running Pi: it renames its process and empties its command line.
+        assertEquals(Agent.PI, Agent.fromCommand(listOf("pi", "")))
         // A word that only has `kilo` in it is no agent.
         assertNull(Agent.fromApp("kilometer"))
     }
@@ -91,7 +99,7 @@ class AgentsTest {
 
     @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode", "pi"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }

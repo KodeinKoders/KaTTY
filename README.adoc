@@ -248,7 +248,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI, Jun
 | Yes
 | 0.163.0
 | 0.48.0
-| 0.121.0
+| No
 
 | Antigravity
 | Yes
@@ -303,6 +303,12 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI, Jun
 | No
 | 7.2.44
 | 7.2.44
+
+| Pi
+| Yes (not its options)
+| 1.1.0
+| No
+| No
 |===
 
 *Yes* means it works, as far as it was tried, and a version number means it works from that version on.
@@ -332,14 +338,15 @@ A model that the agent does not list (one of your own gateway, or Kilo's `kilo-a
 In the usage panel they show what they spent today, over the last 7 days and this month, over all their sessions.
 Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline, Codex and Kilo Code resume their conversation.
+* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline and Kilo Code resume their conversation.
+Codex and Pi start again with no conversation, on purpose: each can start a new conversation inside the program that runs (`/new`), nothing tells which one it is in, and coming back on an older one is worse than a new one.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
 OpenCode's session is the last one that it reported as working or waiting, so two OpenCodes in one directory are told apart once each has worked (before that, and before 2.1.0, it is the newest one of the directory).
 Crush's and Goose's session is the newest one of its directory, so two of them in one directory are not told apart.
 Cline's is the one that its own client has used, so two Clines in one directory are told apart (before 3.0.66 a Cline does not tell its daemon which process it is, and is looked for by its directory, like the others).
 Kilo Code's is the one that the log of its own process names when it makes a session (the log is among the files the process has open, and says `sessionId=…`), so two Kilos in one directory are told apart then; a Kilo whose log says nothing is guessed like the others, by the newest conversation of its directory.
+Pi hides its command line (it renames its process and empties it), so KaTTY cannot know the options it was started with: it comes back as `pi`.
 A Crush or a Cline started with `--data-dir` keeps its conversations where KaTTY does not look: it starts a new one.
-Codex's is the one on its own command line (`codex resume <id>`, which is how KaTTY starts it again), else the one that it made when it started, so two Codexes in one directory are told apart unless both were resumed with no id (`resume --last`, the picker): then it is the newest one of the directory, as for the others.
 Aider has no conversation to find: it is started again with `--restore-chat-history`, which loads the chat that it keeps in the directory (`.aider.chat.history.md`).
 Two Aiders in the same directory are not supported by Aider itself, which writes both chats to that one file: both come back with the two mixed.
 

@@ -115,4 +115,16 @@ class RunningCommandsTest {
         assertEquals(listOf("/opt/homebrew/bin/kilocode", "--auto", "-m", "anthropic/sonnet", "--session", "ses_abc123"), running.toTyped().argv)
         assertEquals(true, running.toTyped().run)
     }
+
+    @Test
+    fun aPiComesBackAsPiAloneBecauseItHidesItsCommandLineAndItsConversationIsNotKnown() {
+        // What the system has of a running Pi: its title, and an empty argument.
+        val running = command("pi", "", executable = "/opt/homebrew/bin/node").toRunning()!!
+
+        assertEquals("pi", running.agent)
+        assertNull(running.agentSession)
+        assertEquals(listOf("pi"), running.toTyped().argv)
+        assertEquals(true, running.toTyped().run)
+    }
+
 }

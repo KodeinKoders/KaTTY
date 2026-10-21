@@ -51,14 +51,15 @@ public object AgentResume {
      * program is a child of the script that has the terminal) is the one whose last session is the terminal's ([clineSession], which is
      * [ClineStore.sessionFor] by default), and `--id` resumes it. A Cline that is not in the hub is looked for by [cwd] and [startedAtMillis].
      *
-     * - Codex has no file that ties a process to its conversation either (a daemon that the terminals share holds them, and logs the connection
-     * that started a thread, not the process behind it). What does is the id on its own command line ([argv]: `codex resume <id>`, which is how
-     * KaTTY starts it again, and resumes the same thread), else when the thread was made (the TUI starts it a second after it starts), else the
-     * newest of the directory that was updated since ([codexSession], which is [CodexStore.sessionFor] by default).
-     *
      * - Kilo Code is OpenCode's CLI with its own folder (`~/.local/share/kilo/kilo.db`): the process has its database and a log of its own open
      * ([openFiles] of [groupPids]), and the log names the session when one is made, which is the terminal's own whichever directory it is in
      * ([kiloSession], which is [KiloStore.sessionFor] by default). A Kilo whose log says nothing is guessed by [cwd] and [startedAtMillis].
+     *
+     * Not resumed, on purpose: Codex and Pi. A Codex has the thread that it is in nowhere that tells it (a daemon that the terminals share holds
+     * them, and logs the connection that started one, not the process behind it), and a Pi renames its process and empties its command line. What
+     * could be found is the conversation that they started with (the thread or the file made when the process started, and `codex resume <id>`
+     * resumes the same one), and the one they are in after `/new` is not it: they came back on an older conversation, which is worse than a new one.
+     * They start again with no conversation.
      *
      * Whether the files of the others follow a conversation that is changed from inside the agent was not checked.
      *
@@ -79,8 +80,6 @@ public object AgentResume {
         groupPids: List<Int> = emptyList(),
         reportedSession: String? = null,
         openCodeRoot: (String) -> String? = { OpenCodeStore().rootOf(it) },
-        argv: List<String> = emptyList(),
-        codexSession: (String, Long, List<String>) -> String? = { directory, startedAt, arguments -> CodexStore().sessionFor(directory, startedAt, arguments) },
         kiloSession: (String, Long, List<String>) -> String? = { directory, startedAt, paths -> KiloStore().sessionFor(directory, startedAt, paths) },
     ): String? =
         when (agent) {
@@ -93,7 +92,6 @@ public object AgentResume {
             Agent.CRUSH -> cwd?.let { crushSession(it, startedAtMillis) }?.takeIf(::isSessionId)
             Agent.GOOSE -> cwd?.let { gooseSession(it, startedAtMillis) }?.takeIf(::isUnderscoreId)
             Agent.CLINE -> cwd?.let { clineSession(it, startedAtMillis, groupPids) }?.takeIf(::isUnderscoreId)
-            Agent.CODEX -> cwd?.let { codexSession(it, startedAtMillis, argv) }?.takeIf(::isSessionId)
             // Its database and its log are what the process has open: the script that has the terminal and the native program that it started.
             Agent.KILO -> cwd?.let { kiloSession(it, startedAtMillis, groupPids.ifEmpty { listOf(pid) }.flatMap(openFiles)) }?.takeIf(::isOpenCodeId)
             else -> null
@@ -249,7 +247,6 @@ public object AgentResume {
                 Agent.CRUSH -> kept += listOf("--session", sessionId)
                 Agent.GOOSE -> kept += listOf("--resume", "--session-id", sessionId)
                 Agent.CLINE -> kept += listOf("--id", sessionId)
-                Agent.CODEX -> kept += listOf("resume", sessionId)
                 Agent.KILO -> kept += listOf("--session", sessionId)
                 else -> Unit
             }

@@ -99,4 +99,11 @@ object AgentLogos {
         fills = listOf("M5 3h3.200v7.200L14.500 3h4.200l-6.400 7.600L19.200 21h-4.100l-4.800-7.600-2.100 2.500V21H5z"),
         grid = 24f,
     )
+
+    /** Drawn for KaTTY, not Pi's logo (none is published as an icon set): the letter pi. */
+    val Pi = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M4 5h16v2.600h-3.100V19h-3V7.600h-3.800V19h-3V7.600H4z"),
+        grid = 24f,
+    )
 }

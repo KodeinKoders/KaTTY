@@ -396,35 +396,6 @@ class AgentResumeTest {
     }
 
     @Test
-    fun codexAsksForItsThreadWithItsCommandLine() {
-        var asked: Triple<String, Long, List<String>>? = null
-        val argv = listOf("codex", "resume", "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2")
-
-        val found = AgentResume.sessionId(
-            Agent.CODEX, 7, 9_000L, home.toFile(), cwd = "/work", argv = argv,
-            codexSession = { cwd, at, arguments -> asked = Triple(cwd, at, arguments); "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2" },
-        )
-
-        assertEquals("01a159d9-e9ea-7152-b7dc-ebe80f05bbc2", found)
-        assertEquals(Triple("/work", 9_000L, argv), asked)
-        assertNull(AgentResume.sessionId(Agent.CODEX, 7, 9_000L, home.toFile(), cwd = null, codexSession = { _, _, _ -> error("No directory, no question") }))
-        assertNull(AgentResume.sessionId(Agent.CODEX, 7, 0, home.toFile(), cwd = "/work", codexSession = { _, _, _ -> "1; rm -rf ~" }), "The id goes into a command line")
-    }
-
-    @Test
-    fun resumesCodexOnItsThreadWhateverItWasStartedAs() {
-        assertEquals(
-            listOf("codex", "--model", "gpt-5", "resume", "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"),
-            AgentResume.argv(Agent.CODEX, listOf("codex", "--model", "gpt-5", "resume", "--last", "fix it"), "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"),
-        )
-        assertEquals(
-            listOf("codex", "resume", "01a15f22-2335-77c3-ad26-c8387ae29a6b"),
-            AgentResume.argv(Agent.CODEX, listOf("codex", "resume", "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"), "01a15f22-2335-77c3-ad26-c8387ae29a6b"),
-            "The thread it is in now, not the one it was started on",
-        )
-    }
-
-    @Test
     fun kiloAsksForItsSessionWithTheFilesOfItsGroupAndNotOnlyOfTheScript() {
         var asked: Triple<String, Long, List<String>>? = null
         val open = mapOf(10 to listOf("/x/script.js"), 11 to listOf("/h/.local/share/kilo/kilo.db", "/h/.local/share/kilo/log/2026-10-21T155909.log"))
@@ -454,4 +425,15 @@ class AgentResumeTest {
         assertEquals(listOf("kilo", "run"), AgentResume.argv(Agent.KILO, listOf("kilo", "run", "write a test"), "ses_abc123"))
         assertEquals(listOf("kilo", "serve"), AgentResume.argv(Agent.KILO, listOf("kilo", "--port", "4096", "serve"), null))
     }
+
+    @Test
+    fun codexAndPiAreNeverResumedBecauseTheConversationTheyAreInIsNotKnown() {
+        // `/new` starts another conversation in the process that runs, which nothing says: coming back on an older one is worse than a new one.
+        for (agent in listOf(Agent.CODEX, Agent.PI)) {
+            assertNull(AgentResume.sessionId(agent, 7, 9_000L, home.toFile(), cwd = "/work"), "$agent")
+            assertEquals(listOf(agent.executable), AgentResume.argv(agent, listOf(agent.executable, "a prompt"), "01a15f47-9c1a-7322-9252-681b71e5a9b4"), "$agent")
+        }
+        assertEquals(listOf("codex"), AgentResume.argv(Agent.CODEX, listOf("codex", "resume", "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"), "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"))
+    }
 }
+
