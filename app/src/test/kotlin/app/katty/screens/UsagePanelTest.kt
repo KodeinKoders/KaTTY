@@ -223,13 +223,13 @@ class UsagePanelTest {
         setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"), Agent.CODEX to Path.of("/bin/codex"), Agent.COPILOT to Path.of("/bin/copilot"))) } }
 
         onNodeWithText("DETECTED ON THIS MACHINE").assertExists()
-        // Three found, and three that were not: the numbers of the two sections.
+        // Three found, and the others were not: the numbers of the two sections.
         onNodeWithText("3").assertExists()
         onNodeWithContentDescription("Claude Code: Detected").assertExists()
         onNodeWithContentDescription("Copilot CLI: Detected").assertExists()
         // The others are in a section that is closed: its title says how many, and none of them is listed.
         onNodeWithText("NOT FOUND").assertExists()
-        onNodeWithContentDescription("Not found: 3").assertExists()
+        onNodeWithContentDescription("Not found: ${Agent.entries.size - 3}").assertExists()
         assertEquals(0, onAllNodesWithContentDescription("Antigravity: Not found").fetchSemanticsNodes().size)
         onNodeWithText("Agents you install later appear here automatically.").assertExists()
     }
@@ -238,11 +238,11 @@ class UsagePanelTest {
     fun theSectionOfTheAgentsThatWereNotFoundOpensAndCloses() = runComposeUiTest {
         setContent { KattyTheme(false) { DetectedAgents(mapOf(Agent.CLAUDE to Path.of("/bin/claude"))) } }
 
-        onNodeWithContentDescription("Not found: 5").performClick()
+        onNodeWithContentDescription("Not found: ${Agent.entries.size - 1}").performClick()
         waitForIdle()
         onNodeWithContentDescription("Codex: Not found").assertExists()
         onNodeWithContentDescription("Copilot CLI: Not found").assertExists()
-        onNodeWithContentDescription("Not found: 5").performClick()
+        onNodeWithContentDescription("Not found: ${Agent.entries.size - 1}").performClick()
         waitForIdle()
 
         assertEquals(0, onAllNodesWithContentDescription("Codex: Not found").fetchSemanticsNodes().size)
@@ -260,7 +260,7 @@ class UsagePanelTest {
         setContent { KattyTheme(false) { DetectedAgents(emptyMap()) } }
 
         onNodeWithText("No agent was found on this machine.").assertExists()
-        onNodeWithContentDescription("Not found: 6").assertExists()
+        onNodeWithContentDescription("Not found: ${Agent.entries.size}").assertExists()
     }
 
     @Test

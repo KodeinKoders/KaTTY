@@ -91,13 +91,17 @@ class AgentTracker(
 
     // The program that has the terminal is the shell, or is not: an agent that ran in it is over, or one that is running is remembered.
     private fun programChanged(id: TerminalId, shell: Boolean) {
-        val report = synchronized(this) {
+        val (report, session) = synchronized(this) {
             val changed = if (shell) atShell.add(id) else atShell.remove(id)
             if (shell) reporters.remove(id)
             if (!changed) return
-            latest[id]
-        } ?: return
-        update(id, report)
+            latest[id] to follows[id]?.session
+        }
+        // An `idle` record outlives its program (Crush, agy and OpenCode leave one when they end). The shell is no program at rest, but when
+        // another program takes the terminal the record would be taken for it: emacs shown as the agent that ended. It is the ended program's
+        // and goes with it; a `done` or `error` is what the user has not seen yet and stays.
+        if (shell) session?.programStatus?.value?.filter { it.state == TerminalProgramState.IDLE }?.forEach { session.clearProgramStatus(it.id) }
+        update(id, report ?: return)
     }
 
     private fun update(id: TerminalId, summary: app.katty.core.AgentReport) {

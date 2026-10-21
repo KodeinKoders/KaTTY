@@ -181,6 +181,25 @@ class AgentTrackerTest {
     }
 
     @Test
+    fun theIdleRecordOfAnAgentThatEndedIsNotTheNextProgramsCard() {
+        // Crush, agy and OpenCode leave an `idle` record when they end. The shell has the terminal, and then emacs or aider takes it: the
+        // record is the old program's, and must not make a card for it ("Crush") around a program that says nothing.
+        val shell = System.getenv("SHELL") ?: "/bin/zsh"
+        scripts += "${report("state=idle", "app=crush")}; sleep 1; exec $shell -f -i"
+        val id = start()
+        await("reporting, at rest") { tracker.infos.value[id]?.report?.reporting == true }
+        await("the shell has the terminal, the card is gone") { tracker.infos.value[id]?.report?.reporting == false }
+        val handle = registry.handles.value.getValue(id)
+        await("the shell has the terminal") { registry.processNames.value[id] == handle.shellName }
+
+        handle.session!!.sendText("sleep 30\r")
+
+        await("another program has the terminal") { registry.processNames.value[id] == "sleep" }
+        Thread.sleep(500)
+        assertEquals(false, tracker.infos.value.getValue(id).report.reporting, "the program that ended is back as a card")
+    }
+
+    @Test
     fun anAgentThatEndedBeforeItsFinishedStateWasSeenLeavesNoGhostOfItInTheShell() {
         // It reports `done` and ends: the shell has the terminal, and the `done` record is still there. Seeing it then must leave a plain
         // shell, not "that agent at rest" for a terminal that runs a shell.
