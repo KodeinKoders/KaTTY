@@ -214,7 +214,7 @@ class AgentResumeTest {
     @Test
     fun withNoSessionTheAgentStartsAFreshConversation() {
         assertEquals(listOf("/home/me/.local/bin/claude"), AgentResume.argv(Agent.CLAUDE, listOf("/home/me/.local/bin/claude", "a prompt"), null))
-        assertEquals(listOf("codex"), AgentResume.argv(Agent.CODEX, listOf("codex", "a prompt"), "anything"))
+        assertEquals(listOf("codex"), AgentResume.argv(Agent.CODEX, listOf("codex", "a prompt"), null))
         assertEquals(listOf("codex"), AgentResume.argv(Agent.CODEX, listOf("codex", "resume", "--last"), null))
     }
 
@@ -392,6 +392,35 @@ class AgentResumeTest {
                 openCodeRoot = { it }, openCodeSession = { _, _ -> null },
             ),
             "The id goes into a command line",
+        )
+    }
+
+    @Test
+    fun codexAsksForItsThreadWithItsCommandLine() {
+        var asked: Triple<String, Long, List<String>>? = null
+        val argv = listOf("codex", "resume", "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2")
+
+        val found = AgentResume.sessionId(
+            Agent.CODEX, 7, 9_000L, home.toFile(), cwd = "/work", argv = argv,
+            codexSession = { cwd, at, arguments -> asked = Triple(cwd, at, arguments); "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2" },
+        )
+
+        assertEquals("01a159d9-e9ea-7152-b7dc-ebe80f05bbc2", found)
+        assertEquals(Triple("/work", 9_000L, argv), asked)
+        assertNull(AgentResume.sessionId(Agent.CODEX, 7, 9_000L, home.toFile(), cwd = null, codexSession = { _, _, _ -> error("No directory, no question") }))
+        assertNull(AgentResume.sessionId(Agent.CODEX, 7, 0, home.toFile(), cwd = "/work", codexSession = { _, _, _ -> "1; rm -rf ~" }), "The id goes into a command line")
+    }
+
+    @Test
+    fun resumesCodexOnItsThreadWhateverItWasStartedAs() {
+        assertEquals(
+            listOf("codex", "--model", "gpt-5", "resume", "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"),
+            AgentResume.argv(Agent.CODEX, listOf("codex", "--model", "gpt-5", "resume", "--last", "fix it"), "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"),
+        )
+        assertEquals(
+            listOf("codex", "resume", "01a15f22-2335-77c3-ad26-c8387ae29a6b"),
+            AgentResume.argv(Agent.CODEX, listOf("codex", "resume", "01a159d9-e9ea-7152-b7dc-ebe80f05bbc2"), "01a15f22-2335-77c3-ad26-c8387ae29a6b"),
+            "The thread it is in now, not the one it was started on",
         )
     }
 }

@@ -248,7 +248,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI, Jun
 | Yes
 | 0.163.0
 | 0.48.0
-| No
+| 0.121.0
 
 | Antigravity
 | Yes
@@ -325,12 +325,13 @@ A model that OpenCode does not list (one of your own gateway) has a cost and no 
 In the usage panel OpenCode shows what it spent today, over the last 7 days and this month, over all its sessions.
 Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose and Cline resume their conversation; Codex starts again as a new conversation.
+* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline and Codex resume their conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
 OpenCode's session is the last one that it reported as working or waiting, so two OpenCodes in one directory are told apart once each has worked (before that, and before 2.1.0, it is the newest one of the directory).
 Crush's and Goose's session is the newest one of its directory, so two of them in one directory are not told apart.
 Cline's is the one that its own client has used, so two Clines in one directory are told apart (before 3.0.66 a Cline does not tell its daemon which process it is, and is looked for by its directory, like the others).
 A Crush or a Cline started with `--data-dir` keeps its conversations where KaTTY does not look: it starts a new one.
+Codex's is the one on its own command line (`codex resume <id>`, which is how KaTTY starts it again), else the one that it made when it started, so two Codexes in one directory are told apart unless both were resumed with no id (`resume --last`, the picker): then it is the newest one of the directory, as for the others.
 Aider has no conversation to find: it is started again with `--restore-chat-history`, which loads the chat that it keeps in the directory (`.aider.chat.history.md`).
 Two Aiders in the same directory are not supported by Aider itself, which writes both chats to that one file: both come back with the two mixed.
 
