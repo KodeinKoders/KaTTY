@@ -85,6 +85,17 @@ public enum class Agent(
          * is Node), the script that an interpreter (`python3.12`, `Python`, `node`) was given first: `Python /opt/homebrew/bin/aider --model x` is Aider,
          * whose process is called `Python`.
          */
+        /**
+         * The name that a terminal's program goes by: the [systemName] of the process, unless the command line [argv] says it is an agent that the
+         * name does not (a script run by an interpreter, a process renamed to its path), which is then the agent's [executable].
+         */
+        public fun executableOf(systemName: String?, argv: List<String>?): String? {
+            val agent = argv?.let(::fromCommand) ?: return systemName
+            // A program that renames its process to the path it was started with (OpenCode 1: `/Users/me/oc1/no`, cut at 16 characters) has a name
+            // that is none of the agent's: the command line says it.
+            return if (agent.interpreted || fromProcess(systemName) == null) agent.executable else systemName
+        }
+
         public fun fromCommand(argv: List<String>): Agent? {
             // Whatever the launcher is called (`cursor-agent`, `agent`), the script it runs says whose it is.
             entries.firstOrNull { agent -> agent.scriptContains != null && argv.drop(1).any { it.endsWith("/index.js") && agent.scriptContains in it } }?.let { return it }

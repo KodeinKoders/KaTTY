@@ -57,6 +57,12 @@ class AgentsTest {
         assertEquals(Agent.COPILOT, Agent.fromApp("copilot"))
         assertNull(Agent.fromApp("pipeline"))
         assertNull(Agent.fromProcess("pip"))
+        // OpenCode 1 names its process after the path it was started by, which the system cuts at 16 characters.
+        val oc1 = listOf("/Users/me/oc1/node_modules/.bin/opencode", "--print-logs")
+        assertEquals("opencode", Agent.executableOf("/Users/me/oc1/no", oc1))
+        assertEquals("opencode", Agent.executableOf("opencode", oc1))
+        assertEquals("zsh", Agent.executableOf("zsh", listOf("-zsh")))
+        assertEquals("vim", Agent.executableOf("vim", null))
         // What the system says of a running Pi: it renames its process and empties its command line.
         assertEquals(Agent.PI, Agent.fromCommand(listOf("pi", "")))
         // A word that only has `kilo` in it is no agent.

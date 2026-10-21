@@ -202,7 +202,9 @@ class SessionRegistry(
                     val systemName = session.foregroundProcessName()
                     // A program that is a script has its interpreter's name (Aider is `Python`): the agent that it is says its own.
                     val command = if (systemName != null) withContext(Dispatchers.IO) { session.foregroundCommand() } else null
-                    val name = command?.let { Agent.fromCommand(it.argv) }?.takeIf { it.interpreted }?.executable ?: systemName
+                    // A program that is a script has its interpreter's name (Aider is `Python`), and one that renames its process to the path it was
+                    // started with (OpenCode 1) has one that the system cuts: its command line says which agent it is.
+                    val name = Agent.executableOf(systemName, command?.argv)
                     handle.processState.value = name
                     if (name == null || name == handle.shellName) reportedSession.set(null)
                     if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) mutableProcessNames.update { it + (spec.id to name) }
