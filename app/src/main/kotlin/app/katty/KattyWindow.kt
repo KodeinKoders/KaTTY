@@ -164,9 +164,11 @@ fun DecoratedWindowScope.KattyWindowContent(
     val detected by produceState(emptyMap<Agent, java.nio.file.Path>(), loginPath, detectTick) {
         value = withContext(Dispatchers.IO) { AgentDetection.detect(loginPath ?: System.getenv("PATH").orEmpty()) }
     }
-    val detectedAgents = Agent.entries.filter { it in detected }
     val usageScope = rememberCoroutineScope()
-    val usage = remember(detected) { UsageService(usageScope, usageSources(detected, directories.usageDirectory)) }
+    val sources = remember(detected) { usageSources(detected, directories.usageDirectory) }
+    // Only the agents that KaTTY can read a usage from are offered by the usage panel.
+    val detectedAgents = Agent.entries.filter { it in sources }
+    val usage = remember(sources) { UsageService(usageScope, sources) }
     DisposableEffect(usage) { onDispose { usage.stop() } }
     LaunchedEffect(usage, settings.usageShown) { usage.want(detectedAgents.filter { it.id in settings.usageShown }.toSet()) }
     val readings by usage.readings.collectAsState()
