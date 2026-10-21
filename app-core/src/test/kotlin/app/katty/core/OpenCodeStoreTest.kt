@@ -85,6 +85,44 @@ class OpenCodeStoreTest {
     }
 
     @Test
+    fun aSessionThatAProgramReportedIsTheSessionItNamesAndAChildOfOneIsItsRoot() {
+        database(v1, v2) {
+            session("session", "ses_a", "/p", 1000, 2000)
+            session("session", "ses_child", "/p", 1100, 2500, parent = "ses_a")
+            session("session", "ses_grandchild", "/p", 1200, 2600, parent = "ses_child")
+            session("session_v2", "ses_v2", "/p", 1000, 3000)
+        }
+
+        assertEquals("ses_a", store().rootOf("ses_a"))
+        assertEquals("ses_a", store().rootOf("ses_child"))
+        assertEquals("ses_a", store().rootOf("ses_grandchild"))
+        assertEquals("ses_v2", store().rootOf("ses_v2"), "A 2.x session, whose table is not the other's")
+        assertNull(store().rootOf("ses_nobody"))
+    }
+
+    @Test
+    fun anIdThatARecordCannotHoldIsReportedAsAHashOfItAndIsFoundByIt() {
+        // A record id is 1 to 32 bytes of letters, digits and `_.+-`: the program reports `ses_` and 16 digits of the SHA-256 of any other id.
+        val long = "ses_" + "a".repeat(40)
+        val odd = "ses_with space"
+        fun hash(id: String) = "ses_" + java.security.MessageDigest.getInstance("SHA-256").digest(id.toByteArray()).joinToString("") { "%02x".format(it) }.take(16)
+        database(v1) {
+            session("session", long, "/p", 1000, 2000)
+            session("session", odd, "/p", 1000, 2100)
+            session("session", "ses_short", "/p", 1000, 2200)
+        }
+
+        assertEquals(long, store().rootOf(hash(long)))
+        assertEquals(odd, store().rootOf(hash(odd)))
+        assertNull(store().rootOf("ses_0123456789abcdef"), "A hash that is of no session")
+    }
+
+    @Test
+    fun noDatabaseIsNoRootOfAReportedSession() {
+        assertNull(store().rootOf("ses_a"))
+    }
+
+    @Test
     fun aSessionThatWasOnlyUpdatedSinceTheStartIsTheOneOfAResumedProcess() {
         database(v1) { session("session", "ses_a", "/p", 10, 5000) }
         assertEquals("ses_a", store().sessionFor("/p", 4000))

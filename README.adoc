@@ -292,7 +292,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI, Jun
 | Yes*
 | 1.0.22
 | Yes*
-| 1.2.0
+| 2.1.0
 | 0.51.0
 | 0.35.0
 | 1.13.0
@@ -322,7 +322,8 @@ Above the agents, one line says how many sessions are open across all the agents
 Antigravity needs version 1.1.11 or later.
 * Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose and Cline resume their conversation; Codex starts again as a new conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
-OpenCode's, Crush's and Goose's session is the newest one of its directory, so two of them in one directory are not told apart.
+OpenCode's session is the last one that it reported as working or waiting, so two OpenCodes in one directory are told apart once each has worked (before that, and before 2.1.0, it is the newest one of the directory).
+Crush's and Goose's session is the newest one of its directory, so two of them in one directory are not told apart.
 Cline's is the one that its own client has used, so two Clines in one directory are told apart (before 3.0.66 a Cline does not tell its daemon which process it is, and is looked for by its directory, like the others).
 A Crush or a Cline started with `--data-dir` keeps its conversations where KaTTY does not look: it starts a new one.
 Aider has no conversation to find: it is started again with `--restore-chat-history`, which loads the chat that it keeps in the directory (`.aider.chat.history.md`).

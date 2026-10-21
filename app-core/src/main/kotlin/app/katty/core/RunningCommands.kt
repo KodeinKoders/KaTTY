@@ -12,10 +12,14 @@ private const val MAX_COMMAND_CHARS = 2000
  * are not known), or a command line that is too long to be typed. An agent is kept by its program only, and with the id of its conversation
  * when [sessionId] can tell it: its options and its prompt are not what it comes back with (see [AgentResume.argv]).
  *
+ * @param reportedSession The session that the program has said it is in (OSC 7501), when it says it: it is what an OpenCode is told apart by.
  * @param sessionId The id of the conversation that the agent [Agent] runs as the pid, which started at the time; by default [AgentResume.sessionId].
  */
 public fun ForegroundCommand.toRunning(
-    sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt -> AgentResume.sessionId(agent, pid, startedAt, cwd = directory, groupPids = groupPids) },
+    reportedSession: String? = null,
+    sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt ->
+        AgentResume.sessionId(agent, pid, startedAt, cwd = directory, groupPids = groupPids, reportedSession = reportedSession)
+    },
 ): RunningCommand? {
     if (pipeline || argv.isEmpty()) return null
     val agent = Agent.fromCommand(argv)

@@ -113,3 +113,11 @@ internal fun TerminalProgramState.toAgentState(): AgentState = when (this) {
 public data class AgentInfo(val report: AgentReport, val since: Long) {
     val state: AgentState get() = report.state
 }
+
+/**
+ * The session that [agent] says it is in, from the records it reported (OSC 7501): OpenCode reports a record for each session that works or waits,
+ * with the session's id as the record's id (the program's own record has none). The newest one, since the program may have several (its tabs): it is
+ * the one that was last busy. `null` when it reported none, which is the case of a session at rest.
+ */
+public fun List<TerminalProgramStatus>.sessionOf(agent: Agent): String? =
+    filter { it.id.isNotEmpty() && Agent.fromApp(it.app) == agent }.maxByOrNull { it.updatedAt }?.id

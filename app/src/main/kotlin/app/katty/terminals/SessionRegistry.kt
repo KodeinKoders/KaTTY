@@ -9,6 +9,7 @@ import app.katty.core.KattyStore
 import app.katty.core.RestorePolicy
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
+import app.katty.core.sessionOf
 import app.katty.core.toRunning
 import app.katty.core.toTyped
 import app.katty.terminal.TerminalSession
@@ -179,6 +180,13 @@ class SessionRegistry(
         val handle = TerminalHandle(spec.id, session, generation = generation, shellName = shellName())
         // Where the shell goes is where it starts the next time, and what repository it is in is read again then, and when a command ends.
         followers[spec.id] = scope.launch {
+            // The session that an OpenCode in this terminal last reported working or waiting: it reports a record for each of those, with the
+            // session's id as its id, and takes it off when the session rests, so it is kept here. It is the terminal's own session, which a
+            // directory and times are not when two run in one. It goes when the shell has the terminal again.
+            val reportedSession = java.util.concurrent.atomic.AtomicReference<String?>(null)
+            launch {
+                session.programStatus.collect { records -> records.sessionOf(Agent.OPENCODE)?.let(reportedSession::set) }
+            }
             launch { session.workingDirectory.filterNotNull().collect { store.setDirectory(spec.id, it) } }
             // What runs in the terminal is its name: asked often, since it takes two system calls and a shell tells nothing when a program ends.
             launch {
@@ -195,13 +203,17 @@ class SessionRegistry(
                     val command = if (systemName != null) withContext(Dispatchers.IO) { session.foregroundCommand() } else null
                     val name = command?.let { Agent.fromCommand(it.argv) }?.takeIf { it.interpreted }?.executable ?: systemName
                     handle.processState.value = name
+                    if (name == null || name == handle.shellName) reportedSession.set(null)
                     if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) mutableProcessNames.update { it + (spec.id to name) }
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
                     if (name != null) {
-                        var running = command?.let { withContext(Dispatchers.IO) { it.toRunning() } }
+                        var running = command?.let { withContext(Dispatchers.IO) { it.toRunning(reportedSession = reportedSession.get()) } }
                         if (command != null && running != null && resumed?.second != null && running.agent == resumed.first) {
                             if (resumedPid == 0) resumedPid = command.pid
-                            if (command.pid == resumedPid && running.agentSession == null) running = running.copy(agentSession = resumed.second)
+                            // An OpenCode that has not worked has said nothing of its session, and its directory only says the newest one: that may be another
+                            // OpenCode's, so the session it came back on stays until it says its own.
+                            val guessed = running.agent == Agent.OPENCODE.id && reportedSession.get() == null
+                            if (command.pid == resumedPid && (running.agentSession == null || guessed)) running = running.copy(agentSession = resumed.second)
                         }
                         if (command != null) graceUntil = 0L
                         if (running != null || System.nanoTime() >= graceUntil) store.setRunning(spec.id, running)

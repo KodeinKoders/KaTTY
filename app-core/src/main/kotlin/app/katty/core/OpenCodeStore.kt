@@ -70,6 +70,30 @@ internal class OpenCodeStore(
         }.maxByOrNull { it.second }?.first
     }
 
+    /**
+     * The session that a program status record names (what OpenCode reports for a session that works or waits, as the record's id): [reported] is
+     * the id of a session, or `ses_` and 16 hexadecimal digits of the SHA-256 of an id that a record cannot hold (over 32 bytes, or with other
+     * characters). A session that another one started (a sub-agent's) is the session it came from: the program reports the roots, and the id of
+     * a child cannot be resumed. `null` when there is no such session.
+     */
+    fun rootOf(reported: String): String? = read {
+        val id = layouts.firstNotNullOfOrNull { layout ->
+            tolerantQuery("SELECT id FROM ${layout.sessions} WHERE id = ?", reported) { it.text(0) }.firstOrNull()
+                ?: hashed(reported)?.let { digest ->
+                    tolerantQuery("SELECT id FROM ${layout.sessions} WHERE length(id) > 32 OR id GLOB '*[^A-Za-z0-9_.+-]*'") { it.text(0)!! }
+                        .firstOrNull { sha256(it).startsWith(digest) }
+                }
+        } ?: return@read null
+        var current = id
+        repeat(MAX_DEPTH) {
+            val parent = layouts.firstNotNullOfOrNull { layout ->
+                tolerantQuery("SELECT parent_id FROM ${layout.sessions} WHERE id = ?", current) { it.text(0) }.firstOrNull()
+            } ?: return@read current
+            current = parent
+        }
+        current
+    }
+
     /** When session [id] was last updated, in milliseconds since the epoch, or `null` when there is no such session. */
     fun updatedAt(id: String): Long? = read {
         layouts.firstNotNullOfOrNull { layout ->
@@ -139,7 +163,15 @@ internal class OpenCodeStore(
         }
     }
 
+    private fun hashed(reported: String): String? = Regex("ses_([0-9a-f]{16})").matchEntire(reported)?.groupValues?.get(1)
+
+    private fun sha256(id: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(id.toByteArray()).joinToString("") { "%02x".format(it) }
+
     internal companion object {
+        // Sessions that started sessions that started sessions: more than this is not a chain.
+        private const val MAX_DEPTH = 10
+
         fun defaultDatabase(): Path =
             Path.of(System.getProperty("user.home"), ".local", "share", "opencode", "opencode.db")
     }

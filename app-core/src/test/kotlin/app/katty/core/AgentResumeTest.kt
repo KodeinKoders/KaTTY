@@ -363,4 +363,35 @@ class AgentResumeTest {
             AgentResume.argv(Agent.CLINE, listOf("cline", "--yolo", "--id", "old_one", "-m", "sonnet", "-k", "sk-secret", "fix it"), "1792591989752_0vnpk"),
         )
     }
+
+    @Test
+    fun openCodeIsInTheSessionItReportedAndNotTheNewestOneOfItsDirectory() {
+        var asked: String? = null
+
+        val found = AgentResume.sessionId(
+            Agent.OPENCODE, 7, 9_000L, home.toFile(), cwd = "/work", reportedSession = "ses_reported",
+            openCodeRoot = { asked = it; "ses_root" }, openCodeSession = { _, _ -> error("The directory is a guess, and it said") },
+        )
+
+        assertEquals("ses_root", found)
+        assertEquals("ses_reported", asked)
+    }
+
+    @Test
+    fun anOpenCodeThatReportedASessionTheDatabaseDoesNotKnowIsGuessedByItsDirectory() {
+        assertEquals(
+            "ses_newest",
+            AgentResume.sessionId(
+                Agent.OPENCODE, 7, 9_000L, home.toFile(), cwd = "/work", reportedSession = "ses_unknown",
+                openCodeRoot = { null }, openCodeSession = { _, _ -> "ses_newest" },
+            ),
+        )
+        assertNull(
+            AgentResume.sessionId(
+                Agent.OPENCODE, 7, 9_000L, home.toFile(), cwd = "/work", reportedSession = "ses_x; rm -rf ~",
+                openCodeRoot = { it }, openCodeSession = { _, _ -> null },
+            ),
+            "The id goes into a command line",
+        )
+    }
 }

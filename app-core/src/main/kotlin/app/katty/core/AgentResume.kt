@@ -29,8 +29,11 @@ public object AgentResume {
      * - Antigravity writes no file for a process, but keeps `~/.gemini/antigravity-cli/presence/<conversationId>.lock` open while it has a
      * conversation (it opens it with the first message): the id is read from the files that the process has open ([openFiles]).
      *
-     * - OpenCode keeps its conversations in a database, not in a file named after the process: [cwd] and [startedAtMillis] pick the newest one
-     * of that directory that the process created or updated ([openCodeSession], which is [OpenCodeStore.sessionFor] by default).
+     * - OpenCode keeps its conversations in a database, not in a file named after the process. What names the terminal's own is what it reports
+     * (OSC 7501, from 2.1.0): it reports a record for each session that works or waits, with the session's id as the record's id, which the
+     * terminal remembers ([reportedSession], checked and taken to its root by [openCodeRoot], which is [OpenCodeStore.rootOf] by default). A
+     * session that has never worked has no such record, and is guessed: [cwd] and [startedAtMillis] pick the newest one of that directory that
+     * the process created or updated ([openCodeSession], which is [OpenCodeStore.sessionFor] by default).
      *
      * - Crush keeps its conversations in a database for each project, like OpenCode: [cwd] and [startedAtMillis] pick the newest one of that
      * project that the process created or updated ([crushSession], which is [CrushStore.sessionFor] by default).
@@ -67,13 +70,16 @@ public object AgentResume {
         gooseSession: (String, Long) -> String? = { directory, startedAt -> GooseStore().sessionFor(directory, startedAt) },
         clineSession: (String, Long, List<Int>) -> String? = { directory, startedAt, pids -> ClineStore().sessionFor(directory, startedAt, pids) },
         groupPids: List<Int> = emptyList(),
+        reportedSession: String? = null,
+        openCodeRoot: (String) -> String? = { OpenCodeStore().rootOf(it) },
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
             Agent.CLAUDE -> claudeSessionId(pid, startedAtMillis, home)
             Agent.JUNIE -> junieSessionId(pid, startedAtMillis, home)
             Agent.COPILOT -> copilotSessionId(pid, startedAtMillis, home)
-            Agent.OPENCODE -> cwd?.let { openCodeSession(it, startedAtMillis) }?.takeIf(::isOpenCodeId)
+            // What the program said of itself (the session it reported working or waiting) is the terminal's own; its directory and times are a guess.
+            Agent.OPENCODE -> (reportedSession?.let(openCodeRoot) ?: cwd?.let { openCodeSession(it, startedAtMillis) })?.takeIf(::isOpenCodeId)
             Agent.CRUSH -> cwd?.let { crushSession(it, startedAtMillis) }?.takeIf(::isSessionId)
             Agent.GOOSE -> cwd?.let { gooseSession(it, startedAtMillis) }?.takeIf(::isUnderscoreId)
             Agent.CLINE -> cwd?.let { clineSession(it, startedAtMillis, groupPids) }?.takeIf(::isUnderscoreId)

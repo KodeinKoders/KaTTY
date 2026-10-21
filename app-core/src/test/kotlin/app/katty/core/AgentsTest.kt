@@ -65,6 +65,22 @@ class AgentsTest {
     }
 
     @Test
+    fun theSessionAnAgentSaysItIsInIsTheNewestRecordWithAnIdOfItsOwn() {
+        fun record(id: String, app: String, at: Long) = TerminalProgramStatus(id, app, TerminalProgramState.WORKING, TerminalProgramKind.NONE, null, "", "", at)
+        val records = listOf(
+            // The program's own record (no id) and the sessions that work in its tabs.
+            record("", "opencode", 5),
+            record("ses_first", "opencode", 10),
+            record("ses_last", "opencode", 30),
+            record("ses_other_program", "claude-code", 40),
+        )
+
+        assertEquals("ses_last", records.sessionOf(Agent.OPENCODE))
+        assertNull(records.filter { it.id.isEmpty() }.sessionOf(Agent.OPENCODE), "A session at rest has no record of its own")
+        assertNull(emptyList<TerminalProgramStatus>().sessionOf(Agent.OPENCODE))
+    }
+
+    @Test
     fun theIdsAreWhatTheSettingsKeep() {
         assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
