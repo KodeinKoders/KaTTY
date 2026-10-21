@@ -247,16 +247,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | Yes
 | Yes
 
-| Live state: working, needs you, done, failed
-| 2.1.295
-| 0.163.0
-| 1.4.0
-| No
-| No
-| 2.1.0
-| 0.98.0
-
-| Card on the agent board
+| Live state report and card on the agent board
 | 2.1.295
 | 0.163.0
 | 1.4.0
@@ -274,7 +265,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI and 
 | 1.2.0
 | No
 
-| Resumes its last conversation after a relaunch
+| Resumes last conversation after relaunch
 | Yes*
 | No
 | Yes*
