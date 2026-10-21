@@ -51,7 +51,7 @@ public data class Settings(
     val uiScale: Float = DEFAULT_UI_SCALE,
     val shortcuts: Map<String, String> = emptyMap(),
     val ligatures: Boolean = true,
-    val usageShown: Set<String> = setOf("claude", "codex", "antigravity", "opencode"),
+    val usageShown: Set<String> = setOf("claude", "codex", "antigravity", "opencode", "kilocode"),
     val usageHidden: Set<String> = emptySet(),
     val compactUsage: Boolean = false,
     val sidebarCollapsed: Boolean = false,

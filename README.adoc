@@ -232,7 +232,7 @@ KaTTY knows these agents by name: it recognizes them, shows their logo, and find
 What more it can do depends on what each agent offers.
 
 Where a cell gives a version, it is the *minimum version*: the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501).
-Older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie, Aider, Goose and Cline, which do not report yet.
+Older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie, Aider, Goose, Cline and Kilo Code, which do not report yet.
 
 [cols="2h,3,3,2,4"]
 |===
@@ -297,6 +297,12 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI, Jun
 | No
 | No
 | 3.0.66
+
+| Kilo Code
+| Yes
+| No
+| 7.2.44
+| 7.2.44
 |===
 
 *Yes* means it works, as far as it was tried, and a version number means it works from that version on.
@@ -313,23 +319,25 @@ WARNING: *Yes (undocumented)* means that resuming relies on files that the agent
 An agent that does not report, such as Copilot CLI, Junie, Aider, Goose, Cline or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
 Copilot CLI will be compatible once https://github.com/github/copilot-cli/issues/5112[this issue] is resolved, and Junie once https://youtrack.jetbrains.com/issue/JUNIE-5904/Support-OSC-7501-Program-Status-escape-sequences-in-Junie-CLI[this one] is.
 Goose reports its state since https://github.com/aaif-goose/goose/pull/12928[this change], which is merged but not in a release yet (1.55.0 does not have it): it will be compatible with the next one.
+Kilo Code does not report its state yet: https://github.com/Kilo-Org/kilocode/issues/14973[this request] to emit it is open.
 * The *agent board* is not a list of known agents: any program that reports its state (OSC 7501) gets a card, whatever it is.
 The agents above only add their logo and their name, and a program that does not report has no card.
 * The *usage meters* use the agents' own commands.
 Claude Code is asked `claude -p /usage`, Antigravity `agy -p /usage` and Codex `codex app-server` (its `account/rateLimits/read` request); none of them costs a turn.
 Copilot CLI has no command that gives the usage without costing a turn, so it has no meter.
 Junie has none either yet: it will get one once https://youtrack.jetbrains.com/issue/JUNIE-5895/CLI-command-to-query-AI-credit-balance-and-quota[this issue] is resolved.
-OpenCode has no limit to meter, but the header of its pane and its card on the board show how full the context of its session is (a ring) and what the session cost.
-They are read from OpenCode's own database, read-only: KaTTY asks OpenCode nothing and reads no credential.
-A model that OpenCode does not list (one of your own gateway) has a cost and no ring.
-In the usage panel OpenCode shows what it spent today, over the last 7 days and this month, over all its sessions.
+OpenCode and Kilo Code (whose command line is OpenCode's) have no limit to meter, but the header of their pane and their card on the board show how full the context of their session is (a ring) and what the session cost.
+They are read from the agent's own database, read-only: KaTTY asks them nothing and reads no credential. Kilo Code's `kilo stats` is not used: it starts a process that writes a log file each time, and prints boxes for people to read, where the database says the same without that.
+A model that the agent does not list (one of your own gateway, or Kilo's `kilo-auto/free`) has a cost and no ring.
+In the usage panel they show what they spent today, over the last 7 days and this month, over all their sessions.
 Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
-* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline and Codex resume their conversation.
+* Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline, Codex and Kilo Code resume their conversation.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.
 OpenCode's session is the last one that it reported as working or waiting, so two OpenCodes in one directory are told apart once each has worked (before that, and before 2.1.0, it is the newest one of the directory).
 Crush's and Goose's session is the newest one of its directory, so two of them in one directory are not told apart.
 Cline's is the one that its own client has used, so two Clines in one directory are told apart (before 3.0.66 a Cline does not tell its daemon which process it is, and is looked for by its directory, like the others).
+Kilo Code's is the one that the log of its own process names when it makes a session (the log is among the files the process has open, and says `sessionId=…`), so two Kilos in one directory are told apart then; a Kilo whose log says nothing is guessed like the others, by the newest conversation of its directory.
 A Crush or a Cline started with `--data-dir` keeps its conversations where KaTTY does not look: it starts a new one.
 Codex's is the one on its own command line (`codex resume <id>`, which is how KaTTY starts it again), else the one that it made when it started, so two Codexes in one directory are told apart unless both were resumed with no id (`resume --last`, the picker): then it is the newest one of the directory, as for the others.
 Aider has no conversation to find: it is started again with `--restore-chat-history`, which loads the chat that it keeps in the directory (`.aider.chat.history.md`).
@@ -363,7 +371,7 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 
 * macOS on Apple Silicon only, for now.
 * Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
-* Copilot CLI, Junie, Aider, Goose and Cline do not tell KaTTY what they are doing yet.
+* Copilot CLI, Junie, Aider, Goose, Cline and Kilo Code do not tell KaTTY what they are doing yet.
 * The Option key is not Alt in your programs: it types the characters of your keyboard layout.
 * The directory and the prompts of a terminal are followed for zsh and bash.
 fish is supported but was never tried, and nushell and elvish are not.

@@ -174,5 +174,11 @@ internal class OpenCodeStore(
 
         fun defaultDatabase(): Path =
             Path.of(System.getProperty("user.home"), ".local", "share", "opencode", "opencode.db")
+
+        /**
+         * Kilo Code's: its CLI is OpenCode's, and its database (`~/.local/share/kilo/kilo.db`) and its list of models have the same shape. The database
+         * that the process has open is where a session is looked for ([KiloStore]); what its agent spent altogether is in this one.
+         */
+        fun kilo(): OpenCodeStore = OpenCodeStore(KiloStore.defaultDatabase(), ModelLimits(ModelLimits.kiloFile()))
     }
 }

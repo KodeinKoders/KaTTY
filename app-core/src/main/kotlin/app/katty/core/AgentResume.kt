@@ -56,6 +56,10 @@ public object AgentResume {
      * KaTTY starts it again, and resumes the same thread), else when the thread was made (the TUI starts it a second after it starts), else the
      * newest of the directory that was updated since ([codexSession], which is [CodexStore.sessionFor] by default).
      *
+     * - Kilo Code is OpenCode's CLI with its own folder (`~/.local/share/kilo/kilo.db`): the process has its database and a log of its own open
+     * ([openFiles] of [groupPids]), and the log names the session when one is made, which is the terminal's own whichever directory it is in
+     * ([kiloSession], which is [KiloStore.sessionFor] by default). A Kilo whose log says nothing is guessed by [cwd] and [startedAtMillis].
+     *
      * Whether the files of the others follow a conversation that is changed from inside the agent was not checked.
      *
      * @param openFiles The paths of the files that the process has open.
@@ -77,6 +81,7 @@ public object AgentResume {
         openCodeRoot: (String) -> String? = { OpenCodeStore().rootOf(it) },
         argv: List<String> = emptyList(),
         codexSession: (String, Long, List<String>) -> String? = { directory, startedAt, arguments -> CodexStore().sessionFor(directory, startedAt, arguments) },
+        kiloSession: (String, Long, List<String>) -> String? = { directory, startedAt, paths -> KiloStore().sessionFor(directory, startedAt, paths) },
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
@@ -89,6 +94,8 @@ public object AgentResume {
             Agent.GOOSE -> cwd?.let { gooseSession(it, startedAtMillis) }?.takeIf(::isUnderscoreId)
             Agent.CLINE -> cwd?.let { clineSession(it, startedAtMillis, groupPids) }?.takeIf(::isUnderscoreId)
             Agent.CODEX -> cwd?.let { codexSession(it, startedAtMillis, argv) }?.takeIf(::isSessionId)
+            // Its database and its log are what the process has open: the script that has the terminal and the native program that it started.
+            Agent.KILO -> cwd?.let { kiloSession(it, startedAtMillis, groupPids.ifEmpty { listOf(pid) }.flatMap(openFiles)) }?.takeIf(::isOpenCodeId)
             else -> null
         }
 
@@ -184,6 +191,22 @@ public object AgentResume {
         val program = original.firstOrNull()?.takeIf { agent != Agent.JUNIE } ?: agent.executable
         val kept = ArrayList<String>()
         kept += program
+        if (agent == Agent.KILO) {
+            // Its options are the interface's. Another command (`kilo run`, `kilo serve`) is not a conversation to come back to, and the project that
+            // `kilo [project]` is given is where the process already is.
+            // The value of an option that has one (`--port 4096`) is not the command.
+            val takesValue = knownOptions(agent).filterValues { it }.keys
+            var command: String? = null
+            var skip = false
+            for (word in original.drop(1)) {
+                when {
+                    skip -> skip = false
+                    word.startsWith("-") -> skip = word.substringBefore('=') in takesValue && '=' !in word
+                    else -> { command = word; break }
+                }
+            }
+            if (command in KILO_COMMANDS) return listOf(program, command!!)
+        }
         if (agent == Agent.GOOSE) {
             // Its options belong to the `session` command, which is what a bare `goose` runs as well. Another command (`goose run`,
             // `goose acp`) is not a conversation to come back to.
@@ -227,6 +250,7 @@ public object AgentResume {
                 Agent.GOOSE -> kept += listOf("--resume", "--session-id", sessionId)
                 Agent.CLINE -> kept += listOf("--id", sessionId)
                 Agent.CODEX -> kept += listOf("resume", sessionId)
+                Agent.KILO -> kept += listOf("--session", sessionId)
                 else -> Unit
             }
         }
@@ -298,6 +322,17 @@ public object AgentResume {
         Agent.CRUSH -> mapOf("--yolo" to false, "-y" to false, "--debug" to false, "-d" to false, "--cwd" to true, "-c" to true, "--data-dir" to true, "-D" to true)
         // `-p` is the plan mode here and `-k` the API key, which is not kept. `--thinking` may have no value, and then the next word cannot be
         // told from a prompt. `--worktree` would make another one, and `--zen` runs the session in the background.
+        // `--prompt` would be sent twice, `--worktree` would make another one, and `--fork` would make another conversation of the one it comes back on.
+        Agent.KILO -> mapOf(
+            "--auto" to false,
+            "--mini" to false,
+            "--pure" to false,
+            "--model" to true,
+            "-m" to true,
+            "--agent" to true,
+            "--port" to true,
+            "--hostname" to true,
+        )
         Agent.CLINE -> mapOf(
             "--plan" to false,
             "-p" to false,
@@ -350,6 +385,13 @@ public object AgentResume {
         )
         else -> emptyMap()
     }
+
+    // What `kilo --help` lists as commands: the first word of a command line that is one of them is not a project to start in.
+    private val KILO_COMMANDS = setOf(
+        "completion", "acp", "mcp", "attach", "run", "debug", "auth", "providers", "agent", "upgrade", "uninstall", "serve", "models", "stats", "export",
+        "import", "github", "pr", "session", "plugin", "plug", "db", "console", "cloud", "roll-call", "profile", "auto", "remote", "daemon", "config",
+        "worktree", "help",
+    )
 
     private const val STALE_MARGIN_MS = 5_000L
 }

@@ -423,4 +423,35 @@ class AgentResumeTest {
             "The thread it is in now, not the one it was started on",
         )
     }
+
+    @Test
+    fun kiloAsksForItsSessionWithTheFilesOfItsGroupAndNotOnlyOfTheScript() {
+        var asked: Triple<String, Long, List<String>>? = null
+        val open = mapOf(10 to listOf("/x/script.js"), 11 to listOf("/h/.local/share/kilo/kilo.db", "/h/.local/share/kilo/log/2026-10-21T155909.log"))
+
+        val found = AgentResume.sessionId(
+            Agent.KILO, 10, 9_000L, home.toFile(), cwd = "/work", groupPids = listOf(10, 11), openFiles = { open[it].orEmpty() },
+            kiloSession = { cwd, at, paths -> asked = Triple(cwd, at, paths); "ses_abc123" },
+        )
+
+        assertEquals("ses_abc123", found)
+        assertEquals(Triple("/work", 9_000L, open.values.flatten()), asked)
+        assertNull(AgentResume.sessionId(Agent.KILO, 10, 0, home.toFile(), cwd = null, kiloSession = { _, _, _ -> error("No directory, no question") }))
+        assertNull(AgentResume.sessionId(Agent.KILO, 10, 0, home.toFile(), cwd = "/work", kiloSession = { _, _, _ -> "ses_a; rm -rf ~" }), "The id goes into a command line")
+    }
+
+    @Test
+    fun resumesKiloOnItsSessionWithHowItWasRunAndNotItsPromptOrWhatMakesAnother() {
+        assertEquals(
+            listOf("kilo", "--auto", "--agent", "code", "--session", "ses_abc123"),
+            AgentResume.argv(
+                Agent.KILO,
+                listOf("kilo", "/work", "--auto", "--prompt", "fix it", "--continue", "--fork", "--worktree", "w", "--agent", "code"),
+                "ses_abc123",
+            ),
+        )
+        // A command that is not the interface is not a conversation to come back to.
+        assertEquals(listOf("kilo", "run"), AgentResume.argv(Agent.KILO, listOf("kilo", "run", "write a test"), "ses_abc123"))
+        assertEquals(listOf("kilo", "serve"), AgentResume.argv(Agent.KILO, listOf("kilo", "--port", "4096", "serve"), null))
+    }
 }

@@ -27,8 +27,7 @@ public fun ForegroundCommand.toRunning(
     val line = when (agent) {
         Agent.OPENCODE -> listOf(openCodeProgram(argv.first(), executable)) + argv.drop(1)
         // The script is what is typed, not the interpreter that runs it (`Python`, from a path that a Homebrew update removes; `node`).
-        Agent.AIDER, Agent.CLINE -> if (File(argv.first()).name == agent.executable) argv else argv.drop(1)
-        else -> argv
+        else -> if (agent?.interpreted == true && File(argv.first()).name !in agent.names) argv.drop(1) else argv
     }
     val kept = when {
         !tooLong -> line

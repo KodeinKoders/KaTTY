@@ -29,6 +29,7 @@ enum class AgentGlyph(val icon: KattyIcon, val tint: Color) {
     AIDER(AgentLogos.Aider, Color(0xFF3FA34D)),
     GOOSE(AgentLogos.Goose, Color(0xFF5B8DEF)),
     CLINE(AgentLogos.Cline, Color(0xFF7C8CFF)),
+    KILO(AgentLogos.Kilo, Color(0xFFD4B300)),
 
     /** A shell, and a program that is not one of the agents. */
     SHELL(KattyIcons.Prompt, Color(0xFF6E7280)),
@@ -64,5 +65,6 @@ fun Agent?.glyph(): AgentGlyph = when (this) {
     Agent.AIDER -> AgentGlyph.AIDER
     Agent.GOOSE -> AgentGlyph.GOOSE
     Agent.CLINE -> AgentGlyph.CLINE
+    Agent.KILO -> AgentGlyph.KILO
     null -> AgentGlyph.SHELL
 }

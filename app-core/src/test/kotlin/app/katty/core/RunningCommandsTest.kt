@@ -104,4 +104,15 @@ class RunningCommandsTest {
         assertEquals(listOf("/opt/homebrew/bin/cline", "--yolo", "-m", "sonnet"), running.toTyped().argv)
         assertEquals(true, running.toTyped().run)
     }
+
+    @Test
+    fun aKiloIsKeptByItsScriptWhateverItIsCalledAndComesBackWithHowItWasRun() {
+        val running = command("node", "/opt/homebrew/bin/kilocode", "--auto", "-m", "anthropic/sonnet", "--prompt", "fix it").toRunning { _, _, _ -> "ses_abc123" }!!
+
+        assertEquals("kilocode", running.agent)
+        assertEquals(listOf("/opt/homebrew/bin/kilocode", "--auto", "-m", "anthropic/sonnet", "--prompt", "fix it"), running.argv)
+        // The prompt is not typed again, and the conversation is the one it was in.
+        assertEquals(listOf("/opt/homebrew/bin/kilocode", "--auto", "-m", "anthropic/sonnet", "--session", "ses_abc123"), running.toTyped().argv)
+        assertEquals(true, running.toTyped().run)
+    }
 }

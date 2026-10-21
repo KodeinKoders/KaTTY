@@ -49,6 +49,10 @@ internal class ModelLimits(private val file: Path = defaultFile()) {
         fun defaultFile(): Path =
             Path.of(System.getProperty("user.home"), ".cache", "opencode", "models.json")
 
+        /** Kilo Code's, which is OpenCode's CLI with a folder of its own. */
+        fun kiloFile(): Path =
+            Path.of(System.getProperty("user.home"), ".cache", "kilo", "models.json")
+
         fun parse(text: String): Map<Pair<String, String>, Int> {
             val result = mutableMapOf<Pair<String, String>, Int>()
             for ((provider, entry) in Json.parseToJsonElement(text).jsonObject) {

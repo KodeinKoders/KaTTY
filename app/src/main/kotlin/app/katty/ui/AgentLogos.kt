@@ -92,4 +92,11 @@ object AgentLogos {
         fills = listOf("M11 2h2v2.500h-2zM4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM8 10a1.500 1.500 0 1 0 0 3 1.500 1.500 0 0 0 0-3zM16 10a1.500 1.500 0 1 0 0 3 1.500 1.500 0 0 0 0-3z"),
         grid = 24f, fillType = PathFillType.EvenOdd,
     )
+
+    /** Drawn for KaTTY, not Kilo Code's logo (none is published as an icon set): a capital K. */
+    val Kilo = KattyIcon(
+        strokes = emptyList(),
+        fills = listOf("M5 3h3.200v7.200L14.500 3h4.200l-6.400 7.600L19.200 21h-4.100l-4.800-7.600-2.100 2.500V21H5z"),
+        grid = 24f,
+    )
 }

@@ -10,7 +10,13 @@ import java.io.File
  *
  * [id] is what the settings keep, and what a program's name is matched against: see [fromApp].
  */
-public enum class Agent(public val id: String, public val displayName: String, public val executable: String, public val interpreted: Boolean = false) {
+public enum class Agent(
+    public val id: String,
+    public val displayName: String,
+    public val executable: String,
+    public val interpreted: Boolean = false,
+    public val aliases: List<String> = emptyList(),
+) {
     CLAUDE("claude", "Claude Code", "claude"),
     CODEX("codex", "Codex", "codex"),
     ANTIGRAVITY("antigravity", "Antigravity", "agy"),
@@ -21,7 +27,11 @@ public enum class Agent(public val id: String, public val displayName: String, p
     AIDER("aider", "Aider", "aider", interpreted = true),
     GOOSE("goose", "Goose", "goose"),
     CLINE("cline", "Cline", "cline", interpreted = true),
+    KILO("kilocode", "Kilo Code", "kilo", interpreted = true, aliases = listOf("kilocode")),
     ;
+
+    /** What the program that runs it can be called: its [executable] and its [aliases]. */
+    public val names: List<String> get() = listOf(executable) + aliases
 
     public companion object {
         /**
@@ -41,6 +51,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
                 "aider" in name -> AIDER
                 "goose" in name -> GOOSE
                 "cline" in name -> CLINE
+                "kilocode" in name || name == "kilo" -> KILO
                 else -> null
             }
         }
@@ -48,7 +59,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
         public fun byId(id: String): Agent? = entries.firstOrNull { it.id == id }
 
         /** The agent whose program is called [process] (`claude`, `agy`…), `null` for any other program. */
-        public fun fromProcess(process: String?): Agent? = process?.let { name -> entries.firstOrNull { it.executable.equals(name, ignoreCase = true) } }
+        public fun fromProcess(process: String?): Agent? = process?.let { name -> entries.firstOrNull { agent -> agent.names.any { it.equals(name, ignoreCase = true) } } }
 
         /**
          * The agent that runs as [argv], a command line as the system has it: its program, or, for an agent that is a script (Aider is Python, Cline
@@ -58,7 +69,7 @@ public enum class Agent(public val id: String, public val displayName: String, p
         public fun fromCommand(argv: List<String>): Agent? {
             val program = argv.firstOrNull()?.let { File(it).name } ?: return null
             if (!Regex("(?i)(python[0-9.]*|node)").matches(program)) return fromProcess(program)
-            return argv.getOrNull(1)?.let { File(it).name }?.let { script -> entries.firstOrNull { it.interpreted && it.executable == script } }
+            return argv.getOrNull(1)?.let { File(it).name }?.let { script -> entries.firstOrNull { it.interpreted && script in it.names } }
         }
     }
 }

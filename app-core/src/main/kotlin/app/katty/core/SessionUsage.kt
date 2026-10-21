@@ -11,7 +11,7 @@ public data class SessionUsage(val contextPercent: Int?, val costUsd: Double?)
 
 /**
  * Where an agent keeps what its sessions used, read without asking the agent anything and without a credential. One for each agent that has
- * somewhere to read it from, so that others can be added; only OpenCode has one.
+ * somewhere to read it from, so that others can be added; OpenCode and Kilo Code have one.
  */
 public interface SessionUsageReader {
     /** The session of the program that runs in [cwd] and started at [startedAtMs], or `null` when there is none or it cannot be told. */
@@ -24,7 +24,7 @@ public interface SessionUsageReader {
     public fun read(id: String): SessionUsage?
 }
 
-/** OpenCode's, from its database ([OpenCodeStore]). */
+/** OpenCode's, and Kilo Code's whose CLI is OpenCode's, from the database ([OpenCodeStore]). */
 public class OpenCodeUsageReader internal constructor(private val store: OpenCodeStore) : SessionUsageReader {
     public constructor() : this(OpenCodeStore())
 
@@ -36,7 +36,8 @@ public class OpenCodeUsageReader internal constructor(private val store: OpenCod
 }
 
 /** The readers of the agents that have one. */
-public fun sessionUsageReaders(): Map<Agent, SessionUsageReader> = mapOf(Agent.OPENCODE to OpenCodeUsageReader())
+public fun sessionUsageReaders(): Map<Agent, SessionUsageReader> =
+    mapOf(Agent.OPENCODE to OpenCodeUsageReader(), Agent.KILO to OpenCodeUsageReader(OpenCodeStore.kilo()))
 
 /**
  * What the open sessions of every agent cost together.

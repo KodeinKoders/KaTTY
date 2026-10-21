@@ -39,6 +39,12 @@ class AgentsTest {
         assertEquals(Agent.GOOSE, Agent.fromProcess("goose"))
         assertEquals(Agent.CLINE, Agent.fromApp("cline"))
         assertEquals(Agent.CLINE, Agent.fromProcess("cline"))
+        assertEquals(Agent.KILO, Agent.fromApp("kilocode"))
+        assertEquals(Agent.KILO, Agent.fromApp("kilo"))
+        assertEquals(Agent.KILO, Agent.fromProcess("kilo"))
+        assertEquals(Agent.KILO, Agent.fromProcess("kilocode"))
+        // A word that only has `kilo` in it is no agent.
+        assertNull(Agent.fromApp("kilometer"))
     }
 
     @Test
@@ -55,6 +61,9 @@ class AgentsTest {
         assertEquals(Agent.AIDER, Agent.fromCommand(listOf("python3.12", "/home/me/.venv/bin/aider")))
         // Cline is a Node script: what the system says of a running one is `node /opt/homebrew/bin/cline`.
         assertEquals(Agent.CLINE, Agent.fromCommand(listOf("node", "/opt/homebrew/bin/cline", "--yolo")))
+        // Kilo Code is Node's too, and its script has two names.
+        assertEquals(Agent.KILO, Agent.fromCommand(listOf("node", "/opt/homebrew/bin/kilo")))
+        assertEquals(Agent.KILO, Agent.fromCommand(listOf("node", "/opt/homebrew/bin/kilocode", "--auto")))
         assertNull(Agent.fromCommand(listOf("node", "/home/me/server.js")))
         assertEquals(Agent.CLAUDE, Agent.fromCommand(listOf("/home/me/.local/bin/claude", "a prompt")))
         // A script of another name is no agent, and neither is a program that is not an interpreter given `aider`.
@@ -82,7 +91,7 @@ class AgentsTest {
 
     @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }
