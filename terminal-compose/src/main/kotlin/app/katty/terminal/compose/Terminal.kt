@@ -98,7 +98,7 @@ import kotlin.math.roundToInt
  * @param primarySelection What was selected last, which a middle click pastes. Share one between terminals to paste what is selected in
  * one into another.
  * @param onOpenLink Opens the address of a link that was clicked. By default the system opens the ones that start with `http`, `https`,
- * `ftp`, `file` and `mailto`, and the others are refused.
+ * `ftp` and `mailto`, a `file` link is shown in the Finder and not opened (it may be an application or a script), and the others are refused.
  * @param ligatures Whether the font joins sequences such as `=>` and `!=` into one glyph. Most programmers' fonts do, and it is on by default.
  * @param focusOnStart Whether the terminal takes the keyboard focus when it is first shown. A host that shows several terminals decides which
  * one has it, and turns this off.

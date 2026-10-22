@@ -7,6 +7,7 @@ import app.katty.terminal.TerminalLink
 import app.katty.terminal.TerminalMouseButton
 import org.slf4j.LoggerFactory
 import java.awt.Desktop
+import java.io.File
 import java.net.URI
 import kotlin.concurrent.thread
 import kotlin.math.floor
@@ -112,32 +113,73 @@ internal class LinkInteraction {
 }
 
 // What a link may open from here: addresses that a program can write, which a program could use to start anything else.
-private val OPENABLE_SCHEMES = setOf("http", "https", "mailto", "ftp", "file")
+private val BROWSED_SCHEMES = setOf("http", "https", "mailto", "ftp")
+
+/** What clicking a link does, which [linkAction] decides. */
+internal sealed interface LinkAction {
+    /** The system opens the address: its browser, its mail program. */
+    data class Browse(val uri: URI) : LinkAction
+
+    /** The Finder opens the folder. */
+    data class OpenFolder(val folder: File) : LinkAction
+
+    /** The Finder shows the file, selected in its folder: it is not opened. */
+    data class Reveal(val file: File) : LinkAction
+
+    /** Nothing is opened. */
+    data class Refuse(val reason: String) : LinkAction
+}
 
 /**
- * Opens [url] with the system: its browser, for the web, or whatever handles a file or a mail address. Only for the schemes that
- * a program has no business starting something with: the others are refused. The host that wants more gives its own to
- * [Terminal].
+ * What clicking the link [url] does. The addresses of the web and of mail are opened by the system. A `file:` link is not opened: a program
+ * can write any text over a link (OSC 8), and opening a file runs it when it is an application or a script (`.app`, `.command`), so it is
+ * shown in the Finder instead, and only a folder (with no extension: a bundle such as `X.app` is a folder that would run) is opened there.
+ * A file of another machine, one that is not there, and any other scheme are refused.
  */
-internal fun openInBrowser(url: String) {
+internal fun linkAction(url: String): LinkAction {
     val uri = try {
         URI(url)
-    } catch (e: Exception) {
-        logger.warn("Not opening {}: it is not an address", url)
-        return
+    } catch (_: Exception) {
+        return LinkAction.Refuse("it is not an address")
     }
-    if (uri.scheme?.lowercase() !in OPENABLE_SCHEMES) {
-        logger.warn("Not opening {}: the scheme is not one that is opened from the terminal", url)
+    return when (uri.scheme?.lowercase()) {
+        in BROWSED_SCHEMES -> LinkAction.Browse(uri)
+        "file" -> {
+            val host = uri.host ?: uri.authority
+            if (!host.isNullOrEmpty() && host != "localhost") return LinkAction.Refuse("the file is on another machine")
+            val path = uri.path?.takeIf { it.isNotEmpty() } ?: return LinkAction.Refuse("it names no file")
+            val file = File(path)
+            when {
+                !file.exists() -> LinkAction.Refuse("there is no such file")
+                file.isDirectory && file.extension.isEmpty() -> LinkAction.OpenFolder(file)
+                else -> LinkAction.Reveal(file)
+            }
+        }
+        else -> LinkAction.Refuse("the scheme is not one that is opened from the terminal")
+    }
+}
+
+/**
+ * Opens [url] as [linkAction] says: with the system's browser, for the web, or in the Finder, for a file. The host that wants more gives
+ * its own to [Terminal].
+ */
+internal fun openInBrowser(url: String) {
+    val action = linkAction(url)
+    if (action is LinkAction.Refuse) {
+        logger.warn("Not opening {}: {}", url, action.reason)
         return
     }
     // Starting the browser may take a moment, and not on the UI thread.
     thread(name = "katty-open-link", isDaemon = true) {
         try {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(uri)
-            } else {
-                logger.warn("Not opening {}: this system has no way to", url)
+            val desktop = if (Desktop.isDesktopSupported()) Desktop.getDesktop() else null
+            val supported = when (action) {
+                is LinkAction.Browse -> desktop?.isSupported(Desktop.Action.BROWSE)?.also { if (it) desktop.browse(action.uri) }
+                is LinkAction.OpenFolder -> desktop?.isSupported(Desktop.Action.OPEN)?.also { if (it) desktop.open(action.folder) }
+                is LinkAction.Reveal -> desktop?.isSupported(Desktop.Action.BROWSE_FILE_DIR)?.also { if (it) desktop.browseFileDirectory(action.file) }
+                is LinkAction.Refuse -> true
             }
+            if (supported != true) logger.warn("Not opening {}: this system has no way to", url)
         } catch (e: Exception) {
             logger.warn("Could not open {}", url, e)
         }
