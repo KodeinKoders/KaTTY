@@ -125,6 +125,11 @@ public class TerminalSession private constructor(
     private var regexStale = true
     private var regexLookedAtNanos = 0L
 
+    // The screen changed since the last look, too soon after it to look again: the next look is for it, whatever the screen does then. And
+    // whether a frame is asked for, for that look.
+    private var regexChangedSince = false
+    private val regexRefreshAsked = AtomicBoolean(false)
+
     // How big a cell is and how many there are, for what the stream of the program says in cells or percent: read by the reader.
     @Volatile
     private var geometry = CellGeometry(INITIAL_CELL_WIDTH_PX, INITIAL_CELL_HEIGHT_PX, 80, 24)
@@ -1095,6 +1100,7 @@ public class TerminalSession private constructor(
         val lines = if (total == 0L) emptyList() else terminal.readRows(first, total - 1, unwrap = false).split('\n')
         regexMatchList = regexMatches(lines, first, pattern)
         regexStale = false
+        regexChangedSince = false
         regexLookedAtNanos = System.nanoTime()
         // What is selected goes on being so if it is still there, and is not any more if not.
         regexSelected = regexSelected?.let { current -> regexMatchList.firstOrNull { it.row == current.row && it.start == current.start } }
@@ -1566,12 +1572,14 @@ public class TerminalSession private constructor(
     // every so often: a long history is read for it. `null` when the query is not one. Under the lock.
     private fun regexMatchesOnFrame(changed: Boolean): List<RegexMatch> {
         val sinceNanos = System.nanoTime() - regexLookedAtNanos
-        if (regexStale || (changed && sinceNanos >= REGEX_REFRESH_NS)) {
+        if (changed) regexChangedSince = true
+        if (regexStale || (regexChangedSince && sinceNanos >= REGEX_REFRESH_NS)) {
             lookForRegexMatches()
-        } else if (changed) {
-            // Too soon: it looks when it is time.
+        } else if (regexChangedSince && regexRefreshAsked.compareAndSet(false, true)) {
+            // Too soon: it looks when it is time, once, even if nothing changes after this.
             producerScope.launch {
-                delay(REGEX_REFRESH_NS.nanoseconds)
+                delay((REGEX_REFRESH_NS - sinceNanos).nanoseconds)
+                regexRefreshAsked.set(false)
                 frameRequests.trySend(Unit)
             }
         }

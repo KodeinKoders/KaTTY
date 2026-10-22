@@ -110,6 +110,19 @@ class RegexSearchTest {
     }
 
     @Test
+    fun findsWhatIsWrittenRightAfterItLooked() {
+        val session = start("printf '\\033[?25l'; stty raw -echo; echo ready; head -c1 >/dev/null; printf 'one foo\\n'; sleep 30")
+        session.shown("ready")
+        session.search.setQuery("foo", regex = true)
+        session.await("the search to have looked") { session.search.state.value.takeIf { it.query == "foo" } }
+
+        // The program writes less than the time between two looks after the last one, and then nothing more.
+        session.paste("x")
+
+        session.await("the match of what came then") { session.search.state.value.takeIf { it.total == 1 } }
+    }
+
+    @Test
     fun movesFromAMatchToTheNextRoundTheEnds() {
         val session = start("printf 'foo1 bar\\nfoo22 baz\\nnone\\n'; sleep 30")
         session.shown("none")
