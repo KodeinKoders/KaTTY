@@ -156,6 +156,29 @@ public class TerminalSession private constructor(
         }
     }
 
+    // The marks that the integration makes may still not come: the user's files may remove its hooks (`precmd_functions=()`), or the shell
+    // may start another program in its place. Long after the start, and once the shell has said nothing for a second, what is still waiting
+    // is typed, if the shell still has the terminal.
+    private fun typeIfTheMarksDoNotCome(shell: String) {
+        producerScope.launch {
+            delay(MARKS_EXPECTED_DELAY)
+            while (pendingInput.get() != null) {
+                val quiet = (System.nanoTime() - lastOutputNanos).nanoseconds
+                if (quiet < TYPE_WITHOUT_MARKS_DELAY) {
+                    delay(TYPE_WITHOUT_MARKS_DELAY - quiet)
+                    continue
+                }
+                val program = foregroundProcessName()
+                if (program == shell) {
+                    logger.warn("The shell marked no prompt: typing what was waiting for it")
+                    typePending()
+                } else if (pendingInput.getAndSet(null) != null) {
+                    logger.warn("The shell marked no prompt, and {} has the terminal: not typing what was waiting", program)
+                }
+            }
+        }
+    }
+
     private fun typePending() {
         val bytes = pendingInput.getAndSet(null) ?: return
         outgoing.put(bytes)
@@ -1691,6 +1714,9 @@ public class TerminalSession private constructor(
         private val MIN_FRAME_INTERVAL = 1.seconds / 60
         private val TYPE_WITHOUT_MARKS_DELAY = 1.seconds
 
+        // How long a shell that marks its prompts has to mark the first one before what waits for it is typed without it.
+        private val MARKS_EXPECTED_DELAY = 5.seconds
+
         // What a shell takes as "clear the screen and draw the prompt again".
         private const val CONTROL_L: Byte = 0x0C
 
@@ -1850,11 +1876,12 @@ public class TerminalSession private constructor(
             env.putAll(environment)
             // An application opened from the Finder has no locale: the shell would read what is typed as ASCII.
             ensureUtf8Locale(env)
-            val argv = if (shellIntegration) ShellIntegration.apply(command, env, shellIntegrationDirectory) else command
+            val applied = if (shellIntegration) ShellIntegration.apply(command, env, shellIntegrationDirectory) else null
+            val argv = applied?.argv ?: command
             val shell = ShellIntegration.shellOf(command)
             val typed = typeAtPrompt?.let { it.toInput(shell ?: "sh") ?: null.also { logger.warn("Not typing {}: it holds a control character", it) } }
             // The prompt marks are there when the shell is one that the integration knows and it is on.
-            val marked = shellIntegration && shell in setOf("zsh", "bash", "fish")
+            val marked = applied?.installed == true
 
             logger.info("Starting {} in a {}x{} terminal, in {}{}", argv, cols, rows, startIn, if (snapshot != null) ", from a snapshot" else "")
             val process = PtyProcessBuilder(argv.toTypedArray())
@@ -1918,7 +1945,7 @@ public class TerminalSession private constructor(
                         if (typed != null) {
                             it.pendingInput.set(typed)
                             it.pendingAtPromptStart = marked && shell == "fish"
-                            if (!marked) it.typeAfterQuiet()
+                            if (marked) it.typeIfTheMarksDoNotCome(shell!!) else it.typeAfterQuiet()
                         }
                         it.launch()
                     }

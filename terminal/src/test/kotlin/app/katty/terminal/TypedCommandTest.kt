@@ -45,11 +45,11 @@ class TypedCommandTest {
         it.toFile().deleteOnExit()
     }
 
-    private fun start(command: TypedCommand, shellIntegration: Boolean = true): TerminalSession =
+    private fun start(command: TypedCommand, shellIntegration: Boolean = true, home: Path = emptyHome()): TerminalSession =
         TerminalSession.start(
             80, 10,
             command = listOf("/bin/zsh", "-l"),
-            environment = mapOf("HOME" to emptyHome().toString(), "PS1" to "$ "),
+            environment = mapOf("HOME" to home.toString(), "PS1" to "$ "),
             shellIntegration = shellIntegration,
             typeAtPrompt = command,
         ).also { sessions += it }
@@ -89,6 +89,15 @@ class TypedCommandTest {
         val session = start(TypedCommand(listOf("echo", "no-marks"), run = true), shellIntegration = false)
 
         session.await("the output of the command") { "no-marks" in it }
+    }
+
+    @Test
+    fun typesItWhenThePromptMarksThatWereExpectedNeverCome() {
+        // The user's files remove the hooks of the integration: the shell is one that marks its prompts, and marks none.
+        val home = emptyHome().also { Files.writeString(it.resolve(".zshrc"), "precmd_functions=()\n") }
+        val session = start(TypedCommand(listOf("echo", "late"), run = true), home = home)
+
+        session.await("the output of the command") { rows -> rows.any { it.trim() == "late" } }
     }
 
     private companion object {

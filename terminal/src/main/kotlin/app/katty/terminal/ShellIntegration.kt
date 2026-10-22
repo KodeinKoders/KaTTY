@@ -87,45 +87,49 @@ internal object ShellIntegration {
 
     /**
      * The command to run instead of [command], with what it needs added to [environment]: [command] itself and [environment]
-     * untouched when the shell is not one that is known, or is not started to be typed in.
+     * untouched when the shell is not one that is known, is not started to be typed in, or the scripts cannot be written.
      *
      * @param directory Where the scripts are kept (see [prepare]): a temporary directory when it is `null`.
      */
-    fun apply(command: List<String>, environment: MutableMap<String, String>, directory: Path? = null): List<String> {
-        val program = command.firstOrNull() ?: return command
+    fun apply(command: List<String>, environment: MutableMap<String, String>, directory: Path? = null): Applied {
+        val untouched = Applied(command, installed = false)
+        val program = command.firstOrNull() ?: return untouched
         val arguments = command.drop(1)
         // A login shell, which is what a terminal starts: anything else is a command or a script that must run as it is.
-        if (!arguments.all { it == "-l" || it == "--login" || it == "-i" }) return command
+        if (!arguments.all { it == "-l" || it == "--login" || it == "-i" }) return untouched
         val shell = File(program).name.removePrefix("-")
         return when (shell) {
             "zsh" -> {
-                val root = root(directory) ?: return command
+                val root = root(directory) ?: return untouched
                 // What KaTTY, running in a terminal of its own, may have inherited is not the user's.
                 environment.remove("KATTY_ZDOTDIR")
                 environment["ZDOTDIR"]?.let { environment["KATTY_ZDOTDIR"] = it }
                 environment["ZDOTDIR"] = root.resolve("zsh").toString()
-                command
+                Applied(command, installed = true)
             }
 
             "bash" -> {
-                val root = root(directory) ?: return command
+                val root = root(directory) ?: return untouched
                 environment["KATTY_BASH_INJECTED"] = "1"
                 // It is not a login shell any more: the script reads the files of one.
                 if (arguments.any { it == "-l" || it == "--login" }) environment["KATTY_BASH_LOGIN"] = "1" else environment.remove("KATTY_BASH_LOGIN")
-                listOf(program, "--rcfile", root.resolve("bash/katty.bash").toString(), "-i")
+                Applied(listOf(program, "--rcfile", root.resolve("bash/katty.bash").toString(), "-i"), installed = true)
             }
 
             "fish" -> {
-                val root = root(directory) ?: return command
+                val root = root(directory) ?: return untouched
                 // What KaTTY, running in a terminal of its own, may have inherited is not the user's: the script takes its own out.
                 environment["KATTY_SHELL_INTEGRATION_XDG_DIR"] = root.toString()
                 // The directories that fish and the system use when it is not set.
                 val existing = environment["XDG_DATA_DIRS"]?.takeIf { it.isNotEmpty() } ?: "/usr/local/share:/usr/share"
                 environment["XDG_DATA_DIRS"] = "$root:$existing"
-                command
+                Applied(command, installed = true)
             }
 
-            else -> command
+            else -> untouched
         }
     }
+
+    /** What [apply] gives: the command to run, and whether the shell will mark its prompts, which it does not when the scripts could not be written. */
+    data class Applied(val argv: List<String>, val installed: Boolean)
 }

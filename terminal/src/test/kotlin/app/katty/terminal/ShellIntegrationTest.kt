@@ -244,9 +244,9 @@ class ShellIntegrationTest {
     @Test
     fun otherShellsAndCommandsAreLeftAsTheyAre() {
         val environment = mutableMapOf<String, String>()
-        assertEquals(listOf("/bin/sh", "-l"), ShellIntegration.apply(listOf("/bin/sh", "-l"), environment))
-        assertEquals(listOf("/bin/zsh", "-c", "ls"), ShellIntegration.apply(listOf("/bin/zsh", "-c", "ls"), environment))
-        assertEquals(listOf("/bin/bash", "script.sh"), ShellIntegration.apply(listOf("/bin/bash", "script.sh"), environment))
+        assertEquals(listOf("/bin/sh", "-l"), ShellIntegration.apply(listOf("/bin/sh", "-l"), environment).argv)
+        assertEquals(listOf("/bin/zsh", "-c", "ls"), ShellIntegration.apply(listOf("/bin/zsh", "-c", "ls"), environment).argv)
+        assertEquals(listOf("/bin/bash", "script.sh"), ShellIntegration.apply(listOf("/bin/bash", "script.sh"), environment).argv)
         assertEquals(emptyMap(), environment)
     }
 
@@ -254,7 +254,7 @@ class ShellIntegrationTest {
     fun fishIsStartedWithTheDirectoryOfTheIntegrationInFrontOfTheDataDirectories() {
         val environment = mutableMapOf("XDG_DATA_DIRS" to "/opt/share:/usr/share")
 
-        val command = ShellIntegration.apply(listOf("/opt/homebrew/bin/fish", "-l"), environment)
+        val command = ShellIntegration.apply(listOf("/opt/homebrew/bin/fish", "-l"), environment).argv
 
         // The command is the same: fish reads the directory by itself.
         assertEquals(listOf("/opt/homebrew/bin/fish", "-l"), command)
@@ -279,7 +279,7 @@ class ShellIntegrationTest {
     fun fishThatIsNotStartedToBeTypedInIsLeftAsItIs() {
         val environment = mutableMapOf<String, String>()
 
-        assertEquals(listOf("fish", "-c", "echo"), ShellIntegration.apply(listOf("fish", "-c", "echo"), environment))
+        assertEquals(listOf("fish", "-c", "echo"), ShellIntegration.apply(listOf("fish", "-c", "echo"), environment).argv)
         assertEquals(emptyMap(), environment)
     }
 
