@@ -47,11 +47,43 @@ class KeyTranslatorTest {
             KeyInput(TerminalKey.A, text = "a", unshiftedCodepoint = 'a'.code),
             keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'a')),
         )
+        // The text was sent (the input method did not deliver it first).
+        keys.confirmTyped()
         // Its release is sent: the program that asked for the releases of keys has it, the others get nothing of it.
         assertEquals(
             KeyInput(TerminalKey.A, TerminalKeyAction.RELEASE, unshiftedCodepoint = 'a'.code),
             keys.translate(keyInfo(RELEASED, KeyEvent.VK_A, 'a')),
         )
+    }
+
+    @Test
+    fun theReleaseOfATypedKeyWhoseTextTheInputMethodDeliveredIsNotSent() {
+        keys.translate(keyInfo(PRESSED, KeyEvent.VK_E, 'é'))
+        keys.translate(keyInfo(TYPED, KeyEvent.VK_UNDEFINED, 'é'))
+        // Not confirmed: the input method had sent the text, without its key, so the program never had the press.
+
+        assertNull(keys.translate(keyInfo(RELEASED, KeyEvent.VK_E, 'é')))
+    }
+
+    @Test
+    fun theReleaseOfAKeyWhosePressTheTerminalTookIsNotSent() {
+        // Option and Left is the line editor's: the terminal took the press, and the translator never saw it.
+        assertNull(keys.translate(keyInfo(RELEASED, KeyEvent.VK_LEFT)))
+        assertNull(keys.translate(keyInfo(RELEASED, KeyEvent.VK_SHIFT)))
+    }
+
+    @Test
+    fun theKeysThatAreDownAreReleasedAllAtOnce() {
+        keys.translate(keyInfo(PRESSED, KeyEvent.VK_SHIFT, modifiers = InputEvent.SHIFT_DOWN_MASK, location = KeyEvent.KEY_LOCATION_LEFT))
+        keys.translate(keyInfo(PRESSED, KeyEvent.VK_UP, modifiers = InputEvent.SHIFT_DOWN_MASK))
+
+        assertEquals(
+            listOf(KeyInput(TerminalKey.SHIFT_LEFT, TerminalKeyAction.RELEASE), KeyInput(TerminalKey.ARROW_UP, TerminalKeyAction.RELEASE)),
+            keys.releaseAll(),
+        )
+        // And they are forgotten: their own release, which goes elsewhere, is nothing here.
+        assertEquals(emptyList(), keys.releaseAll())
+        assertNull(keys.translate(keyInfo(RELEASED, KeyEvent.VK_UP)))
     }
 
     @Test

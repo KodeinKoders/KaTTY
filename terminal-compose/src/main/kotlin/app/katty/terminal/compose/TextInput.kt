@@ -59,7 +59,8 @@ internal class TerminalTextInput(private val onText: (String) -> Unit) {
         fromInputMethod.clear()
     }
 
-    fun deliver(text: String, route: TextRoute, key: KeyInput? = null) {
+    /** Sends [text], unless the other route already did: whether it was sent by this call. */
+    fun deliver(text: String, route: TextRoute, key: KeyInput? = null): Boolean {
         val (own, other) = when (route) {
             TextRoute.KEY_TYPED -> fromKeyTyped to fromInputMethod
             TextRoute.INPUT_METHOD -> fromInputMethod to fromKeyTyped
@@ -67,12 +68,13 @@ internal class TerminalTextInput(private val onText: (String) -> Unit) {
         // Each text of the other route is the duplicate of one text of this one, not of several.
         if (other.remove(text)) {
             logger.debug("{} {}: already delivered by the other route", route, text.debugString())
-            return
+            return false
         }
         logger.debug("{} {}", route, text.debugString())
         own += text
         val onKey = onKey
         if (key != null && onKey != null) onKey(key) else onText(text)
+        return true
     }
 
     fun compose(text: String) {

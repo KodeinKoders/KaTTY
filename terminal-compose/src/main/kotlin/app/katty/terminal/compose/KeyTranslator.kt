@@ -109,8 +109,12 @@ internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = Term
     // as text of no key (the Kitty keyboard protocol tells them apart). It does not outlive the next event of another key.
     private var pending: Pending? = null
 
-    // The keys whose press was sent as a key, by AWT key code: their release is sent too.
-    private val sent = HashSet<Int>()
+    // The keys whose press was sent, by AWT key code: their release is sent too, and only theirs. A press that the terminal took for itself
+    // (a shortcut, the line editing keys) never reached the translator, and its release is not the program's either.
+    private val sent = LinkedHashMap<Int, TerminalKey>()
+
+    // The key of the text that [typed] gave last, which was sent only if the text was: see [confirmTyped].
+    private var typedKey: Pair<Int, TerminalKey>? = null
 
     private class Pending(val keyCode: Int, val key: TerminalKey, val action: TerminalKeyAction, val unshifted: Char, val info: KeyInfo)
 
@@ -121,6 +125,7 @@ internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = Term
     fun reset() {
         down.clear()
         sent.clear()
+        typedKey = null
         pending = null
         leftOption = false
         rightOption = false
@@ -138,6 +143,25 @@ internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = Term
     private fun trackOption(event: KeyInfo, isDown: Boolean) {
         if (event.keyCode != AwtKeyEvent.VK_ALT) return
         if (event.location == AwtKeyEvent.KEY_LOCATION_RIGHT) rightOption = isDown else leftOption = isDown
+    }
+
+    /**
+     * The text of the last key that [translate] gave for a `KEY_TYPED` was sent to the program: its release is to be sent too. The text may
+     * not be (the input method delivered it first, without its key): then the program never had the press, and it has no release.
+     */
+    fun confirmTyped() {
+        typedKey?.let { (code, key) -> sent[code] = key }
+        typedKey = null
+    }
+
+    /**
+     * The releases of the keys whose press was sent and that are still down, which the program will not see any more (it is not in front of
+     * the user now): it is told that they went up. What is down is forgotten.
+     */
+    fun releaseAll(): List<KeyInput> {
+        val releases = sent.values.map { key -> KeyInput(key, TerminalKeyAction.RELEASE, unshiftedCodepoint = unshiftedChar(key)?.code ?: 0) }
+        reset()
+        return releases
     }
 
     /** `null` when the event is not for the program. */
@@ -168,8 +192,9 @@ internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = Term
         }
         // The key that typed it, if it is known: the program may ask for keys and not for text.
         val key = pending.also { pending = null }
+        typedKey = null
         if (key == null || text.codePointCount(0, text.length) != 1) return KeyInput(TerminalKey.UNIDENTIFIED, text = text)
-        sent += key.keyCode
+        typedKey = key.keyCode to key.key
         // Option made the text of an Option key that is not Alt (`å`): the program is told of the key and its text, not of an Alt. Shift
         // made the text if it is not what the key types without it.
         val mods = modifiers(key.info) - TerminalModifier.ALT
@@ -190,7 +215,7 @@ internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = Term
         val action = if (down.add(event.keyCode)) TerminalKeyAction.PRESS else TerminalKeyAction.REPEAT
         val mods = modifiers(event)
 
-        val unshifted = unshiftedChar(key) ?: return KeyInput(key, action, mods)
+        val unshifted = unshiftedChar(key) ?: return KeyInput(key, action, mods).also { sent[event.keyCode] = key }
 
         // A key that has text. Its text comes with the KEY_TYPED, unless there is none because of Ctrl, or it is not wanted: Option
         // is the program's Alt, and the key is sent instead of the character that the layout makes of it.
@@ -199,7 +224,7 @@ internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = Term
             if (!event.meta) pending = Pending(event.keyCode, key, action, unshifted, event)
             return null
         }
-        sent += event.keyCode
+        sent[event.keyCode] = key
         // Ctrl keeps the key of a symbol and tells Shift apart, as it always did; Alt has the symbol that Shift makes of it.
         val shiftedChar = if (event.shift && (unshifted.isLetter() || optionIsAlt(event))) shiftedChar(unshifted) else null
         return KeyInput(
@@ -217,10 +242,11 @@ internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = Term
         trackOption(event, isDown = false)
         val key = terminalKey(event.keyCode, event.location) ?: return null
         if (pending?.keyCode == event.keyCode) pending = null
+        // Only the release of a key whose press was sent: a program that asked for the releases of keys (the Kitty keyboard protocol) is
+        // otherwise told of a key that went up without going down.
+        if (sent.remove(event.keyCode) == null) return null
         val unshifted = unshiftedChar(key) ?: return KeyInput(key, TerminalKeyAction.RELEASE, modifiers(event))
-        // A key that has text: its release is only for a program that asked for the releases of keys (the Kitty keyboard protocol), and
-        // only if its press was sent. Option that made the text is not told, as for the press.
-        if (!sent.remove(event.keyCode)) return null
+        // A key that has text: Option that made the text is not told, as for the press.
         val mods = if (optionIsAlt(event)) modifiers(event) else modifiers(event) - TerminalModifier.ALT
         return KeyInput(key, TerminalKeyAction.RELEASE, mods, unshiftedCodepoint = unshifted.code)
     }

@@ -169,7 +169,12 @@ public fun Terminal(
     // keys to go to the terminal.
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val active = focused && windowFocused
-    val keys = remember(optionAsAlt) { KeyTranslator(optionAsAlt) }
+    val keys = remember(session, optionAsAlt) { KeyTranslator(optionAsAlt) }
+    // The keys that are down when the session stops being shown (⌘ of the shortcut that switches workspace) go up for its program, which will
+    // not see them go up otherwise.
+    DisposableEffect(keys) {
+        onDispose { keys.releaseAll().forEach(session::sendKey) }
+    }
     // The text that is typed comes from two routes, and what is being composed is not in the terminal yet.
     val textInput = remember(session) {
         TerminalTextInput { session.sendKey(KeyInput(TerminalKey.UNIDENTIFIED, text = it)) }.also { it.onKey = session::sendKey }
@@ -523,8 +528,8 @@ public fun Terminal(
                 val input = keys.translate(info) ?: return@onPreviewKeyEvent false
                 val text = input.text
                 if (info.kind == KeyInfo.Kind.TYPED && text != null) {
-                    // The input method may deliver it as well.
-                    textInput.deliver(text, TextRoute.KEY_TYPED, input)
+                    // The input method may deliver it as well: the key was only sent with it if this route did, and only then is its release.
+                    if (textInput.deliver(text, TextRoute.KEY_TYPED, input)) keys.confirmTyped()
                 } else {
                     session.sendKey(input)
                 }

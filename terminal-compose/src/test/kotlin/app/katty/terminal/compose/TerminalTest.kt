@@ -504,6 +504,33 @@ class TerminalTest {
     }
 
     @Test
+    fun aKeyThatIsDownWhenTheTerminalLeavesThePaneIsReleasedForItsProgram() {
+        // A program that asked for every key and its release (the Kitty keyboard protocol, flags 1, 2 and 8).
+        val first = session("""printf '\033[>11u'; stty raw -echo; echo ready; cat -v""", cols = 40, rows = 4)
+        val second = session("sleep 30")
+        val shown = androidx.compose.runtime.mutableStateOf(first)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            CompositionLocalProvider(LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true }) {
+                Terminal(shown.value, Modifier.fillMaxSize())
+            }
+        }.also { scenes += it }
+        fun screen() = first.frames.value.rows.indices.joinToString("") { first.frames.value.text(it) }
+        scene.renderUntil("the program to be ready") { "ready" in screen() }
+        scene.renderFor(200)
+
+        // Shift goes down in this terminal (⌘ does, for the shortcut that switches workspace) and up once another has the pane.
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_SHIFT), type = KeyEventType.KeyDown, isShiftPressed = true))
+        scene.renderUntil("the press of Shift") { "57441" in screen() }
+        shown.value = second
+        scene.renderFor(200)
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_SHIFT), type = KeyEventType.KeyUp))
+        scene.renderFor(200)
+        shown.value = first
+
+        scene.renderUntil("the release of Shift") { ":3u" in screen() }
+    }
+
+    @Test
     fun doesNotTellAProgramOfAFocusThatMovedForAMoment() {
         val session = session(
             """stty raw -echo; echo ready; head -c1 >/dev/null; printf '\033[?1004h'; echo enabled; head -c1 | od -An -c""",

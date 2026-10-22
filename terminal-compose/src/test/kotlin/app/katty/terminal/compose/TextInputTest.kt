@@ -32,11 +32,12 @@ class TextInputTest {
     @Test
     fun aTextThatBothRoutesDeliverIsSentOnceInEitherOrder() {
         input.keyPressed()
-        input.deliver("é", TextRoute.KEY_TYPED)
-        input.deliver("é", TextRoute.INPUT_METHOD)
+        assertEquals(true, input.deliver("é", TextRoute.KEY_TYPED))
+        assertEquals(false, input.deliver("é", TextRoute.INPUT_METHOD))
         input.keyPressed()
-        input.deliver("è", TextRoute.INPUT_METHOD)
-        input.deliver("è", TextRoute.KEY_TYPED)
+        assertEquals(true, input.deliver("è", TextRoute.INPUT_METHOD))
+        // The key's route comes second: what it carried was not sent, the key's press included.
+        assertEquals(false, input.deliver("è", TextRoute.KEY_TYPED))
 
         assertEquals(listOf("é", "è"), sent)
     }
