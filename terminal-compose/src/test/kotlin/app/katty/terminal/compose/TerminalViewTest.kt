@@ -27,6 +27,7 @@ import org.jetbrains.skia.Image
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -628,6 +629,32 @@ class TerminalViewTest {
 
         // The middle of a full block is entirely in the color of the character, which is not the cursor's.
         assertEquals(GREEN.rgb, rendered.center(0, 0))
+    }
+
+    @Test
+    fun theBlockCursorDoesNotShowTextThatTheProgramHid() {
+        val frame = frame(30, listOf(row(30, *text("W", style = TerminalStyle(invisible = true)))), steadyCursor(0))
+
+        val rendered = render("cursor-hidden-text", frame)
+
+        // The cursor is a block of the foreground: nothing is drawn on it.
+        assertFalse(rendered.hasInk(0, 0, background = FOREGROUND), "The hidden character shows under the cursor")
+    }
+
+    @Test
+    fun aBoxCharacterUnderTheBlockCursorHasTheShapeItHasElsewhere() {
+        // The same character twice: under the cursor it is drawn in the cursor's text color, and must be the same shape as the other.
+        val frame = frame(30, listOf(row(30, *text("╋╋"))), steadyCursor(0)).copy(cursorColor = RED, cursorTextColor = GREEN)
+
+        val rendered = render("cursor-box-character", frame)
+
+        val cw = rendered.typography.cellWidth
+        val ch = rendered.typography.cellHeight.toInt()
+        val second = kotlin.math.round(cw).toInt()
+        val width = kotlin.math.round(2 * cw).toInt() - second
+        val under = (0 until ch).flatMap { y -> (0 until width).map { x -> rendered.pixel(x, y) == GREEN.rgb } }
+        val beside = (0 until ch).flatMap { y -> (0 until width).map { x -> rendered.pixel(second + x, y) == FOREGROUND.rgb } }
+        assertEquals(beside, under, "The character under the cursor is not the shape it is next to it")
     }
 
     @Test

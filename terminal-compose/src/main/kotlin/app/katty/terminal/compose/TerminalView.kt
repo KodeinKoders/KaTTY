@@ -108,7 +108,7 @@ internal fun TerminalView(
             // The cursor would be in the way of what is being composed.
             drawPreedit(frame, typography, preedit)
         } else if (cursorShown.value) {
-            drawCursor(frame, typography, focused)
+            drawCursor(frame, typography, focused, rows, textShown.value)
         }
         // On top of the cursor, and whether it is shown or not: a program that hides its cursor rings the bell too.
         drawBellPulse(frame, typography, bellPulse())
@@ -454,7 +454,7 @@ private fun DrawScope.drawPreedit(frame: TerminalFrame, typography: TerminalTypo
     }
 }
 
-private fun DrawScope.drawCursor(frame: TerminalFrame, typography: TerminalTypography, focused: Boolean) {
+private fun DrawScope.drawCursor(frame: TerminalFrame, typography: TerminalTypography, focused: Boolean, rows: List<PreparedRow>, textShown: Boolean) {
     val cursor = frame.cursor
     val col = cursor.x ?: return
     val y = cursor.y ?: return
@@ -473,12 +473,16 @@ private fun DrawScope.drawCursor(frame: TerminalFrame, typography: TerminalTypog
     when (shape) {
         TerminalCursorShape.BLOCK -> {
             drawRect(color, Offset(left, top), Size(width, typography.cellHeight))
-            // The character under it, in the color that the theme gives it, or else the one of the background:
-            // the other way round it would not show.
-            if (cell != null && cell.text.isNotEmpty()) {
-                val layout = typography.layout(cell.text, cell.style.bold, cell.style.italic)
+            // The character under it, in the color that the theme gives it, or else the one of the background: the other way round it would
+            // not show. It is the row's own, as the selection draws it (the glyph fitted to its cells, the shape of a box character), cut to
+            // the cursor; not one that the program hid, nor one that blinks while it is hidden.
+            val row = rows.getOrNull(y)
+            if (cell != null && row != null && !cell.style.invisible) {
                 val textColor = (frame.cursorTextColor ?: frame.background).rgb.toColor()
-                drawText(layout, color = textColor, topLeft = Offset(col * typography.cellWidth, top))
+                clipRect(left, top, left + width, top + typography.cellHeight) {
+                    for (text in row.texts) if (textShown || !text.run.blink) drawPreparedText(text, top, typography, textColor)
+                    for (sprite in row.sprites) if (textShown || !sprite.blink) drawPreparedSprite(sprite, top, typography.cellHeight, textColor)
+                }
             }
         }
         TerminalCursorShape.BLOCK_HOLLOW -> drawRoundRect(
