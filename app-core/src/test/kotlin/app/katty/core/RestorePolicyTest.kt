@@ -45,6 +45,50 @@ class RestorePolicyTest {
     }
 
     @Test
+    fun sshRunsWhenItOnlyConnects() {
+        assertTrue(policy.runs(listOf("ssh", "me@host")))
+        assertTrue(policy.runs(listOf("ssh", "-p22", "-A", "host")))
+        assertTrue(policy.runs(listOf("ssh", "-At", "-i", "~/.ssh/key", "host")))
+        assertTrue(policy.runs(listOf("ssh", "-o", "ServerAliveInterval=30", "host")))
+        assertTrue(policy.runs(listOf("ssh", "-J", "bastion", "--", "host")))
+        assertTrue(policy.runs(listOf("/usr/bin/ssh", "ssh://host:2222")))
+    }
+
+    @Test
+    fun sshWithACommandIsOnlyTyped() {
+        // What would run on the other machine again, with no space in any word.
+        assertFalse(policy.runs(listOf("ssh", "host", "reboot")))
+        assertFalse(policy.runs(listOf("ssh", "host", "sudo", "reboot")))
+        assertFalse(policy.runs(listOf("ssh", "-t", "host", "./deploy.sh")))
+        assertFalse(policy.runs(listOf("ssh", "--", "host", "reboot")))
+    }
+
+    @Test
+    fun sshOptionsThatRunCommandsAreOnlyTyped() {
+        assertFalse(policy.runs(listOf("ssh", "-oProxyCommand=nc %h %p", "host")))
+        assertFalse(policy.runs(listOf("ssh", "-o", "proxycommand nc %h %p", "host")))
+        assertFalse(policy.runs(listOf("ssh", "-o", "RemoteCommand=reboot", "host")))
+        assertFalse(policy.runs(listOf("ssh", "-o", "LocalCommand=touch x", "-o", "PermitLocalCommand=yes", "host")))
+        assertFalse(policy.runs(listOf("ssh", "-O", "exit", "host")))
+        // An option that is not known cannot be told from one that takes the next word.
+        assertFalse(policy.runs(listOf("ssh", "-Z", "host")))
+        assertFalse(policy.runs(listOf("ssh", "-p")))
+        assertFalse(policy.runs(listOf("ssh")))
+    }
+
+    @Test
+    fun moshRunsWhenItOnlyConnects() {
+        assertTrue(policy.runs(listOf("mosh", "host")))
+        assertTrue(policy.runs(listOf("mosh", "-p", "60001", "--predict=always", "-a", "me@host")))
+        assertFalse(policy.runs(listOf("mosh", "host", "top")))
+        assertFalse(policy.runs(listOf("mosh", "--", "host", "reboot")))
+        // Both run a command: on this machine, and on the other.
+        assertFalse(policy.runs(listOf("mosh", "--ssh=ssh -i key", "host")))
+        assertFalse(policy.runs(listOf("mosh", "--server=mosh-server; reboot", "host")))
+        assertFalse(policy.runs(listOf("mosh", "--unknown", "host")))
+    }
+
+    @Test
     fun theUserCanAddPrograms() {
         assertFalse(policy.runs(listOf("make", "watch")))
         assertTrue(RestorePolicy(extra = setOf("make")).runs(listOf("make", "watch")))
