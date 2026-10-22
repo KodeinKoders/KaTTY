@@ -505,6 +505,9 @@ internal class OutputTranslator(
                 if (osc) emitIterm() else emitSixel()
             } catch (e: Exception) {
                 logger.warn("An image could not be translated", e)
+            } catch (e: OutOfMemoryError) {
+                // What an image takes is bounded, but the memory may be short: the image is lost, not the reader.
+                logger.warn("An image could not be translated", e)
             }
         }
         payload.clear()

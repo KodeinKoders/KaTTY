@@ -147,6 +147,35 @@ class GhosttyKittyGraphicsTest {
         assertEquals(255, grays[7].toInt() and 0xFF)
     }
 
+    // A PNG whose header says it is [width] by [height] pixels of gray: its data is one pixel's, which a decoder that trusts the header
+    // never gets to.
+    private fun pngThatClaims(width: Int, height: Int): ByteArray {
+        val bytes = ByteArrayOutputStream().also { ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_BYTE_GRAY), "png", it) }.toByteArray()
+        // The signature (8 bytes), then the IHDR chunk: its length, its type, the width and the height, and its CRC after 13 bytes of data.
+        java.nio.ByteBuffer.wrap(bytes).putInt(16, width).putInt(20, height)
+        val crc = java.util.zip.CRC32().apply { update(bytes, 12, 17) }
+        java.nio.ByteBuffer.wrap(bytes).putInt(29, crc.value.toInt())
+        return bytes
+    }
+
+    // How many bytes the current thread allocated while [block] ran.
+    private fun allocatedBy(block: () -> Unit): Long {
+        val threads = java.lang.management.ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
+        val before = threads.currentThreadAllocatedBytes
+        block()
+        return threads.currentThreadAllocatedBytes - before
+    }
+
+    @Test
+    fun aPngThatSaysItIsHugeIsRefusedBeforeItIsDecoded() {
+        val data = pngThatClaims(20_000, 20_000)
+
+        val allocated = allocatedBy { terminal.vtWrite(kitty("a=T,f=100,i=1", data)) }
+
+        assertNull(terminal.kittyImage(1))
+        assertTrue(allocated < 16L * 1024 * 1024, "$allocated bytes were allocated for an image that is refused")
+    }
+
     @Test
     fun aPngThatCannotBeDecodedIsRefused() {
         terminal.vtWrite(kitty("a=T,f=100,i=1", bytes(1, 2, 3, 4, 5)))

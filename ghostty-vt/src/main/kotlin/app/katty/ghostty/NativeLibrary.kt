@@ -4,13 +4,13 @@ import app.katty.ghostty.ffm.GhosttySysDecodePngFn
 import app.katty.ghostty.ffm.GhosttySysImage
 import app.katty.ghostty.ffm.GhosttyVt
 import org.slf4j.LoggerFactory
-import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.nio.file.Files
 import javax.imageio.ImageIO
+import javax.imageio.stream.MemoryCacheImageInputStream
 
 private val logger = LoggerFactory.getLogger(NativeLibrary::class.java)
 
@@ -23,6 +23,10 @@ private val logger = LoggerFactory.getLogger(NativeLibrary::class.java)
  */
 internal object NativeLibrary {
     private const val LIBRARY_NAME = "libghostty-vt"
+
+    // The most pixels that a PNG of the Kitty protocol may have, as for the images that KaTTY decodes itself (Sixel, iTerm2): 4096 × 4096,
+    // 64 MB once decoded. A program that shows a bigger picture scales it to the window first (`kitten icat` does).
+    private const val MAX_PNG_PIXELS = 16L * 1024 * 1024
 
     init {
         load()
@@ -101,49 +105,59 @@ internal object NativeLibrary {
     /**
      * Decodes a PNG to straight RGBA, into a buffer that the library owns once this returns `true`.
      *
-     * It goes through an ARGB image of the JDK, which turns palettes, gray, 16 bits and the other variants into the one
-     * layout that the library wants.
+     * The size is read from the header first, and the buffer is asked of the library's allocator (which limits what an image may take)
+     * before anything is decoded: a PNG of a few hundred bytes can say that it is 20000 × 20000, and `ImageIO.read` makes the image of that
+     * size before it reads a pixel. The JDK's `getRGB` turns palettes, gray, 16 bits and the other variants into the one layout that the
+     * library wants, a row at a time.
      */
     private fun decodePng(allocator: MemorySegment, data: MemorySegment, length: Long, out: MemorySegment): Boolean {
         val png = data.reinterpret(length).toArray(ValueLayout.JAVA_BYTE)
-        val image = ImageIO.read(ByteArrayInputStream(png)) ?: return false
-        val width = image.width
-        val height = image.height
-        val size = width.toLong() * height * 4
-        if (size <= 0 || size > Int.MAX_VALUE) return false
+        // In memory: ImageIO's default cache would copy every image to a temporary file.
+        MemoryCacheImageInputStream(ByteArrayInputStream(png)).use { input ->
+            val reader = ImageIO.getImageReaders(input).asSequence().firstOrNull() ?: return false
+            try {
+                reader.setInput(input, true, true)
+                val width = reader.getWidth(0)
+                val height = reader.getHeight(0)
+                if (width <= 0 || height <= 0 || width.toLong() * height > MAX_PNG_PIXELS) return false
+                val size = width.toLong() * height * 4
 
-        val argb = if (image.type == BufferedImage.TYPE_INT_ARGB) {
-            image
-        } else {
-            BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { copy ->
-                val graphics = copy.createGraphics()
+                // A null is a refusal of the allocator.
+                val buffer = GhosttyVt.ghostty_alloc(allocator, size)
+                if (buffer == MemorySegment.NULL) return false
+                var filled = false
                 try {
-                    graphics.drawImage(image, 0, 0, null)
+                    val image = reader.read(0)
+                    val rgba = buffer.reinterpret(size)
+                    val argb = IntArray(width)
+                    val row = ByteArray(width * 4)
+                    for (y in 0 until height) {
+                        image.getRGB(0, y, width, 1, argb, 0, width)
+                        for (x in 0 until width) {
+                            val p = argb[x]
+                            row[x * 4] = (p shr 16).toByte()
+                            row[x * 4 + 1] = (p shr 8).toByte()
+                            row[x * 4 + 2] = p.toByte()
+                            row[x * 4 + 3] = (p ushr 24).toByte()
+                        }
+                        MemorySegment.copy(row, 0, rgba, ValueLayout.JAVA_BYTE, y.toLong() * width * 4, row.size)
+                    }
+                    // The struct comes as a bare address: it has to be given its size to be written to.
+                    val result = out.reinterpret(GhosttySysImage.layout().byteSize())
+                    GhosttySysImage.width(result, width)
+                    GhosttySysImage.height(result, height)
+                    GhosttySysImage.data(result, buffer)
+                    GhosttySysImage.data_len(result, size)
+                    filled = true
+                    return true
                 } finally {
-                    graphics.dispose()
+                    // On a failure the callback frees what it allocated: the library does not read the result.
+                    if (!filled) GhosttyVt.ghostty_free(allocator, buffer, size)
                 }
+            } finally {
+                reader.dispose()
             }
         }
-        val pixels = argb.getRGB(0, 0, width, height, null, 0, width)
-
-        // The allocator limits what an image may take: a null is a refusal.
-        val buffer = GhosttyVt.ghostty_alloc(allocator, size)
-        if (buffer == MemorySegment.NULL) return false
-        val rgba = buffer.reinterpret(size)
-        for (i in pixels.indices) {
-            val p = pixels[i]
-            rgba.set(ValueLayout.JAVA_BYTE, i * 4L, (p shr 16).toByte())
-            rgba.set(ValueLayout.JAVA_BYTE, i * 4L + 1, (p shr 8).toByte())
-            rgba.set(ValueLayout.JAVA_BYTE, i * 4L + 2, p.toByte())
-            rgba.set(ValueLayout.JAVA_BYTE, i * 4L + 3, (p ushr 24).toByte())
-        }
-        // The struct comes as a bare address: it has to be given its size to be written to.
-        val result = out.reinterpret(GhosttySysImage.layout().byteSize())
-        GhosttySysImage.width(result, width)
-        GhosttySysImage.height(result, height)
-        GhosttySysImage.data(result, buffer)
-        GhosttySysImage.data_len(result, size)
-        return true
     }
 
     private fun unsupported() = UnsupportedOperationException(

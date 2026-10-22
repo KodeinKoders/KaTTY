@@ -1,8 +1,6 @@
 package app.katty.terminal
 
-import java.io.ByteArrayInputStream
 import java.util.Base64
-import javax.imageio.ImageIO
 
 /** What an iTerm2 inline image asks for: how many cells wide and high, `null` for what the image's own size gives. */
 internal class Iterm2Picture(val image: DecodedImage, val columns: Int?, val rows: Int?, val keepCursor: Boolean)
@@ -43,14 +41,10 @@ internal object Iterm2Image {
         } catch (e: IllegalArgumentException) {
             return null
         }
-        val picture = try {
-            ImageIO.read(ByteArrayInputStream(file))
-        } catch (e: Exception) {
-            null
-        } ?: return null
+        // Refused from its header when it is too big: decoding it would take the memory first.
+        val picture = readImage(file, MAX_PIXELS) ?: return null
         val width = picture.width
         val height = picture.height
-        if (width <= 0 || height <= 0 || width.toLong() * height > MAX_PIXELS) return null
 
         val argb = picture.getRGB(0, 0, width, height, null, 0, width)
         val rgba = ByteArray(width * height * 4)
