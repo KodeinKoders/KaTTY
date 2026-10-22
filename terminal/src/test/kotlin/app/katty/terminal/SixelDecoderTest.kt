@@ -146,6 +146,29 @@ class SixelDecoderTest {
     }
 
     @Test
+    fun aTransparentRunThatGoesPastTheWidestPictureIsRefusedWithoutThrowing() {
+        // 23 runs of 100,000,000 columns: past what an Int counts.
+        assertNull(decode("0;1;0q" + "!100000000?".repeat(23) + "~"))
+    }
+
+    @Test
+    fun drawingTheSamePixelsOverAndOverHasABudget() {
+        // Each repetition draws 262143 columns of six pixels: a thousand of them are 1.6 billion pixels for 9 kB.
+        assertNull(decode("0;1;0q#1;2;100;0;0" + "!262143~$".repeat(1000)))
+        // A picture that draws its band a few times, one color at a time, is drawn.
+        assertNotNull(decode("0;1;0q" + (1..8).joinToString("") { "#$it;2;100;0;0!4000~$" }))
+    }
+
+    @Test
+    fun aRasterMuchBiggerThanWhatIsDrawnIsNotAPictureOfThatSize() {
+        // 25 bytes would make 16 million transparent pixels, which are only work: the picture is what is drawn.
+        val image = decode("0;1;0q\"1;1;4096;4096#1~")!!
+
+        assertEquals(1, image.width)
+        assertEquals(6, image.height)
+    }
+
+    @Test
     fun aTruncatedStreamIsWhatWasReceived() {
         val image = decode("0;1;0q#1;2;100;0;0!4~-!4")!!
 

@@ -11,17 +11,29 @@ internal class DecodedImage(val width: Int, val height: Int, val rgba: ByteArray
  *   left of the band (to draw another color over it) and `-` goes down to the next band.
  * - `#n` selects a color register and `#n;2;r;g;b` (percent) or `#n;1;h;l;s` (hue as DEC counts it, which starts at blue, lightness and
  *   saturation in percent) defines it. The first sixteen registers start with the VT340's colors.
- * - `"Pan;Pad;Ph;Pv` says how big the picture is. It does not have to be, and what is drawn past it is kept.
+ * - `"Pan;Pad;Ph;Pv` says how big the picture is. It does not have to be, and what is drawn past it is kept. A size that adds more
+ *   transparent pixels to what is drawn than [RASTER_PIXELS_PER_BYTE] for each byte of the string is ignored: 25 bytes would otherwise make
+ *   16 million pixels, which are only work for everything after.
  * - The pixels that are not drawn are transparent, whatever P2 says: the picture is drawn over the cells' background. The aspect of the
  *   pixels is 1:1, whatever P1 and the raster attributes say, as it is in the terminals that are used today.
  *
- * It does not throw: something that is not a Sixel image, or is too big, is `null`.
+ * Drawing has a budget ([writeBudget]): a repeat of 262143 columns is 9 bytes, and repeating it would keep the reader busy for minutes.
+ *
+ * It does not throw: something that is not a Sixel image, is too big, or costs too much to draw, is `null`.
  */
 internal object SixelDecoder {
     // What a picture may be: past it the data is refused, since the picture is as big in memory as it has pixels (4 bytes each).
     private const val MAX_PIXELS = 16L * 1024 * 1024
     private const val REGISTERS = 1024
     private const val MAX_SIDE = 16384
+
+    // What a declared size may add to the picture, in transparent pixels for each byte of the string: 1 kB of pixels, which is what deflate
+    // can make of a byte at most, so no more than a compressed image of the Kitty protocol already allows.
+    private const val RASTER_PIXELS_PER_BYTE = 256L
+
+    // How many pixels drawing may write: six for each byte of the string (a character is a column of six), and the pixels of the biggest
+    // picture four times over for the repeats, which draw many columns with one character.
+    private fun writeBudget(length: Int): Long = 6L * length + 4 * MAX_PIXELS
 
     // The VT340's colors, in percent.
     private val DEFAULT_PALETTE = intArrayOf(
@@ -58,6 +70,8 @@ internal object SixelDecoder {
         var band = 0
         var color = 0
         var repeat = 1
+        var writes = 0L
+        val budget = writeBudget(to - from)
 
         // Makes room for the pixel at [px], [py].
         fun reserve(px: Int, py: Int): Boolean {
@@ -91,11 +105,15 @@ internal object SixelDecoder {
                     val bits = b - 0x3F
                     val count = repeat
                     repeat = 1
+                    // Nothing can be drawn past the widest picture, and a run that goes past it would count past what an Int does.
+                    if (x + count > MAX_SIDE) return null
                     if (bits == 0) {
                         x += count
                         if (x > width) width = x
                         continue
                     }
+                    writes += 6L * count
+                    if (writes > budget) return null
                     if (!reserve(x + count - 1, band * 6 + 5)) return null
                     for (column in x until x + count) {
                         for (bit in 0 until 6) {
@@ -154,9 +172,15 @@ internal object SixelDecoder {
             }
         }
 
-        val finalWidth = maxOf(width, declaredWidth.coerceAtMost(MAX_SIDE))
-        val finalHeight = maxOf(height, declaredHeight.coerceAtMost(MAX_SIDE))
+        var finalWidth = maxOf(width, declaredWidth.coerceAtMost(MAX_SIDE))
+        var finalHeight = maxOf(height, declaredHeight.coerceAtMost(MAX_SIDE))
         if (finalWidth <= 0 || finalHeight <= 0 || finalWidth.toLong() * finalHeight > MAX_PIXELS) return null
+        // What the declared size adds to what is drawn is transparent: past what the string can pay for, it is ignored.
+        if (finalWidth.toLong() * finalHeight - width.toLong() * height > RASTER_PIXELS_PER_BYTE * (to - from)) {
+            finalWidth = width
+            finalHeight = height
+            if (finalWidth <= 0 || finalHeight <= 0) return null
+        }
 
         val rgba = ByteArray(finalWidth * finalHeight * 4)
         for (row in 0 until minOf(height, finalHeight)) {
