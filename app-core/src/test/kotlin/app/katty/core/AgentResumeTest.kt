@@ -127,6 +127,16 @@ class AgentResumeTest {
     }
 
     @Test
+    fun anIdThatCouldBeTakenForAnOptionIsNoConversation() {
+        // A name made in the folder of the agent: on the command line it would be `copilot --resume --allow-all`.
+        copilotLock(4242, sessionId = "--allow-all")
+        assertNull(AgentResume.sessionId(Agent.COPILOT, 4242, 1_000_000L, home.toFile()))
+
+        copilotLock(4243, sessionId = "séance-0123456789")
+        assertNull(AgentResume.sessionId(Agent.COPILOT, 4243, 1_000_000L, home.toFile()), "Only ASCII letters and digits")
+    }
+
+    @Test
     fun resumesJunieThroughItsCommandAndNotTheBinaryOfItsVersion() {
         val binary = "/Users/me/.local/share/junie/versions/3659.7/Applications/junie.app/Contents/MacOS/junie"
         assertEquals(
