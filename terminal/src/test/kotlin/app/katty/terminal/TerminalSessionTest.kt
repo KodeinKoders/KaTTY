@@ -1031,6 +1031,37 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun closingReleasesThePtyAndWhatAsksForItMeanwhileGetsNothing() {
+        fun openDescriptors() = java.io.File("/dev/fd").list()!!.size
+        val before = openDescriptors()
+        val failures = CopyOnWriteArrayList<Throwable>()
+        repeat(10) {
+            val session = start("sleep 30")
+            session.awaitFrame { true }
+            // What the registry asks every half second, from another thread, while the session closes.
+            val poller = Thread {
+                try {
+                    repeat(200) {
+                        session.foregroundProcessName()
+                        session.foregroundCommand()
+                        session.resize(80, 5, 8, 16)
+                    }
+                } catch (e: Throwable) {
+                    failures += e
+                }
+            }.apply { start() }
+            session.close()
+            poller.join()
+            assertEquals(null, session.foregroundProcessName())
+        }
+
+        assertEquals(emptyList(), failures.toList())
+        // The master side of each pty was left to the garbage collector.
+        val after = openDescriptors()
+        assertTrue(after <= before + 2, "$before descriptors were open before, $after after")
+    }
+
+    @Test
     fun tellsAProgramThatAskedToKnowWhenTheFocusChanges() {
         val session = start("""printf '\033[?1004h'; stty raw -echo; echo ready; head -c6 | tr -d '\033' | od -An -c""")
         session.awaitFrame { "ready" in it.text() }

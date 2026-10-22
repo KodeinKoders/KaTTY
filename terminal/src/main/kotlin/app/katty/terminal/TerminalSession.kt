@@ -54,7 +54,10 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
 import kotlin.concurrent.withLock
+import kotlin.concurrent.write
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
@@ -88,6 +91,10 @@ public class TerminalSession private constructor(
     private val lock = ReentrantLock()
 
     private val closed = AtomicBoolean(false)
+
+    // Guards the master side of the pty, which [close] closes: see [withPty].
+    private val ptyLock = ReentrantReadWriteLock()
+    private var ptyClosed = false
 
     // The size of a cell in pixels that the terminal was given, which is what positions of the mouse are
     // converted with, and the geometry that the mouse encoder has. Under the lock.
@@ -1209,9 +1216,8 @@ public class TerminalSession private constructor(
      * be known, and once the program has ended. It costs two system calls: ask as often as a name on the screen needs.
      */
     public fun foregroundProcessName(): String? {
-        if (closed.get() || exitCode.value != null) return null
-        val fd = (process as? UnixPtyProcess)?.pty?.masterFD ?: return null
-        return app.katty.terminal.foregroundProcessName(fd)
+        if (exitCode.value != null) return null
+        return withPty(null) { fd -> app.katty.terminal.foregroundProcessName(fd) }
     }
 
     /**
@@ -1220,9 +1226,19 @@ public class TerminalSession private constructor(
      * not for each frame.
      */
     public fun foregroundCommand(): ForegroundCommand? {
-        if (closed.get() || exitCode.value != null) return null
-        val fd = (process as? UnixPtyProcess)?.pty?.masterFD ?: return null
-        return app.katty.terminal.foregroundCommand(fd, process.pid().toInt())
+        if (exitCode.value != null) return null
+        return withPty(null) { fd -> app.katty.terminal.foregroundCommand(fd, process.pid().toInt()) }
+    }
+
+    /**
+     * Runs [block] with the master side of the pty, or gives [default] once the session is closed. The calls on it are system calls that are not
+     * made under the terminal's lock: this lock keeps [close] from closing the descriptor while one has it, which would make it act on another file
+     * that took its number.
+     */
+    private inline fun <T> withPty(default: T, block: (Int) -> T): T = ptyLock.read {
+        if (ptyClosed) return default
+        val fd = (process as? UnixPtyProcess)?.pty?.masterFD?.takeIf { it >= 0 } ?: return default
+        block(fd)
     }
 
     /** The text that is selected, for the caller to copy, as [format] says (the characters only by default), or `null` when nothing is. */
@@ -1246,9 +1262,11 @@ public class TerminalSession private constructor(
         }
         // pty4j only passes the size in cells to the program, not the one in pixels: the session sets the whole size,
         // and leaves pty4j's way for what is not a Unix pty or what the ioctl refused.
-        val fd = (process as? UnixPtyProcess)?.pty?.masterFD
-        val done = fd != null && setPtyWindowSize(fd, cols, rows, cols * cellWidthPx, rows * cellHeightPx)
-        if (!done) process.winSize = WinSize(cols, rows)
+        ptyLock.read {
+            if (ptyClosed) return
+            val done = withPty(false) { fd -> setPtyWindowSize(fd, cols, rows, cols * cellWidthPx, rows * cellHeightPx) }
+            if (!done) process.winSize = WinSize(cols, rows)
+        }
         frameRequests.trySend(Unit)
     }
 
@@ -1326,6 +1344,17 @@ public class TerminalSession private constructor(
         writer.join(KILL_TIMEOUT_MS)
         if (reader.isAlive || writer.isAlive) logger.warn("The session threads did not end within {}ms", KILL_TIMEOUT_MS)
 
+        // The master side of the pty, which would otherwise stay open until the garbage collector finds it: what asks the pty for the program
+        // has it under the read lock.
+        ptyLock.write {
+            ptyClosed = true
+            try {
+                (process as? UnixPtyProcess)?.pty?.close()
+            } catch (e: IOException) {
+                logger.debug("Could not close the pty", e)
+            }
+        }
+
         // What the reader still does with the terminal is under the lock, and checks it is not closed.
         lock.withLock {
             outputStart?.close()
@@ -1398,10 +1427,7 @@ public class TerminalSession private constructor(
     // Only the update reads the terminal, so only it is under the lock: reading the rows, which is the
     // costly part, does not hold up the thread that feeds the terminal.
     // Whether the program turned the echo off to read a line: a password.
-    private fun readingPassword(): Boolean {
-        val fd = (process as? UnixPtyProcess)?.pty?.masterFD ?: return false
-        return isPtyReadingPassword(fd)
-    }
+    private fun readingPassword(): Boolean = withPty(false) { fd -> isPtyReadingPassword(fd) }
 
     private fun produceFrame(): TerminalFrame {
         val tracking: Boolean
