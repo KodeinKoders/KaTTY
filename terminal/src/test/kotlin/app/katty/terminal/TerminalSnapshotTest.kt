@@ -103,6 +103,26 @@ class TerminalSnapshotTest {
     }
 
     @Test
+    fun aSnapshotOfAnEditorThatAskedForReportsGivesTheShellNone() {
+        // What Neovim asks for: the changes of the color scheme (2031) and of the size (2048), and the keys with modifiers (modifyOtherKeys);
+        // and the colors reversed (5).
+        val editor = start("""printf '\033[?2031h\033[?2048h\033[>4;2m\033[?5h'; echo set; sleep 30""")
+        val reversed = editor.awaitFrame { "set" in it.text() }
+        val snapshot = editor.snapshot()
+
+        val restored = start("stty raw -echo; echo ready; head -c1 | od -An -c", snapshot = snapshot)
+        val frame = restored.awaitFrame { "ready" in it.text() }
+        assertNotEquals(reversed.background, frame.background, "The colors are not reversed any more")
+
+        // Neither is reported to the shell, which would print what it reads of them on its command line.
+        restored.setTheme(TerminalTheme(TerminalColor(0xFFFFFF), TerminalColor(0x000000), List(TerminalTheme.ANSI_COLORS) { TerminalColor(0x808080) }))
+        restored.resize(70, 6, 8, 16)
+        restored.paste("a")
+        restored.awaitFrame { "a" in it.text().substringAfter("ready").replace(Regex("\\s+"), "") }
+        assertFalse("033" in restored.frames.value.text(), "The shell read an escape first:\n${restored.frames.value.text()}")
+    }
+
+    @Test
     fun anOldProgramThatSetAScrollingRegionAndTheOriginModeDoesNotMoveTheNewOne() {
         // Origin mode and a region, which a program sets and which move the cursor when they are reset.
         val old = start("""seq 1 30; printf '\033[2;4r\033[?6h\033[2;1Hbefore'; sleep 30""", rows = 8)

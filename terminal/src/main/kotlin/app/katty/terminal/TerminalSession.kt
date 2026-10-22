@@ -1770,13 +1770,15 @@ public class TerminalSession private constructor(
 
         // What takes the old program's state off a restored terminal, so that the new one finds what a new terminal is: the scrolling region reset (which moves the cursor home, so the cursor is saved and put back), the modes that a program sets
         // and a shell does not know about off (the mouse in every protocol and format, focus reports, bracketed paste, synchronized output,
-        // application cursor keys and keypad, insert mode, autowrap on, the cursor shown), the character sets ASCII, the Kitty
+        // application cursor keys and keypad, insert mode, the reports of the color scheme (2031) and of the size (2048), which would write
+        // their answers on the shell's command line, the colors reversed (5), modifyOtherKeys, autowrap on, the cursor shown), the character sets ASCII, the Kitty
         // keyboard flags popped, the cursor style the default, the attributes cleared, and a new row to start on. Not a soft reset (DECSTR):
         // it homes the cursor, and the new program would write over what the old one showed.
         private const val RESTORE_RESET =
             "\u001b7\u001b[r\u001b8" +
                 "\u001b[?9l\u001b[?1000l\u001b[?1001l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?1016l" +
-                "\u001b[?2004l\u001b[?2026l\u001b[?1l\u001b>\u001b[?66l\u001b[4l\u001b[?7h\u001b[?25h\u001b[?69l" +
+                "\u001b[?2004l\u001b[?2026l\u001b[?1l\u001b>\u001b[?66l\u001b[4l\u001b[?2031l\u001b[?2048l\u001b[?5l\u001b[>4m" +
+                "\u001b[?7h\u001b[?25h\u001b[?69l" +
                 "\u001b(B\u001b)B\u000f\u001b[<99u\u001b[0 q\u001b[0m\r\n"
 
         // How many events may wait for a collector that is slow.
