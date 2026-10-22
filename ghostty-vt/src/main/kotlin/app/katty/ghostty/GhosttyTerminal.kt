@@ -1088,11 +1088,9 @@ public class GhosttyTerminal private constructor(
         } else {
             val size = GhosttyClipboardContent.layout().byteSize()
             val contents = GhosttyClipboardWrite.contents(struct).reinterpret(count * size)
-            // The first text: the other representations (images, HTML) are not for a terminal.
-            val content = (0 until count).map { contents.asSlice(it * size, size) }
-                .firstOrNull { copyString(GhosttyClipboardContent.mime(it)).startsWith("text/") }
-                ?: return
-            copyString(GhosttyClipboardContent.data(content))
+            val all = (0 until count).map { contents.asSlice(it * size, size) }
+            val chosen = chooseClipboardText(all.map { copyString(GhosttyClipboardContent.mime(it)) }) ?: return
+            copyString(GhosttyClipboardContent.data(all[chosen]))
         }
         if (!handler(clipboardLocation(GhosttyClipboardWrite.location(struct)), text)) return
         // Only the protocols that acknowledge (OSC 5522) look at it: for the others, and for a refusal, not replying is enough.
@@ -1549,3 +1547,16 @@ public class GhosttyTerminal private constructor(
         }
     }
 }
+
+/**
+ * Which of the representations of a clipboard write, by their MIME types, is the text to put in the clipboard: `text/plain` (whatever its
+ * parameters, such as a charset), else another text that is meant to be read as it is. Not HTML, RTF or a list of addresses, which are markup
+ * and would be pasted as such; nor an image. `null` when there is none.
+ */
+internal fun chooseClipboardText(mimes: List<String>): Int? {
+    val types = mimes.map { it.substringBefore(';').trim().lowercase() }
+    types.indexOf("text/plain").takeIf { it >= 0 }?.let { return it }
+    return types.indexOfFirst { it.startsWith("text/") && it !in MARKUP_TEXT }.takeIf { it >= 0 }
+}
+
+private val MARKUP_TEXT = setOf("text/html", "text/rtf", "text/richtext", "text/uri-list", "text/xml")
