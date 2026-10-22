@@ -643,7 +643,9 @@ public class TerminalSession private constructor(
         }
         if (workingDirectoryChanged) {
             workingDirectoryChanged = false
-            workingDirectoryState.value = decodeWorkingDirectory(terminal.pwd)
+            // A directory of another machine (a shell over ssh) is not this one's: the terminal keeps the one it had.
+            val pwd = terminal.pwd
+            if (!isRemoteDirectory(pwd)) workingDirectoryState.value = decodeWorkingDirectory(pwd)
         }
     }
 

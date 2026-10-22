@@ -2,7 +2,9 @@ package app.katty.terminal
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TerminalLinksTest {
     // The address that the character at the start of [around] is part of.
@@ -60,12 +62,36 @@ class TerminalLinksTest {
 
     @Test
     fun decodesTheWorkingDirectoryTheShellReported() {
-        assertEquals("/Users/me/code", decodeWorkingDirectory("file://host/Users/me/code"))
+        assertEquals("/Users/me/code", decodeWorkingDirectory("file://localhost/Users/me/code"))
         assertEquals("/Users/me/a b", decodeWorkingDirectory("file:///Users/me/a%20b"))
-        assertEquals("/tmp/é", decodeWorkingDirectory("file://h/tmp/%C3%A9"))
+        assertEquals("/tmp/é", decodeWorkingDirectory("file:///tmp/%C3%A9"))
         assertEquals("/tmp/100%", decodeWorkingDirectory("file:///tmp/100%"), "A percent that is not an escape is kept")
         assertEquals("/just/a/path", decodeWorkingDirectory("/just/a/path"))
         assertNull(decodeWorkingDirectory(""))
-        assertNull(decodeWorkingDirectory("file://host"))
+        assertNull(decodeWorkingDirectory("file://localhost"))
+    }
+
+    @Test
+    fun aDirectoryOfThisMachineIsOneWhateverItsNameIsWritten() {
+        val name = localHostName()!!
+        assertEquals("/tmp", decodeWorkingDirectory("file://$name/tmp"))
+        assertEquals("/tmp", decodeWorkingDirectory("file://${name.uppercase()}/tmp"))
+        // zsh's `$HOST` may be the short name, and the system's the long one, or the other way round.
+        assertEquals("/tmp", decodeWorkingDirectory("file://${name.substringBefore('.')}.local/tmp"))
+    }
+
+    @Test
+    fun aDirectoryOfAnotherMachineIsNotThisOnes() {
+        // After `ssh server`, the shell of the server says where it is: on the server.
+        assertTrue(isRemoteDirectory("file://build-server.example.com/home/me/project"))
+        assertNull(decodeWorkingDirectory("file://build-server.example.com/home/me/project"))
+        assertFalse(isRemoteDirectory("file:///tmp"))
+        assertFalse(isRemoteDirectory("/tmp"))
+    }
+
+    @Test
+    fun anEscapeIsTwoHexadecimalDigits() {
+        assertEquals("/tmp/%+F", decodeWorkingDirectory("file:///tmp/%+F"))
+        assertEquals("/tmp/%-1", decodeWorkingDirectory("file:///tmp/%-1"))
     }
 }

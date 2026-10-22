@@ -1196,7 +1196,7 @@ class TerminalSessionTest {
 
     @Test
     fun publishesTheWorkingDirectoryAsAPath() {
-        val session = startThatWaits("""printf '\033]7;file://host/tmp/a%%20b\007'; sleep 30""")
+        val session = startThatWaits("""printf '\033]7;file://localhost/tmp/a%%20b\007'; sleep 30""")
         assertEquals(null, session.workingDirectory.value)
 
         session.paste("x")

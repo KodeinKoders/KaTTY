@@ -79,16 +79,29 @@ public data class TerminalLink(val url: String, val segments: List<TerminalLinkS
 public data class TerminalLinkSegment(val row: Int, val columns: IntRange)
 
 /**
- * The directory that the shell reported (OSC 7), as a path: a `file://host/path` URI is turned into its path, with the
- * percent-encoding removed, and a bare path is kept. `null` when there is none.
+ * The directory that the shell reported (OSC 7), as a path: a `file://host/path` URI of this machine is turned into its path, with the
+ * percent-encoding removed, and a bare path is kept. `null` when there is none, and for a directory of another machine ([isRemoteDirectory]).
  */
-internal fun decodeWorkingDirectory(reported: String): String? {
+internal fun decodeWorkingDirectory(reported: String, isLocal: (String) -> Boolean = ::isLocalHost): String? {
     if (reported.isEmpty()) return null
     if (!reported.startsWith("file://")) return reported
+    val rest = reported.removePrefix("file://")
+    val slash = rest.indexOf('/')
     // After the host, which is empty or the machine's name.
-    val path = reported.removePrefix("file://").let { rest -> rest.indexOf('/').let { if (it < 0) "" else rest.substring(it) } }
+    if (!isLocal(if (slash < 0) rest else rest.substring(0, slash))) return null
+    val path = if (slash < 0) "" else rest.substring(slash)
     if (path.isEmpty()) return null
     return percentDecode(path)
+}
+
+/**
+ * Whether the directory that the shell reported is on another machine: the shell of a server that the user went to with `ssh` reports its
+ * own, which is not a directory here. The terminal keeps the one it had.
+ */
+internal fun isRemoteDirectory(reported: String, isLocal: (String) -> Boolean = ::isLocalHost): Boolean {
+    if (!reported.startsWith("file://")) return false
+    val rest = reported.removePrefix("file://")
+    return !isLocal(rest.substringBefore('/'))
 }
 
 private fun percentDecode(text: String): String {
@@ -97,7 +110,8 @@ private fun percentDecode(text: String): String {
     var i = 0
     while (i < text.length) {
         val c = text[i]
-        val value = if (c == '%' && i + 2 < text.length) text.substring(i + 1, i + 3).toIntOrNull(16) else null
+        // Two hexadecimal digits: `toIntOrNull` would take a sign as well.
+        val value = if (c == '%' && i + 2 < text.length && text[i + 1].isHexDigit() && text[i + 2].isHexDigit()) text.substring(i + 1, i + 3).toInt(16) else null
         if (value != null) {
             bytes.write(value)
             i += 3
@@ -108,3 +122,5 @@ private fun percentDecode(text: String): String {
     }
     return bytes.toString(Charsets.UTF_8)
 }
+
+private fun Char.isHexDigit(): Boolean = this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'

@@ -47,7 +47,7 @@ class TerminalSnapshotTest {
 
     // A session that has printed 200 lines, set a title and said where it is, and waits.
     private fun oldSession(directory: String = "/tmp"): TerminalSession {
-        val session = start("""seq 1 200; printf '\033]2;old title\007\033]7;file://host$directory\007'; sleep 30""")
+        val session = start("""seq 1 200; printf '\033]2;old title\007\033]7;file://localhost$directory\007'; sleep 30""")
         session.awaitFrame { frame -> frame.rows.any { frame.text(frame.rows.indexOf(it)) == "200" } }
         await("the title and the directory") { session.title.value == "old title" && session.workingDirectory.value == directory }
         return session
