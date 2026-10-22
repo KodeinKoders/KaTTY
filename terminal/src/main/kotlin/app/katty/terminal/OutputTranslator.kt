@@ -73,6 +73,9 @@ internal class OutputTranslator(
     private val payload = GrowableBytes(0)
     private var dropping = false
 
+    /** How many bytes of a string that is translated are held: for the tests of its limit. */
+    internal val heldBytes: Int get() = payload.size
+
     // What is written.
     private var out = ByteArray(8 * 1024)
     private var written = 0
@@ -171,21 +174,26 @@ internal class OutputTranslator(
             if (b == BEL || b == ESC || b == CAN || b == SUB) break
             end++
         }
-        if (!dropping) {
-            if (payload.size + (end - start) > maxPayload) {
-                logger.warn("An image of more than {} bytes is dropped", maxPayload)
-                dropping = true
-                payload.clear()
-            } else {
-                payload.add(buffer, start, end)
-            }
-        }
+        hold(buffer, start, end)
         modified = true
         if (end < length) {
             byteAt(buffer[end])
             return end + 1
         }
         return end
+    }
+
+    // Adds what is between [start] and [end] to the string that is kept, up to its limit: past it the string is dropped, and nothing more is kept
+    // of it up to its end.
+    private fun hold(buffer: ByteArray, start: Int, end: Int) {
+        if (dropping) return
+        if (payload.size + (end - start) > maxPayload) {
+            logger.warn("An image of more than {} bytes is dropped", maxPayload)
+            dropping = true
+            payload.clear()
+        } else {
+            payload.add(buffer, start, end)
+        }
     }
 
     // One byte, in the state of a sequence that is being read.
@@ -242,7 +250,8 @@ internal class OutputTranslator(
             State.DCS_HOLD -> when (b) {
                 CAN, SUB -> { discardPayload(); emit(b); state = State.GROUND }
                 ESC -> { state = State.DCS_HOLD_ESC }
-                else -> payload.add(b)
+                // A BEL, which does not end a DCS: one more byte of it, which counts towards its limit.
+                else -> hold(byteArrayOf(b), 0, 1)
             }
             State.OSC_HOLD_ESC, State.DCS_HOLD_ESC -> {
                 if (b == BACKSLASH) {

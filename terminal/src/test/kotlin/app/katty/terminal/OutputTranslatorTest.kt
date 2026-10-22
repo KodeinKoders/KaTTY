@@ -448,6 +448,20 @@ class OutputTranslatorTest {
     }
 
     @Test
+    fun theBellsInASixelCountTowardsItsLimit() {
+        val translator = OutputTranslator(maxPayload = 100)
+        val start = "${esc}P0;1;0q#1;2;100;0;0~".toByteArray(Charsets.ISO_8859_1)
+        translator.filter(start, start.size)
+        // A BEL does not end a DCS: it is one more byte of the string, which must not grow past the limit.
+        val bells = ByteArray(10_000) { 7 }
+        repeat(10) { translator.filter(bells, bells.size) }
+
+        assertTrue(translator.heldBytes <= 100, "${translator.heldBytes} bytes are held")
+        val end = "$esc\\b".toByteArray(Charsets.ISO_8859_1)
+        assertEquals("b", String(translator.output, 0, translator.filter(end, end.size), Charsets.ISO_8859_1))
+    }
+
+    @Test
     fun aStringThatIsCancelledWhileItIsKeptIsGivenUp() {
         assertEquals("\u0018x", filtered("${esc}P0;1;0q#1~\u0018x"))
     }
