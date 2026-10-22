@@ -476,6 +476,34 @@ class TerminalTest {
     }
 
     @Test
+    fun tellsAProgramThatItsTerminalLeftThePaneAndCameBack() {
+        val first = session(
+            """stty raw -echo; echo ready; head -c1 >/dev/null; printf '\033[?1004h'; echo enabled; head -c6 | tr -d '\033' | od -An -c""",
+        )
+        val second = session("sleep 30")
+        val shown = androidx.compose.runtime.mutableStateOf(first)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true }) {
+                Terminal(shown.value, Modifier.fillMaxSize())
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to fit the scene and be ready") { first.frames.value.cols != 10 && first.frames.value.rows.indices.any { first.frames.value.text(it) == "ready" } }
+        scene.renderFor(200)
+        scene.type('x')
+        scene.renderUntil("the mode to be on") { first.frames.value.rows.indices.any { "enabled" in first.frames.value.text(it) } }
+
+        // The pane shows another terminal (another workspace), then this one again: the keys left it, and came back.
+        shown.value = second
+        scene.renderFor(300)
+        shown.value = first
+
+        scene.renderUntil("what the program read") {
+            first.frames.value.rows.indices.any { first.frames.value.text(it).replace(Regex("\\s+"), "") == "[O[I" }
+        }
+    }
+
+    @Test
     fun doesNotTellAProgramOfAFocusThatMovedForAMoment() {
         val session = session(
             """stty raw -echo; echo ready; head -c1 >/dev/null; printf '\033[?1004h'; echo enabled; head -c1 | od -An -c""",

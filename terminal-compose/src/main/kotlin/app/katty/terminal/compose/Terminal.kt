@@ -64,6 +64,7 @@ import app.katty.terminal.TerminalSelectionAdjust
 import app.katty.terminal.TerminalSession
 import app.katty.terminal.TerminalTextFormat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -314,6 +315,11 @@ public fun Terminal(
         delay(FOCUS_REPORT_DELAY_MS)
         // It takes the lock of the terminal: not on the UI thread, which would wait for the program's output.
         withContext(Dispatchers.Default) { session.setFocused(active) }
+    }
+    // A session that this composable stops showing (the pane shows another terminal, or nothing) does not have the keys any more: its program
+    // is told, at once, and is told again when it is shown and has them back. Not in the composable's scope, which is gone by then.
+    DisposableEffect(session) {
+        onDispose { Dispatchers.Default.asExecutor().execute { session.setFocused(false) } }
     }
 
     TerminalView(
