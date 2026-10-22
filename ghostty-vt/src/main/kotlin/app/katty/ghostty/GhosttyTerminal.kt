@@ -820,9 +820,10 @@ public class GhosttyTerminal private constructor(
     }
 
     /**
-     * Whether pasting [text] could run commands that the user did not see: it has a newline, which a program that did not ask for bracketed
-     * paste takes for Enter, or the marker that ends a bracketed paste, which lets the rest out of it. In a bracketed paste (mode 2004) the
-     * newlines are the program's to take as text, so only the marker counts. The host asks the user before it pastes what is unsafe.
+     * Whether pasting [text] could run commands that the user did not see: it has a newline or a carriage return, which a program that did
+     * not ask for bracketed paste takes for Enter, or the marker that ends a bracketed paste, which lets the rest out of it. In a bracketed
+     * paste (mode 2004) the line breaks are the program's to take as text, so only the marker counts. The host asks the user before it pastes
+     * what is unsafe.
      */
     public fun isPasteUnsafe(text: String): Boolean {
         requireOpen()
@@ -833,7 +834,8 @@ public class GhosttyTerminal private constructor(
             MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.size)
             !GhosttyVt.ghostty_paste_is_safe(data, bytes.size.toLong())
         }
-        return unsafe && (!isModeEnabled(GhosttyMode.BRACKETED_PASTE) || BRACKETED_PASTE_END in text)
+        // libghostty's check only looks for newlines, and its encoder keeps a carriage return as it is: it is Enter as well.
+        return (unsafe || '\r' in text) && (!isModeEnabled(GhosttyMode.BRACKETED_PASTE) || BRACKETED_PASTE_END in text)
     }
 
     // How much of an unfinished escape sequence is kept, so that a snapshot taken in the middle of one can be restored. 0 keeps none.

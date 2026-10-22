@@ -770,6 +770,7 @@ class TerminalTest {
         primarySelection: TerminalPrimarySelection? = null,
         copyOnSelect: Boolean = false,
         copyRichText: Boolean = false,
+        confirmPaste: (suspend (String) -> Boolean)? = null,
     ): Pair<ImageComposeScene, TerminalSession> {
         val session = session(script, cols = 80, rows = 24)
         val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
@@ -779,9 +780,12 @@ class TerminalTest {
                 androidx.compose.ui.platform.LocalClipboard provides clipboard,
             ) {
                 if (primarySelection == null) {
-                    Terminal(session, Modifier.fillMaxSize(), copyOnSelect = copyOnSelect, copyRichText = copyRichText)
+                    Terminal(session, Modifier.fillMaxSize(), copyOnSelect = copyOnSelect, copyRichText = copyRichText, confirmPaste = confirmPaste)
                 } else {
-                    Terminal(session, Modifier.fillMaxSize(), primarySelection = primarySelection, copyOnSelect = copyOnSelect, copyRichText = copyRichText)
+                    Terminal(
+                        session, Modifier.fillMaxSize(), primarySelection = primarySelection, copyOnSelect = copyOnSelect, copyRichText = copyRichText,
+                        confirmPaste = confirmPaste,
+                    )
                 }
             }
         }.also { scenes += it }
@@ -1203,6 +1207,38 @@ class TerminalTest {
         scene.pasteShortcut()
 
         scene.renderUntil("the program to read the paste") { "abc" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) }.replace(Regex("\\s+"), "") }
+    }
+
+    @Test
+    fun aPasteThatCouldRunCommandsIsNotPastedWhenTheHostSaysNo() {
+        val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val (scene, session) = selectionScene(
+            """printf 'hello world'; stty raw -echo; head -c3 | od -An -c""",
+            confirmPaste = { text -> asked += text; false },
+        )
+        clipboard.content = "a\rb"
+        scene.pasteShortcut()
+        scene.renderUntil("the host to be asked") { asked.isNotEmpty() }
+        assertEquals(listOf("a\rb"), asked.toList())
+
+        // What is safe is pasted without asking: the program reads it, and not the refused one before it.
+        clipboard.content = "xyz"
+        scene.pasteShortcut()
+        scene.renderUntil("the program to read the second paste") { "xyz" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) }.replace(Regex("\\s+"), "") }
+        assertEquals(1, asked.size)
+    }
+
+    @Test
+    fun aPasteThatCouldRunCommandsIsPastedWhenTheHostSaysYes() {
+        val (scene, session) = selectionScene(
+            """printf 'hello world'; stty raw -echo; head -c3 | od -An -c""",
+            confirmPaste = { true },
+        )
+        clipboard.content = "a\rb"
+
+        scene.pasteShortcut()
+
+        scene.renderUntil("the program to read the paste") { "a\\rb" in session.frames.value.rows.indices.joinToString("") { session.frames.value.text(it) }.replace(Regex("\\s+"), "") }
     }
 
     @Test

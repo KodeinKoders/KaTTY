@@ -48,6 +48,7 @@ import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.Workspace
 import app.katty.core.terminals
+import app.katty.terminal.TerminalSession
 import app.katty.terminal.compose.TerminalFont
 import app.katty.terminals.TerminalHandle
 import app.katty.ui.Katty
@@ -210,6 +211,10 @@ class PaneActions(
     val onReopen: (TerminalId) -> Unit = {},
     /** Opens the picker of the color scheme of a terminal. */
     val onColorScheme: (TerminalId) -> Unit = {},
+    /** Asks the user before a paste that could run commands, and answers whether to paste it. */
+    val confirmPaste: (suspend (String) -> Boolean)? = null,
+    /** Pastes into a session from the pane's menu, after the same question when it is needed. */
+    val onPaste: (TerminalSession, String) -> Unit = { session, text -> session.paste(text) },
 )
 
 @Composable

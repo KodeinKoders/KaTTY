@@ -65,6 +65,8 @@ class TerminalAnswersTest {
         bracketed.writeToScreen("\u001b[?2004h")
 
         assertTrue(plain.isPasteUnsafe("ls\nrm -rf x"))
+        // A carriage return is Enter too.
+        assertTrue(plain.isPasteUnsafe("ls\rrm -rf x"))
         assertFalse(plain.isPasteUnsafe("ls"))
         assertFalse(bracketed.isPasteUnsafe("ls\nrm -rf x"))
         // The marker that ends a bracketed paste lets the rest out of it.

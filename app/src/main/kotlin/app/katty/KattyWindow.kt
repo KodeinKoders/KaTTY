@@ -83,6 +83,7 @@ import app.katty.screens.ColorSchemePicker
 import app.katty.screens.MainMenu
 import app.katty.screens.CloseWorkspaceDialog
 import app.katty.screens.RestartTerminalDialog
+import app.katty.screens.PasteDialog
 import app.katty.screens.PaneActions
 import app.katty.screens.ProjectTabs
 import app.katty.screens.Rail
@@ -97,13 +98,16 @@ import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.terminals.SessionUsageTracker
 import app.katty.ui.glyph
+import app.katty.terminal.TerminalSession
 import app.katty.terminal.compose.TerminalFont
 import app.katty.terminal.themes.ITermColorSchemes
 import app.katty.ui.ConfirmDialog
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import app.katty.ui.Katty
 import org.jetbrains.jewel.ui.component.DefaultButton
@@ -158,6 +162,8 @@ fun DecoratedWindowScope.KattyWindowContent(
     var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
     var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
     var restartingTerminal by remember { mutableStateOf<TerminalId?>(null) }
+    // A paste that could run commands, waiting for the user's answer.
+    var pasting by remember { mutableStateOf<PasteRequest?>(null) }
     val handles by registry.handles.collectAsState()
     // Where each terminal is in git: a workspace says the branch that its terminals share.
     val gits by registry.gitInfos.collectAsState()
@@ -328,6 +334,24 @@ fun DecoratedWindowScope.KattyWindowContent(
     }
     // The session of the selected terminal: what the commands on the terminal's own keys act on.
     val selectedSession = { state.selection.terminal?.let { handles[it]?.session } }
+    // Asked before a paste that could run commands, whatever pastes it (a terminal's keys and middle click, its menu, the palette): one
+    // question at a time, and a new one answers no to the one that was still waiting.
+    val confirmPaste: suspend (String) -> Boolean = remember {
+        { text ->
+            val request = PasteRequest(text)
+            pasting?.answer?.complete(false)
+            pasting = request
+            try {
+                request.answer.await()
+            } finally {
+                if (pasting === request) pasting = null
+            }
+        }
+    }
+    val pasteScope = rememberCoroutineScope()
+    val pasteInto: (TerminalSession, String) -> Unit = { session, text ->
+        if (!session.isPasteUnsafe(text)) session.paste(text) else pasteScope.launch { if (confirmPaste(text)) session.paste(text) }
+    }
     // The next or the previous match of the search of the terminal that is searched: a terminal that is not opens its search, since there is no match to
     // go to (the shortcut does the same).
     val stepFind: (Boolean) -> Unit = { forward ->
@@ -418,7 +442,7 @@ fun DecoratedWindowScope.KattyWindowContent(
         findNext = { stepFind(true) },
         findPrevious = { stepFind(false) },
         copy = { selectedSession()?.selectedText()?.let(::copyToClipboard) },
-        paste = { selectedSession()?.let { session -> readClipboard()?.let(session::paste) } },
+        paste = { selectedSession()?.let { session -> readClipboard()?.let { pasteInto(session, it) } } },
         selectAll = { selectedSession()?.selectAll() },
         previousPrompt = { selectedSession()?.scrollToPrompt(-1) },
         nextPrompt = { selectedSession()?.scrollToPrompt(1) },
@@ -442,7 +466,8 @@ fun DecoratedWindowScope.KattyWindowContent(
     val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
 
     // What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons.
-    val blockingDialog = picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null
+    val blockingDialog = picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null ||
+        pasting != null
     val overlayOpen = blockingDialog || editingShortcuts || paletteOpen || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null || renamingTerminal != null
     LaunchedEffect(overlayOpen) { if (!overlayOpen) focusTick++ }
     // A rename that nothing draws would keep the terminals from the keyboard for good: the board shows no names, and the rail no field.
@@ -588,6 +613,8 @@ fun DecoratedWindowScope.KattyWindowContent(
                             onFindClosed = { findingTerminal = null },
                             onReopen = restartTerminal,
                             onColorScheme = { picking = SchemeTarget.Terminal(it) },
+                            confirmPaste = confirmPaste,
+                            onPaste = pasteInto,
                         ),
                         maximized = state.selection.maximized,
                         font = font,
@@ -766,6 +793,9 @@ fun DecoratedWindowScope.KattyWindowContent(
             val project = state.projects.firstOrNull { it.id == id }
             if (project == null) removing = null else RemoveProjectDialog(project, onConfirm = { store.removeProject(id); removing = null }, onCancel = { removing = null })
         }
+        pasting?.let { request ->
+            PasteDialog(request.text, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
+        }
     }
 }
 
@@ -775,6 +805,11 @@ private const val TOAST_MS = 6_000L
 /** How much of a split a press of the resize shortcut moves, and how much the font grows or shrinks for one of the zoom ones. */
 private const val SPLIT_STEP = 0.05f
 private const val FONT_STEP = 1f
+
+/** A paste that waits for the user: [answer] is completed with whether to paste [text]. */
+private class PasteRequest(val text: String) {
+    val answer = CompletableDeferred<Boolean>()
+}
 
 /** Whose color scheme the picker chooses. */
 private sealed interface SchemeTarget {

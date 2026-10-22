@@ -985,8 +985,8 @@ public class TerminalSession private constructor(
     }
 
     /**
-     * Whether pasting [text] could run commands that the user did not see: it has a newline and the program did not ask for bracketed
-     * paste, or it holds the marker that ends one. The host asks the user before [paste] for what is.
+     * Whether pasting [text] could run commands that the user did not see: it has a newline or a carriage return and the program did not ask
+     * for bracketed paste, or it holds the marker that ends one. The host asks the user before [paste] for what is.
      */
     public fun isPasteUnsafe(text: String): Boolean = lock.withLock { !closed.get() && terminal.isPasteUnsafe(text) }
 

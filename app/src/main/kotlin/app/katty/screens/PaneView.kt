@@ -216,6 +216,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         focusRequester = handle.focus,
                         focusOnStart = false,
                         onContextMenu = { at -> contextAt = IntOffset(at.x.toInt(), at.y.toInt()) },
+                        confirmPaste = context.actions.confirmPaste,
                     )
                     }
                 }
@@ -225,7 +226,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                             hasSelection = session.selectedText() != null,
                             actions = ContextMenuActions(
                                 copy = { session.selectedText()?.let(::copyToClipboard) },
-                                paste = { readClipboard()?.let(session::paste) },
+                                paste = { readClipboard()?.let { context.actions.onPaste(session, it) } },
                                 selectAll = session::selectAll,
                                 find = { context.actions.onFind(spec.id) },
                                 clearScreen = session::clearScreen,
