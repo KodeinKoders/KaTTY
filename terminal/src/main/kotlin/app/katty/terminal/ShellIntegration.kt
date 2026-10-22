@@ -120,9 +120,11 @@ internal object ShellIntegration {
                 val root = root(directory) ?: return untouched
                 // What KaTTY, running in a terminal of its own, may have inherited is not the user's: the script takes its own out.
                 environment["KATTY_SHELL_INTEGRATION_XDG_DIR"] = root.toString()
-                // The directories that fish and the system use when it is not set.
-                val existing = environment["XDG_DATA_DIRS"]?.takeIf { it.isNotEmpty() } ?: "/usr/local/share:/usr/share"
-                environment["XDG_DATA_DIRS"] = "$root:$existing"
+                // The directories that fish and the system use when it is not set, which the script takes away again with its own: the
+                // programs do not see a variable that the user never had.
+                val existing = environment["XDG_DATA_DIRS"]?.takeIf { it.isNotEmpty() }
+                if (existing == null) environment["KATTY_SHELL_INTEGRATION_XDG_UNSET"] = "1" else environment.remove("KATTY_SHELL_INTEGRATION_XDG_UNSET")
+                environment["XDG_DATA_DIRS"] = "$root:${existing ?: "/usr/local/share:/usr/share"}"
                 Applied(command, installed = true)
             }
 

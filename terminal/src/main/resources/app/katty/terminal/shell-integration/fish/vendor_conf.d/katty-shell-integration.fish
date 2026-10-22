@@ -13,8 +13,13 @@
 # Only a shell that is typed in.
 status --is-interactive; or exit 0
 
-# What the user's programs see is what it was before KaTTY: the directory that started this is taken out of XDG_DATA_DIRS.
-if set -q KATTY_SHELL_INTEGRATION_XDG_DIR
+# What the user's programs see is what it was before KaTTY: the directory that started this is taken out of XDG_DATA_DIRS, or the
+# variable, when there was none and KaTTY made it up.
+if set -q KATTY_SHELL_INTEGRATION_XDG_UNSET
+    set --erase XDG_DATA_DIRS
+    set --erase KATTY_SHELL_INTEGRATION_XDG_UNSET
+    set --erase KATTY_SHELL_INTEGRATION_XDG_DIR
+else if set -q KATTY_SHELL_INTEGRATION_XDG_DIR
     set --local data_dirs (string split --no-empty : -- $XDG_DATA_DIRS)
     if set --local index (contains --index -- $KATTY_SHELL_INTEGRATION_XDG_DIR $data_dirs)
         set --erase data_dirs[$index]

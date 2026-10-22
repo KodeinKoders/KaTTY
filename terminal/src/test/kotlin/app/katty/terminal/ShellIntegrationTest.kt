@@ -295,6 +295,33 @@ class ShellIntegrationTest {
         ShellIntegration.apply(listOf("fish", "-l"), environment)
 
         assertEquals("${environment.getValue("KATTY_SHELL_INTEGRATION_XDG_DIR")}:/usr/local/share:/usr/share", environment["XDG_DATA_DIRS"])
+        // The script takes the variable away, rather than leave the defaults that were made up for it.
+        assertEquals("1", environment["KATTY_SHELL_INTEGRATION_XDG_UNSET"])
+    }
+
+    @Test
+    fun fishThatHadDataDirectoriesIsNotToldToEraseThem() {
+        // Inherited from a KaTTY that was started in a KaTTY: it is not this shell's.
+        val environment = mutableMapOf("XDG_DATA_DIRS" to "/opt/share", "KATTY_SHELL_INTEGRATION_XDG_UNSET" to "1")
+
+        ShellIntegration.apply(listOf("fish", "-l"), environment)
+
+        assertEquals(null, environment["KATTY_SHELL_INTEGRATION_XDG_UNSET"])
+    }
+
+    @Test
+    fun fishThatHadNoDataDirectoriesHasNoneForItsPrograms() {
+        val fish = fish()
+        org.junit.Assume.assumeTrue("fish is not installed", fish != null)
+        org.junit.Assume.assumeTrue("XDG_DATA_DIRS is set for the tests", System.getenv("XDG_DATA_DIRS").isNullOrEmpty())
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(fish!!, emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+
+        session.sendText("set -q XDG_DATA_DIRS; and echo is-set; or echo is-unset\r")
+
+        await("the output") { "is-unset" in session.screen() }
+        assertTrue("is-set" !in session.screen().replace("is-set; or", ""), session.screen())
     }
 
     @Test
