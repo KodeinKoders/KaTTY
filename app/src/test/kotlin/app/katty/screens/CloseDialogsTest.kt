@@ -50,6 +50,16 @@ class CloseDialogsTest {
     }
 
     @Test
+    fun aProgramThatRunsIsSaidAsWellAsTheAgents() {
+        val vim = TerminalSummary(TerminalId("v"), "vim", AgentGlyph.SHELL, AgentState.IDLE, running = true)
+
+        assertEquals("1 program is still running and will be stopped.", stoppedByClosing(listOf(vim, terminals[2])))
+        assertEquals("2 agents are still active and 1 program is still running: they will be stopped.", stoppedByClosing(terminals + vim))
+        // An agent runs too: it is said once, as an agent.
+        assertEquals("1 agent is still active and will be stopped.", stoppedByClosing(listOf(terminals[0].copy(running = true))))
+    }
+
+    @Test
     fun theButtonsConfirmAndCancel() = runComposeUiTest {
         val answers = mutableListOf<String>()
         setContent { KattyTheme(false) { CloseWorkspaceDialog("ws", terminals, onConfirm = { answers += "confirm" }, onCancel = { answers += "cancel" }) } }

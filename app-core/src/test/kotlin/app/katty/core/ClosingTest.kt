@@ -25,7 +25,16 @@ class ClosingTest {
         store.addProject("/a")
         store.split(state.selection.terminal!!, SplitDirection.ROW)
 
-        assertEquals(CloseDecision.NOW, state.closeWorkspaceDecision(state.selection.workspace!!, statesOf()))
+        assertEquals(CloseDecision.NOW, state.closeWorkspaceDecision(state.selection.workspace!!, statesOf(), none))
+    }
+
+    @Test
+    fun aWorkspaceWhereAProgramRunsAsks() {
+        store.addProject("/a")
+        val editor = store.split(state.selection.terminal!!, SplitDirection.ROW)!!
+
+        // vim, a build, an ssh: a program that reports nothing is stopped all the same.
+        assertEquals(CloseDecision.CONFIRM, state.closeWorkspaceDecision(state.selection.workspace!!, statesOf(), { it == editor }))
     }
 
     @Test
@@ -33,7 +42,7 @@ class ClosingTest {
         store.addProject("/a")
         val agent = store.split(state.selection.terminal!!, SplitDirection.ROW)!!
 
-        assertEquals(CloseDecision.CONFIRM, state.closeWorkspaceDecision(state.selection.workspace!!, statesOf(agent to AgentState.WORKING)))
+        assertEquals(CloseDecision.CONFIRM, state.closeWorkspaceDecision(state.selection.workspace!!, statesOf(agent to AgentState.WORKING), none))
     }
 
     @Test
@@ -41,12 +50,12 @@ class ClosingTest {
         store.addProject("/a")
         val agent = state.selection.terminal!!
 
-        assertEquals(CloseDecision.NOW, state.closeWorkspaceDecision(state.selection.workspace!!, statesOf(agent to AgentState.DONE)))
+        assertEquals(CloseDecision.NOW, state.closeWorkspaceDecision(state.selection.workspace!!, statesOf(agent to AgentState.DONE), none))
     }
 
     @Test
     fun aWorkspaceThatIsNotThereClosesWithoutAsking() {
-        assertEquals(CloseDecision.NOW, state.closeWorkspaceDecision(WorkspaceId("nothing"), statesOf()))
+        assertEquals(CloseDecision.NOW, state.closeWorkspaceDecision(WorkspaceId("nothing"), statesOf(), none))
     }
 
     @Test

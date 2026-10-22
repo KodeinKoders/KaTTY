@@ -19,8 +19,12 @@ import app.katty.ui.StateGlyph
 import app.katty.ui.TileSize
 import org.jetbrains.jewel.ui.component.Text
 
-/** A terminal as a list in a dialog tells it: what runs in it, and what it is doing. */
-data class TerminalSummary(val id: TerminalId, val title: String, val glyph: AgentGlyph, val state: AgentState)
+/**
+ * A terminal as a list in a dialog tells it: what runs in it, and what it is doing.
+ *
+ * @param running Whether a program other than the shell has it, which closing it stops.
+ */
+data class TerminalSummary(val id: TerminalId, val title: String, val glyph: AgentGlyph, val state: AgentState, val running: Boolean = false)
 
 @Composable
 private fun SummaryRow(summary: TerminalSummary) {
@@ -34,21 +38,32 @@ private fun SummaryRow(summary: TerminalSummary) {
 }
 
 /**
- * Asked before a workspace is closed with an agent that is active in it: its terminals are listed with their states, and the agents that
- * are still active will be stopped.
+ * Asked before a workspace is closed with a program running in it, or an agent that is active: its terminals are listed with their states,
+ * and what is still running will be stopped.
  */
 @Composable
 fun CloseWorkspaceDialog(workspaceName: String, terminals: List<TerminalSummary>, onConfirm: () -> Unit, onCancel: () -> Unit) {
-    val active = terminals.count { it.state.isActive() }
     ConfirmDialog(
         title = "Close “$workspaceName”?",
-        message = "Closing this workspace ends all of its terminals. " +
-            if (active == 1) "1 agent is still active and will be stopped." else "$active agents are still active and will be stopped.",
+        message = "Closing this workspace ends all of its terminals. " + stoppedByClosing(terminals),
         confirmLabel = "Close workspace",
         onConfirm = onConfirm,
         onCancel = onCancel,
         details = { terminals.forEach { SummaryRow(it) } },
     )
+}
+
+/** What closing [terminals] stops: the agents that are active, and the other programs that run. */
+internal fun stoppedByClosing(terminals: List<TerminalSummary>): String {
+    val agents = terminals.count { it.state.isActive() }
+    val programs = terminals.count { it.running && !it.state.isActive() }
+    val agentsPart = if (agents == 1) "1 agent is still active" else "$agents agents are still active"
+    val programsPart = if (programs == 1) "1 program is still running" else "$programs programs are still running"
+    return when {
+        programs == 0 -> "$agentsPart and will be stopped."
+        agents == 0 -> "$programsPart and will be stopped."
+        else -> "$agentsPart and $programsPart: they will be stopped."
+    }
 }
 
 /** Asked before the last terminal of a workspace is closed with a program in it: closing it deletes the workspace. */

@@ -269,14 +269,14 @@ fun DecoratedWindowScope.KattyWindowContent(
         }
         Unit
     }
-    // Closing asks first when an agent that is active would be stopped, and does not otherwise.
-    val closeWorkspace: (WorkspaceId) -> Unit = { id ->
-        if (state.closeWorkspaceDecision(id, stateOf) == CloseDecision.NOW) store.closeWorkspace(id) else closingWorkspace = id
-    }
     // A program other than the shell has the terminal: closing or restarting it would stop it.
     val running: (TerminalId) -> Boolean = { id ->
         val handle = handles[id]
         handle?.session?.exited?.value == null && handle?.processName?.value.let { it != null && it != handle?.shellName }
+    }
+    // Closing asks first when a program, or an agent that is active, would be stopped, and does not otherwise.
+    val closeWorkspace: (WorkspaceId) -> Unit = { id ->
+        if (state.closeWorkspaceDecision(id, stateOf, running) == CloseDecision.NOW) store.closeWorkspace(id) else closingWorkspace = id
     }
     val closeTerminal: (TerminalId) -> Unit = { id ->
         if (state.closeTerminalDecision(id, stateOf, running) == CloseDecision.NOW) store.closeTerminal(id) else closingTerminal = id
@@ -763,7 +763,7 @@ fun DecoratedWindowScope.KattyWindowContent(
             } else {
                 CloseWorkspaceDialog(
                     workspaceName = workspace.name,
-                    terminals = workspace.layout.terminals().map(describe),
+                    terminals = workspace.layout.terminals().map { describe(it).copy(running = running(it.id)) },
                     onConfirm = { store.closeWorkspace(id); closingWorkspace = null },
                     onCancel = { closingWorkspace = null },
                 )

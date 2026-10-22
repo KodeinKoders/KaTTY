@@ -13,14 +13,15 @@ public enum class CloseDecision {
 public fun AgentState.isActive(): Boolean = this == AgentState.WORKING || this == AgentState.NEEDS_INPUT || this == AgentState.ERROR
 
 /**
- * What closing the workspace [id] needs: asking when an agent in it is active, and nothing for shells at their prompts, since closing
- * them loses nothing that the user has not seen.
+ * What closing the workspace [id] needs: asking when a program runs in one of its terminals (it would be stopped, as closing that terminal
+ * would) or an agent in it is active, and nothing for shells at their prompts, since closing them loses nothing that the user has not seen.
  *
  * @param stateOf The state of a terminal.
+ * @param running Whether a program other than the shell has the terminal.
  */
-public fun KattyState.closeWorkspaceDecision(id: WorkspaceId, stateOf: (TerminalId) -> AgentState): CloseDecision {
+public fun KattyState.closeWorkspaceDecision(id: WorkspaceId, stateOf: (TerminalId) -> AgentState, running: (TerminalId) -> Boolean): CloseDecision {
     val workspace = projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == id } } ?: return CloseDecision.NOW
-    return if (workspace.layout.terminals().any { stateOf(it.id).isActive() }) CloseDecision.CONFIRM else CloseDecision.NOW
+    return if (workspace.layout.terminals().any { running(it.id) || stateOf(it.id).isActive() }) CloseDecision.CONFIRM else CloseDecision.NOW
 }
 
 /**
