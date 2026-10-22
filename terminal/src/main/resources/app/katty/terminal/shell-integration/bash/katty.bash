@@ -13,6 +13,7 @@ if [[ -n "${KATTY_BASH_INJECTED-}" ]]; then
 
     if [[ -n "${KATTY_BASH_LOGIN-}" ]]; then
         builtin unset KATTY_BASH_LOGIN
+        __katty_login=1
         [[ -r /etc/profile ]] && builtin source /etc/profile
         for __katty_rc in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
             if [[ -r "$__katty_rc" ]]; then
@@ -83,6 +84,25 @@ __katty_preexec() {
     __katty_command_running=1
     builtin printf '\e]133;C\a'
 }
+
+# A login shell that KaTTY started is not one for bash, which was started with --rcfile: `logout` would refuse ("not login shell"),
+# and ~/.bash_logout would not be read. Both are given back: `logout` ends the shell, and the shell that ends reads the file, before
+# what an EXIT trap that was already there does.
+if [[ -n "${__katty_login-}" ]]; then
+    logout() { builtin exit "$@"; }
+
+    __katty_exit_trap="$(builtin trap -p EXIT)"
+    __katty_exit_trap="${__katty_exit_trap#trap -- }"
+    __katty_exit_trap="${__katty_exit_trap% EXIT}"
+    # What `trap -p` prints is quoted for the shell: this gives back the command.
+    builtin eval "__katty_exit_trap=${__katty_exit_trap:-''}"
+
+    __katty_logout() {
+        [[ -r "$HOME/.bash_logout" ]] && builtin source "$HOME/.bash_logout"
+        [[ -n "$__katty_exit_trap" ]] && builtin eval "$__katty_exit_trap"
+    }
+    builtin trap '__katty_logout' EXIT
+fi
 
 if [[ "$(builtin declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
     PROMPT_COMMAND=(__katty_prompt_start "${PROMPT_COMMAND[@]}" __katty_prompt_end)

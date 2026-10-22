@@ -93,6 +93,20 @@ class ShellIntegrationTest {
     }
 
     @Test
+    fun aBashLoginShellLogsOutAndReadsItsLogoutFile() {
+        val home = emptyHome().also { Files.writeString(it.resolve(".bash_logout"), "echo bye > \"\$HOME/logged-out\"\n") }
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start("/bin/bash", home, directory)
+        await("the first prompt") { session.workingDirectory.value == directory.toRealPath().toString() }
+
+        // bash does not take itself for a login shell (KaTTY starts it with --rcfile): `logout` said "not login shell".
+        session.sendText("logout\r")
+
+        await("the shell to end") { session.exited.value != null }
+        await("the logout file to be read") { Files.exists(home.resolve("logged-out")) }
+    }
+
+    @Test
     fun bashReportsFromADirectoryWithSpacesInItsPath() {
         val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
         val session = start("/bin/bash", emptyHome(), directory, scripts = scriptsDirectory())
