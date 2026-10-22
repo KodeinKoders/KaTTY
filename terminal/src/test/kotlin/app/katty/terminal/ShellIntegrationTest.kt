@@ -58,9 +58,9 @@ class ShellIntegrationTest {
         }
     }
 
-    private fun reportsItsDirectoryAndItsCommands(shell: String) {
+    private fun reportsItsDirectoryAndItsCommands(shell: String, home: Path = emptyHome()) {
         val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
-        val session = start(shell, emptyHome(), directory)
+        val session = start(shell, home, directory)
 
         // The first prompt reports where the shell started, as the system names it.
         await("the directory of the first prompt") { session.workingDirectory.value == directory.toRealPath().toString() }
@@ -90,6 +90,14 @@ class ShellIntegrationTest {
             await("the user's .zshrc, start ${time + 1}") { "user-zshrc" in session.screen() }
             await("the directory of the first prompt, start ${time + 1}") { session.workingDirectory.value == directory.toRealPath().toString() }
         }
+    }
+
+    @Test
+    fun bashWithADebugTrapOfItsOwnStillMarksItsCommands() {
+        // atuin, starship and others set a DEBUG trap: it is the one place that bash says a command starts.
+        val home = emptyHome().also { Files.writeString(it.resolve(".bash_profile"), "trap 'true' DEBUG\n") }
+
+        reportsItsDirectoryAndItsCommands("/bin/bash", home)
     }
 
     @Test

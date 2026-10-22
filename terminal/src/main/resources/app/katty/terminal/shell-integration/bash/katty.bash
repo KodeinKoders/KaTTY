@@ -104,15 +104,40 @@ if [[ -n "${__katty_login-}" ]]; then
     builtin trap '__katty_logout' EXIT
 fi
 
-if [[ "$(builtin declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-    PROMPT_COMMAND=(__katty_prompt_start "${PROMPT_COMMAND[@]}" __katty_prompt_end)
-elif [[ -n "${PROMPT_COMMAND-}" ]]; then
-    PROMPT_COMMAND="__katty_prompt_start"$'\n'"${PROMPT_COMMAND}"$'\n'"__katty_prompt_end"
+if [[ -n "${bash_preexec_imported-}${__bp_imported-}" ]]; then
+    # bash-preexec (which atuin and starship use) owns PROMPT_COMMAND and the DEBUG trap, and runs the functions of these arrays: the marks
+    # go there. Its precmd functions have the status of the command that ended in $?.
+    precmd_functions=(__katty_prompt_start "${precmd_functions[@]}" __katty_prompt_end)
+    preexec_functions+=(__katty_preexec)
 else
-    PROMPT_COMMAND="__katty_prompt_start"$'\n'"__katty_prompt_end"
-fi
+    if [[ "$(builtin declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+        PROMPT_COMMAND=(__katty_prompt_start "${PROMPT_COMMAND[@]}" __katty_prompt_end)
+    elif [[ -n "${PROMPT_COMMAND-}" ]]; then
+        PROMPT_COMMAND="__katty_prompt_start"$'\n'"${PROMPT_COMMAND}"$'\n'"__katty_prompt_end"
+    else
+        PROMPT_COMMAND="__katty_prompt_start"$'\n'"__katty_prompt_end"
+    fi
 
-# A DEBUG trap that is already there is the user's: the start of the output is not marked rather than replaced.
-if [[ -z "$(builtin trap -p DEBUG)" ]]; then
-    builtin trap '__katty_preexec' DEBUG
+    # A DEBUG trap that is already there is the user's: it runs first, with $? and $_ as they were (it may read them), and its status is the
+    # trap's (with extdebug, it decides whether the command runs).
+    __katty_debug_trap="$(builtin trap -p DEBUG)"
+    if [[ -n "$__katty_debug_trap" ]]; then
+        __katty_debug_trap="${__katty_debug_trap#trap -- }"
+        __katty_debug_trap="${__katty_debug_trap% DEBUG}"
+        # What `trap -p` prints is quoted for the shell: this gives back the command.
+        builtin eval "__katty_debug_trap=$__katty_debug_trap"
+        # Leaves $? and $_ as they are given.
+        __katty_restore() { return "$1"; }
+        __katty_debug() {
+            local __katty_status=$? __katty_argument=$1
+            __katty_restore "$__katty_status" "$__katty_argument"
+            builtin eval "$__katty_debug_trap"
+            __katty_status=$?
+            __katty_preexec
+            return "$__katty_status"
+        }
+        builtin trap '__katty_debug "$_"' DEBUG
+    else
+        builtin trap '__katty_preexec' DEBUG
+    fi
 fi
