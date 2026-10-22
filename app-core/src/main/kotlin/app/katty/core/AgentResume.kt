@@ -215,29 +215,9 @@ public object AgentResume {
         val program = original.firstOrNull()?.takeIf { agent != Agent.JUNIE } ?: agent.executable
         val kept = ArrayList<String>()
         kept += program
-        if (agent == Agent.OPENHANDS) {
-            // `openhands serve`, `web`, `mcp`… are not a conversation to come back to.
-            val command = original.drop(1).firstOrNull { !it.startsWith("-") }
-            if (command in OPENHANDS_COMMANDS) return listOf(program, command!!)
-        }
-        if (agent == Agent.KILO) {
-            // Its options are the interface's. Another command (`kilo run`, `kilo serve`) is not a conversation to come back to, and the project that
-            // `kilo [project]` is given is where the process already is.
-            val command = firstCommand(original, agent)
-            if (command in KILO_COMMANDS) return listOf(program, command!!)
-        }
-        if (agent == Agent.CURSOR) {
-            // `login`, `models`, `update`… are not a conversation. `agent`, `resume` and `ls` start or resume the interface: what it was in replaces them.
-            val command = firstCommand(original, agent)
-            if (command in CURSOR_COMMANDS) return listOf(program, command!!)
-        }
-        if (agent == Agent.GOOSE) {
-            // Its options belong to the `session` command, which is what a bare `goose` runs as well. Another command (`goose run`,
-            // `goose acp`) is not a conversation to come back to.
-            val command = original.drop(1).firstOrNull { !it.startsWith("-") }
-            if (command != null && command != "session" && command != "s") return listOf(program, command)
-            kept += "session"
-        }
+        otherCommand(agent, original)?.let { return listOf(program, it) }
+        // Goose's options belong to the `session` command, which is what a bare `goose` runs as well.
+        if (agent == Agent.GOOSE) kept += "session"
         val known = knownOptions(agent)
         var index = 1
         while (index < original.size) {
@@ -282,6 +262,27 @@ public object AgentResume {
             }
         }
         return kept
+    }
+
+    /**
+     * Whether [original], a command line of [agent], is its interface, which comes back on its conversation: not one of its other commands
+     * (`kilo uninstall`, `cursor-agent logout`, `goose update`), which are typed again for the user to run or not, since what they do is not
+     * a conversation to come back to.
+     */
+    public fun resumesInterface(agent: Agent, original: List<String>): Boolean = otherCommand(agent, original) == null
+
+    // The command of [original] that is not the agent's interface, which it starts again as that word alone, or null for its interface.
+    private fun otherCommand(agent: Agent, original: List<String>): String? = when (agent) {
+        // `openhands serve`, `web`, `mcp`… are not a conversation to come back to.
+        Agent.OPENHANDS -> original.drop(1).firstOrNull { !it.startsWith("-") }?.takeIf { it in OPENHANDS_COMMANDS }
+        // Its options are the interface's. Another command (`kilo run`, `kilo serve`) is not a conversation to come back to, and the project that
+        // `kilo [project]` is given is where the process already is.
+        Agent.KILO -> firstCommand(original, agent)?.takeIf { it in KILO_COMMANDS }
+        // `login`, `models`, `update`… are not a conversation. `agent`, `resume` and `ls` start or resume the interface: what it was in replaces them.
+        Agent.CURSOR -> firstCommand(original, agent)?.takeIf { it in CURSOR_COMMANDS }
+        // A bare `goose` runs the `session` command. Another command (`goose run`, `goose acp`) is not a conversation to come back to.
+        Agent.GOOSE -> original.drop(1).firstOrNull { !it.startsWith("-") }?.takeIf { it != "session" && it != "s" }
+        else -> null
     }
 
     // The options that are kept, and whether each takes the next word as its value.

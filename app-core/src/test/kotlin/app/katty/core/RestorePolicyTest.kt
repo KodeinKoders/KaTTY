@@ -89,6 +89,15 @@ class RestorePolicyTest {
     }
 
     @Test
+    fun anAgentsCommandThatIsNotItsInterfaceIsNotRun() {
+        assertFalse(policy.runs(listOf("kilo", "uninstall")))
+        assertFalse(policy.runs(listOf("/opt/homebrew/bin/cursor-agent", "logout")))
+        assertFalse(policy.runs(listOf("goose", "update")))
+        assertTrue(policy.runs(listOf("goose")))
+        assertTrue(policy.runs(listOf("kilo")))
+    }
+
+    @Test
     fun theUserCanAddPrograms() {
         assertFalse(policy.runs(listOf("make", "watch")))
         assertTrue(RestorePolicy(extra = setOf("make")).runs(listOf("make", "watch")))

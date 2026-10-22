@@ -57,6 +57,30 @@ class RunningCommandsTest {
     }
 
     @Test
+    fun anAgentsCommandThatIsNotItsInterfaceIsOnlyTyped() {
+        // What it does is not a conversation to come back to: uninstalling, logging out, updating.
+        for ((argv, agent) in listOf(
+            listOf("kilo", "uninstall") to "kilocode",
+            listOf("kilo", "upgrade") to "kilocode",
+            listOf("cursor-agent", "logout") to "cursor",
+            listOf("goose", "update") to "goose",
+            listOf("openhands", "logout") to "openhands",
+        )) {
+            val typed = RunningCommand(argv, "/work", agent).toTyped()
+            assertEquals(argv, typed.argv)
+            assertEquals(false, typed.run, "${argv.joinToString(" ")} is typed, not run")
+        }
+    }
+
+    @Test
+    fun anAgentsInterfaceStillRunsByItself() {
+        assertEquals(true, RunningCommand(listOf("kilo"), "/work", "kilocode", "ses_abc").toTyped().run)
+        assertEquals(true, RunningCommand(listOf("goose", "session"), "/work", "goose").toTyped().run)
+        assertEquals(true, RunningCommand(listOf("cursor-agent", "resume"), "/work", "cursor").toTyped().run)
+        assertEquals(true, RunningCommand(listOf("openhands", "--always-approve"), "/work", "openhands").toTyped().run)
+    }
+
+    @Test
     fun anOpenCodeThatIsNotWhatThePathResolvesIsKeptByItsExecutable() {
         val v2 = "/opt/opencode-v2/bin/opencode-v2"
 

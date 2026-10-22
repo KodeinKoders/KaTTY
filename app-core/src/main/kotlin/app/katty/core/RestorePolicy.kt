@@ -19,9 +19,11 @@ public class RestorePolicy(extra: Set<String> = emptySet()) {
      */
     public fun runs(argv: List<String>): Boolean {
         val program = argv.firstOrNull()?.let { File(it).name } ?: return false
+        val agent = Agent.entries.firstOrNull { program in it.names }
         return when {
             program in NEVER -> false
-            Agent.entries.any { it.executable == program } -> true
+            // An agent's interface, and not its other commands (`kilo uninstall`, `cursor-agent logout`).
+            agent != null -> AgentResume.resumesInterface(agent, argv)
             program in REPLS -> argv.size == 1
             program == "ssh" -> onlyConnects(argv.drop(1), SSH_FLAGS, SSH_VALUE_OPTIONS)
             program == "mosh" -> onlyConnects(argv.drop(1), MOSH_FLAGS, MOSH_VALUE_OPTIONS)

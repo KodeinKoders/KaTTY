@@ -46,8 +46,9 @@ public fun ForegroundCommand.toRunning(
 public fun RunningCommand.toTyped(policy: RestorePolicy = RestorePolicy()): TypedCommand {
     val agent = agent?.let(Agent::byId)
     val line = if (agent != null) AgentResume.argv(agent, argv, agentSession) else argv
-    // An agent that was recognized runs whatever its file is called (`opencode-v2`): `RestorePolicy` judges by the name alone.
-    return TypedCommand(line, run = agent != null || policy.runs(line))
+    // An agent that was recognized runs whatever its file is called (`opencode-v2`): `RestorePolicy` judges by the name alone. Not one of
+    // its other commands (`kilo uninstall`): those are typed for the user.
+    return TypedCommand(line, run = if (agent != null) AgentResume.resumesInterface(agent, argv) else policy.runs(line))
 }
 
 /**
