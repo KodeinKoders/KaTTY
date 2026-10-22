@@ -1006,6 +1006,28 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun aProgramGetsAUtf8LocaleWhenTheApplicationHasNone() {
+        // What an application opened from the Finder gets from launchd: none of the three.
+        val session = TerminalSession.start(
+            80, 5,
+            command = listOf("/bin/sh", "-c", "locale charmap; sleep 30"),
+            environment = mapOf("LANG" to "", "LC_ALL" to "", "LC_CTYPE" to ""),
+        ).also { sessions += it }
+
+        session.awaitFrame { "UTF-8" in it.text() }
+    }
+
+    @Test
+    fun theLocaleIsTheUsersLanguageWhenTheSystemHasIt() {
+        val installed = setOf("fr_FR.UTF-8", "en_US.UTF-8")
+
+        assertEquals("fr_FR.UTF-8", defaultUtf8Locale(java.util.Locale.FRANCE) { it in installed })
+        // English as spoken in France is not a locale of the system.
+        assertEquals("en_US.UTF-8", defaultUtf8Locale(java.util.Locale.of("en", "FR")) { it in installed })
+        assertEquals("en_US.UTF-8", defaultUtf8Locale(java.util.Locale.ENGLISH) { it in installed })
+    }
+
+    @Test
     fun closingHangsUpAShellWhichSavesItsHistoryAndEndsAtOnce() {
         val history = Files.createTempFile("katty-history", "")
         try {

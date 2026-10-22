@@ -1844,6 +1844,8 @@ public class TerminalSession private constructor(
             env["TERM_PROGRAM"] = TERMINAL_NAME
             env.remove("TERM_PROGRAM_VERSION")
             env.putAll(environment)
+            // An application opened from the Finder has no locale: the shell would read what is typed as ASCII.
+            ensureUtf8Locale(env)
             val argv = if (shellIntegration) ShellIntegration.apply(command, env) else command
             val shell = ShellIntegration.shellOf(command)
             val typed = typeAtPrompt?.let { it.toInput(shell ?: "sh") ?: null.also { logger.warn("Not typing {}: it holds a control character", it) } }
