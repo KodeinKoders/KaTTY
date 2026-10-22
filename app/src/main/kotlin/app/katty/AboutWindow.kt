@@ -39,6 +39,7 @@ import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.TitleBar
 import org.slf4j.LoggerFactory
 import java.awt.Desktop
+import java.awt.EventQueue
 
 private val logger = LoggerFactory.getLogger("app.katty.AboutWindow")
 
@@ -61,6 +62,29 @@ internal fun takeAboutItem(onAbout: () -> Unit) {
         }
     } catch (e: Throwable) {
         logger.warn("Could not take the About item of the application menu", e)
+    }
+}
+
+/**
+ * Makes the Quit item of the application menu of macOS, ⌘Q, the Dock's Quit and logging out call [onQuit] before the process ends, which
+ * otherwise exits at once, without writing what the application keeps. [onQuit] runs on the thread that draws, as a click on the window's close
+ * button does. Nothing is done elsewhere.
+ */
+internal fun takeQuitItem(onQuit: () -> Unit) {
+    if (!System.getProperty("os.name").startsWith("Mac")) return
+    try {
+        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
+            Desktop.getDesktop().setQuitHandler { _, response ->
+                try {
+                    if (EventQueue.isDispatchThread()) onQuit() else EventQueue.invokeAndWait(onQuit)
+                } finally {
+                    // Not cancelled: a quit that logging out asks for would stop the logout.
+                    response.performQuit()
+                }
+            }
+        }
+    } catch (e: Throwable) {
+        logger.warn("Could not take the Quit item of the application menu", e)
     }
 }
 

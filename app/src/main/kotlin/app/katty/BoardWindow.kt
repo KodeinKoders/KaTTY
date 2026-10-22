@@ -1,6 +1,7 @@
 package app.katty
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import app.katty.core.WindowFile
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -81,6 +82,13 @@ fun BoardWindow(
     val flush = keepWindowGeometry(windowState, windowFile, geometry, open = { !closedByUser[0] })
     // It is open from now on, for a launch that comes before anything about it changes.
     LaunchedEffect(Unit) { flush() }
+    // Quitting writes it too (see WindowBridge).
+    val latestFlush = rememberUpdatedState(flush)
+    DisposableEffect(bridge) {
+        val write = { latestFlush.value() }
+        bridge.flushBoardWindow = write
+        onDispose { if (bridge.flushBoardWindow === write) bridge.flushBoardWindow = null }
+    }
     val closeByUser = { closedByUser[0] = true; flush(); onClose() }
     DecoratedWindow(
         onCloseRequest = closeByUser,

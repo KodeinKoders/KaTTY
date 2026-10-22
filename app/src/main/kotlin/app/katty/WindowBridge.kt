@@ -17,6 +17,13 @@ class WindowBridge {
 
     /** The main window is to have the focus: the board window that was opened again at launch took it, and the user was not asking for it. */
     val focusMain = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * Writes where the board window is, while it is open: quitting calls it, since a quit from the system's menu (⌘Q, the Dock, logging out)
+     * may end the process before the window leaves the composition, which is when it writes it otherwise.
+     */
+    @Volatile
+    var flushBoardWindow: (() -> Unit)? = null
 }
 
 /** The time in milliseconds, which moves on by itself every 30 seconds: what the ages on the screen are told from. */

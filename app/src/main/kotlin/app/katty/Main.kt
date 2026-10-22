@@ -3,6 +3,7 @@ package app.katty
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -76,14 +77,24 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val windowState = rememberWindowState(placement = geometry.mode.toPlacement(), position = geometry.toPosition(), size = geometry.toSize())
     // Where the window is, how big and in which mode is kept as it changes, and a last time when the application quits.
     val flushWindow = keepWindowGeometry(windowState, windowFile, geometry)
+    // The board in a window of its own, when it was asked for; the main window is told what is clicked there through the bridge.
+    val bridge = remember { WindowBridge() }
+    // Once, whichever asks first: the window's close button, or the system's Quit (⌘Q, the Dock, logging out), which ends the process after it.
+    val quitting = remember { booleanArrayOf(false) }
     val quit = {
-        flushWindow()
-        persistence.flush()
-        sessionUsage.stop()
-        tracker.close()
-        registry.close()
-        exitApplication()
+        if (!quitting[0]) {
+            quitting[0] = true
+            flushWindow()
+            bridge.flushBoardWindow?.invoke()
+            persistence.flush()
+            sessionUsage.stop()
+            tracker.close()
+            registry.close()
+            exitApplication()
+        }
     }
+    val latestQuit = rememberUpdatedState(quit)
+    DisposableEffect(Unit) { takeQuitItem { latestQuit.value() }; onDispose { } }
 
     val settings by store.state.collectAsState().let { state -> derivedStateOf { state.value.settings } }
     val dark = when (settings.theme) {
@@ -91,8 +102,6 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
-    // The board in a window of its own, when it was asked for; the main window is told what is clicked there through the bridge.
-    val bridge = remember { WindowBridge() }
     // The shortcuts of the window are handled by the window, which sees the keys before whatever has the focus.
     val windowKeys = remember { WindowKeys() }
     // The board window comes back where it was last closed, in a file of its own, and is open again if the application was closed with it open.
