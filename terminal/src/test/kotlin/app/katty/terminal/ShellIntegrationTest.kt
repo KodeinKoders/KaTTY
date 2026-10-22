@@ -28,14 +28,21 @@ class ShellIntegrationTest {
         it.toFile().deleteOnExit()
     }
 
-    private fun start(shell: String, home: Path, directory: Path, shellIntegration: Boolean = true): TerminalSession =
+    private fun start(shell: String, home: Path, directory: Path, shellIntegration: Boolean = true, scripts: Path? = null): TerminalSession =
         TerminalSession.start(
             80, 10,
             command = listOf(shell, "-l"),
             environment = mapOf("HOME" to home.toString(), "BASH_SILENCE_DEPRECATION_WARNING" to "1", "PS1" to "$ "),
             directory = directory.toString(),
             shellIntegration = shellIntegration,
+            shellIntegrationDirectory = scripts,
         ).also { sessions += it }
+
+    // A directory for the scripts with spaces in its path, as the application's own has (`Application Support`).
+    private fun scriptsDirectory(): Path =
+        Files.createTempDirectory("katty support").also { it.toFile().deleteOnExit() }.resolve("Application Support/KaTTY/shell-integration")
+
+    private fun TerminalSession.screen(): String = frames.value.rows.joinToString("\n") { row -> row.cells.joinToString("") { it.text.ifEmpty { " " } } }
 
     private fun TerminalSession.collectEvents(): List<TerminalEvent> {
         val events = CopyOnWriteArrayList<TerminalEvent>()
@@ -69,6 +76,28 @@ class ShellIntegrationTest {
             events.indexOf(TerminalEvent.CommandStarted(null)) < events.indexOf(TerminalEvent.CommandFinished(1)),
             "The command starts before it ends: $events",
         )
+    }
+
+    @Test
+    fun theScriptsAreWrittenAgainWhenTheirDirectoryIsGone() {
+        val scripts = scriptsDirectory()
+        val home = emptyHome().also { Files.writeString(it.resolve(".zshrc"), "echo user-zshrc\n") }
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        repeat(2) { time ->
+            // The second time, the system cleaned the directory: zsh pointed to a directory that is gone reads none of the user's files.
+            if (time == 1) scripts.toFile().deleteRecursively()
+            val session = start("/bin/zsh", home, directory, scripts = scripts)
+            await("the user's .zshrc, start ${time + 1}") { "user-zshrc" in session.screen() }
+            await("the directory of the first prompt, start ${time + 1}") { session.workingDirectory.value == directory.toRealPath().toString() }
+        }
+    }
+
+    @Test
+    fun bashReportsFromADirectoryWithSpacesInItsPath() {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start("/bin/bash", emptyHome(), directory, scripts = scriptsDirectory())
+
+        await("the directory of the first prompt") { session.workingDirectory.value == directory.toRealPath().toString() }
     }
 
     private fun givesTheOutputOfTheLastCommand(shell: String) {

@@ -24,6 +24,12 @@ public class KattyDirectories(public val support: Path) {
      */
     public val usageDirectory: Path get() = support.resolve("usage")
 
+    /**
+     * Where the scripts of the shell integration are, which the shells that KaTTY starts read: not a temporary directory, which macOS cleans
+     * of what is not used for a few days, and a zsh pointed to one that is gone reads none of the user's files.
+     */
+    public val shellIntegration: Path get() = support.resolve("shell-integration")
+
     public companion object {
         /** The system property that changes the directory, for tests and for running a second copy of the application. */
         public const val PROPERTY: String = "katty.support"

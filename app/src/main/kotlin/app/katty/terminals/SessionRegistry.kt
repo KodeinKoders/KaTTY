@@ -80,12 +80,14 @@ class TerminalHandle(
  *
  * @param start Starts the shell of a terminal. Tests give their own program.
  * @param loadTheme The colors of a color scheme, `null` when it cannot be read.
+ * @param shellIntegration Where the scripts of the shell integration are kept (see [TerminalSession.start]).
  */
 class SessionRegistry(
     private val store: KattyStore,
     private val scope: CoroutineScope,
     private val loadTheme: (String) -> TerminalTheme? = ::loadColorScheme,
-    private val start: (TerminalSpec, TerminalTheme?) -> TerminalSession = ::startShell,
+    shellIntegration: Path? = null,
+    private val start: (TerminalSpec, TerminalTheme?) -> TerminalSession = { spec, theme -> startShell(spec, theme, shellIntegration) },
 ) {
     private val mutableHandles = MutableStateFlow<Map<TerminalId, TerminalHandle>>(emptyMap())
 
@@ -313,11 +315,14 @@ private fun loadColorScheme(name: String): TerminalTheme? =
         null
     }
 
-private fun startShell(spec: TerminalSpec, theme: TerminalTheme?): TerminalSession {
+private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegration: Path?): TerminalSession {
     // A folder that is gone is not a reason for the terminal to have no shell: it starts in the user's home.
     // The program that ran over the shell is typed in the new one, in the folder it was in, which is the folder that the shell goes back to when
     // it ends.
     val running = spec.running
     val directory = (running?.directory ?: spec.directory).takeIf { File(it).isDirectory } ?: spec.directory.takeIf { File(it).isDirectory }
-    return TerminalSession.start(cols = 80, rows = 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY))
+    return TerminalSession.start(
+        cols = 80, rows = 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY),
+        shellIntegrationDirectory = shellIntegration,
+    )
 }

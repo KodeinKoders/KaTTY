@@ -62,7 +62,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val writer = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     val persistence = remember { StatePersistence(store, file, writer) }
     // One shell for each terminal of the store, which goes on running when its workspace is not the one that is shown.
-    val registry = remember { SessionRegistry(store, writer) }
+    val registry = remember { SessionRegistry(store, writer, shellIntegration = directories.shellIntegration) }
     // What each of them says it is doing.
     val tracker = remember { AgentTracker(writer) }
     // What the session of the agent in each of them has used, read from the agent's own files.

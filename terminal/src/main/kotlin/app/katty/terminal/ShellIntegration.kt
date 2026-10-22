@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 private val logger = LoggerFactory.getLogger(ShellIntegration::class.java)
 
@@ -29,29 +30,54 @@ internal object ShellIntegration {
     private const val RESOURCES = "/app/katty/terminal/shell-integration"
     private val FILES = listOf("zsh/.zshenv", "zsh/katty-integration.zsh", "bash/katty.bash", "fish/vendor_conf.d/katty-shell-integration.fish")
 
-    // Written once for the process, and removed when it ends.
-    private val directory: Path? by lazy {
+    // The scripts as this build has them, read once from the resources.
+    private val scripts: Map<String, ByteArray> by lazy {
+        FILES.associateWith { name ->
+            ShellIntegration::class.java.getResourceAsStream("$RESOURCES/$name")?.use { it.readBytes() } ?: error("The resource $name is missing")
+        }
+    }
+
+    // Where the scripts are when the host names no directory: a temporary one, made once for the process and removed when it ends.
+    private val temporary: Path? by lazy {
         try {
             Files.createTempDirectory("katty-shell-integration").also { root ->
-                for (name in FILES) {
-                    val target = root.resolve(name)
-                    Files.createDirectories(target.parent)
-                    val source = ShellIntegration::class.java.getResourceAsStream("$RESOURCES/$name")
-                        ?: error("The resource $name is missing")
-                    source.use { Files.copy(it, target) }
-                }
                 Runtime.getRuntime().addShutdownHook(Thread { root.toFile().deleteRecursively() })
             }
         } catch (e: Exception) {
-            logger.warn("Could not prepare the shell integration: the shell will not report its prompts", e)
+            logger.warn("Could not make a directory for the shell integration: the shell will not report its prompts", e)
             null
         }
     }
 
     /**
-     * The command to run instead of [command], with what it needs added to [environment]: [command] itself and [environment]
-     * untouched when the shell is not one that is known, or is not started to be typed in.
+     * Makes [root] hold the scripts as this build has them, and writes the ones that are missing or differ: the directory may be an older
+     * KaTTY's, or one that the system cleaned (macOS removes what is not used in its temporary directory after a few days, and zsh pointed to a
+     * directory that is gone reads none of the user's files). Whether they are there. Several applications may share the directory: each file
+     * is written to a file of its own and moved in its place.
      */
+    @Synchronized
+    fun prepare(root: Path): Boolean = try {
+        for ((name, bytes) in scripts) {
+            val target = root.resolve(name)
+            if (Files.isRegularFile(target) && Files.readAllBytes(target).contentEquals(bytes)) continue
+            Files.createDirectories(target.parent)
+            val written = Files.createTempFile(target.parent, ".katty-", ".tmp")
+            try {
+                Files.write(written, bytes)
+                Files.move(written, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } finally {
+                Files.deleteIfExists(written)
+            }
+        }
+        true
+    } catch (e: Exception) {
+        logger.warn("Could not write the shell integration in {}: the shell will not report its prompts", root, e)
+        false
+    }
+
+    // The directory of the scripts, [directory] or the temporary one, once they are there; null when they cannot be.
+    private fun root(directory: Path?): Path? = (directory ?: temporary)?.takeIf(::prepare)
+
     /** The name of the shell that [command] starts as a login or interactive shell, or `null` for any other command. */
     fun shellOf(command: List<String>): String? {
         val program = command.firstOrNull() ?: return null
@@ -59,7 +85,13 @@ internal object ShellIntegration {
         return File(program).name.removePrefix("-")
     }
 
-    fun apply(command: List<String>, environment: MutableMap<String, String>): List<String> {
+    /**
+     * The command to run instead of [command], with what it needs added to [environment]: [command] itself and [environment]
+     * untouched when the shell is not one that is known, or is not started to be typed in.
+     *
+     * @param directory Where the scripts are kept (see [prepare]): a temporary directory when it is `null`.
+     */
+    fun apply(command: List<String>, environment: MutableMap<String, String>, directory: Path? = null): List<String> {
         val program = command.firstOrNull() ?: return command
         val arguments = command.drop(1)
         // A login shell, which is what a terminal starts: anything else is a command or a script that must run as it is.
@@ -67,7 +99,7 @@ internal object ShellIntegration {
         val shell = File(program).name.removePrefix("-")
         return when (shell) {
             "zsh" -> {
-                val root = directory ?: return command
+                val root = root(directory) ?: return command
                 // What KaTTY, running in a terminal of its own, may have inherited is not the user's.
                 environment.remove("KATTY_ZDOTDIR")
                 environment["ZDOTDIR"]?.let { environment["KATTY_ZDOTDIR"] = it }
@@ -76,7 +108,7 @@ internal object ShellIntegration {
             }
 
             "bash" -> {
-                val root = directory ?: return command
+                val root = root(directory) ?: return command
                 environment["KATTY_BASH_INJECTED"] = "1"
                 // It is not a login shell any more: the script reads the files of one.
                 if (arguments.any { it == "-l" || it == "--login" }) environment["KATTY_BASH_LOGIN"] = "1" else environment.remove("KATTY_BASH_LOGIN")
@@ -84,7 +116,7 @@ internal object ShellIntegration {
             }
 
             "fish" -> {
-                val root = directory ?: return command
+                val root = root(directory) ?: return command
                 // What KaTTY, running in a terminal of its own, may have inherited is not the user's: the script takes its own out.
                 environment["KATTY_SHELL_INTEGRATION_XDG_DIR"] = root.toString()
                 // The directories that fish and the system use when it is not set.

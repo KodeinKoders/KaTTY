@@ -53,6 +53,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.nio.file.Path
 import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -1793,6 +1794,8 @@ public class TerminalSession private constructor(
          * do not on their own: the [workingDirectory] and the [TerminalEvent.PromptStarted], [TerminalEvent.CommandStarted] and
          * [TerminalEvent.CommandFinished] events, and [scrollToPrompt], depend on it. The user's own startup files are still read.
          * Any other shell, and anything but a login or an interactive shell, is started as it is.
+         * @param shellIntegrationDirectory Where the scripts of [shellIntegration] are kept, written again whenever they are missing or differ:
+         * a directory of the application's own, which the system does not clean. A temporary directory when it is `null`.
          * @param directory Where the program starts: the directory of [snapshot] if it has one that is still there, else the user's home.
          * @param snapshot What the terminal was ([TerminalSession.snapshot]): the new session starts with its screen and its history, the
          * title and the directory, and [command] runs below them: a **new** program, since a process cannot be saved. The size is [cols] by
@@ -1829,6 +1832,7 @@ public class TerminalSession private constructor(
             advertiseSixel: Boolean = true,
             boldIsBright: Boolean = false,
             typeAtPrompt: TypedCommand? = null,
+            shellIntegrationDirectory: Path? = null,
         ): TerminalSession {
             if (snapshot != null && !snapshot.isRestorable) {
                 throw TerminalSnapshotException("The snapshot was made by another build of libghostty, which cannot read it: start a new session")
@@ -1846,7 +1850,7 @@ public class TerminalSession private constructor(
             env.putAll(environment)
             // An application opened from the Finder has no locale: the shell would read what is typed as ASCII.
             ensureUtf8Locale(env)
-            val argv = if (shellIntegration) ShellIntegration.apply(command, env) else command
+            val argv = if (shellIntegration) ShellIntegration.apply(command, env, shellIntegrationDirectory) else command
             val shell = ShellIntegration.shellOf(command)
             val typed = typeAtPrompt?.let { it.toInput(shell ?: "sh") ?: null.also { logger.warn("Not typing {}: it holds a control character", it) } }
             // The prompt marks are there when the shell is one that the integration knows and it is on.
