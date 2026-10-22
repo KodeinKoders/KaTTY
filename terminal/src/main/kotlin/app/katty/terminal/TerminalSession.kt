@@ -910,11 +910,18 @@ public class TerminalSession private constructor(
             unselect()
             if (inputActive) {
                 terminal.vtWrite("\u001b[H\u001b[2J\u001b[3J")
+            } else if (terminal.isModeEnabled(GhosttyMode.ORIGIN)) {
+                // The rows are counted from the program's scrolling region, and the cursor cannot be put back without setting or resetting the
+                // mode, which homes it: only the history goes.
+                terminal.vtWrite("\u001b[3J")
             } else {
-                // The cursor is saved and put back: it is where the program expects it.
-                val erase = StringBuilder("\u001b7\u001b[3J")
-                for (row in 1..terminal.cursorRow) erase.append("\u001b[$row;1H\u001b[2K")
-                erase.append("\u001b8")
+                // The cursor goes back where it was, where the program expects it: not with DECSC and DECRC, which would replace the cursor that
+                // the program itself saved.
+                val row = terminal.cursorRow
+                val column = terminal.cursorColumn
+                val erase = StringBuilder("\u001b[3J")
+                for (above in 1..row) erase.append("\u001b[$above;1H\u001b[2K")
+                erase.append("\u001b[${row + 1};${column + 1}H")
                 terminal.vtWrite(erase.toString())
             }
             snapToBottom()

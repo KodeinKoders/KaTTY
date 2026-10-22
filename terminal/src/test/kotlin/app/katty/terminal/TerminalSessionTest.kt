@@ -470,6 +470,19 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun clearingTheScreenOfARunningProgramKeepsTheCursorThatItSaved() {
+        // The program saves its cursor (row 3, column 5), writes below, and later goes back to it.
+        val session = start("""printf '\033[3;5H\0337\033[5;1H'; stty raw -echo; echo ready; head -c1 >/dev/null; printf '\0338X'; sleep 30""", rows = 6)
+        session.awaitFrame { "ready" in it.text() }
+
+        session.clearScreen()
+        session.paste("x")
+
+        val frame = session.awaitFrame { "X" in it.text() }
+        assertEquals("    X", frame.text(2), "Where the program saved its cursor:\n${frame.text()}")
+    }
+
+    @Test
     fun clearingTheScreenLeavesTheAlternateScreenToItsProgram() {
         val session = start("""printf '\033[?1049h\033[Ha\nb\nx'; sleep 30""", rows = 5)
         session.awaitFrame { it.text(2) == "x" }
