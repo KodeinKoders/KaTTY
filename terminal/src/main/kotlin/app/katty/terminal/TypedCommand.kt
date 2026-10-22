@@ -16,8 +16,10 @@ public class TypedCommand(public val argv: List<String>, public val run: Boolean
     override fun toString(): String = "TypedCommand(argv=$argv, run=$run)"
 }
 
-// What needs no quoting in any shell.
+// What needs no quoting in any shell, but as the first character: zsh replaces a word that starts with = by the path of the command it
+// names (`=ls` is `/bin/ls`), and fish before 3.0 expanded one that starts with % as a process.
 private val BARE = Regex("[A-Za-z0-9_@%+=:,./-]+")
+private const val NOT_FIRST = "=%"
 
 /**
  * [argv] as one line for the shell [shell] (its name: `zsh`, `bash`, `fish`), or `null` when it holds a control character: it would be taken for
@@ -30,7 +32,7 @@ internal fun shellLine(argv: List<String>, shell: String): String? {
     return argv.joinToString(" ") { word ->
         when {
             word.isEmpty() -> "''"
-            BARE.matches(word) && !word.startsWith("~") -> word
+            BARE.matches(word) && word[0] !in NOT_FIRST -> word
             fish -> "'" + word.replace("\\", "\\\\").replace("'", "\\'") + "'"
             else -> "'" + word.replace("'", "'\\''") + "'"
         }

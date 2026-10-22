@@ -24,6 +24,8 @@ class TypedCommandTest {
         assertEquals("""echo 'a b' '' '${'$'}HOME' 'it'\''s'""", shellLine(listOf("echo", "a b", "", "\$HOME", "it's"), "zsh"))
         assertEquals("""echo 'it\'s' 'a\\b'""", shellLine(listOf("echo", "it's", "a\\b"), "fish"))
         assertEquals("""echo 'a\b'""", shellLine(listOf("echo", "a\\b"), "bash"))
+        // zsh replaces a word that starts with = by the path of the command it names, and an old fish expands % as a process.
+        assertEquals("echo '=ls' '%self' a=b 50%", shellLine(listOf("echo", "=ls", "%self", "a=b", "50%"), "zsh"))
     }
 
     @Test
@@ -98,6 +100,14 @@ class TypedCommandTest {
         val session = start(TypedCommand(listOf("echo", "late"), run = true), home = home)
 
         session.await("the output of the command") { rows -> rows.any { it.trim() == "late" } }
+    }
+
+    @Test
+    fun aWordThatStartsWithAnEqualsSignIsTypedAsItIs() {
+        val session = start(TypedCommand(listOf("echo", "=ls"), run = true))
+
+        // Not /bin/ls, which zsh makes of =ls.
+        session.await("the output of the command") { rows -> rows.any { it.trim() == "=ls" } }
     }
 
     private companion object {
