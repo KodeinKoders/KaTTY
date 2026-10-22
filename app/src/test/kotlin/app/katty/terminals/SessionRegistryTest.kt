@@ -57,6 +57,25 @@ class SessionRegistryTest {
     }
 
     @Test
+    fun quittingClosesTheSessionsTogether() {
+        // Programs that ignore the hang-up: each is killed after its grace, which one after another would add up.
+        script = "trap '' HUP; while :; do sleep 1; done"
+        val project = store.addProject("/tmp")
+        store.addWorkspace(project)
+        repeat(4) { store.split(store.state.value.selection.terminal!!, SplitDirection.ROW) }
+        sync()
+        val count = registry.handles.value.size
+        assertTrue(count >= 5)
+
+        val begun = System.nanoTime()
+        registry.close()
+        val tookMs = (System.nanoTime() - begun) / 1_000_000
+
+        assertTrue(tookMs < 1_000, "Closing $count sessions took ${tookMs}ms")
+        assertTrue(started.all { it.exited.value != null }, "Every program ended")
+    }
+
+    @Test
     fun theProgramThatHasEachTerminalIsToldInOnePlaceAndForgottenWithTheTerminal() {
         store.addProject("/tmp")
         val first = store.state.value.selection.terminal!!

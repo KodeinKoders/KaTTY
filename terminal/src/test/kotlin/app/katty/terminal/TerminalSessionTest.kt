@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -1002,6 +1003,31 @@ class TerminalSessionTest {
 
         // 0 would be the exit code of a program that ran to its end.
         assertNotEquals(0, session.awaitExit())
+    }
+
+    @Test
+    fun closingHangsUpAShellWhichSavesItsHistoryAndEndsAtOnce() {
+        val history = Files.createTempFile("katty-history", "")
+        try {
+            val session = TerminalSession.start(
+                80, 5,
+                command = listOf("/bin/bash", "--norc", "--noprofile", "-i"),
+                environment = mapOf("HISTFILE" to history.toString(), "PS1" to "$ "),
+            ).also { sessions += it }
+            session.awaitFrame { "$" in it.text() }
+            session.sendText("echo marker\r")
+            session.awaitFrame { it.text().lines().count { line -> line.trim() == "marker" } == 1 }
+
+            val started = System.nanoTime()
+            session.close()
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+
+            // An interactive shell ignores SIGTERM: it was killed after a second, without writing its history.
+            assertTrue(tookMs < 1000, "Closing took ${tookMs}ms")
+            assertTrue("echo marker" in history.toFile().readText(), "The history was not saved: ${history.toFile().readText()}")
+        } finally {
+            Files.deleteIfExists(history)
+        }
     }
 
     @Test

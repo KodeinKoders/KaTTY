@@ -34,6 +34,9 @@ import kotlinx.coroutines.withContext
 import java.nio.file.Path
 import app.katty.terminal.TerminalEvent
 import kotlinx.coroutines.launch
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -161,13 +164,28 @@ class SessionRegistry(
         applyVisibility()
     }
 
-    /** Closes every session: the application is quitting. */
+    /**
+     * Closes every session: the application is quitting. The followers are cancelled first, so that the shells ending does not clear what
+     * ran over them. The sessions are closed together, off the calling thread, which waits for them for [CLOSE_ALL_TIMEOUT_MS] at most: each
+     * one waits for its program to end.
+     */
     fun close() {
         val all = mutableHandles.value
         mutableHandles.value = emptyMap()
         followers.values.forEach { it.cancel() }
         followers.clear()
-        all.values.forEach { it.session?.close() }
+        val sessions = all.values.mapNotNull { it.session }
+        val closed = CountDownLatch(sessions.size)
+        for (session in sessions) {
+            thread(name = "katty-close-session", isDaemon = true) {
+                try {
+                    session.close()
+                } finally {
+                    closed.countDown()
+                }
+            }
+        }
+        if (!closed.await(CLOSE_ALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)) logger.warn("Some sessions did not close within {}ms", CLOSE_ALL_TIMEOUT_MS)
     }
 
     private fun begin(spec: TerminalSpec, scheme: String, generation: Int): TerminalHandle {
@@ -267,6 +285,9 @@ class SessionRegistry(
 }
 
 // What the shell is called, as its program is: the one that the user's login shell is.
+/** How long quitting waits for the sessions to close, all together. */
+private const val CLOSE_ALL_TIMEOUT_MS = 3_000L
+
 /** How often the program that has a terminal is asked for. */
 private const val PROCESS_POLL_MS = 500L
 

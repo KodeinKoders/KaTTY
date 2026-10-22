@@ -1308,11 +1308,13 @@ public class TerminalSession private constructor(
         if (!closed.compareAndSet(false, true)) return
         logger.debug("Closing the session")
 
-        // Ending the program ends the reader, and unblocks the writer.
-        process.destroy()
-        if (!process.waitFor(DESTROY_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            logger.warn("The program did not end within {}ms, killing it", DESTROY_TIMEOUT_MS)
+        // Ending the program ends the reader, and unblocks the writer. A hang-up, as a terminal whose window closes sends: an interactive
+        // shell ignores SIGTERM, and on a hang-up it saves its history and hangs up its jobs. What does not end soon is killed.
+        (process as? UnixPtyProcess)?.hangup() ?: process.destroy()
+        if (!process.waitFor(HANGUP_GRACE_MS, TimeUnit.MILLISECONDS)) {
+            logger.debug("The program did not end within {}ms of the hang-up, killing it", HANGUP_GRACE_MS)
             process.destroyForcibly()
+            process.waitFor(KILL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         }
         outgoing.put(STOP)
         frameRequests.close()
@@ -1320,9 +1322,9 @@ public class TerminalSession private constructor(
         // The producer first: it uses the render state, which is freed below.
         runBlocking { producerScope.coroutineContext.job.cancelAndJoin() }
 
-        reader.join(DESTROY_TIMEOUT_MS)
-        writer.join(DESTROY_TIMEOUT_MS)
-        if (reader.isAlive || writer.isAlive) logger.warn("The session threads did not end within {}ms", DESTROY_TIMEOUT_MS)
+        reader.join(KILL_TIMEOUT_MS)
+        writer.join(KILL_TIMEOUT_MS)
+        if (reader.isAlive || writer.isAlive) logger.warn("The session threads did not end within {}ms", KILL_TIMEOUT_MS)
 
         // What the reader still does with the terminal is under the lock, and checks it is not closed.
         lock.withLock {
@@ -1736,7 +1738,9 @@ public class TerminalSession private constructor(
         private const val INITIAL_CELL_HEIGHT_PX = 16
 
         private const val READ_BUFFER_SIZE = 64 * 1024
-        private const val DESTROY_TIMEOUT_MS = 1000L
+        // How long a program has to end after the hang-up of [close], and how long a killed one, and the threads, have after that.
+        private const val HANGUP_GRACE_MS = 300L
+        private const val KILL_TIMEOUT_MS = 500L
 
         private val STOP = ByteArray(0)
 
