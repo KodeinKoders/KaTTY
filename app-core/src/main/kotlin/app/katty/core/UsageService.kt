@@ -286,6 +286,20 @@ public class UsageService(
 }
 
 /**
+ * The periods that an agent with no allowance says what it spent over, each with when it starts, in milliseconds since the epoch: today and this
+ * month as they are in [zone], and the last 7 days from [now]. The labels are what [UsageSpend] shows.
+ */
+internal fun spendPeriods(now: Instant, zone: ZoneId): List<Pair<String, Long>> {
+    val here = now.atZone(zone)
+    val today = here.toLocalDate().atStartOfDay(zone)
+    return listOf(
+        "Today" to today,
+        "7 days" to here.minusDays(7),
+        "This month" to today.withDayOfMonth(1),
+    ).map { (label, since) -> label to since.toInstant().toEpochMilli() }
+}
+
+/**
  * What OpenCode (or Kilo Code, whose CLI is OpenCode's) spent today, over the last 7 days and this month, from its own database
  * ([OpenCodeStore.spend]): what the assistant's answers cost, in all the sessions. A period that cannot be read is no reading for the agent.
  *
@@ -301,14 +315,7 @@ public class OpenCodeUsageSource internal constructor(
     public constructor() : this(OpenCodeStore(), Instant::now, ZoneId.systemDefault())
 
     override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
-        val now = clock().atZone(zone)
-        val today = now.toLocalDate().atStartOfDay(zone)
-        val periods = listOf(
-            "Today" to today,
-            "7 days" to now.minusDays(7),
-            "This month" to today.withDayOfMonth(1),
-        )
-        val spend = periods.map { (label, since) -> UsageSpend(label, store.spend(since.toInstant().toEpochMilli()) ?: return@withContext null) }
+        val spend = spendPeriods(clock(), zone).map { (label, since) -> UsageSpend(label, store.spend(since) ?: return@withContext null) }
         UsageReading(agent, windows = emptyList(), spend = spend)
     }
 }
@@ -338,16 +345,9 @@ public class OmpUsageSource internal constructor(
 
     override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
         runner.run(listOf(executable.toString(), "stats", "-j"), directory, TIMEOUT_MS)?.takeIf { it.exitCode == 0 } ?: return@withContext null
-        val now = clock().atZone(zone)
-        val today = now.toLocalDate().atStartOfDay(zone)
-        val periods = listOf(
-            "Today" to today,
-            "7 days" to now.minusDays(7),
-            "This month" to today.withDayOfMonth(1),
-        )
         val spend = SqliteDatabase.read(database) { db ->
-            periods.map { (label, since) ->
-                UsageSpend(label, db.query("SELECT COALESCE(SUM(cost_total), 0) FROM messages WHERE timestamp >= ?", since.toInstant().toEpochMilli()) { it.double(0) ?: 0.0 }.first())
+            spendPeriods(clock(), zone).map { (label, since) ->
+                UsageSpend(label, db.query("SELECT COALESCE(SUM(cost_total), 0) FROM messages WHERE timestamp >= ?", since) { it.double(0) ?: 0.0 }.first())
             }
         } ?: return@withContext null
         UsageReading(Agent.OMP, windows = emptyList(), spend = spend)
