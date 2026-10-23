@@ -27,10 +27,10 @@ public value class GhosttyMode private constructor(internal val packed: Short) {
         /** Cursor keys send application sequences (DECCKM). */
         public val CURSOR_KEYS: GhosttyMode = dec(1)
 
-        /** Autowrap (DECAWM). */
         /** Origin mode (DECOM): positions are relative to the scrolling region. Setting it or resetting it moves the cursor home. */
         public val ORIGIN: GhosttyMode = dec(6)
 
+        /** Autowrap (DECAWM). */
         public val WRAPAROUND: GhosttyMode = dec(7)
 
         /** The cursor is visible (DECTCEM). */

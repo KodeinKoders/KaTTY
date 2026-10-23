@@ -81,9 +81,6 @@ import kotlin.math.roundToInt
  * The cursor shows whether the keys go to the terminal: it is a block that blinks when the program asks for it,
  * and an outline that does not blink when the window, or the terminal, does not have the focus.
  *
- * @param fontSize The size of the text, which gives the size of a cell.
- * @param font The font, which is monospaced: the bundled JetBrains Mono by default. The cells change with it, and so does the size of the
- * terminal in cells, which is told to the session.
  * Links (an address that a program marked with OSC 8, or one that is written in the text) are opened with Command and a click on
  * macOS, and Control and a click elsewhere, even when the program asked for the mouse: the link is underlined while the modifier is
  * held over it.
@@ -94,6 +91,9 @@ import kotlin.math.roundToInt
  * What a program puts in the clipboard (OSC 52) is put there, unless the session was started without allowing it. The other
  * [TerminalEvent]s of the session are the host's.
  *
+ * @param fontSize The size of the text, which gives the size of a cell.
+ * @param font The font, which is monospaced: the bundled JetBrains Mono by default. The cells change with it, and so does the size of the
+ * terminal in cells, which is told to the session.
  * @param focusRequester Gives the focus to the terminal, for whatever else takes it, such as a menu that is
  * closed, to give it back.
  * @param primarySelection What was selected last, which a middle click pastes. Share one between terminals to paste what is selected in

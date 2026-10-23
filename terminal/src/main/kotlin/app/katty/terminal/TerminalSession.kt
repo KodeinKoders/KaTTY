@@ -1536,11 +1536,11 @@ public class TerminalSession private constructor(
     @Volatile
     private var writerGone = false
 
-    // Only the update reads the terminal, so only it is under the lock: reading the rows, which is the
-    // costly part, does not hold up the thread that feeds the terminal.
     // Whether the program turned the echo off to read a line: a password.
     private fun readingPassword(): Boolean = withPty(false) { fd -> isPtyReadingPassword(fd) }
 
+    // Only the update reads the terminal, so only it is under the lock: reading the rows, which is the
+    // costly part, does not hold up the thread that feeds the terminal.
     private fun produceFrame(): TerminalFrame {
         boldIsBrightRequest?.let { enabled ->
             boldIsBrightRequest = null
@@ -1924,7 +1924,7 @@ public class TerminalSession private constructor(
          * @param command By default the user's login shell.
          * @param environment Added to the environment of the current process, and overrides it. `TERM` and
          * `COLORTERM` are set to what the terminal supports, unless it says otherwise.
-         * @param directory Where the program starts, by default the user's home.
+         * @param directory Where the program starts: the directory of [snapshot] if it has one that is still there, else the user's home.
          * @param cursorBlink Whether the cursor blinks unless the program says otherwise. It almost never does,
          * a shell included, and a terminal's cursor is expected to blink: without this it would not. A program says otherwise
          * with DECSCUSR (`CSI Ps SP q`); **DEC mode 12 is ignored**, as Ghostty does when the blink is set: Emacs sets it when it
@@ -1937,18 +1937,16 @@ public class TerminalSession private constructor(
          * @param imageStorageLimitBytes How much memory the images of the Kitty graphics protocol may take, 320 MB by default
          * (Ghostty's own). `0` turns the images off. [setImageStorageLimit] changes it.
          * @param theme The colors, libghostty's own by default. [setTheme] changes them.
-         * @param shellIntegration Whether to make zsh and bash report their prompts (OSC 133) and their directory (OSC 7), which they
+         * @param shellIntegration Whether to make zsh, bash and fish report their prompts (OSC 133) and their directory (OSC 7), which they
          * do not on their own: the [workingDirectory] and the [TerminalEvent.PromptStarted], [TerminalEvent.CommandStarted] and
          * [TerminalEvent.CommandFinished] events, and [scrollToPrompt], depend on it. The user's own startup files are still read.
          * Any other shell, and anything but a login or an interactive shell, is started as it is.
          * @param shellIntegrationDirectory Where the scripts of [shellIntegration] are kept, written again whenever they are missing or differ:
          * a directory of the application's own, which the system does not clean. A temporary directory when it is `null`.
-         * @param directory Where the program starts: the directory of [snapshot] if it has one that is still there, else the user's home.
          * @param snapshot What the terminal was ([TerminalSession.snapshot]): the new session starts with its screen and its history, the
          * title and the directory, and [command] runs below them: a **new** program, since a process cannot be saved. The size is [cols] by
          * [rows], to which the old content is reflowed, and the old program's modes are taken off, so that a snapshot of an editor gives a
          * shell with a plain mouse. Not restored: the images of the Kitty protocol, the selection, the viewport.
-         * @throws TerminalSnapshotException If [snapshot] was made by another build of libghostty, or is damaged.
          * @param advertiseSixel Whether the answer to a device attributes query says that the terminal draws Sixel images, which is how
          * programs that probe (chafa, img2sixel) choose it by themselves.
          * @param boldIsBright Whether bold text in one of the 8 normal colors of the palette is drawn in the bright one, as terminals did when
@@ -1962,6 +1960,7 @@ public class TerminalSession private constructor(
          * the thread that reads the program's output, which waits for it, and under the session's lock, which [sendKey], [paste] and
          * the other calls from the UI thread take: it must be quick, must not call back into the session, and must not wait for the UI
          * thread (asking the user in a dialog would block both for good).
+         * @throws TerminalSnapshotException If [snapshot] was made by another build of libghostty, or is damaged.
          */
         public fun start(
             cols: Int,

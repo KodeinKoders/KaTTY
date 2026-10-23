@@ -81,11 +81,6 @@ public enum class Agent(
         public fun fromProcess(process: String?): Agent? = process?.let { name -> entries.firstOrNull { agent -> agent.names.any { it.equals(name, ignoreCase = true) } } }
 
         /**
-         * The agent that runs as [argv], a command line as the system has it: its program, or, for an agent that is a script (Aider is Python, Cline
-         * is Node), the script that an interpreter (`python3.12`, `Python`, `node`) was given first: `Python /opt/homebrew/bin/aider --model x` is Aider,
-         * whose process is called `Python`.
-         */
-        /**
          * The name that a terminal's program goes by: the [systemName] of the process, unless the command line [argv] says it is an agent that the
          * name does not (a script run by an interpreter, a process renamed to its path), which is then the agent's [executable].
          */
@@ -96,6 +91,11 @@ public enum class Agent(
             return if (agent.interpreted || fromProcess(systemName) == null) agent.executable else systemName
         }
 
+        /**
+         * The agent that runs as [argv], a command line as the system has it: its program, or, for an agent that is a script (Aider is Python, Cline
+         * is Node), the script that an interpreter (`python3.12`, `Python`, `node`) was given first: `Python /opt/homebrew/bin/aider --model x` is Aider,
+         * whose process is called `Python`.
+         */
         public fun fromCommand(argv: List<String>): Agent? {
             // Whatever the launcher is called (`cursor-agent`, `agent`), the script it runs says whose it is.
             entries.firstOrNull { agent -> agent.scriptContains != null && argv.drop(1).any { it.endsWith("/index.js") && agent.scriptContains in it } }?.let { return it }
