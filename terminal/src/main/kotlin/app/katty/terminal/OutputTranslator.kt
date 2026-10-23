@@ -22,8 +22,9 @@ private const val MAX_HEAD = 32
 // How big a string that is translated (an image) may be: past it, it is dropped.
 private const val MAX_PAYLOAD = 32 * 1024 * 1024
 
-// How much output buffer is kept from a piece to the next.
-private const val RETAINED_OUTPUT = 4 * 1024 * 1024
+// How big a buffer is kept from a piece to the next, or after the string it held: one that an image made bigger is given up, since a session
+// that showed an image once would otherwise keep tens of megabytes for as long as it is open.
+private const val RETAINED_BUFFER = 1024 * 1024
 
 /** How big a cell is and how many there are, for what has to be sized in cells: the image of a program that gives a size in cells or percent. */
 internal data class CellGeometry(val cellWidthPx: Int, val cellHeightPx: Int, val cols: Int, val rows: Int)
@@ -76,6 +77,9 @@ internal open class OutputTranslator(
     /** How many bytes of a string that is translated are held: for the tests of its limit. */
     internal val heldBytes: Int get() = payload.size
 
+    /** How many bytes the buffers take, whatever they hold: for the tests of what is kept after an image. */
+    internal val bufferBytes: Int get() = held.bytes.size + payload.bytes.size + out.size
+
     // What is written.
     private var out = ByteArray(8 * 1024)
     private var written = 0
@@ -97,13 +101,13 @@ internal open class OutputTranslator(
      * when nothing changed and nothing is held, which is almost always.
      */
     open fun filter(buffer: ByteArray, length: Int): Int {
+        // What an image needed is not kept, even when only text follows it.
+        if (out.size > RETAINED_BUFFER) out = ByteArray(8 * 1024)
         if (state == State.GROUND && !contains(buffer, length)) {
             output = buffer
             return length
         }
         written = 0
-        // What an image needed is not kept.
-        if (out.size > RETAINED_OUTPUT) out = ByteArray(8 * 1024)
         // What was held back before is not in this piece.
         modified = held.size > 0 || payload.size > 0
         ensure(length + held.size)
@@ -572,7 +576,7 @@ internal open class OutputTranslator(
     }
 
     // A buffer of bytes that grows.
-    private class GrowableBytes(initial: Int) {
+    private class GrowableBytes(private val initial: Int) {
         var bytes = ByteArray(maxOf(initial, 16))
             private set
         var size = 0
@@ -593,8 +597,10 @@ internal open class OutputTranslator(
             size += count
         }
 
+        // What it held is gone: a buffer that a large string made bigger is given up.
         fun clear() {
             size = 0
+            if (bytes.size > RETAINED_BUFFER) bytes = ByteArray(maxOf(initial, 16))
         }
     }
 }

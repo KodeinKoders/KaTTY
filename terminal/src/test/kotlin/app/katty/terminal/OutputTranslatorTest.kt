@@ -363,6 +363,19 @@ class OutputTranslatorTest {
     }
 
     @Test
+    fun theBuffersOfALargeImageAreNotKeptOnceItIsTranslated() {
+        val translator = OutputTranslator()
+        // 2000 × 600 pixels: 4.8 MB of RGBA, written out as 6.4 MB of base64, from a Sixel of about 200 kB.
+        val image = sixel("#1;2;100;0;0" + "#1!2000~-".repeat(100)).toByteArray(Charsets.ISO_8859_1)
+        translator.filter(image, image.size)
+        // Then only text, which never needs the buffers.
+        val text = "plain text\r\n".toByteArray()
+        repeat(3) { translator.filter(text, text.size) }
+
+        assertTrue(translator.bufferBytes < 1024 * 1024, "${translator.bufferBytes} bytes are kept")
+    }
+
+    @Test
     fun aSixelImageBecomesAnImageOfTheKittyProtocolAndTheCursorGoesToTheNextLine() {
         val stream = "before " + sixel("#1;2;100;0;0!4~") + " after"
 
