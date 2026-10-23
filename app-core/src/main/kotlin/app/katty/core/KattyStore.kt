@@ -32,7 +32,11 @@ public class KattyStore(
     /** What the application is, now. */
     public val state: StateFlow<KattyState> get() = flow
 
-    /** Changes the state with [change], and makes the selection point at something again if what it pointed at is gone. */
+    /**
+     * Changes the state with [change], and makes the selection point at something again if what it pointed at is gone. [change] works from the
+     * state it is given, never from one read before: another thread may have changed it meanwhile (the sessions say where their shells are), and
+     * it may be run again when that happens, so it makes no ids.
+     */
     private fun edit(change: (KattyState) -> KattyState) {
         flow.update { change(it).normalized() }
     }
@@ -139,16 +143,19 @@ public class KattyStore(
 
     /** Closes a workspace, with its terminals. */
     public fun closeWorkspace(id: WorkspaceId) {
-        edit { state ->
-            val project = state.projects.firstOrNull { p -> p.workspaces.any { it.id == id } } ?: return@edit state
-            val index = project.workspaces.indexOfFirst { it.id == id }
-            val remaining = project.workspaces.filter { it.id != id }
-            val projects = state.projects.map { if (it.id == project.id) it.copy(workspaces = remaining) else it }
-            if (state.selection.workspace != id) return@edit state.copy(projects = projects)
-            // What was selected after it, else before it, in the same project.
-            val next = remaining.getOrNull(index) ?: remaining.getOrNull(index - 1)
-            state.copy(projects = projects, selection = Selection(project.id, next?.id, next?.terminalToFocus()))
-        }
+        edit { state -> state.closingWorkspace(id) }
+    }
+
+    // [this] without the workspace [id], and the one after it, else before it, selected if it was.
+    private fun KattyState.closingWorkspace(id: WorkspaceId): KattyState {
+        val project = projects.firstOrNull { p -> p.workspaces.any { it.id == id } } ?: return this
+        val index = project.workspaces.indexOfFirst { it.id == id }
+        val remaining = project.workspaces.filter { it.id != id }
+        val projects = projects.map { if (it.id == project.id) it.copy(workspaces = remaining) else it }
+        if (selection.workspace != id) return copy(projects = projects)
+        // What was selected after it, else before it, in the same project.
+        val next = remaining.getOrNull(index) ?: remaining.getOrNull(index - 1)
+        return copy(projects = projects, selection = Selection(project.id, next?.id, next?.terminalToFocus()))
     }
 
     // ----- Terminals
@@ -160,27 +167,34 @@ public class KattyStore(
      * @return The new terminal, or `null` if there is no such terminal.
      */
     public fun split(id: TerminalId, direction: SplitDirection): TerminalId? {
-        val location = flow.value.locate(id) ?: return null
-        val created = newTerminal(location.terminal.directory)
-        val split = PaneNode.Split(SplitId(newId()), direction, 0.5f, PaneNode.Leaf(location.terminal), PaneNode.Leaf(created))
+        if (flow.value.locate(id) == null) return null
+        val createdId = TerminalId(newId())
+        val splitId = SplitId(newId())
+        var done = false
         edit { state ->
+            val location = state.locate(id) ?: return@edit state.also { done = false }
+            done = true
+            val created = TerminalSpec(createdId, directory = location.terminal.directory)
+            val split = PaneNode.Split(splitId, direction, 0.5f, PaneNode.Leaf(location.terminal), PaneNode.Leaf(created))
             state.mapWorkspaces { if (it.id == location.workspace.id) it.copy(layout = it.layout.replaceLeaf(id, split)) else it }
-                .copy(selection = Selection(location.project.id, location.workspace.id, created.id))
+                .copy(selection = Selection(location.project.id, location.workspace.id, createdId))
         }
-        return created.id
+        return createdId.takeIf { done }
     }
 
     /**
      * Closes a terminal: the sibling takes its space and has the focus. The last terminal of a workspace takes the workspace with it.
      */
     public fun closeTerminal(id: TerminalId): CloseResult {
-        val location = flow.value.locate(id) ?: return CloseResult.NOT_FOUND
-        val remaining = location.workspace.layout.withoutTerminal(id)
-        if (remaining == null) {
-            closeWorkspace(location.workspace.id)
-            return CloseResult.WORKSPACE_DELETED
-        }
+        var result = CloseResult.NOT_FOUND
         edit { state ->
+            val location = state.locate(id) ?: return@edit state.also { result = CloseResult.NOT_FOUND }
+            val remaining = location.workspace.layout.withoutTerminal(id)
+            if (remaining == null) {
+                result = CloseResult.WORKSPACE_DELETED
+                return@edit state.closingWorkspace(location.workspace.id)
+            }
+            result = CloseResult.CLOSED
             val neighbours = location.workspace.layout.terminals()
             val index = neighbours.indexOfFirst { it.id == id }
             val survivors = remaining.terminals()
@@ -189,7 +203,7 @@ public class KattyStore(
             val selection = if (state.selection.workspace == location.workspace.id) state.selection.copy(terminal = focus.id, maximized = state.selection.maximized.takeIf { it != id }) else state.selection
             state.mapWorkspaces { if (it.id == location.workspace.id) it.copy(layout = remaining) else it }.copy(selection = selection)
         }
-        return CloseResult.CLOSED
+        return result
     }
 
     /** Renames a terminal; a blank [name] goes back to the name of its agent or its shell. */
@@ -221,13 +235,17 @@ public class KattyStore(
      * @return Whether it was moved.
      */
     public fun moveTerminal(id: TerminalId, workspace: WorkspaceId): Boolean {
-        val state = flow.value
-        val from = state.locate(id) ?: return false
-        if (from.workspace.id == workspace) return false
-        val target = state.projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == workspace }?.let { project to it } } ?: return false
+        val splitId = SplitId(newId())
+        var moved = false
         edit { current ->
+            moved = false
+            val from = current.locate(id) ?: return@edit current
+            if (from.workspace.id == workspace) return@edit current
+            val target = current.projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == workspace }?.let { project to it } }
+                ?: return@edit current
+            moved = true
             val source = from.workspace.layout.withoutTerminal(id)
-            val joined = PaneNode.Split(SplitId(newId()), SplitDirection.ROW, 0.5f, target.second.layout, PaneNode.Leaf(from.terminal))
+            val joined = PaneNode.Split(splitId, SplitDirection.ROW, 0.5f, target.second.layout, PaneNode.Leaf(from.terminal))
             current.mapWorkspaces {
                 when (it.id) {
                     target.second.id -> it.copy(layout = joined)
@@ -236,7 +254,7 @@ public class KattyStore(
                 }
             }.copy(selection = Selection(target.first.id, workspace, id))
         }
-        return true
+        return moved
     }
 
     private fun editTerminal(id: TerminalId, change: (TerminalSpec) -> TerminalSpec) {

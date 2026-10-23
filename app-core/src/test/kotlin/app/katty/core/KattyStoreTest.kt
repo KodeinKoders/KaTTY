@@ -534,6 +534,28 @@ class KattyStoreTest {
     }
 
     @Test
+    fun splittingAndClosingDoNotUndoAChangeMadeAtTheSameMoment() {
+        // The sessions say where their shells are on threads of their own, while the window splits and closes.
+        addProject("/a")
+        val followed = state.selection.terminal!!
+        val other = store.split(followed, SplitDirection.ROW)!!
+        val lost = java.util.concurrent.atomic.AtomicInteger()
+        val mover = Thread {
+            repeat(20_000) {
+                // What was written last is still there: a split or a close that was worked out from the state before it did not undo it.
+                if (it > 0 && state.locate(followed)?.terminal?.directory != "/d${it - 1}") lost.incrementAndGet()
+                store.setDirectory(followed, "/d$it")
+            }
+        }
+        val splitter = Thread { repeat(20_000) { store.split(other, SplitDirection.COLUMN)?.let(store::closeTerminal) } }
+
+        mover.start(); splitter.start()
+        mover.join(); splitter.join()
+
+        assertEquals(0, lost.get(), "Changes were undone")
+    }
+
+    @Test
     fun removingTheSelectedProjectOpensTheNextOneAtTheWorkspaceItHadLast() {
         val first = addProject("/a")
         val second = addProject("/b")
