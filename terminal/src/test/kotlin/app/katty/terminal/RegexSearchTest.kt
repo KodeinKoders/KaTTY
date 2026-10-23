@@ -123,6 +123,25 @@ class RegexSearchTest {
     }
 
     @Test
+    fun anExpressionThatTakesTooLongFreezesNothing() {
+        // A backreference after a nested repeat, on a row of a's that does not end in one: Java's matcher backtracks for longer than anyone
+        // waits (27 s for 30 characters). `(a+)+$` does not: Java remembers where its loops failed.
+        val session = start("stty raw -echo; printf '%s\\r\\nready\\r\\n' ${"a".repeat(35)}b; head -c1 >/dev/null; printf 'after\\r\\n'; sleep 30")
+        session.await("the program to be ready") { session.frames.value.takeIf { "ready" in it.text() } }
+        session.search.setQuery("(a+)+\\1$", regex = true)
+
+        val started = System.nanoTime()
+        session.search.next()
+        val tookMs = (System.nanoTime() - started) / 1_000_000
+        assertTrue(tookMs < 500, "Going to the next match took ${tookMs}ms")
+
+        session.await("the search to say it gave up") { session.search.state.value.error }
+        // The program's output goes on being shown: the terminal is not held.
+        session.paste("x")
+        session.await("what the program wrote after") { session.frames.value.takeIf { "after" in it.text() } }
+    }
+
+    @Test
     fun movesFromAMatchToTheNextRoundTheEnds() {
         val session = start("printf 'foo1 bar\\nfoo22 baz\\nnone\\n'; sleep 30")
         session.shown("none")

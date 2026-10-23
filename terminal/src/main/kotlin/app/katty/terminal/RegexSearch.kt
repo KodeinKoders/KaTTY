@@ -20,15 +20,21 @@ internal class RegexQuery(val pattern: Pattern?, val error: String?) {
     }
 }
 
+/** A search that took longer than it was given: a pattern that backtracks without end (`(a+)+$`) would otherwise never finish. */
+internal class RegexTooSlowException : RuntimeException("The regular expression takes too long", null, false, false)
+
 /**
  * The matches of [pattern] in [lines], which are the rows from [firstRow] on, one each. A match does not go over the end of a row: a line
  * that wraps is searched a row at a time. A match that is empty is not one, so that `a*` does not match everywhere.
+ *
+ * @param deadlineNanos When ([System.nanoTime]) the search gives up, with [RegexTooSlowException].
  */
-internal fun regexMatches(lines: List<String>, firstRow: Long, pattern: Pattern): List<RegexMatch> {
+internal fun regexMatches(lines: List<String>, firstRow: Long, pattern: Pattern, deadlineNanos: Long = Long.MAX_VALUE): List<RegexMatch> {
     val matches = ArrayList<RegexMatch>()
     for ((index, line) in lines.withIndex()) {
         if (line.isEmpty()) continue
-        val matcher = pattern.matcher(line)
+        if (System.nanoTime() > deadlineNanos) throw RegexTooSlowException()
+        val matcher = pattern.matcher(if (deadlineNanos == Long.MAX_VALUE) line else WithDeadline(line, deadlineNanos))
         var from = 0
         // `find(from)` looks in the whole line, so that `^` is only the start of it.
         while (from <= line.length && matcher.find(from)) {
@@ -41,6 +47,23 @@ internal fun regexMatches(lines: List<String>, firstRow: Long, pattern: Pattern)
         }
     }
     return matches
+}
+
+// A text that gives up when its deadline has passed: the matcher reads its characters one at a time, however long it backtracks, so it is
+// where the time is looked at, every thousand characters or so.
+private class WithDeadline(private val text: CharSequence, private val deadlineNanos: Long) : CharSequence {
+    private var reads = 0
+
+    override val length: Int get() = text.length
+
+    override fun get(index: Int): Char {
+        if (++reads and 0x3FF == 0 && System.nanoTime() > deadlineNanos) throw RegexTooSlowException()
+        return text[index]
+    }
+
+    override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = WithDeadline(text.subSequence(startIndex, endIndex), deadlineNanos)
+
+    override fun toString(): String = text.toString()
 }
 
 /**

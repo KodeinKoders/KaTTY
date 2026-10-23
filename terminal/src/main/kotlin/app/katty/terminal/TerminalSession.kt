@@ -131,6 +131,12 @@ public class TerminalSession private constructor(
     private var regexChangedSince = false
     private val regexRefreshAsked = AtomicBoolean(false)
 
+    // What changes with each query: matches that were found for another are not published. A move that was asked for before there were matches
+    // to move in (toward older content, or newer), which the producer does once it has them. And whether the last look gave up.
+    private var regexGeneration = 0
+    private var regexPendingMove: Boolean? = null
+    private var regexTooSlow = false
+
     // How big a cell is and how many there are, for what the stream of the program says in cells or percent: read by the reader.
     @Volatile
     private var geometry = CellGeometry(INITIAL_CELL_WIDTH_PX, INITIAL_CELL_HEIGHT_PX, 80, 24)
@@ -1050,6 +1056,9 @@ public class TerminalSession private constructor(
             regexMatchList = emptyList()
             regexSelected = null
             regexStale = true
+            regexGeneration++
+            regexPendingMove = null
+            regexTooSlow = false
             if (query.isEmpty()) {
                 regexQuery = null
                 searcher?.setNeedle("")
@@ -1074,7 +1083,9 @@ public class TerminalSession private constructor(
         lock.withLock {
             if (closed.get() || searchQuery.isEmpty()) return
             if (regexQuery != null) {
-                moveRegexSearch(towardOlder)
+                // Not looked for here (it is the caller's thread, the UI's for the keys, and under the lock): in the matches of the last look,
+                // or once the producer has some.
+                if (regexStale) regexPendingMove = towardOlder else moveRegexSelection(towardOlder)
                 frameRequests.trySend(Unit)
                 return
             }
@@ -1086,8 +1097,7 @@ public class TerminalSession private constructor(
 
     // The match after the selected one (toward newer content), or before it, round at the ends; the first one is the top-most. It scrolls
     // to bring it into view. Under the lock.
-    private fun moveRegexSearch(towardOlder: Boolean) {
-        lookForRegexMatches()
+    private fun moveRegexSelection(towardOlder: Boolean) {
         val matches = regexMatchList
         if (matches.isEmpty()) return
         val at = regexSelected?.let { current -> matches.indexOfFirst { it.row == current.row && it.start == current.start } }?.takeIf { it >= 0 }
@@ -1104,18 +1114,46 @@ public class TerminalSession private constructor(
         }
     }
 
-    // Looks again for the matches in the last rows, when the screen changed since it did or the query did. Under the lock.
-    private fun lookForRegexMatches() {
-        val pattern = regexQuery?.pattern ?: return
+    // What a look for the matches searches: the text of the last rows, for the query of [generation].
+    private class RegexLook(val pattern: java.util.regex.Pattern, val lines: List<String>, val first: Long, val generation: Int)
+
+    // The text of the last rows, to look for the matches in again, when the screen changed since the last look or the query did. Under the lock:
+    // the matching is not, since a pattern can take long and the program's output and the keys wait for the lock.
+    private fun regexLook(): RegexLook? {
+        val pattern = regexQuery?.pattern ?: return null
         val total = terminal.totalRows
         val first = maxOf(0L, total - REGEX_MAX_ROWS)
         val lines = if (total == 0L) emptyList() else terminal.readRows(first, total - 1, unwrap = false).split('\n')
-        regexMatchList = regexMatches(lines, first, pattern)
         regexStale = false
         regexChangedSince = false
         regexLookedAtNanos = System.nanoTime()
-        // What is selected goes on being so if it is still there, and is not any more if not.
-        regexSelected = regexSelected?.let { current -> regexMatchList.firstOrNull { it.row == current.row && it.start == current.start } }
+        return RegexLook(pattern, lines, first, regexGeneration)
+    }
+
+    // Looks for the matches of [look], with a time budget, and publishes them, unless the query changed meanwhile. Not under the lock but for the
+    // publishing; on the producer.
+    private fun lookForRegexMatches(look: RegexLook) {
+        val found = try {
+            regexMatches(look.lines, look.first, look.pattern, System.nanoTime() + REGEX_BUDGET_NS)
+        } catch (_: RegexTooSlowException) {
+            null
+        } catch (_: StackOverflowError) {
+            // Some patterns recurse in the matcher as they backtrack: too slow as well.
+            null
+        }
+        lock.withLock {
+            if (closed.get() || look.generation != regexGeneration) return
+            regexTooSlow = found == null
+            regexMatchList = found.orEmpty()
+            // What is selected goes on being so if it is still there, and is not any more if not.
+            regexSelected = regexSelected?.let { current -> regexMatchList.firstOrNull { it.row == current.row && it.start == current.start } }
+            regexPendingMove?.let { towardOlder ->
+                regexPendingMove = null
+                moveRegexSelection(towardOlder)
+                // It may have scrolled: the frame is made again.
+                frameRequests.trySend(Unit)
+            }
+        }
     }
 
     /**
@@ -1503,12 +1541,14 @@ public class TerminalSession private constructor(
         val cellWidth: Int
         val cellHeight: Int
         var found: SearchFound? = null
-        var regexLooked: List<RegexMatch>? = null
+        var regexActive = false
+        var regexToLook: RegexLook? = null
         lock.withLock {
             renderState.update(terminal)
             // As of this moment, with the rows that are read for it: what is found is where it is on this frame.
             found = searchOnFrame()
-            regexLooked = if (regexQuery?.pattern != null && searchQuery.isNotEmpty()) regexMatchesOnFrame(renderState.dirty != GhosttyDirty.CLEAN) else null
+            regexActive = regexQuery?.pattern != null && searchQuery.isNotEmpty()
+            if (regexActive) regexToLook = regexLookOnFrame(renderState.dirty != GhosttyDirty.CLEAN)
             tracking = terminal.mouseTracking
             alternate = terminal.activeScreen == GhosttyScreen.ALTERNATE
             shape = terminal.mouseShape
@@ -1527,6 +1567,9 @@ public class TerminalSession private constructor(
                 terminal.kittyImage(placement.imageId)?.let { fresh[placement.imageId] = it }
             }
         }
+        // The matches of a regular expression, looked for again outside the lock when it is time, and what is selected among them.
+        regexToLook?.let(::lookForRegexMatches)
+        val regexLooked = if (regexActive) lock.withLock { RegexView(regexMatchList, regexSelected, regexTooSlow) } else null
         val realImages = imagePlacements(placements, fresh, cellWidth, cellHeight)
 
         if (rowCacheStale) {
@@ -1602,13 +1645,16 @@ public class TerminalSession private constructor(
         return frame
     }
 
-    // The matches of the regular expression as of this frame, which are looked for again when the screen changed, and not more often than
-    // every so often: a long history is read for it. `null` when the query is not one. Under the lock.
-    private fun regexMatchesOnFrame(changed: Boolean): List<RegexMatch> {
+    // What the matches of the regular expression are on a frame, read under the lock.
+    private class RegexView(val matches: List<RegexMatch>, val selected: RegexMatch?, val tooSlow: Boolean)
+
+    // The text to look for the matches of the regular expression in again, when the screen changed since the last look, and not more often than
+    // every so often: a long history is read for it; `null` when the matches of the last look stay. Under the lock.
+    private fun regexLookOnFrame(changed: Boolean): RegexLook? {
         val sinceNanos = System.nanoTime() - regexLookedAtNanos
         if (changed) regexChangedSince = true
         if (regexStale || (regexChangedSince && sinceNanos >= REGEX_REFRESH_NS)) {
-            lookForRegexMatches()
+            return regexLook()
         } else if (regexChangedSince && regexRefreshAsked.compareAndSet(false, true)) {
             // Too soon: it looks when it is time, once, even if nothing changes after this.
             producerScope.launch {
@@ -1617,12 +1663,17 @@ public class TerminalSession private constructor(
                 frameRequests.trySend(Unit)
             }
         }
-        return regexMatchList
+        return null
     }
 
     // The matches that are on the rows of the viewport, by the cells that they cover, and what the host shows of the search.
-    private fun regexFrameMatches(matches: List<RegexMatch>, rows: List<TerminalRow>, position: GhosttyScrollbar): List<TerminalSearchMatch> {
-        val selected = regexSelected
+    private fun regexFrameMatches(view: RegexView, rows: List<TerminalRow>, position: GhosttyScrollbar): List<TerminalSearchMatch> {
+        val matches = view.matches
+        val selected = view.selected
+        if (view.tooSlow) {
+            searchStateFlow.value = TerminalSearchState(searchQuery, error = REGEX_TOO_SLOW)
+            return emptyList()
+        }
         val index = selected?.let { current -> matches.indexOfFirst { it.row == current.row && it.start == current.start } }?.takeIf { it >= 0 }
         searchStateFlow.value = TerminalSearchState(searchQuery, matches.size, index?.let { it + 1 }, searching = false)
         val visible = ArrayList<TerminalSearchMatch>()
@@ -1771,6 +1822,10 @@ public class TerminalSession private constructor(
 
         // The least time between two looks for the matches of a regular expression, which reads the last rows of the history.
         private const val REGEX_REFRESH_NS = 200_000_000L
+
+        // How long a look for the matches of a regular expression may take, and what the search says when it took longer.
+        private const val REGEX_BUDGET_NS = 250_000_000L
+        private const val REGEX_TOO_SLOW = "This expression takes too long to search with"
 
         // How long a program may hold the screen (synchronized output) before it is shown anyway: Ghostty's own limit.
         private val HOLD_MAX = 1.seconds
