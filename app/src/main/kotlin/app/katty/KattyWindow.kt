@@ -236,6 +236,11 @@ fun DecoratedWindowScope.KattyWindowContent(
     LaunchedEffect(state.projects, state.settings.colorScheme) { registry.sync(state) }
     // No terminal is on the screen while the board is.
     val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
+    // A find bar that is not on the screen any more (another workspace, the board, a terminal closed or started again) is closed: its query was
+    // cleared with it, and the find shortcuts would step a search that nobody sees.
+    LaunchedEffect(shown, handles) {
+        if (findingTerminal != null && findTarget(findingTerminal, shown, handles.filterValues { it.session != null }.keys) == null) findingTerminal = null
+    }
     LaunchedEffect(shown, handles.keys) { registry.setVisible(shown) }
 
     // What shows a rename of a workspace is the sidebar (not folded into the rail) or the tabs, over the terminals and not the board: when it is
@@ -355,7 +360,7 @@ fun DecoratedWindowScope.KattyWindowContent(
     // The next or the previous match of the search of the terminal that is searched: a terminal that is not opens its search, since there is no match to
     // go to (the shortcut does the same).
     val stepFind: (Boolean) -> Unit = { forward ->
-        val searched = findingTerminal
+        val searched = findTarget(findingTerminal, shown, handles.filterValues { it.session != null }.keys)
         if (searched == null) {
             findingTerminal = state.selection.terminal
         } else {
@@ -863,3 +868,10 @@ private fun revealInFileManager(directory: String) {
         org.slf4j.LoggerFactory.getLogger("app.katty.KattyWindow").warn("Could not show {} in the file manager", directory, e)
     }
 }
+
+/**
+ * The terminal whose search the find shortcuts step: the one whose find bar is open ([finding]), while it is on the screen ([shown]) and has a
+ * session ([running]). `null` otherwise, and the shortcuts open a find bar on the selected terminal instead.
+ */
+internal fun findTarget(finding: TerminalId?, shown: Set<TerminalId>, running: Set<TerminalId>): TerminalId? =
+    finding?.takeIf { it in shown && it in running }
