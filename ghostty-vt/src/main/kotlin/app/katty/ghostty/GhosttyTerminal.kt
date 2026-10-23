@@ -338,7 +338,7 @@ public class GhosttyTerminal private constructor(
     public val rows: Int get() = getUInt16(GhosttyVt.GHOSTTY_TERMINAL_DATA_ROWS())
 
     /** The Kitty keyboard protocol flags that the program running in the terminal asked for. */
-    public val kittyKeyboardFlags: Int
+    internal val kittyKeyboardFlags: Int
         get() {
             requireOpen()
             return Arena.ofConfined().use { arena ->
@@ -633,7 +633,7 @@ public class GhosttyTerminal private constructor(
     }
 
     /** All the text of the history and the screen, as [readRows] gives it. Empty when there is none. */
-    public fun allText(unwrap: Boolean = true): String {
+    internal fun allText(unwrap: Boolean = true): String {
         requireOpen()
         return Arena.ofConfined().use { arena ->
             val selection = arena.allocate(GhosttySelection.layout())

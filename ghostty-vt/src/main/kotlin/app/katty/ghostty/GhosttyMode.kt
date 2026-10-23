@@ -25,37 +25,37 @@ public value class GhosttyMode private constructor(internal val packed: Short) {
         }
 
         /** Cursor keys send application sequences (DECCKM). */
-        public val CURSOR_KEYS: GhosttyMode = dec(1)
+        internal val CURSOR_KEYS: GhosttyMode = dec(1)
 
         /** Origin mode (DECOM): positions are relative to the scrolling region. Setting it or resetting it moves the cursor home. */
         public val ORIGIN: GhosttyMode = dec(6)
 
         /** Autowrap (DECAWM). */
-        public val WRAPAROUND: GhosttyMode = dec(7)
+        internal val WRAPAROUND: GhosttyMode = dec(7)
 
         /** The cursor is visible (DECTCEM). */
-        public val CURSOR_VISIBLE: GhosttyMode = dec(25)
+        internal val CURSOR_VISIBLE: GhosttyMode = dec(25)
 
         /** Application keypad. */
-        public val KEYPAD_KEYS: GhosttyMode = dec(66)
+        internal val KEYPAD_KEYS: GhosttyMode = dec(66)
 
         /** The wheel sends the arrow keys on the alternate screen, when the program did not ask for the mouse. */
         public val ALT_SCROLL: GhosttyMode = dec(1007)
 
         /** Focus in/out events are reported. */
-        public val FOCUS_EVENT: GhosttyMode = dec(1004)
+        internal val FOCUS_EVENT: GhosttyMode = dec(1004)
 
         /** The alternate screen is active. */
-        public val ALT_SCREEN: GhosttyMode = dec(1047)
+        internal val ALT_SCREEN: GhosttyMode = dec(1047)
 
         /** The alternate screen is active, with the cursor saved and the screen cleared on entering. */
-        public val ALT_SCREEN_SAVE: GhosttyMode = dec(1049)
+        internal val ALT_SCREEN_SAVE: GhosttyMode = dec(1049)
 
         /** Pastes are wrapped in bracketed paste markers. */
-        public val BRACKETED_PASTE: GhosttyMode = dec(2004)
+        internal val BRACKETED_PASTE: GhosttyMode = dec(2004)
 
         /** Synchronized output. */
-        public val SYNC_OUTPUT: GhosttyMode = dec(2026)
+        internal val SYNC_OUTPUT: GhosttyMode = dec(2026)
 
         /** The program asked to be told when the color scheme changes (CSI ? 997 ; 1|2 n). */
         public val COLOR_SCHEME_REPORT: GhosttyMode = dec(2031)

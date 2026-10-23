@@ -123,7 +123,7 @@ public class GhosttyRenderState : AutoCloseable {
      * Cells already carry their resolved colors, so most renderers never need it: it is read when asked,
      * not along with [colors].
      */
-    public val palette: List<GhosttyRgb>
+    internal val palette: List<GhosttyRgb>
         get() = withColors { colors ->
             List(PALETTE_SIZE) { readRgb(GhosttyRenderStateColors.palette(colors, it.toLong())) }
         }

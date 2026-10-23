@@ -77,7 +77,7 @@ public fun placeholderDiacriticIndex(codePoint: Int): Int? {
 }
 
 /** How many marks there are. */
-public val PLACEHOLDER_DIACRITICS: Int get() = DIACRITICS.size
+internal val PLACEHOLDER_DIACRITICS: Int get() = DIACRITICS.size
 
 /**
  * Reads the cell of a placeholder: [text] is the cell's text, which starts with the placeholder, [foreground] and [underline] are the ids that

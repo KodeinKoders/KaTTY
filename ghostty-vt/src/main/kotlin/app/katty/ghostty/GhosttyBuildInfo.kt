@@ -34,7 +34,7 @@ public data class GhosttyBuildInfo(
             return NativeLibrary.fingerprint
         }
 
-        public fun current(): GhosttyBuildInfo {
+        internal fun current(): GhosttyBuildInfo {
             NativeLibrary.ensureLoaded()
             return Arena.ofConfined().use { arena ->
                 val out = arena.allocate(GhosttyString.layout())
