@@ -102,6 +102,22 @@ class AgentDetectionTest {
     }
 
     @Test
+    fun aProfileThatStartsABackgroundProgramDoesNotHoldTheReading() {
+        // ssh-agent, keychain, gpg-agent: a program that the profile starts and that keeps the output open.
+        val shell = root.resolve("agent-shell").also {
+            it.writeText("#!/bin/sh\nsleep 20 &\nPATH=/opt/one:/opt/two /bin/sh -c \"\$3\"\n")
+            it.toFile().setExecutable(true)
+        }
+
+        val started = System.nanoTime()
+        val path = AgentDetection.loginShellPath(shell.toString(), timeoutMs = 3_000)
+        val tookMs = (System.nanoTime() - started) / 1_000_000
+
+        assertEquals("/opt/one:/opt/two", path)
+        assertTrue(tookMs < 3_000, "It took ${tookMs}ms")
+    }
+
+    @Test
     fun aShellThatFailsOrIsNotThereHasNoPath() {
         val failing = root.resolve("failing-shell").also { it.writeText("#!/bin/sh\nexit 3\n"); it.toFile().setExecutable(true) }
 

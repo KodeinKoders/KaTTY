@@ -3,7 +3,6 @@ package app.katty.core
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 
 /**
  * Finds out which of the agents are installed on the machine: their programs are looked for in the `PATH` of the user's login shell. An
@@ -28,18 +27,13 @@ public object AgentDetection {
 
     private fun userShell(): String = System.getenv("SHELL") ?: "/bin/zsh"
 
-    private fun readLoginShellPath(shell: String, timeoutMs: Long): String? =
-        try {
-            // Between two markers: what the login files print (a greeting, a notice) comes before and after it.
-            val process = ProcessBuilder(shell, "-l", "-c", "printf '$PATH_MARK%s$PATH_MARK' \"\$PATH\"")
-                .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start()
-            val output = process.inputStream.readBytes().decodeToString()
-            if (process.waitFor(timeoutMs, TimeUnit.MILLISECONDS) && process.exitValue() == 0) betweenMarks(output) else null
-        } catch (e: Exception) {
-            null
-        }
+    // Through the runner of the usage commands, which reads the output on its own thread: a profile that starts a program in the background
+    // (ssh-agent, keychain) leaves the output open after the shell ended, and a read that waits for its end would wait for that program.
+    private fun readLoginShellPath(shell: String, timeoutMs: Long, runner: CommandRunner = ProcessCommandRunner): String? {
+        // Between two markers: what the login files print (a greeting, a notice) comes before and after it.
+        val result = runner.run(listOf(shell, "-l", "-c", "printf '$PATH_MARK%s$PATH_MARK' \"\$PATH\""), Path.of(System.getProperty("user.home")), timeoutMs)
+        return result?.takeIf { it.exitCode == 0 }?.output?.let(::betweenMarks)
+    }
 
     /**
      * The agents whose program is an executable file in one of the folders of [path] (separated as a `PATH` is), with where it is. The folder
