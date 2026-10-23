@@ -13,9 +13,6 @@ import kotlin.io.path.isDirectory
 
 private val logger = LoggerFactory.getLogger("app.katty.core.CursorStore")
 
-// The process starts a moment before the chat that it makes is written, and the times are the system's and the program's.
-private const val BEFORE_START_MS = 2_000L
-
 private val CHAT_ID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 /**
@@ -43,6 +40,7 @@ internal class CursorStore(private val chats: Path = defaultDirectory()) {
     /** The id of the chat of the Cursor agent that runs [argv] in [cwd] and started at [startedAtMs], or `null`. */
     fun sessionFor(cwd: String, startedAtMs: Long, argv: List<String>): String? {
         return try {
+            // The folder of the chats is named by the MD5 of the real path of the directory.
             val folder = chats.resolve(md5(realPath(cwd)))
             if (!folder.isDirectory()) return null
             val all = Files.newDirectoryStream(folder).use { it.toList() }.mapNotNull(::read)
@@ -74,12 +72,7 @@ internal class CursorStore(private val chats: Path = defaultDirectory()) {
         }
 
     // The word after `--resume` (or the value of `--resume=`), when it is a chat's id and not another option.
-    private fun resumeId(argv: List<String>): String? {
-        val words = argv.drop(1)
-        val value = words.firstOrNull { it.startsWith("--resume=") }?.substringAfter('=')
-            ?: words.indexOf("--resume").takeIf { it >= 0 }?.let { words.getOrNull(it + 1) }
-        return value?.takeIf { CHAT_ID.matches(it) }
-    }
+    private fun resumeId(argv: List<String>): String? = resumeValue(argv)?.takeIf { CHAT_ID.matches(it) }
 
     // It was told to resume a chat and not which one.
     private fun told(argv: List<String>): Boolean {
@@ -87,13 +80,6 @@ internal class CursorStore(private val chats: Path = defaultDirectory()) {
         return resumeId(argv) == null && words.any { it == "--continue" || it == "--resume" || it == "resume" || it == "ls" }
     }
 
-    // The folder of the chats is named by the MD5 of the real path of the directory.
-    private fun realPath(cwd: String): String =
-        try {
-            Path.of(cwd).toRealPath().toString()
-        } catch (e: Exception) {
-            cwd
-        }
 
     private fun md5(text: String): String = MessageDigest.getInstance("MD5").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 

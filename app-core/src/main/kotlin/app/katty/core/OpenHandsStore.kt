@@ -10,9 +10,6 @@ import kotlin.io.path.isDirectory
 
 private val logger = LoggerFactory.getLogger("app.katty.core.OpenHandsStore")
 
-// The process starts a moment before it writes anything, and the times of the files are the system's.
-private const val BEFORE_START_MS = 2_000L
-
 private val ID = Regex("[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}")
 private val WORKING_DIR = Regex("\"workspace\"\\s*:\\s*\\{\\s*\"working_dir\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
 
@@ -53,12 +50,7 @@ internal class OpenHandsStore(private val conversations: Path = defaultDirectory
     }
 
     // The word after `--resume` (or the value of `--resume=`), when it is an id and not another option.
-    private fun resumeId(argv: List<String>): String? {
-        val words = argv.drop(1)
-        val value = words.firstOrNull { it.startsWith("--resume=") }?.substringAfter('=')
-            ?: words.indexOf("--resume").takeIf { it >= 0 }?.let { words.getOrNull(it + 1) }
-        return value?.takeIf { ID.matches(it) }?.replace("-", "")?.lowercase()
-    }
+    private fun resumeId(argv: List<String>): String? = resumeValue(argv)?.takeIf { ID.matches(it) }?.replace("-", "")?.lowercase()
 
     // It was told to resume a conversation and not which one: `--resume` alone, or with `--last`.
     private fun told(argv: List<String>): Boolean = resumeId(argv) == null && argv.drop(1).any { it == "--last" || it == "--resume" }
@@ -84,13 +76,6 @@ internal class OpenHandsStore(private val conversations: Path = defaultDirectory
         return read?.also { directories[key] = it }
     }
 
-    // Both are real paths: the program says the directory as the system does, and it is compared to the process's own.
-    private fun sameDirectory(recorded: String, cwd: String): Boolean =
-        try {
-            Path.of(recorded).toRealPath() == Path.of(cwd).toRealPath()
-        } catch (e: Exception) {
-            recorded == cwd
-        }
 
     private fun dashed(hex: String): String =
         if (hex.length == 32) "${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}" else hex

@@ -27,7 +27,7 @@ internal class GooseStore(private val database: Path = defaultDatabase()) {
     fun sessionFor(cwd: String, startedAtMs: Long): String? {
         if (!Files.exists(database)) return null
         // Goose's timestamps are in seconds, as text.
-        val since = startedAtMs / 1000
+        val since = epochSeconds(startedAtMs)
         return try {
             SqliteDatabase.open(database).use { db ->
                 fun ask(extra: String) = db.query(

@@ -60,13 +60,6 @@ internal class OmpStore(private val agentDirectory: Path = defaultAgentDirectory
         }
     }
 
-    // Both are real paths: omp writes the directory as it was given (`/tmp/x`), and the system says `/private/tmp/x`.
-    private fun sameDirectory(recorded: String, cwd: String): Boolean =
-        try {
-            Path.of(recorded).toRealPath() == Path.of(cwd).toRealPath()
-        } catch (e: Exception) {
-            recorded == cwd
-        }
 
     internal companion object {
         fun defaultAgentDirectory(): Path = Path.of(System.getProperty("user.home"), ".omp", "agent")

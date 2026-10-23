@@ -89,7 +89,7 @@ internal class ClineStore(private val directory: Path = defaultDirectory()) {
 
     // SQLite reads Cline's ISO text (`2026-10-21T14:13:09.755Z`), in seconds.
     private fun byDirectory(db: SqliteDatabase, cwd: String, startedAtMs: Long): String? {
-        val since = startedAtMs / 1000
+        val since = epochSeconds(startedAtMs)
         return db.query(
             "SELECT session_id, messages_path FROM sessions WHERE cwd = ? AND source = 'cli' AND interactive = 1 AND is_subagent = 0 " +
                 "AND (CAST(strftime('%s', started_at) AS INTEGER) >= ? OR CAST(strftime('%s', updated_at) AS INTEGER) >= ?) " +

@@ -32,7 +32,7 @@ internal class CrushStore(private val projects: Path = defaultProjects()) {
         val database = dataDirectory(cwd).resolve("crush.db")
         if (!Files.exists(database)) return null
         // Crush counts in seconds.
-        val since = startedAtMs / 1000
+        val since = epochSeconds(startedAtMs)
         return try {
             SqliteDatabase.open(database).use { db ->
                 db.query(
