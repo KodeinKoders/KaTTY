@@ -118,15 +118,17 @@ public class GhosttyTerminal private constructor(
      * Receives what the terminal answers to the program: replies to queries such as the cursor position
      * or the device attributes. They have to be written to the program's input.
      *
-     * It is called on the thread that called [vtWrite], while it runs, so it must not call back into this
-     * terminal. An exception it throws is logged, since it cannot cross into the native code.
+     * It is called on the thread that called [vtWrite], while it runs, so it must not write to this terminal ([vtWrite]): libghostty
+     * forbids that one reentrance, and reading the terminal is allowed. An exception it throws is logged, since it cannot cross into the
+     * native code.
      */
     @Volatile
     public var onWritePty: ((ByteArray) -> Unit)? = null
 
     // What the terminal reports besides the screen. Each is called on the thread that called [vtWrite], while it runs, like
-    // [onWritePty]: it must only record or enqueue, and must not call back into this terminal. An exception that it throws is
-    // logged, since it cannot cross into the native code. The strings that come with them are copies.
+    // [onWritePty]: it must not write to this terminal (libghostty forbids [vtWrite] in a callback, and allows the rest, such as
+    // [trackCursor], which the session calls at OSC 133;C), and should only record or enqueue, since the program's output waits for it. An
+    // exception that it throws is logged, since it cannot cross into the native code. The strings that come with them are copies.
 
     /** A BEL character was written. */
     @Volatile
@@ -177,7 +179,8 @@ public class GhosttyTerminal private constructor(
     /**
      * A program began (`true`) or ended (`false`) a hold of the screen: it asks for the screen not to be updated while it draws a frame
      * (synchronized output, mode 2026). The terminal also ends it by itself when it is resized or reset. While it is held the render state
-     * must not be updated, and the host ends the hold when it lasts too long, so that a program cannot freeze the screen.
+     * should not be updated. Nothing ends a hold that lasts: the host stops honoring it after a while (the session does after a second), so
+     * that a program cannot freeze the screen.
      */
     @Volatile
     public var onRenderHold: ((held: Boolean) -> Unit)? = null

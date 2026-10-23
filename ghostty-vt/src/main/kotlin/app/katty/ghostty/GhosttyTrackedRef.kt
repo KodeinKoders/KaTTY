@@ -7,8 +7,8 @@ import java.lang.foreign.MemorySegment
  * A place in the terminal that follows its row as the terminal scrolls, reflows and prunes its history, until it goes with the row
  * ([hasValue] is then `false`).
  *
- * It belongs to the terminal that made it, which it must not outlive, and, like everything of a terminal, [close] and the calls that
- * use it must not be concurrent with other calls on that terminal: the caller serializes them with the same lock.
+ * It belongs to the terminal that made it, and may be closed after that terminal is (it has no value then). Like everything of a terminal,
+ * [close] and the calls that use it must not be concurrent with other calls on that terminal: the caller serializes them with the same lock.
  */
 public class GhosttyTrackedRef internal constructor(internal val handle: MemorySegment) : AutoCloseable {
     private var closed = false

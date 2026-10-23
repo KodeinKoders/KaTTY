@@ -1959,7 +1959,9 @@ public class TerminalSession private constructor(
          * [TerminalEvent.ClipboardWrite]. It is refused when `false`.
          * @param clipboardReader What a program that reads the clipboard (OSC 52) gets: the text it returns, or a refusal for
          * `null`. Programs cannot read it without one, and it is the host's to give: what is on the clipboard may be secret. It runs on
-         * the thread that reads the program's output, which waits for it: it must be quick, and must not call back into the session.
+         * the thread that reads the program's output, which waits for it, and under the session's lock, which [sendKey], [paste] and
+         * the other calls from the UI thread take: it must be quick, must not call back into the session, and must not wait for the UI
+         * thread (asking the user in a dialog would block both for good).
          */
         public fun start(
             cols: Int,
