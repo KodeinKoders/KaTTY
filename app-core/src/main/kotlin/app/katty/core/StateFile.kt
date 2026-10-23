@@ -66,6 +66,10 @@ public class StateFile(private val path: Path) {
      */
     @Synchronized
     public fun save(state: KattyState) {
+        if (!writable) {
+            logger.warn("Not writing {}: what was there could not be kept aside", path)
+            return
+        }
         writeAtomically(path, JSON.encodeToString(KattyState.serializer(), state.copy(selection = state.selection.copy(maximized = null))))
     }
 
@@ -79,9 +83,21 @@ public class StateFile(private val path: Path) {
             logger.warn("Kept it as {}", aside)
         } catch (e: IOException) {
             logger.error("Could not move {} to {}", path, aside, e)
+            try {
+                Files.copy(path, aside)
+                logger.warn("Kept a copy of it as {}", aside)
+            } catch (e: IOException) {
+                // Neither: it is the only copy of what the user had, which writing the empty state would replace.
+                logger.error("Could not copy {} to {} either: it is not written over until the application is started again", path, aside, e)
+                writable = false
+            }
         }
         return KattyState()
     }
+
+    // Whether the file may be written: not when it held something that could not be kept aside.
+    @Volatile
+    private var writable = true
 
     private companion object {
         val JSON = Json {

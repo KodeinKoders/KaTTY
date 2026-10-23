@@ -169,6 +169,24 @@ class StateFileTest {
     }
 
     @Test
+    fun aDamagedFileThatCannotBeSetAsideIsNotWrittenOver() {
+        path.writeText("{ not json")
+        // Nothing can be made in the folder: the file can be neither moved nor copied aside.
+        directory.toFile().setWritable(false)
+        val loaded = try {
+            file.load()
+        } finally {
+            directory.toFile().setWritable(true)
+        }
+        assertEquals(KattyState(), loaded)
+
+        // What the application does next is to save its state, which is empty.
+        file.save(KattyState())
+
+        assertEquals("{ not json", path.readText(), "The file that could not be kept aside is still there")
+    }
+
+    @Test
     fun aDamagedFileIsKeptAsideAndTheStateIsEmpty() {
         path.writeText("{ not json")
 
