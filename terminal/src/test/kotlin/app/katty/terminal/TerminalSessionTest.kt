@@ -1255,6 +1255,24 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun theOtherPromptsOfAPromptAreNotNewPrompts() {
+        // A prompt theme marks its second line (k=s), its continuation lines (k=c) and its right side (k=r) as well: the command line is
+        // still being typed.
+        val session = startThatWaits(
+            """printf '\033]133;A\007\033]133;B\007\033]133;A;k=s\007\033]133;A;k=c\007\033]133;A;k=r\007\033]133;C\007\033]133;D;0\007'; sleep 30""",
+        )
+        val events = session.collectEvents()
+
+        session.paste("x")
+
+        await("the events") { events.size >= 3 }
+        assertEquals(
+            listOf(TerminalEvent.PromptStarted, TerminalEvent.CommandStarted(null), TerminalEvent.CommandFinished(0)),
+            events.toList(),
+        )
+    }
+
+    @Test
     fun publishesWhatAProgramPutsInTheClipboard() {
         val session = startThatWaits("""printf '\033]52;c;aGVsbG8=\007\033]52;p;d29ybGQ=\007'; sleep 30""")
         val events = session.collectEvents()

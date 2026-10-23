@@ -1219,7 +1219,15 @@ public class GhosttyTerminal private constructor(
                             else -> return@guarded
                         }
                         val exitCode = GhosttyTerminalSemanticPrompt.exit_code(struct).takeIf { GhosttyTerminalSemanticPrompt.has_exit_code(struct) }
-                        onSemanticPrompt?.invoke(GhosttySemanticPrompt(kind, exitCode, copyString(GhosttyTerminalSemanticPrompt.command(struct))))
+                        val promptKind = when (GhosttyTerminalSemanticPrompt.prompt_kind(struct)) {
+                            GhosttyVt.GHOSTTY_SEMANTIC_PROMPT_PROMPT_RIGHT() -> GhosttyPromptKind.RIGHT
+                            GhosttyVt.GHOSTTY_SEMANTIC_PROMPT_PROMPT_CONTINUATION() -> GhosttyPromptKind.CONTINUATION
+                            GhosttyVt.GHOSTTY_SEMANTIC_PROMPT_PROMPT_SECONDARY() -> GhosttyPromptKind.SECONDARY
+                            else -> GhosttyPromptKind.PRIMARY
+                        }
+                        onSemanticPrompt?.invoke(
+                            GhosttySemanticPrompt(kind, exitCode, copyString(GhosttyTerminalSemanticPrompt.command(struct)), promptKind),
+                        )
                     }
                 },
                 callbacks,

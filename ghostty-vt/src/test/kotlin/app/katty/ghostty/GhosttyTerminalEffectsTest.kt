@@ -107,6 +107,19 @@ class GhosttyTerminalEffectsTest {
     }
 
     @Test
+    fun saysWhichPromptAPromptStartIs() {
+        val steps = mutableListOf<GhosttySemanticPrompt>()
+        terminal.onSemanticPrompt = { steps += it }
+
+        terminal.vtWrite("$esc]133;A$bel$esc]133;A;k=s$bel$esc]133;A;k=c$bel$esc]133;A;k=r$bel")
+
+        assertEquals(
+            listOf(GhosttyPromptKind.PRIMARY, GhosttyPromptKind.SECONDARY, GhosttyPromptKind.CONTINUATION, GhosttyPromptKind.RIGHT),
+            steps.filter { it.kind == GhosttyPromptEventKind.PROMPT_START }.map { it.promptKind },
+        )
+    }
+
+    @Test
     fun reportsAClipboardWriteWithItsDecodedText() {
         terminal.onClipboardWrite = { location, text -> log += "$location|$text"; true }
 

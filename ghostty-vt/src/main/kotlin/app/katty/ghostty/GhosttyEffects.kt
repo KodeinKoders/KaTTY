@@ -39,13 +39,34 @@ public enum class GhosttyPromptEventKind {
     COMMAND_END,
 }
 
+/** Which prompt a [GhosttyPromptEventKind.PROMPT_START] starts (OSC 133 `k=`): only the primary one asks for a new command. */
+public enum class GhosttyPromptKind {
+    /** The prompt of a new command, which a shell marks with no `k=`. */
+    PRIMARY,
+
+    /** A prompt on the right side of the line (`k=r`). */
+    RIGHT,
+
+    /** The prompt of a line that continues the command (`k=c`). */
+    CONTINUATION,
+
+    /** Another line of the same prompt (`k=s`). */
+    SECONDARY,
+}
+
 /**
  * A step that the shell reported with OSC 133.
  *
  * @param exitCode Of the command, for [GhosttyPromptEventKind.COMMAND_END] when the shell said it.
  * @param command The command line, for [GhosttyPromptEventKind.OUTPUT_START] when the shell said it, else empty.
+ * @param promptKind For [GhosttyPromptEventKind.PROMPT_START]: which prompt it is.
  */
-public data class GhosttySemanticPrompt(val kind: GhosttyPromptEventKind, val exitCode: Int?, val command: String)
+public data class GhosttySemanticPrompt(
+    val kind: GhosttyPromptEventKind,
+    val exitCode: Int?,
+    val command: String,
+    val promptKind: GhosttyPromptKind = GhosttyPromptKind.PRIMARY,
+)
 
 /** What a program says it is doing, in a program status report (OSC 7501). */
 public enum class GhosttyProgramState {

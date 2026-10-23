@@ -13,6 +13,7 @@ import app.katty.ghostty.GhosttyProgramKind
 import app.katty.ghostty.GhosttyProgramState
 import app.katty.ghostty.GhosttyProgressState
 import app.katty.ghostty.GhosttyPromptEventKind
+import app.katty.ghostty.GhosttyPromptKind
 import app.katty.ghostty.GhosttyScreen
 import app.katty.ghostty.GhosttyScrollViewport
 import app.katty.ghostty.GhosttySnapshotException
@@ -605,6 +606,8 @@ public class TerminalSession private constructor(
         }
         terminal.onSemanticPrompt = { step ->
             when (step.kind) {
+                // Another line of the same prompt (a continuation, the right side): the command line is still being typed.
+                GhosttyPromptEventKind.PROMPT_START if step.promptKind != GhosttyPromptKind.PRIMARY -> Unit
                 GhosttyPromptEventKind.PROMPT_START -> {
                     inputActive = false
                     // What was being worked on is over: the shell is asking for the next thing.
