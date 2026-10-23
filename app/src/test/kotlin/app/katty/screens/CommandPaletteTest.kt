@@ -56,6 +56,20 @@ class CommandPaletteTest {
     }
 
     @Test
+    fun theFooterSaysTheKeysThatTheUserBoundThePaletteTo() = runComposeUiTest {
+        app.katty.Shortcuts.map = app.katty.ShortcutMap.DEFAULT.with(app.katty.AppShortcut.PALETTE, app.katty.KeyBinding(java.awt.event.KeyEvent.VK_P, shift = true))
+        try {
+            setContent { KattyTheme(false) { CommandPalette(entries, onRun = {}, onDismiss = {}) } }
+
+            onNodeWithText("⇧").assertExists()
+            onNodeWithText("P").assertExists()
+            onNodeWithText("K").assertDoesNotExist()
+        } finally {
+            app.katty.Shortcuts.map = app.katty.ShortcutMap.DEFAULT
+        }
+    }
+
+    @Test
     fun typingNarrowsTheListToWhatMatches() = runComposeUiTest {
         setContent { KattyTheme(false) { CommandPalette(entries, onRun = {}, onDismiss = {}) } }
 

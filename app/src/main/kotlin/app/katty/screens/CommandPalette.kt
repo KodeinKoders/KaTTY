@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.AppShortcut
 import app.katty.ui.uiScaleFactor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -93,7 +94,7 @@ fun PaletteButton(compact: Boolean, onClick: () -> Unit, modifier: Modifier = Mo
     ) {
         Icon(KattyIcons.Search, colors.muted, size = 14.dp)
         Text(if (compact) "Commands" else "Search or run a command…", Modifier.weight(1f), color = colors.muted, maxLines = 1)
-        Shortcut("⌘ K")
+        AppShortcut.PALETTE.label.takeIf { it.isNotEmpty() }?.let { Shortcut(shortcutKeys(it)) }
     }
 }
 
@@ -156,7 +157,7 @@ fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, o
                 FooterHint(listOf("↑", "↓"), "Navigate")
                 FooterHint(listOf("⏎"), "Open")
                 Box(Modifier.weight(1f))
-                FooterHint(listOf("⌘", "K"), "Toggle palette")
+                AppShortcut.PALETTE.label.takeIf { it.isNotEmpty() }?.let { FooterHint(shortcutKeys(it).split(' '), "Toggle palette") }
             }
         }
     }

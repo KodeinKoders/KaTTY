@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.katty.AppShortcut
 import app.katty.ui.Icon
 import app.katty.ui.Katty
 import app.katty.ui.KattyIcons
@@ -48,7 +49,8 @@ fun Welcome(onAddProject: () -> Unit, modifier: Modifier = Modifier, detected: @
                         Text("Add project folder…")
                     }
                 }
-                Shortcut("⌘ O")
+                // The keys that the user bound it to, and none when it is bound to none.
+                AppShortcut.ADD_PROJECT.label.takeIf { it.isNotEmpty() }?.let { Shortcut(shortcutKeys(it)) }
             }
             detected()
         }
