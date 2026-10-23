@@ -531,6 +531,21 @@ class TerminalTest {
     }
 
     @Test
+    fun commandAndAKeyWithoutTextIsNotTheProgramsKey() {
+        val session = session("""stty raw -echo; echo ready; head -c1 | od -An -c""", cols = 40)
+        val scene = show(session)
+        scene.renderUntil("the program to be ready") { session.frames.value.rows.indices.any { session.frames.value.text(it) == "ready" } }
+        scene.settle()
+
+        // ⌘ Return: a shortcut of the host's, which the program never gets (it would read a Super Return, `CSI 13;9 u` or the like).
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_ENTER), type = KeyEventType.KeyDown, isMetaPressed = true))
+        scene.sendKeyEvent(KeyEvent(key = Key(AwtKeyEvent.VK_ENTER), type = KeyEventType.KeyUp, isMetaPressed = true))
+        scene.type('x')
+
+        scene.renderUntil("the first byte the program read") { session.frames.value.rows.indices.any { session.frames.value.text(it).trim() == "x" } }
+    }
+
+    @Test
     fun doesNotTellAProgramOfAFocusThatMovedForAMoment() {
         val session = session(
             """stty raw -echo; echo ready; head -c1 >/dev/null; printf '\033[?1004h'; echo enabled; head -c1 | od -An -c""",

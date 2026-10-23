@@ -274,6 +274,18 @@ class KeyTranslatorTest {
     }
 
     @Test
+    fun commandWithAKeyThatHasNoTextIsNotSentEither() {
+        val meta = InputEvent.META_DOWN_MASK
+        for (code in listOf(KeyEvent.VK_ENTER, KeyEvent.VK_ESCAPE, KeyEvent.VK_HOME, KeyEvent.VK_UP, KeyEvent.VK_F5, KeyEvent.VK_TAB)) {
+            assertNull(keys.translate(keyInfo(PRESSED, code, modifiers = meta)), "⌘ ${KeyEvent.getKeyText(code)}")
+            assertNull(keys.translate(keyInfo(RELEASED, code, modifiers = meta)), "⌘ ${KeyEvent.getKeyText(code)} released")
+        }
+        // ⌘ itself is a key that the program may ask for (the Kitty keyboard protocol), and so are the other modifiers held with it.
+        assertEquals(TerminalKey.META_LEFT, keys.translate(keyInfo(PRESSED, KeyEvent.VK_META, modifiers = meta, location = KeyEvent.KEY_LOCATION_LEFT))?.key)
+        assertEquals(TerminalKey.SHIFT_LEFT, keys.translate(keyInfo(PRESSED, KeyEvent.VK_SHIFT, modifiers = meta or InputEvent.SHIFT_DOWN_MASK, location = KeyEvent.KEY_LOCATION_LEFT))?.key)
+    }
+
+    @Test
     fun aKeyThatStaysDownRepeats() {
         val press = keyInfo(PRESSED, KeyEvent.VK_DOWN)
 

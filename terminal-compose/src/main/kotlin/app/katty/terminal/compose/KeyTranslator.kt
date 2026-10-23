@@ -92,7 +92,7 @@ public enum class TerminalOptionAsAlt {
  * (arrows, Enter, Escape, function keys, modifiers) and for Ctrl combinations. Option is the key that
  * produces the characters: it is not the Alt of the program, so Option+key is not sent as Alt+key, unless [optionAsAlt] says
  * that it is: it is then sent from the `KEY_PRESSED`, as the key and not as the character that came of it. Command
- * shortcuts are not sent either. The keys that edit the line (Option or Command and the arrows) are the terminal's
+ * shortcuts are not sent either, whether the key has text or not (only the modifier keys themselves are). The keys that edit the line (Option or Command and the arrows) are the terminal's
  * shortcuts, taken before: see [lineEditingText].
  *
  * Not thread-safe: it is used from the UI thread.
@@ -212,6 +212,9 @@ internal class KeyTranslator(private val optionAsAlt: TerminalOptionAsAlt = Term
         trackOption(event, isDown = true)
         pending = null
         val key = terminalKey(event.keyCode, event.location) ?: return null
+        // A Command shortcut is the host's, whatever the key (⌘ Return, ⌘ Home…): only the modifiers themselves are the program's, which
+        // may ask to be told of every key.
+        if (event.meta && key !in MODIFIER_KEYS) return null
         val action = if (down.add(event.keyCode)) TerminalKeyAction.PRESS else TerminalKeyAction.REPEAT
         val mods = modifiers(event)
 
@@ -370,3 +373,9 @@ internal fun terminalKey(keyCode: Int, location: Int): TerminalKey? {
         else -> null
     }
 }
+
+// The keys that are modifiers: Command held with them is not a shortcut.
+private val MODIFIER_KEYS = setOf(
+    TerminalKey.SHIFT_LEFT, TerminalKey.SHIFT_RIGHT, TerminalKey.CONTROL_LEFT, TerminalKey.CONTROL_RIGHT, TerminalKey.ALT_LEFT,
+    TerminalKey.ALT_RIGHT, TerminalKey.META_LEFT, TerminalKey.META_RIGHT, TerminalKey.CAPS_LOCK, TerminalKey.NUM_LOCK, TerminalKey.FN,
+)
