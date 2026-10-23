@@ -163,7 +163,7 @@ class SessionRegistryTest {
 
     @Test
     fun whereTheShellGoesIsWhereTheTerminalStartsNextTime() {
-        script = "printf '\\033]7;file://host/tmp\\007'; sleep 30"
+        script = "printf '\\033]7;file://localhost/tmp\\007'; sleep 30"
         store.addProject("/")
         val id = store.state.value.selection.terminal!!
 
@@ -209,7 +209,7 @@ class SessionRegistryTest {
         try {
             git(repo, "init")
             // The shell goes to a folder that is not in a repository.
-            script = "printf '\\033]7;file://host${plain.path}\\007'; sleep 30"
+            script = "printf '\\033]7;file://localhost${plain.path}\\007'; sleep 30"
             store.addProject(repo.path)
             val id = store.state.value.selection.terminal!!
 
