@@ -83,4 +83,17 @@ class ReorderTest {
         assertEquals(listOf("a", "c", "b"), order)
     }
 
+
+    @Test
+    fun whereTheItemsThatAreGoneWereIsLetGo() {
+        val state = ReorderState<String>(horizontal = false)
+        state.keys = listOf("a", "b", "c")
+        for (key in state.keys) state.position(key, androidx.compose.ui.geometry.Rect(0f, 0f, 10f, 10f))
+        assertEquals(3, state.positioned)
+
+        // A project or a workspace that was removed.
+        state.keys = listOf("a")
+
+        assertEquals(1, state.positioned)
+    }
 }

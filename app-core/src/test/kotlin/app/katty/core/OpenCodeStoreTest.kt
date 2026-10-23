@@ -241,4 +241,18 @@ class OpenCodeStoreTest {
         modelsPath.toFile().setLastModified(System.currentTimeMillis() + 5000)
         assertEquals(2000, limits.contextOf("p", "m"))
     }
+
+    @Test
+    fun aModelListThatCouldNotBeReadIsReadAgainEvenIfItsTimeDidNotChange() {
+        // Caught while OpenCode writes it: then whole, within the same second as far as its time says.
+        modelsPath.toFile().writeText("{")
+        val time = modelsPath.toFile().lastModified()
+        val limits = ModelLimits(modelsPath)
+        assertNull(limits.contextOf("p", "m"))
+
+        models(1000)
+        modelsPath.toFile().setLastModified(time)
+
+        assertEquals(1000, limits.contextOf("p", "m"))
+    }
 }

@@ -28,9 +28,18 @@ import androidx.compose.ui.zIndex
  * @param horizontal Whether the items are in a row, which is dragged along its width, else a column.
  */
 class ReorderState<K : Any>(val horizontal: Boolean) {
-    internal var keys: List<K> = emptyList()
-    internal var onMove: (K, Int) -> Unit = { _, _ -> }
     private val bounds = HashMap<K, Rect>()
+
+    // Where an item that is not in the list any more was is let go.
+    internal var keys: List<K> = emptyList()
+        set(value) {
+            field = value
+            if (bounds.size > value.size) bounds.keys.retainAll(value.toSet())
+        }
+    internal var onMove: (K, Int) -> Unit = { _, _ -> }
+
+    /** How many items it knows where they are. */
+    internal val positioned: Int get() = bounds.size
 
     /** The item that is dragged, or `null`. */
     var dragging by mutableStateOf<K?>(null)

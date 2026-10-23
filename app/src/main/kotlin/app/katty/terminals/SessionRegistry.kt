@@ -150,6 +150,8 @@ class SessionRegistry(
         }
         // A shell that is being started for a terminal that is gone is closed when it has started.
         starting.keys.retainAll(wanted)
+        // And which shell a terminal that is gone was at: not in [stop], since [restart] reads it after stopping the old shell.
+        generations.keys.retainAll(wanted)
         for (place in terminals) {
             val id = place.terminal.id
             val scheme = place.terminal.colorScheme ?: state.settings.colorScheme

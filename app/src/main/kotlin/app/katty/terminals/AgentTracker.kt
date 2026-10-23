@@ -154,8 +154,11 @@ class AgentTracker(
     /** Lets go of every session. */
     @Synchronized
     fun close() {
-        follows.values.forEach { it.job.cancel() }
+        follows.values.forEach { it.job.cancel(); it.processJob.cancel() }
         follows.clear()
+        reporters.clear()
+        latest.clear()
+        atShell.clear()
         mutableInfos.value = emptyMap()
     }
 }

@@ -1,6 +1,7 @@
 package app.katty.core
 
 import app.katty.core.sqlite.SqliteDatabase
+import app.katty.core.sqlite.SqliteException
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
@@ -38,8 +39,10 @@ internal class GooseStore(private val database: Path = defaultDatabase()) {
                 ) { it.text(0)!! }.firstOrNull()
                 try {
                     ask(" AND parent_session_id IS NULL AND archived_at IS NULL")
-                } catch (e: Exception) {
-                    ask("")
+                } catch (e: SqliteException) {
+                    // An older Goose, whose table has neither column: asked again without them. Another failure (the database is busy) is
+                    // not a reason to take the sessions of the sub-agents and the archived ones.
+                    if (e.message?.contains("no such column") == true) ask("") else throw e
                 }
             }
         } catch (e: Exception) {

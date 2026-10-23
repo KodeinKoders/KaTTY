@@ -193,7 +193,7 @@ public class TerminalSession private constructor(
 
     private fun typePending() {
         val bytes = pendingInput.getAndSet(null) ?: return
-        outgoing.put(bytes)
+        send(bytes)
         frameRequests.trySend(Unit)
     }
 
@@ -220,6 +220,10 @@ public class TerminalSession private constructor(
     // Set when what the rows are drawn from changed, with no change of the rows: the producer forgets what it kept.
     @Volatile
     private var rowCacheStale = false
+
+    // A change of [setBoldIsBright] that the producer has not made yet.
+    @Volatile
+    private var boldIsBrightRequest: Boolean? = null
 
     // The images of the last frames, by id, which are only the ones whose placements exist: what is deleted frees its memory.
     // Only the frame producer uses it, once it runs. It is before the first frame, which uses it.
@@ -321,7 +325,7 @@ public class TerminalSession private constructor(
         // What the terminal answers to the program's queries (where the cursor is, what the terminal is) is
         // written to its input like what is typed. It is called while the terminal is written to, under
         // the lock: it only enqueues.
-        terminal.onWritePty = { outgoing.put(it) }
+        terminal.onWritePty = { send(it) }
         installEffects()
         // A terminal that was restored has them, and says nothing of it: nothing was listening.
         lock.withLock {
@@ -495,7 +499,7 @@ public class TerminalSession private constructor(
             bytes
         }
         if (bytes.isNotEmpty()) {
-            outgoing.put(bytes)
+            send(bytes)
             frameRequests.trySend(Unit)
         }
     }
@@ -936,7 +940,7 @@ public class TerminalSession private constructor(
             inputActive
         }
         frameRequests.trySend(Unit)
-        if (atPrompt) outgoing.put(byteArrayOf(CONTROL_L))
+        if (atPrompt) send(byteArrayOf(CONTROL_L))
     }
 
     // Under the lock.
@@ -981,7 +985,7 @@ public class TerminalSession private constructor(
             val y = (input.row * cellHeightPx).coerceIn(0f, rows * cellHeightPx - 1f)
             mouseEncoder.encode(input.toGhostty(x, y), input.anyButtonPressed)
         }
-        if (bytes.isNotEmpty()) outgoing.put(bytes)
+        if (bytes.isNotEmpty()) send(bytes)
     }
 
     /**
@@ -1021,7 +1025,7 @@ public class TerminalSession private constructor(
             lastFocused = focused
             terminal.encodeFocus(focused)
         }
-        if (bytes.isNotEmpty()) outgoing.put(bytes)
+        if (bytes.isNotEmpty()) send(bytes)
     }
 
     /**
@@ -1250,7 +1254,7 @@ public class TerminalSession private constructor(
             val arrow = if (delta < 0) TerminalKey.ARROW_LEFT else TerminalKey.ARROW_RIGHT
             List(kotlin.math.abs(delta)) { keyEncoder.encode(KeyInput(arrow).toGhostty()) }.filter { it.isNotEmpty() }
         }
-        keys.forEach(outgoing::put)
+        keys.forEach(::send)
         return keys.isNotEmpty()
     }
 
@@ -1389,7 +1393,7 @@ public class TerminalSession private constructor(
             // Only the programs that asked to be told (mode 2031) are, and only when it changed.
             if (changed && terminal.isModeEnabled(GhosttyMode.COLOR_SCHEME_REPORT)) colorSchemeReport(dark) else null
         }
-        if (report != null) outgoing.put(report)
+        if (report != null) send(report)
         // The terminal flags every row as changed, so the rows are read again, with their new colors.
         frameRequests.trySend(Unit)
     }
@@ -1399,10 +1403,8 @@ public class TerminalSession private constructor(
      * default. What is on the screen is read again, with it.
      */
     public fun setBoldIsBright(enabled: Boolean) {
-        if (renderState.boldIsBright == enabled) return
-        renderState.boldIsBright = enabled
-        // The rows are only read again if they changed, or if they are not known.
-        rowCacheStale = true
+        // The render state is the producer's: it takes the request at its next frame.
+        boldIsBrightRequest = enabled
         frameRequests.trySend(Unit)
     }
 
@@ -1519,8 +1521,20 @@ public class TerminalSession private constructor(
             // The program is gone: what is left to send has nowhere to go.
             logger.debug("The pty closed while writing", e)
         } catch (_: InterruptedException) {
+        } finally {
+            // Nothing takes what is sent any more: it is not kept for nobody.
+            writerGone = true
+            outgoing.clear()
         }
     }
+
+    // Sends [bytes] to the program, unless the writer has ended: the queue would grow with every key and answer until the session is closed.
+    private fun send(bytes: ByteArray) {
+        if (!writerGone) outgoing.put(bytes)
+    }
+
+    @Volatile
+    private var writerGone = false
 
     // Only the update reads the terminal, so only it is under the lock: reading the rows, which is the
     // costly part, does not hold up the thread that feeds the terminal.
@@ -1528,6 +1542,14 @@ public class TerminalSession private constructor(
     private fun readingPassword(): Boolean = withPty(false) { fd -> isPtyReadingPassword(fd) }
 
     private fun produceFrame(): TerminalFrame {
+        boldIsBrightRequest?.let { enabled ->
+            boldIsBrightRequest = null
+            if (renderState.boldIsBright != enabled) {
+                renderState.boldIsBright = enabled
+                // The rows are only read again if they changed, or if they are not known.
+                rowCacheStale = true
+            }
+        }
         val tracking: Boolean
         val alternate: Boolean
         val shape: GhosttyMouseShape

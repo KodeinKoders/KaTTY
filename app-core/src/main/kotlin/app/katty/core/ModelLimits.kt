@@ -36,9 +36,9 @@ internal class ModelLimits(private val file: Path = defaultFile()) {
             return
         }
         if (time == modified) return
-        modified = time
+        // Its time is kept only once it was read: a file caught while it is written is read again at the next call, not when it changes again.
         limits = try {
-            parse(Files.readString(file))
+            parse(Files.readString(file)).also { modified = time }
         } catch (e: Exception) {
             logger.debug("Could not read {}", file, e)
             emptyMap()

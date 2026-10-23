@@ -2,6 +2,8 @@
 
 package app.katty.terminal.compose
 
+import androidx.compose.ui.graphics.asSkiaBitmap
+
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -948,6 +950,8 @@ class TerminalViewTest {
         assertEquals(2, cache.size)
         cache.retain(listOf(second))
         assertEquals(1, cache.size)
+        // Its pixels are native memory: they are freed with it, not when the garbage collector gets to them.
+        assertTrue(bitmap.asSkiaBitmap().isClosed, "The pixels of a bitmap that is forgotten are freed")
         assertNotEquals(bitmap, cache.bitmapFor(first), "A new bitmap once it was forgotten")
     }
 
