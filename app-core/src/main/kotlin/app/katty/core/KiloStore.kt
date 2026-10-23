@@ -4,11 +4,13 @@ import org.slf4j.LoggerFactory
 import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 
 private val logger = LoggerFactory.getLogger("app.katty.core.KiloStore")
 
-// What of the end of a log is read: the line that names the session is written when the session is made, and the log goes on after it.
-private const val LOG_TAIL_BYTES = 256 * 1024L
+// How much of a log is read at once. A log is read forward from where it was read last: the line that names the session is written when the
+// session is made, and the log goes on after it for as long as the program runs.
+private const val LOG_CHUNK_BYTES = 256 * 1024
 
 private val DATABASE = Regex("(.*)/kilo(?:-[^/]+)?\\.db")
 private val LOG = Regex("(.*)/log/\\d{4}-\\d{2}-\\d{2}T\\d{6}\\.log")
@@ -33,27 +35,57 @@ internal class KiloStore {
         val database = openPaths.firstOrNull { DATABASE.matches(it) }?.let(Path::of) ?: defaultDatabase()
         val store = OpenCodeStore(database)
         val dataDirectory = database.parent?.toString()
+        forgetLogsThatAreGone()
         val logged = openPaths.filter { path -> LOG.matchEntire(path)?.groupValues?.get(1) == dataDirectory }
             .mapNotNull(::lastSession)
             .lastOrNull()
         return logged?.let(store::rootOf) ?: store.sessionFor(cwd, startedAtMs)
     }
 
-    // The last session that the log names, which is the one that was made last: the newest of a log that has one for each tab or `/new`.
+    // The last session that the log names, which is the one that was made last: the newest of a log that has one for each tab or `/new`. The log
+    // is read from where it was read the last time, whole lines at a time, and what it named is kept with that place.
     private fun lastSession(path: String): String? =
         try {
             RandomAccessFile(path, "r").use { file ->
-                val from = (file.length() - LOG_TAIL_BYTES).coerceAtLeast(0)
-                file.seek(from)
-                val bytes = ByteArray((file.length() - from).toInt()).also { file.readFully(it) }
-                SESSION.findAll(String(bytes, Charsets.UTF_8)).lastOrNull()?.groupValues?.get(1)
+                val length = file.length()
+                // A log that is shorter than what was read is another (or was emptied): it is read from its start.
+                val known = logs[path]?.takeIf { it.offset <= length }
+                var offset = known?.offset ?: 0L
+                var session = known?.session
+                val buffer = ByteArray(LOG_CHUNK_BYTES)
+                while (offset < length) {
+                    file.seek(offset)
+                    val read = file.read(buffer, 0, minOf(LOG_CHUNK_BYTES.toLong(), length - offset).toInt())
+                    if (read <= 0) break
+                    val end = (read - 1 downTo 0).firstOrNull { buffer[it] == '\n'.code.toByte() }
+                    if (end == null) {
+                        // A line longer than what is read at once names no session; the end of one that is still being written is read next time.
+                        if (read == LOG_CHUNK_BYTES) offset += read else break
+                        continue
+                    }
+                    SESSION.findAll(String(buffer, 0, end + 1, Charsets.UTF_8)).lastOrNull()?.let { session = it.groupValues[1] }
+                    offset += end + 1
+                }
+                logs[path] = LogRead(offset, session)
+                session
             }
         } catch (e: Exception) {
             logger.debug("Could not read {}", path, e)
             null
         }
 
+    // Where a log was read up to, and the session it had named by then.
+    private data class LogRead(val offset: Long, val session: String?)
+
     internal companion object {
+        // By the path of the log, which is named after the time its program started: one for each Kilo, for the whole application. The ones
+        // whose file is gone are let go.
+        private val logs = ConcurrentHashMap<String, LogRead>()
+
+        private fun forgetLogsThatAreGone() {
+            logs.keys.removeIf { !Files.exists(Path.of(it)) }
+        }
+
         fun defaultDatabase(): Path = Path.of(System.getProperty("user.home"), ".local", "share", "kilo", "kilo.db")
     }
 }

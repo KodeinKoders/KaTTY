@@ -58,6 +58,21 @@ class KiloStoreTest {
     }
 
     @Test
+    fun theSessionIsStillKnownWhenTheLogHasGrownLongPastItsLine() {
+        sessions {
+            session("ses_first", created = 1_000)
+            session("ses_second", created = 1_100)
+        }
+        val mine = log("2026-10-21T155909.log", other, named("ses_first"))
+        assertEquals("ses_first", KiloStore().sessionFor("/work", 0, listOf(database.toString(), mine)))
+
+        // A long session: the log goes on, and the line that named it is far behind.
+        Files.writeString(Path.of(mine), (other + "\n").repeat(5_000), java.nio.file.StandardOpenOption.APPEND)
+
+        assertEquals("ses_first", KiloStore().sessionFor("/work", 0, listOf(database.toString(), mine)))
+    }
+
+    @Test
     fun twoKilosOfOneDirectoryAreToldApartByTheirLogs() {
         sessions {
             session("ses_first", created = 1_000)
