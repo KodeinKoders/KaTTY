@@ -98,6 +98,20 @@ class SessionRegistryTest {
     }
 
     @Test
+    fun whatRanOverAShellThatEndedIsNotStartedAgain() {
+        // A program has the terminal (job control on, as in an interactive shell), and the shell ends right after it (as after `exec vim`).
+        script = "set -m; sleep 2"
+        store.addProject("/tmp")
+        sync()
+        val id = store.state.value.selection.terminal!!
+        awaitUntil("the program to be kept") { store.state.value.locate(id)?.terminal?.running != null }
+
+        awaitUntil("the terminal to end") { registry.handles.value[id]?.session?.exited?.value != null }
+
+        awaitUntil("what ran to be forgotten") { store.state.value.locate(id)?.terminal?.running == null }
+    }
+
+    @Test
     fun syncingAgainKeepsTheSessionsThatAreThere() {
         store.addProject("/tmp")
         sync()

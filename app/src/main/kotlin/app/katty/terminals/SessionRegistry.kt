@@ -219,6 +219,12 @@ class SessionRegistry(
                 val resumed = spec.running?.takeIf { it.agent != null }?.let { it.agent to it.agentSession }
                 var resumedPid = 0
                 while (isActive) {
+                    // The shell ended (after `exec vim`, the program was the shell): nothing runs over it any more, and nothing is to be started
+                    // again over it at the next launch. Quitting cancels this before it closes the sessions, which keeps what ran then.
+                    if (session.exited.value != null) {
+                        store.setRunning(spec.id, null)
+                        break
+                    }
                     val systemName = session.foregroundProcessName()
                     // A program that is a script has its interpreter's name (Aider is `Python`): the agent that it is says its own.
                     val command = if (systemName != null) withContext(Dispatchers.IO) { session.foregroundCommand() } else null
