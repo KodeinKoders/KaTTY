@@ -338,7 +338,6 @@ public class OmpUsageSource internal constructor(
 
     override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
         runner.run(listOf(executable.toString(), "stats", "-j"), directory, TIMEOUT_MS)?.takeIf { it.exitCode == 0 } ?: return@withContext null
-        if (!Files.exists(database)) return@withContext null
         val now = clock().atZone(zone)
         val today = now.toLocalDate().atStartOfDay(zone)
         val periods = listOf(
@@ -346,14 +345,10 @@ public class OmpUsageSource internal constructor(
             "7 days" to now.minusDays(7),
             "This month" to today.withDayOfMonth(1),
         )
-        val spend = try {
-            SqliteDatabase.open(database).use { db ->
-                periods.map { (label, since) ->
-                    UsageSpend(label, db.query("SELECT COALESCE(SUM(cost_total), 0) FROM messages WHERE timestamp >= ?", since.toInstant().toEpochMilli()) { it.double(0) ?: 0.0 }.first())
-                }
+        val spend = SqliteDatabase.read(database) { db ->
+            periods.map { (label, since) ->
+                UsageSpend(label, db.query("SELECT COALESCE(SUM(cost_total), 0) FROM messages WHERE timestamp >= ?", since.toInstant().toEpochMilli()) { it.double(0) ?: 0.0 }.first())
             }
-        } catch (e: Exception) {
-            null
         } ?: return@withContext null
         UsageReading(Agent.OMP, windows = emptyList(), spend = spend)
     }

@@ -7,11 +7,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
-
-private val logger = LoggerFactory.getLogger("app.katty.core.CrushStore")
 
 /**
  * What Crush keeps of its sessions, read from the SQLite database of the project it runs in (`<project>/.crush/crush.db`), **read-only**.
@@ -30,20 +27,14 @@ internal class CrushStore(private val projects: Path = defaultProjects()) {
      */
     fun sessionFor(cwd: String, startedAtMs: Long): String? {
         val database = dataDirectory(cwd).resolve("crush.db")
-        if (!Files.exists(database)) return null
         // Crush counts in seconds.
         val since = epochSeconds(startedAtMs)
-        return try {
-            SqliteDatabase.open(database).use { db ->
-                db.query(
-                    "SELECT id FROM sessions WHERE (parent_session_id IS NULL OR parent_session_id = '') AND message_count > 0 " +
-                        "AND (created_at >= ? OR updated_at >= ?) ORDER BY updated_at DESC LIMIT 1",
-                    since, since,
-                ) { it.text(0)!! }.firstOrNull()
-            }
-        } catch (e: Exception) {
-            logger.debug("Could not read {}", database, e)
-            null
+        return SqliteDatabase.read(database) { db ->
+            db.query(
+                "SELECT id FROM sessions WHERE (parent_session_id IS NULL OR parent_session_id = '') AND message_count > 0 " +
+                    "AND (created_at >= ? OR updated_at >= ?) ORDER BY updated_at DESC LIMIT 1",
+                since, since,
+            ) { it.text(0)!! }.firstOrNull()
         }
     }
 

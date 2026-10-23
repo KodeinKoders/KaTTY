@@ -7,7 +7,11 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.SymbolLookup
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
+import org.slf4j.LoggerFactory
+import java.nio.file.Files
 import java.nio.file.Path
+
+private val logger = LoggerFactory.getLogger("app.katty.core.sqlite.Sqlite")
 
 // The flags of sqlite3_open_v2.
 private const val SQLITE_OPEN_READONLY = 0x01
@@ -124,6 +128,21 @@ internal class SqliteDatabase private constructor(private val handle: MemorySegm
     }
 
     internal companion object {
+        /**
+         * What [block] reads from the database at [path], opened read-only: `null` when there is no file there, or when it cannot be read (it
+         * is another program's, which may be writing it, or of a version that has other tables), which is logged at the debug level. A wrong
+         * answer is never what a failure gives.
+         */
+        fun <T> read(path: Path, block: (SqliteDatabase) -> T?): T? {
+            if (!Files.exists(path)) return null
+            return try {
+                open(path).use(block)
+            } catch (e: Exception) {
+                logger.debug("Could not read {}", path, e)
+                null
+            }
+        }
+
         /**
          * Opens the database at [path], **read-only** unless [readOnly] is `false`, which creates it: that is for the tests.
          * @throws SqliteException when it cannot be opened, or the library cannot be loaded.

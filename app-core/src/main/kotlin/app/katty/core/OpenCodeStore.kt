@@ -3,11 +3,7 @@ package app.katty.core
 import app.katty.core.sqlite.SqliteDatabase
 import app.katty.core.sqlite.SqliteException
 import app.katty.core.sqlite.SqliteRow
-import org.slf4j.LoggerFactory
-import java.nio.file.Files
 import java.nio.file.Path
-
-private val logger = LoggerFactory.getLogger("app.katty.core.OpenCodeStore")
 
 /**
  * What OpenCode keeps of its sessions, read from its SQLite database (`~/.local/share/opencode/opencode.db`), **read-only**. OpenCode 1.x
@@ -153,15 +149,7 @@ internal class OpenCodeStore(
         if (e.message?.contains("no such table") == true) emptyList() else throw e
     }
 
-    private fun <T> read(block: SqliteDatabase.() -> T?): T? {
-        if (!Files.exists(database)) return null
-        return try {
-            SqliteDatabase.open(database).use { it.block() }
-        } catch (e: Exception) {
-            logger.debug("Could not read {}", database, e)
-            null
-        }
-    }
+    private fun <T> read(block: SqliteDatabase.() -> T?): T? = SqliteDatabase.read(database) { it.block() }
 
     private fun hashed(reported: String): String? = Regex("ses_([0-9a-f]{16})").matchEntire(reported)?.groupValues?.get(1)
 

@@ -1,11 +1,8 @@
 package app.katty.core
 
 import app.katty.core.sqlite.SqliteDatabase
-import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
-
-private val logger = LoggerFactory.getLogger("app.katty.core.ClineStore")
 
 // A client registers with the hub a moment after its process started, and the process's start time is read from the system: no more than this
 // before is the same program.
@@ -34,21 +31,15 @@ internal class ClineStore(private val directory: Path = defaultDirectory()) {
      * since the process started. The session has to have its messages (the file that `--id` loads).
      */
     fun sessionFor(cwd: String, startedAtMs: Long, pids: List<Int> = emptyList()): String? {
-        if (!Files.exists(sessions)) return null
-        return try {
-            SqliteDatabase.open(sessions).use { db ->
-                val hubs = if (pids.isEmpty()) emptyList() else hubDatabases()
-                val clients = hubs.mapNotNull { hub -> clientOf(hub, pids, startedAtMs)?.let { hub to it } }
-                if (clients.isEmpty()) {
-                    byDirectory(db, cwd, startedAtMs)
-                } else {
-                    val (hub, client) = clients.first()
-                    lastSessionOf(hub, client.id, client.registeredAtMs)?.takeIf { hasMessages(db, it) }
-                }
+        return SqliteDatabase.read(sessions) { db ->
+            val hubs = if (pids.isEmpty()) emptyList() else hubDatabases()
+            val clients = hubs.mapNotNull { hub -> clientOf(hub, pids, startedAtMs)?.let { hub to it } }
+            if (clients.isEmpty()) {
+                byDirectory(db, cwd, startedAtMs)
+            } else {
+                val (hub, client) = clients.first()
+                lastSessionOf(hub, client.id, client.registeredAtMs)?.takeIf { hasMessages(db, it) }
             }
-        } catch (e: Exception) {
-            logger.debug("Could not read {}", sessions, e)
-            null
         }
     }
 
@@ -59,18 +50,13 @@ internal class ClineStore(private val directory: Path = defaultDirectory()) {
 
     // The client of the newest registration of one of [pids] since the process started.
     private fun clientOf(hub: Path, pids: List<Int>, startedAtMs: Long): Client? =
-        try {
-            SqliteDatabase.open(hub).use { db ->
-                db.query(
-                    "SELECT json_extract(envelope_json, '$.payload.clientId'), created_at FROM hub_events WHERE event = 'hub.client.registered' " +
-                        "AND created_at >= ? AND json_extract(envelope_json, '$.payload.metadata.pid') IN (${pids.joinToString { "?" }}) " +
-                        "ORDER BY sequence DESC LIMIT 1",
-                    startedAtMs - REGISTRATION_MARGIN_MS, *pids.toTypedArray(),
-                ) { Client(it.text(0)!!, it.long(1)!!) }.firstOrNull()
-            }
-        } catch (e: Exception) {
-            logger.debug("Could not read {}", hub, e)
-            null
+        SqliteDatabase.read(hub) { db ->
+            db.query(
+                "SELECT json_extract(envelope_json, '$.payload.clientId'), created_at FROM hub_events WHERE event = 'hub.client.registered' " +
+                    "AND created_at >= ? AND json_extract(envelope_json, '$.payload.metadata.pid') IN (${pids.joinToString { "?" }}) " +
+                    "ORDER BY sequence DESC LIMIT 1",
+                startedAtMs - REGISTRATION_MARGIN_MS, *pids.toTypedArray(),
+            ) { Client(it.text(0)!!, it.long(1)!!) }.firstOrNull()
         }
 
     private fun lastSessionOf(hub: Path, client: String, sinceMs: Long): String? =
