@@ -456,10 +456,14 @@ private fun DrawScope.drawPreedit(frame: TerminalFrame, typography: TerminalTypo
 
 private fun DrawScope.drawCursor(frame: TerminalFrame, typography: TerminalTypography, focused: Boolean, rows: List<PreparedRow>, textShown: Boolean) {
     val cursor = frame.cursor
-    val col = cursor.x ?: return
+    val x = cursor.x ?: return
     val y = cursor.y ?: return
     if (!cursor.visible || y !in frame.rows.indices) return
 
+    // On the right half of a wide character (after a backspace), it is drawn over the whole character, as Ghostty does.
+    val onTail = x > 0 && frame.rows[y].cells.getOrNull(x)?.width == TerminalCellWidth.SPACER_TAIL &&
+        frame.rows[y].cells.getOrNull(x - 1)?.width == TerminalCellWidth.WIDE
+    val col = if (onTail) x - 1 else x
     val cell = frame.rows[y].cells.getOrNull(col)
     val cols = if (cell?.width == TerminalCellWidth.WIDE) 2 else 1
     val color = (frame.cursorColor ?: frame.foreground).rgb.toColor()

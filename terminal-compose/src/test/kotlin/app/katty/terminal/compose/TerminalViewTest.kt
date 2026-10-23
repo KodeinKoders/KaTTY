@@ -660,6 +660,22 @@ class TerminalViewTest {
     }
 
     @Test
+    fun aCursorOnTheRightHalfOfAWideCharacterCoversTheWholeCharacter() {
+        // A backspace after a wide character leaves the cursor on its right half: it is drawn over both, as Ghostty does.
+        val frame = frame(
+            30,
+            listOf(row(30, cell("界", width = TerminalCellWidth.WIDE), cell(width = TerminalCellWidth.SPACER_TAIL))),
+            steadyCursor(1),
+        )
+
+        val rendered = render("cursor-wide-tail", frame)
+
+        // The corner of the left half, where the glyph has no ink.
+        assertEquals(FOREGROUND.rgb, rendered.pixel(1, 1), "The left half of the character is not under the cursor")
+        assertEquals(FOREGROUND.rgb, rendered.pixel(kotlin.math.round(2 * rendered.typography.cellWidth).toInt() - 2, 1))
+    }
+
+    @Test
     fun boldTextThatHasTheDefaultForegroundIsDrawnInTheBoldColor() {
         val bold = TerminalStyle(bold = true)
         val frame = frame(30, listOf(row(30, *text("████", style = bold), *text("████", foreground = RED, style = bold)))).copy(boldColor = GREEN)
