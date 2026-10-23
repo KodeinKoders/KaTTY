@@ -171,9 +171,14 @@ public data class KattyState(
      */
     public fun normalized(): KattyState {
         val project = selectedProject ?: projects.firstOrNull()
-        val workspace = project?.workspaces?.firstOrNull { it.id == selection.workspace } ?: project?.workspaces?.firstOrNull()
+        // The workspace that is selected, else the one that the project had selected last, else its first one.
+        val workspace = project?.workspaces?.let { workspaces ->
+            workspaces.firstOrNull { it.id == selection.workspace } ?: workspaces.firstOrNull { it.id == project.lastWorkspace } ?: workspaces.firstOrNull()
+        }
         val terminals = workspace?.layout?.terminals().orEmpty()
-        val terminal = terminals.firstOrNull { it.id == selection.terminal } ?: terminals.firstOrNull()
+        // The terminal that is selected, else the one that had the focus last in the workspace.
+        val terminal = terminals.firstOrNull { it.id == selection.terminal } ?: workspace?.terminalToFocus()?.let { id -> terminals.firstOrNull { it.id == id } }
+            ?: terminals.firstOrNull()
         val maximized = selection.maximized?.takeIf { id -> terminals.any { it.id == id } }
         val normalized = Selection(project?.id, workspace?.id, terminal?.id, maximized)
         val result = if (normalized == selection) this else copy(selection = normalized)

@@ -532,6 +532,35 @@ class KattyStoreTest {
         assertNotEquals(0, ids.size)
         assertNotNull(state.locate(state.selection.terminal!!))
     }
+
+    @Test
+    fun removingTheSelectedProjectOpensTheNextOneAtTheWorkspaceItHadLast() {
+        val first = addProject("/a")
+        val second = addProject("/b")
+        val last = store.addWorkspace(second)!!
+        store.selectProject(first)
+
+        store.removeProject(first)
+
+        assertEquals(second, state.selection.project)
+        assertEquals(last, state.selection.workspace, "Not the first workspace of the project")
+        assertEquals(last, state.projects.single().lastWorkspace)
+    }
+
+    @Test
+    fun closingTheSelectedWorkspaceGivesTheNextOneTheTerminalThatHadTheFocusInIt() {
+        val project = addProject("/a")
+        val closed = state.selection.workspace!!
+        store.addWorkspace(project)
+        val first = state.selection.terminal!!
+        val second = store.split(first, SplitDirection.ROW)!!
+        store.focus(second)
+        store.selectWorkspace(closed)
+
+        store.closeWorkspace(closed)
+
+        assertEquals(second, state.selection.terminal, "Not the first terminal of the workspace")
+    }
 }
 
 class UiScaleTest {

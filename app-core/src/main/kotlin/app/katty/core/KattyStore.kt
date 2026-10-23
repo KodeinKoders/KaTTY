@@ -147,7 +147,7 @@ public class KattyStore(
             if (state.selection.workspace != id) return@edit state.copy(projects = projects)
             // What was selected after it, else before it, in the same project.
             val next = remaining.getOrNull(index) ?: remaining.getOrNull(index - 1)
-            state.copy(projects = projects, selection = Selection(project.id, next?.id, next?.layout?.terminals()?.firstOrNull()?.id))
+            state.copy(projects = projects, selection = Selection(project.id, next?.id, next?.terminalToFocus()))
         }
     }
 

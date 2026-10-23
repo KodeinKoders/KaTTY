@@ -193,7 +193,9 @@ class StateFileTest {
         val loaded = file.load()
 
         assertEquals(state.projects.first().id, loaded.selection.project)
-        assertEquals(state.projects.first().workspaces.first().id, loaded.selection.workspace)
+        // The workspace that the project had selected last, as when it is selected again.
+        val project = state.projects.first()
+        assertEquals(project.lastWorkspace ?: project.workspaces.first().id, loaded.selection.workspace)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
