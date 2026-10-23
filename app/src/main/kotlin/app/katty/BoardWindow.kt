@@ -41,8 +41,12 @@ import app.katty.terminals.TerminalHandle
 import app.katty.ui.Katty
 import app.katty.ui.OneLine
 import app.katty.ui.UiScale
+import kotlinx.coroutines.delay
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.TitleBar
+
+/** How long after it opened at launch the board window hands the focus it is given back to the main window. */
+private const val LAUNCH_FOCUS_WINDOW_MS = 2_000L
 
 /** The size of the board window the first time it is opened. */
 internal const val BOARD_WINDOW_WIDTH = 1100f
@@ -104,9 +108,10 @@ fun BoardWindow(
     ) {
         LaunchedEffect(focusTick) { if (focusTick > 0) window.toFront() }
         // A window that opens takes the focus. At launch the main window is the one that is meant to have it: when this one is given it, once,
-        // it is handed back. If it is never given it (the system did not), nothing is done.
+        // it is handed back, if that is in the moments after it opened. The system may not give it at all, and a focus that comes later is the
+        // user's click on this window, which must not bring the main one in front.
         if (restoredAtLaunch) {
-            DisposableEffect(window) {
+            LaunchedEffect(window) {
                 val listener = object : java.awt.event.WindowAdapter() {
                     override fun windowGainedFocus(event: java.awt.event.WindowEvent) {
                         window.removeWindowFocusListener(this)
@@ -114,7 +119,11 @@ fun BoardWindow(
                     }
                 }
                 window.addWindowFocusListener(listener)
-                onDispose { window.removeWindowFocusListener(listener) }
+                try {
+                    delay(LAUNCH_FOCUS_WINDOW_MS)
+                } finally {
+                    window.removeWindowFocusListener(listener)
+                }
             }
         }
         UiScale(state.settings.effectiveUiScale) {
