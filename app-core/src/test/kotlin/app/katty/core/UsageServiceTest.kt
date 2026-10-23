@@ -12,6 +12,7 @@ import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
@@ -159,6 +160,26 @@ class UsageServiceTest {
     @Test
     fun aProgramThatTakesTooLongIsEnded() {
         assertNull(ProcessCommandRunner.run(listOf("/bin/sleep", "30"), directory, 300))
+    }
+
+    @Test
+    fun theProgramsThatAProgramThatTakesTooLongStartedAreEndedWithIt() {
+        val pidFile = directory.resolve("child.pid")
+
+        assertNull(ProcessCommandRunner.run(listOf("/bin/sh", "-c", "sleep 60 & echo \$! > '$pidFile'; sleep 60"), directory, 500))
+
+        val child = ProcessHandle.of(java.nio.file.Files.readString(pidFile).trim().toLong())
+        val deadline = System.nanoTime() + 2_000_000_000
+        while (child.map { it.isAlive }.orElse(false) && System.nanoTime() < deadline) Thread.sleep(20)
+        assertFalse(child.map { it.isAlive }.orElse(false), "The program it started was left running")
+    }
+
+    @Test
+    fun whatAProgramPrintedIsReadEvenWhenAProgramItStartedKeepsTheOutputOpen() {
+        // An MCP server or a helper that goes on in the background, with the output of the command.
+        val result = ProcessCommandRunner.run(listOf("/bin/sh", "-c", "sleep 5 & echo hello"), directory, 3_000)
+
+        assertEquals("hello", result?.output?.trim())
     }
 
     @Test

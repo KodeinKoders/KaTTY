@@ -46,7 +46,10 @@ public fun interface CommandRunner {
     public fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult?
 }
 
-/** Runs the real programs: with nothing on their input, in [directory], and killed when they take longer than they are allowed. */
+/**
+ * Runs the real programs: with nothing on their input, in [directory], and killed when they take longer than they are allowed, with what they
+ * started (an MCP server, a helper), which would otherwise go on with nobody to end it.
+ */
 public object ProcessCommandRunner : CommandRunner {
     override fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult? =
         try {
@@ -55,20 +58,37 @@ public object ProcessCommandRunner : CommandRunner {
                 .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()
-            // Read on another thread, or a program that prints a lot would block before the wait.
-            val output = java.util.concurrent.atomic.AtomicReference("")
-            val collect = Thread { output.set(process.inputStream.readBytes().decodeToString()) }.also { it.isDaemon = true; it.start() }
+            // Read on another thread, or a program that prints a lot would block before the wait. What is read is kept as it comes: a program
+            // that it started may keep the output open after it ended, and what it printed is the reading.
+            val output = java.io.ByteArrayOutputStream()
+            val collect = Thread {
+                val chunk = ByteArray(8192)
+                process.inputStream.use { input ->
+                    while (true) {
+                        val read = input.read(chunk)
+                        if (read < 0) break
+                        synchronized(output) { output.write(chunk, 0, read) }
+                    }
+                }
+            }.also { it.isDaemon = true; it.start() }
             if (process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
-                collect.join(2_000)
-                CommandResult(process.exitValue(), output.get())
+                collect.join(OUTPUT_GRACE_MS)
+                if (collect.isAlive) logger.debug("A program that {} started keeps its output open: taking what it printed", command.first())
+                CommandResult(process.exitValue(), synchronized(output) { output.toString(Charsets.UTF_8) })
             } else {
+                // Taken while it runs: once it is gone, what it started belongs to the system and cannot be found from it.
+                val started = process.descendants().toList()
                 process.destroyForcibly()
+                started.forEach { it.destroyForcibly() }
                 null
             }
         } catch (e: Exception) {
             logger.debug("Could not run {}", command, e)
             null
         }
+
+    // How long the output is waited for once the program ended: what it printed is there by then, unless something it started holds it.
+    private const val OUTPUT_GRACE_MS = 500L
 }
 
 /** `claude -p /usage`: Claude Code prints its usage without a turn, as text. */
