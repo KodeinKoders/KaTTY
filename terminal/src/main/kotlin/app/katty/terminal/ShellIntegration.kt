@@ -93,11 +93,10 @@ internal object ShellIntegration {
      */
     fun apply(command: List<String>, environment: MutableMap<String, String>, directory: Path? = null): Applied {
         val untouched = Applied(command, installed = false)
-        val program = command.firstOrNull() ?: return untouched
-        val arguments = command.drop(1)
         // A login shell, which is what a terminal starts: anything else is a command or a script that must run as it is.
-        if (!arguments.all { it == "-l" || it == "--login" || it == "-i" }) return untouched
-        val shell = File(program).name.removePrefix("-")
+        val shell = shellOf(command) ?: return untouched
+        val program = command.first()
+        val arguments = command.drop(1)
         return when (shell) {
             "zsh" -> {
                 val root = root(directory) ?: return untouched

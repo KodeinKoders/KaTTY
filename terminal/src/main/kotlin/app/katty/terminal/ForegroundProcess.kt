@@ -3,7 +3,6 @@ package app.katty.terminal
 import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
 
@@ -15,21 +14,13 @@ private var warned = false
 // `pid_t tcgetpgrp(int fd)`: the process group that has the pty, which is the one of the program that the shell is waiting for. A shell with
 // job control gives each command a group of its own, so the group's id is the pid of the command.
 private val tcgetpgrp: MethodHandle by lazy {
-    val linker = Linker.nativeLinker()
-    linker.downcallHandle(
-        linker.defaultLookup().find("tcgetpgrp").orElseThrow(),
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
-    )
+    libc("tcgetpgrp", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT))
 }
 
 // `int proc_name(int pid, void *buffer, uint32_t size)`, of libproc (macOS): the name that the kernel keeps of a process, which is the name
 // of its program (`emacs`, `zsh`, `sleep`), with no path and no arguments.
 private val procName: MethodHandle by lazy {
-    val linker = Linker.nativeLinker()
-    linker.downcallHandle(
-        linker.defaultLookup().find("proc_name").orElseThrow(),
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT),
-    )
+    libc("proc_name", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT))
 }
 
 private const val NAME_BUFFER_BYTES = 256

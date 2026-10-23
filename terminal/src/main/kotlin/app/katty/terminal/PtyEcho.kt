@@ -3,7 +3,6 @@ package app.katty.terminal
 import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
 
@@ -21,11 +20,7 @@ private const val ICANON = 0x100L
 private var warned = false
 
 private val tcgetattr: MethodHandle by lazy {
-    val linker = Linker.nativeLinker()
-    linker.downcallHandle(
-        linker.defaultLookup().find("tcgetattr").orElseThrow(),
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
-    )
+    libc("tcgetattr", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS))
 }
 
 /**

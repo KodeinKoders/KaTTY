@@ -3,7 +3,6 @@ package app.katty.terminal
 import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
@@ -13,22 +12,10 @@ private val logger = LoggerFactory.getLogger("app.katty.terminal.OpenFiles")
 @Volatile
 private var warned = false
 
-private val linker = Linker.nativeLinker()
-
-// `int proc_pidinfo(int pid, int flavor, uint64_t arg, void *buffer, int buffersize)`
-private val procPidInfo: MethodHandle by lazy {
-    linker.downcallHandle(
-        linker.defaultLookup().find("proc_pidinfo").orElseThrow(),
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-        ),
-    )
-}
-
 // `int proc_pidfdinfo(int pid, int fd, int flavor, void *buffer, int buffersize)`
 private val procPidFdInfo: MethodHandle by lazy {
-    linker.downcallHandle(
-        linker.defaultLookup().find("proc_pidfdinfo").orElseThrow(),
+    libc(
+        "proc_pidfdinfo",
         FunctionDescriptor.of(
             ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
         ),

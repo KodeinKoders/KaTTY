@@ -2,10 +2,8 @@ package app.katty.terminal
 
 import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
-import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.Linker
 import java.lang.foreign.ValueLayout
-import java.lang.invoke.MethodHandle
 
 private val logger = LoggerFactory.getLogger("app.katty.terminal.PtyWindowSize")
 
@@ -18,22 +16,6 @@ private const val MAX_UNSIGNED_SHORT = 0xFFFF
 // A drag of the window resizes it many times: once is enough to say that it does not work.
 @Volatile
 private var warned = false
-
-private val captureErrno = Linker.Option.captureCallState("errno")
-private val errnoOffset = Linker.Option.captureStateLayout()
-    .byteOffset(java.lang.foreign.MemoryLayout.PathElement.groupElement("errno"))
-
-// `int ioctl(int fd, unsigned long request, ...)`: the pointer to the size is the first variadic argument, and
-// on Apple Silicon variadic arguments are not passed as the fixed ones are.
-private val ioctl: MethodHandle by lazy {
-    val linker = Linker.nativeLinker()
-    linker.downcallHandle(
-        linker.defaultLookup().find("ioctl").orElseThrow(),
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS),
-        Linker.Option.firstVariadicArg(2),
-        captureErrno,
-    )
-}
 
 /**
  * Sets the window size of the pty whose master is [fd], in cells and in pixels, and returns whether it worked.

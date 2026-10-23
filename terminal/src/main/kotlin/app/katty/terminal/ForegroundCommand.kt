@@ -3,7 +3,6 @@ package app.katty.terminal
 import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
@@ -39,11 +38,6 @@ public data class ForegroundCommand(
     val tty: String? = null,
 )
 
-private val linker = Linker.nativeLinker()
-
-private fun libc(name: String, descriptor: FunctionDescriptor): MethodHandle =
-    linker.downcallHandle(linker.defaultLookup().find(name).orElseThrow(), descriptor)
-
 // `int sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen)`
 private val sysctl: MethodHandle by lazy {
     libc(
@@ -51,16 +45,6 @@ private val sysctl: MethodHandle by lazy {
         FunctionDescriptor.of(
             ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
             ValueLayout.JAVA_LONG,
-        ),
-    )
-}
-
-// `int proc_pidinfo(int pid, int flavor, uint64_t arg, void *buffer, int buffersize)`
-private val procPidInfo: MethodHandle by lazy {
-    libc(
-        "proc_pidinfo",
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
         ),
     )
 }

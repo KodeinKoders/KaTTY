@@ -2,7 +2,6 @@ package app.katty.terminal
 
 import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
 
@@ -10,11 +9,7 @@ private const val NAME_BYTES = 256L
 
 // `int gethostname(char *name, size_t namelen)`.
 private val gethostname: MethodHandle by lazy {
-    val linker = Linker.nativeLinker()
-    linker.downcallHandle(
-        linker.defaultLookup().find("gethostname").orElseThrow(),
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG),
-    )
+    libc("gethostname", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG))
 }
 
 // Asked once: it is what the shells of this machine put in the address of their directory (`$HOST`, `$HOSTNAME`, `hostname`).
