@@ -45,6 +45,18 @@ class GhosttyTerminalEffectsTest {
     }
 
     @Test
+    fun aWriteThatIsLargerThanItsBufferIsReadAsOneStream() {
+        terminal.vtWrite("small")
+        // The sequence that sets the title is cut at 64 KiB, where the write is copied in two pieces.
+        val text = "x".repeat(64 * 1024 - 4) + "$esc]2;the title$bel" + "y".repeat(100_000) + "\r\nend"
+
+        terminal.vtWrite(text.toByteArray(), 0, text.length)
+
+        assertEquals("the title", terminal.title)
+        assertTrue(terminal.allText().trimEnd().endsWith("end"), "The text after the pieces is there")
+    }
+
+    @Test
     fun reportsTheWorkingDirectoryAsTheShellSentIt() {
         terminal.onPwdChanged = { log += "pwd" }
         assertEquals("", terminal.pwd)

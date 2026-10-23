@@ -59,6 +59,12 @@ import java.util.Objects
 
 private val logger = LoggerFactory.getLogger(GhosttyTerminal::class.java)
 
+// The memory that a getter answers in: the largest of their structs (the scrollbar's) is 24 bytes.
+private const val SCRATCH_BYTES = 64L
+
+// How much of a write is copied at once: a read of the PTY is smaller, an image translated for the Kitty protocol is written in pieces.
+private const val WRITE_BUFFER_BYTES = 64L * 1024
+
 /**
  * A virtual terminal: it consumes the bytes a program writes, and maintains the screen, the cursor,
  * the scrollback and the modes that result.
@@ -101,8 +107,21 @@ public class GhosttyTerminal private constructor(
 
     internal val handle: MemorySegment
 
-    // Holds the upcall stubs: native code calls them for as long as the terminal lives.
+    // Holds the upcall stubs: native code calls them for as long as the terminal lives. And the memory that the calls reuse, which goes
+    // with it.
     private val callbacks = Arena.ofShared()
+
+    // What a getter is answered in, instead of an arena of its own for each call: the terminal is not thread-safe, so its calls never
+    // overlap, and a getter that a callback calls during a write does not use the write's buffer. Zeroed for each use.
+    private val scratch = callbacks.allocate(SCRATCH_BYTES, 8)
+
+    private fun scratch(bytes: Long): MemorySegment {
+        check(bytes <= SCRATCH_BYTES) { "$bytes bytes do not fit in the scratch memory" }
+        return scratch.asSlice(0, bytes).fill(0)
+    }
+
+    // What a write is copied to: a piece that is bigger is written in pieces of this size, which the parser reads as one stream.
+    private val writeBuffer = callbacks.allocate(WRITE_BUFFER_BYTES)
 
     private var closed = false
 
@@ -341,8 +360,8 @@ public class GhosttyTerminal private constructor(
     internal val kittyKeyboardFlags: Int
         get() {
             requireOpen()
-            return Arena.ofConfined().use { arena ->
-                val out = arena.allocate(ValueLayout.JAVA_BYTE)
+            return run {
+                val out = scratch(ValueLayout.JAVA_BYTE.byteSize())
                 checkResult(
                     GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_KITTY_KEYBOARD_FLAGS(), out),
                     "ghostty_terminal_get(KITTY_KEYBOARD_FLAGS)",
@@ -381,8 +400,8 @@ public class GhosttyTerminal private constructor(
     public val scrollbar: GhosttyScrollbar
         get() {
             requireOpen()
-            return Arena.ofConfined().use { arena ->
-                val out = arena.allocate(GhosttyTerminalScrollbar.layout())
+            return run {
+                val out = scratch(GhosttyTerminalScrollbar.layout().byteSize())
                 checkResult(
                     GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_SCROLLBAR(), out),
                     "ghostty_terminal_get(SCROLLBAR)",
@@ -399,8 +418,8 @@ public class GhosttyTerminal private constructor(
     public val activeScreen: GhosttyScreen
         get() {
             requireOpen()
-            return Arena.ofConfined().use { arena ->
-                val out = arena.allocate(ValueLayout.JAVA_INT)
+            return run {
+                val out = scratch(ValueLayout.JAVA_INT.byteSize())
                 checkResult(
                     GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN(), out),
                     "ghostty_terminal_get(ACTIVE_SCREEN)",
@@ -413,10 +432,10 @@ public class GhosttyTerminal private constructor(
     // changes the terminal. `null` when the protocol is off.
     private fun kittyGraphics(): MemorySegment? {
         requireOpen()
-        return Arena.ofConfined().use { arena ->
-            val out = arena.allocate(ValueLayout.ADDRESS)
+        return run {
+            val out = scratch(ValueLayout.ADDRESS.byteSize())
             val result = GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS(), out)
-            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use null
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@run null
             checkResult(result, "ghostty_terminal_get(KITTY_GRAPHICS)")
             out.get(ValueLayout.ADDRESS, 0).takeIf { it != MemorySegment.NULL }
         }
@@ -429,10 +448,10 @@ public class GhosttyTerminal private constructor(
     public val kittyGeneration: Long
         get() {
             val graphics = kittyGraphics() ?: return 0
-            return Arena.ofConfined().use { arena ->
-                val out = arena.allocate(ValueLayout.JAVA_LONG)
+            return run {
+                val out = scratch(ValueLayout.JAVA_LONG.byteSize())
                 val result = GhosttyVt.ghostty_kitty_graphics_get(graphics, GhosttyVt.GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION(), out)
-                if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use 0L
+                if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@run 0L
                 checkResult(result, "ghostty_kitty_graphics_get(GENERATION)")
                 out.get(ValueLayout.JAVA_LONG, 0)
             }
@@ -572,8 +591,8 @@ public class GhosttyTerminal private constructor(
     public val mouseTracking: Boolean
         get() {
             requireOpen()
-            return Arena.ofConfined().use { arena ->
-                val out = arena.allocate(ValueLayout.JAVA_BOOLEAN)
+            return run {
+                val out = scratch(ValueLayout.JAVA_BOOLEAN.byteSize())
                 checkResult(
                     GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING(), out),
                     "ghostty_terminal_get(MOUSE_TRACKING)",
@@ -586,8 +605,8 @@ public class GhosttyTerminal private constructor(
     public val mouseShape: GhosttyMouseShape
         get() {
             requireOpen()
-            return Arena.ofConfined().use { arena ->
-                val out = arena.allocate(ValueLayout.JAVA_INT)
+            return run {
+                val out = scratch(ValueLayout.JAVA_INT.byteSize())
                 checkResult(
                     GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_MOUSE_SHAPE(), out),
                     "ghostty_terminal_get(MOUSE_SHAPE)",
@@ -693,8 +712,8 @@ public class GhosttyTerminal private constructor(
     public val totalRows: Long
         get() {
             requireOpen()
-            return Arena.ofConfined().use { arena ->
-                val out = arena.allocate(ValueLayout.JAVA_LONG)
+            return run {
+                val out = scratch(ValueLayout.JAVA_LONG.byteSize())
                 checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_TOTAL_ROWS(), out), "ghostty_terminal_get(TOTAL_ROWS)")
                 out.get(ValueLayout.JAVA_LONG, 0)
             }
@@ -882,8 +901,8 @@ public class GhosttyTerminal private constructor(
      */
     public fun compressionActivity(): Long {
         requireOpen()
-        return Arena.ofConfined().use { arena ->
-            val out = arena.allocate(ValueLayout.JAVA_LONG)
+        return run {
+            val out = scratch(ValueLayout.JAVA_LONG.byteSize())
             checkResult(GhosttyVt.ghostty_terminal_compression_activity(handle, out), "ghostty_terminal_compression_activity")
             out.get(ValueLayout.JAVA_LONG, 0)
         }
@@ -895,8 +914,8 @@ public class GhosttyTerminal private constructor(
      */
     public fun compress(mode: GhosttyCompressionMode): GhosttyCompressionResult {
         requireOpen()
-        return Arena.ofConfined().use { arena ->
-            val out = arena.allocate(ValueLayout.JAVA_INT)
+        return run {
+            val out = scratch(ValueLayout.JAVA_INT.byteSize())
             val native = when (mode) {
                 GhosttyCompressionMode.INCREMENTAL -> GhosttyVt.GHOSTTY_TERMINAL_COMPRESSION_MODE_INCREMENTAL()
                 GhosttyCompressionMode.FULL -> GhosttyVt.GHOSTTY_TERMINAL_COMPRESSION_MODE_FULL()
@@ -1005,8 +1024,8 @@ public class GhosttyTerminal private constructor(
 
     private fun readString(data: Int, name: String): String {
         requireOpen()
-        return Arena.ofConfined().use { arena ->
-            val out = arena.allocate(GhosttyString.layout())
+        return run {
+            val out = scratch(GhosttyString.layout().byteSize())
             checkResult(GhosttyVt.ghostty_terminal_get(handle, data, out), "ghostty_terminal_get($name)")
             copyString(out)
         }
@@ -1465,8 +1484,8 @@ public class GhosttyTerminal private constructor(
 
     public fun isModeEnabled(mode: GhosttyMode): Boolean {
         requireOpen()
-        return Arena.ofConfined().use { arena ->
-            val config = arena.allocate(GhosttyTerminalModeConfig.layout())
+        return run {
+            val config = scratch(GhosttyTerminalModeConfig.layout().byteSize())
             GhosttyTerminalModeConfig.mode(config, mode.packed)
             checkResult(
                 GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_MODE(), config),
@@ -1534,11 +1553,12 @@ public class GhosttyTerminal private constructor(
     public fun vtWrite(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size - offset) {
         Objects.checkFromIndexSize(offset, length, bytes.size)
         requireOpen()
-        if (length == 0) return
-        Arena.ofConfined().use { arena ->
-            val native = arena.allocate(length.toLong())
-            MemorySegment.copy(bytes, offset, native, ValueLayout.JAVA_BYTE, 0, length)
-            GhosttyVt.ghostty_terminal_vt_write(handle, native, length.toLong())
+        var written = 0
+        while (written < length) {
+            val piece = minOf(length - written, WRITE_BUFFER_BYTES.toInt())
+            MemorySegment.copy(bytes, offset + written, writeBuffer, ValueLayout.JAVA_BYTE, 0, piece)
+            GhosttyVt.ghostty_terminal_vt_write(handle, writeBuffer, piece.toLong())
+            written += piece
         }
     }
 
@@ -1585,8 +1605,8 @@ public class GhosttyTerminal private constructor(
 
     private fun getUInt16(data: Int): Int {
         requireOpen()
-        return Arena.ofConfined().use { arena ->
-            val out = arena.allocate(ValueLayout.JAVA_SHORT)
+        return run {
+            val out = scratch(ValueLayout.JAVA_SHORT.byteSize())
             checkResult(GhosttyVt.ghostty_terminal_get(handle, data, out), "ghostty_terminal_get")
             out.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF
         }
