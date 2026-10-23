@@ -731,12 +731,11 @@ fun DecoratedWindowScope.KattyWindowContent(
             )
         }
         if (paletteOpen) {
+            // Whether something is selected is asked when the palette opens, once: that is when there is a choice to make, and asking takes the lock
+            // of the terminal that its output is written under.
+            val hasSelection = remember { selectedSession()?.selectedText() != null }
             val commands = remember(state, infos, handles, vertical, shortcutMap) {
-                // Whether something is selected is asked when the palette opens: that is when there is a choice to make.
-                paletteCommands(
-                    state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers, vertical = vertical,
-                    hasSelection = selectedSession()?.selectedText() != null,
-                )
+                paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers, vertical = vertical, hasSelection = hasSelection)
             }
             CommandPalette(commands.entries, onRun = { entry -> paletteOpen = false; commands.run(entry) }, onDismiss = { paletteOpen = false })
         }

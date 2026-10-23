@@ -2,6 +2,8 @@
 
 package app.katty.screens
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasSetTextAction
@@ -104,6 +106,22 @@ class CommandPaletteTest {
         onNode(hasSetTextAction()).performKeyInput { pressKey(Key.Enter) }
 
         assertEquals(listOf("w1", "t1", "w2"), ran)
+    }
+
+    @Test
+    fun enterDoesWhatWasSelectedEvenWhenTheListChangedMeanwhile() = runComposeUiTest {
+        val ran = mutableListOf<String>()
+        var shown by androidx.compose.runtime.mutableStateOf(entries)
+        setContent { KattyTheme(false) { CommandPalette(shown, onRun = { ran += it.id }, onDismiss = {}) } }
+        onNode(hasSetTextAction()).performKeyInput { pressKey(Key.DirectionDown) }
+        val highlighted = app.katty.core.searchPalette(entries, "")[1].entry.id
+
+        // A terminal is added while the palette is open (an agent reported, a shell started): the rows below it move down.
+        shown = listOf(PaletteEntry("w0", PaletteGroup.WORKSPACES, "a new workspace")) + entries
+        waitForIdle()
+        onNode(hasSetTextAction()).performKeyInput { pressKey(Key.Enter) }
+
+        assertEquals(listOf(highlighted), ran)
     }
 
     @Test

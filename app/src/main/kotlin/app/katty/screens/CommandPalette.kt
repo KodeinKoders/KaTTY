@@ -112,9 +112,13 @@ fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, o
     var text by remember { mutableStateOf("") }
     LaunchedEffect(query) { snapshotFlow { query.text.toString() }.collect { text = it } }
     val matches = remember(entries, text) { searchPalette(entries, text) }
-    var selected by remember { mutableStateOf(0) }
+    // The entry that is selected, by its id: the list may change while the palette is open (a terminal starts, an agent reports), and what is
+    // highlighted is what Enter does. The first match when there is none, or it matches no more.
+    var selectedId by remember { mutableStateOf<String?>(null) }
+    val selected = matches.indexOfFirst { it.entry.id == selectedId }.takeIf { it >= 0 } ?: 0
+    val select = { index: Int -> selectedId = matches.getOrNull(index)?.entry?.id }
     // A new query starts from the top again.
-    LaunchedEffect(text) { selected = 0 }
+    LaunchedEffect(text) { selectedId = null }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     val listState = rememberLazyListState()
@@ -132,8 +136,8 @@ fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, o
                     query,
                     Modifier.weight(1f).focusRequester(focus).onPreviewKeyEvent { event ->
                         when (event.listKey()) {
-                            ListKey.DOWN -> { selected = selected.stepped(1, matches.size); true }
-                            ListKey.UP -> { selected = selected.stepped(-1, matches.size); true }
+                            ListKey.DOWN -> { select(selected.stepped(1, matches.size)); true }
+                            ListKey.UP -> { select(selected.stepped(-1, matches.size)); true }
                             ListKey.ENTER -> { matches.getOrNull(selected)?.let(run); true }
                             ListKey.ESCAPE -> { onDismiss(); true }
                             null -> false
