@@ -9,7 +9,10 @@ public enum class CloseDecision {
     CONFIRM,
 }
 
-/** Whether the agent of a terminal is active: working, or waiting for the user. A shell at its prompt, or an agent that is done, is not. */
+/**
+ * Whether the agent of a terminal is active: working, waiting for the user, or failed with an error that the user has not seen (closing it would
+ * lose what it said). A shell at its prompt, or an agent that is done, is not.
+ */
 public fun AgentState.isActive(): Boolean = this == AgentState.WORKING || this == AgentState.NEEDS_INPUT || this == AgentState.ERROR
 
 /**

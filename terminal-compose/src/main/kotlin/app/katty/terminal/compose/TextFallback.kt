@@ -36,25 +36,25 @@ private val COLOR_TABLES = setOf("sbix", "CBDT", "COLR", "SVG ")
  * depend on which font that is: it is given the typefaces of the font that the terminal draws with.
  *
  * What it found is kept: looking is a walk through the fonts of the system, which is only done once for each
- * character. Not thread-safe: it is used from the UI thread.
+ * character. It is shared by the terminals of a font, which may draw on different threads: what is kept is under a lock, and the walk is
+ * not, so that one terminal looking does not hold up the others (two that look for the same character at once both walk, and the first
+ * answer is kept).
  *
  * @param terminalFaces The typefaces of the terminal's font: it has a character if one of them has it.
  */
 internal class TextFallback(private val terminalFaces: List<SkiaTypeface>) {
-    private val found = HashMap<Int, FontFamily?>()
+    private val found = HashMap<Int, Found>()
+
+    // What was looked for: `null` is an answer too (the system's font is right), and is kept as well.
+    private class Found(val family: FontFamily?)
 
     /** The font to draw [text] with, or `null` to leave it to the system, which is what is right for most. */
-    // The font is shared by the terminals, which may be on different threads.
     fun familyFor(text: String): FontFamily? {
         if (!wantsTextPresentation(text)) return null
         val codePoint = text.codePointAt(0)
-        return synchronized(found) {
-            if (codePoint in found) {
-                found[codePoint]
-            } else {
-                find(codePoint)?.let { FontFamily(Typeface(it)) }.also { found[codePoint] = it }
-            }
-        }
+        synchronized(found) { found[codePoint] }?.let { return it.family }
+        val looked = Found(find(codePoint)?.let { FontFamily(Typeface(it)) })
+        return synchronized(found) { found.getOrPut(codePoint) { looked } }.family
     }
 
     private fun find(codePoint: Int): SkiaTypeface? {

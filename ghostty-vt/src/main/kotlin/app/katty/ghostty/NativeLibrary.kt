@@ -69,8 +69,8 @@ internal object NativeLibrary {
         val resource = "/app/katty/ghostty/native/$os-$arch/$LIBRARY_NAME.$extension"
         val stream = NativeLibrary::class.java.getResourceAsStream(resource) ?: throw unsupported()
 
-        // The dylib has to be a real file to be loaded, so it is extracted next to a temporary directory
-        // that is removed on exit.
+        // The dylib has to be a real file to be loaded, so it is extracted to a temporary directory, and deleted when the JVM exits. The
+        // directory stays: `deleteOnExit` deletes in the reverse order, so the directory is tried first, while the file is still in it.
         val directory = Files.createTempDirectory("katty-ghostty")
         val file = directory.resolve("$LIBRARY_NAME.$extension")
         stream.use { Files.copy(it, file) }
