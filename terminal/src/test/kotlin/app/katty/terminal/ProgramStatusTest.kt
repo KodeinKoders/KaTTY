@@ -38,6 +38,31 @@ class ProgramStatusTest {
     private fun ids() = store.snapshot().map { it.id }
 
     @Test
+    fun whatTheStorePublishesIsWhatItHasAfterEveryChange() {
+        val store = ProgramStatusStore()
+        fun put(id: String, state: TerminalProgramState = TerminalProgramState.WORKING) =
+            store.report(id, false, state, TerminalProgramKind.NONE, null, "app", "", "")
+
+        put("a"); assertEquals(store.snapshot(), store.state.value)
+        put("a/b", TerminalProgramState.DONE); assertEquals(store.snapshot(), store.state.value)
+        store.promptStarted(); assertEquals(store.snapshot(), store.state.value)
+        store.report("a", true, TerminalProgramState.IDLE, TerminalProgramKind.NONE, null, "", "", ""); assertEquals(store.snapshot(), store.state.value)
+        assertEquals(emptyList(), store.state.value)
+    }
+
+    @Test
+    fun aReportAndAClearAtTheSameMomentPublishTheirLastState() {
+        // The reader reports, and the host clears what it showed, on two threads.
+        val store = ProgramStatusStore()
+        val reporter = Thread { repeat(5_000) { store.report("r$it", false, TerminalProgramState.DONE, TerminalProgramKind.NONE, null, "app", "", "") } }
+        val clearer = Thread { repeat(5_000) { store.report("", true, TerminalProgramState.IDLE, TerminalProgramKind.NONE, null, "", "", "") } }
+        reporter.start(); clearer.start()
+        reporter.join(); clearer.join()
+
+        assertEquals(store.snapshot(), store.state.value)
+    }
+
+    @Test
     fun aReportReplacesItsRecordAsAWhole() {
         put("", title = "Build", message = "compiling", progress = 40)
         put("", state = TerminalProgramState.DONE)

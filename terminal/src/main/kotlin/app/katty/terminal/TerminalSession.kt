@@ -236,7 +236,6 @@ public class TerminalSession private constructor(
     private val workingDirectoryState = MutableStateFlow<String?>(null)
     private val progressState = MutableStateFlow<TerminalProgress?>(null)
     private val programStatusStore = ProgramStatusStore()
-    private val programStatusState = MutableStateFlow<List<TerminalProgramStatus>>(emptyList())
 
     // Events are for whoever is collecting at the time: one that nobody collects is dropped, and a collector that is slow loses
     // the oldest. The terminal calls back on the thread that reads the output, which must never wait for a collector.
@@ -308,13 +307,11 @@ public class TerminalSession private constructor(
      * starts a new prompt, or a program that exits, ends what was `working` or `blocked`; what is `done` or `error` stays until the program
      * or the host (see [clearProgramStatus]) removes it.
      */
-    public val programStatus: StateFlow<List<TerminalProgramStatus>> get() = programStatusState
+    public val programStatus: StateFlow<List<TerminalProgramStatus>> get() = programStatusStore.state
 
     /** Removes the program status records that [id] and the ones beneath it have, all of them for an empty [id]: the host saw them. */
     public fun clearProgramStatus(id: String = "") {
-        if (programStatusStore.report(id, true, TerminalProgramState.IDLE, TerminalProgramKind.NONE, null, "", "", "")) {
-            programStatusState.value = programStatusStore.snapshot()
-        }
+        programStatusStore.report(id, true, TerminalProgramState.IDLE, TerminalProgramKind.NONE, null, "", "", "")
     }
 
     /** What happens besides the screen: see [TerminalEvent]. Nothing is replayed to a collector that comes late. */
@@ -576,7 +573,7 @@ public class TerminalSession private constructor(
             progressState.value = null
         }
         terminal.onProgramStatus = { report ->
-            val changed = programStatusStore.report(
+            programStatusStore.report(
                 id = report.id,
                 clear = report.state == GhosttyProgramState.CLEAR,
                 state = when (report.state) {
@@ -597,7 +594,6 @@ public class TerminalSession private constructor(
                 title = report.title,
                 message = report.message,
             )
-            if (changed) programStatusState.value = programStatusStore.snapshot()
         }
         terminal.onResizeRequest = { eventFlow.tryEmit(TerminalEvent.ResizeRequested(it.columns, it.rows)) }
         terminal.onNotification = { title, body -> eventFlow.tryEmit(TerminalEvent.Notification(title, body)) }
@@ -617,7 +613,7 @@ public class TerminalSession private constructor(
                 GhosttyPromptEventKind.PROMPT_START -> {
                     inputActive = false
                     // What was being worked on is over: the shell is asking for the next thing.
-                    if (programStatusStore.promptStarted()) programStatusState.value = programStatusStore.snapshot()
+                    programStatusStore.promptStarted()
                     eventFlow.tryEmit(TerminalEvent.PromptStarted)
                     if (pendingAtPromptStart) typePending()
                 }
@@ -1505,7 +1501,7 @@ public class TerminalSession private constructor(
             -1
         }
         logger.info("The program exited with code {}", code)
-        if (programStatusStore.programExited()) programStatusState.value = programStatusStore.snapshot()
+        programStatusStore.programExited()
         frameRequests.trySend(Unit)
         exitCode.value = code
     }

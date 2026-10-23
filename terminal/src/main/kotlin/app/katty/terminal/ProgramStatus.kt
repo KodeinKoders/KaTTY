@@ -1,5 +1,8 @@
 package app.katty.terminal
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
 /** What a program says it is doing in a program status report (OSC 7501). */
 public enum class TerminalProgramState {
     /** At rest, waiting for the user's next instruction. */
@@ -68,6 +71,20 @@ internal class ProgramStatusStore(
     // Raw, as reported, in the order of their last report: the first is the one that was updated the longest ago.
     private val records = LinkedHashMap<String, TerminalProgramStatus>()
 
+    private val mutableState = MutableStateFlow<List<TerminalProgramStatus>>(emptyList())
+
+    /**
+     * The records as [snapshot] gives them, published by each change in the same lock as the change: a change on one thread (the reader) and
+     * another (the host clearing what it showed) cannot publish what the other changed in the wrong order.
+     */
+    val state: StateFlow<List<TerminalProgramStatus>> get() = mutableState
+
+    // Publishes the records when [changed]. Under the monitor.
+    private fun published(changed: Boolean): Boolean {
+        if (changed) mutableState.value = snapshot()
+        return changed
+    }
+
     /** Applies a report. Whether the records are now different is the result. */
     @Synchronized
     fun report(
@@ -81,19 +98,20 @@ internal class ProgramStatusStore(
         message: String,
     ): Boolean {
         if (clear) {
-            if (id.isEmpty()) return records.isNotEmpty().also { records.clear() }
-            return records.keys.removeAll { it == id || it.startsWith("$id/") }
+            if (id.isEmpty()) return published(records.isNotEmpty().also { records.clear() })
+            return published(records.keys.removeAll { it == id || it.startsWith("$id/") })
         }
         // Replaced as a whole, and last in the order of use.
         records.remove(id)
         records[id] = TerminalProgramStatus(id, app, state, kind, progress, clean(title), clean(message), clock())
         while (records.size > limit) records.remove(records.keys.first())
-        return true
+        return published(true)
     }
 
     /** A new prompt starts: what was being worked on or waited for is over. */
     @Synchronized
-    fun promptStarted(): Boolean = records.values.removeAll { it.state == TerminalProgramState.WORKING || it.state == TerminalProgramState.BLOCKED }
+    fun promptStarted(): Boolean =
+        published(records.values.removeAll { it.state == TerminalProgramState.WORKING || it.state == TerminalProgramState.BLOCKED })
 
     /** The program that was reporting exited: what it was working on or waiting for is over. */
     @Synchronized
