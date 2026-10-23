@@ -167,6 +167,16 @@ class ShellIntegrationTest {
 
         session.sendText(typed)
         await("what is typed to be on the screen") { session.frames.value.rows.any { row -> typed in row.cells.joinToString("") { it.text } } }
+        // The line editor may draw the line again (it does after a wide character): the cursor is at the end of it, and stays there.
+        fun atEnd(): Boolean {
+            val shown = session.frames.value
+            val cursorRow = shown.cursor.y ?: return false
+            val text = shown.rows[cursorRow].cells.joinToString("") { it.text.ifEmpty { " " } }
+            return text.indexOf("hello").let { it >= 0 && shown.cursor.x == it + "hello".length }
+        }
+        await("the cursor to be at the end of the line") { atEnd() }
+        Thread.sleep(300)
+        await("the cursor to stay there") { atEnd() }
         val frame = session.frames.value
         val row = frame.cursor.y!!
         val line = frame.rows[row].cells.joinToString("") { it.text.ifEmpty { " " } }
@@ -181,9 +191,9 @@ class ShellIntegrationTest {
     @Test
     fun zshMovesTheCursorOfTheCommandLineToAClick() = movesTheCursorOfTheCommandLine("/bin/zsh")
 
-    // A wide character is two cells and one press of an arrow.
+    // A wide character is two cells and one press of an arrow. The line is short enough not to wrap after a prompt as long as the host's name.
     @Test
-    fun zshMovesTheCursorOverWideCharacters() = movesTheCursorOfTheCommandLine("/bin/zsh", "echo 中文 hello")
+    fun zshMovesTheCursorOverWideCharacters() = movesTheCursorOfTheCommandLine("/bin/zsh", "echo 中 hello")
 
     @Test
     fun bashMovesTheCursorOfTheCommandLineToAClick() = movesTheCursorOfTheCommandLine("/bin/bash")
