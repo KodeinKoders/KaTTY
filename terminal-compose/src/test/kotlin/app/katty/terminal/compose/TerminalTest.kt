@@ -1291,6 +1291,36 @@ class TerminalTest {
     }
 
     @Test
+    fun aSelectionThatAutoscrollsStopsWhenItsTerminalLeavesThePane() {
+        val first = session("seq 1 200; sleep 30", cols = 80, rows = 24)
+        val second = session("sleep 30", cols = 80, rows = 24)
+        val shown = androidx.compose.runtime.mutableStateOf(first)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true }) {
+                Terminal(shown.value, Modifier.fillMaxSize())
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the history to be there") { first.frames.value.cols != 80 && first.frames.value.scrollbar != null }
+        val primaryDown = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true)
+        val start = first.frames.value.scrollbar!!.offset
+
+        // A drag that selects, past the top, held there: the history scrolls up on its own.
+        scene.sendPointerEvent(PointerEventType.Move, at(0.2f, 5.5f))
+        scene.press(at(0.2f, 5.5f))
+        scene.sendPointerEvent(PointerEventType.Move, Offset(30f, -40f), buttons = primaryDown)
+        scene.renderUntil("the history to autoscroll") { first.frames.value.scrollbar!!.offset <= start - 3 }
+
+        // The pane shows another terminal, the button still down.
+        shown.value = second
+        scene.renderFor(100)
+        val left = first.frames.value.scrollbar!!.offset
+        scene.renderFor(500)
+
+        assertTrue(left - first.frames.value.scrollbar!!.offset <= 1, "The terminal that is not shown went on scrolling: ${left - first.frames.value.scrollbar!!.offset} rows")
+    }
+
+    @Test
     fun thePasteShortcutPastesTheClipboardToTheProgram() {
         val (scene, session) = selectionScene("""printf 'hello world'; stty raw -echo; head -c3 | od -An -c""")
         clipboard.content = "abc"

@@ -50,6 +50,20 @@ internal class MouseTranslator {
     private var remainderX = 0f
     private var remainderY = 0f
 
+    // Where the pointer was at its last event, in cells, and with which modifiers: where the buttons that are still down go up.
+    private var lastColumn = 0f
+    private var lastRow = 0f
+
+    /**
+     * The releases of the buttons whose press was sent and that are still down, where the pointer was last: the program will not see them go up
+     * (its terminal is not shown any more). What is down is forgotten.
+     */
+    fun releaseAll(): List<MouseInput> {
+        val releases = sent.map { MouseInput(TerminalMouseAction.RELEASE, it, lastColumn, lastRow, emptySet(), anyButtonPressed = false) }
+        reset()
+        return releases
+    }
+
     fun reset() {
         sent.clear()
         swallowed.clear()
@@ -60,6 +74,8 @@ internal class MouseTranslator {
     fun translate(event: PointerInfo, cellWidth: Float, cellHeight: Float): List<MouseInput> {
         val column = event.x / cellWidth
         val row = event.y / cellHeight
+        lastColumn = column
+        lastRow = row
         // Shift is never told to the program for a button: it either swallowed the event, or only came after the press.
         val mods = buildSet {
             if (event.ctrl) add(TerminalModifier.CTRL)

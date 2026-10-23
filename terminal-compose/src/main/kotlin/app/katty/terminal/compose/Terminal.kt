@@ -228,6 +228,18 @@ public fun Terminal(
     val wheelY = remember(session) { WheelNormalizer() }
     val scrollbarInteraction = remember(session) { ScrollbarInteraction() }
     val autoscroll = remember(session, scope) { SelectionAutoscroll(scope, session) }
+    // A session that stops being shown in the middle of a gesture (the pane is given another terminal, the button still down): its autoscroll
+    // stops, its selection ends where the pointer was, and its program is told that the buttons it has down went up. Nothing else would.
+    DisposableEffect(session, autoscroll) {
+        onDispose {
+            autoscroll.stop()
+            if (selection.selecting) {
+                session.selectionRelease(selection.lastColumn, selection.lastRow)?.let { primarySelection.text = it }
+                selection.reset()
+            }
+            mouse.releaseAll().forEach(session::sendMouse)
+        }
+    }
     val density = LocalDensity.current
     // The scrollbar shows for a moment when the user scrolls, and while the pointer is on it.
     var scrolledAt by remember { mutableStateOf(0) }

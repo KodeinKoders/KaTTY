@@ -28,9 +28,17 @@ internal class SelectionDriver {
     var selecting: Boolean = false
         private set
 
+    /** Where the pointer was at its last event, in cells: where a gesture that has to end (its terminal is not shown any more) ends. */
+    var lastColumn: Float = 0f
+        private set
+    var lastRow: Float = 0f
+        private set
+
     fun translate(event: PointerInfo, cellWidth: Float, cellHeight: Float, mouseTracking: Boolean): List<SelectionAction> {
         val column = event.x / cellWidth
         val row = event.y / cellHeight
+        lastColumn = column
+        lastRow = row
         return when (event.kind) {
             PointerInfo.Kind.PRESS -> {
                 if (event.button != TerminalMouseButton.LEFT || (mouseTracking && !event.shift)) return emptyList()
