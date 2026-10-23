@@ -172,6 +172,45 @@ class GhosttyTerminalEffectsTest {
         assertFalse("c2VjcmV0" in replies, "A read is answered after the reader was cleared")
     }
 
+    private fun base64(text: String) = java.util.Base64.getEncoder().encodeToString(text.toByteArray())
+
+    private fun kittyRead(mimes: String) = "$esc]5522;type=read;${base64(mimes)}$esc\\"
+
+    @Test
+    fun aKittyReadOfTextIsAnsweredWithTheText() {
+        terminal.setClipboardReader { log += "read"; "hi" }
+
+        terminal.vtWrite(kittyRead("text/plain"))
+
+        assertEquals(listOf("read"), log)
+        assertTrue("aGk=" in replies, "The answer was: ${replies.toString().replace(esc, "ESC")}")
+    }
+
+    @Test
+    fun aKittyReadOfWhatIsNotTextSaysItIsNotSupportedWithoutReading() {
+        terminal.setClipboardReader { log += "read"; "hi" }
+
+        terminal.vtWrite(kittyRead("image/png"))
+
+        assertEquals(emptyList(), log)
+        val answer = replies.toString().replace(esc, "ESC")
+        assertTrue("ENOSYS" in answer, "The answer was: $answer")
+        assertFalse("aGk=" in answer, "The answer was: $answer")
+    }
+
+    @Test
+    fun aKittyListOfTheTypesIsAnsweredWithTextWithoutReading() {
+        terminal.setClipboardReader { log += "read"; "hi" }
+
+        terminal.vtWrite(kittyRead("."))
+
+        assertEquals(emptyList(), log)
+        val answer = replies.toString().replace(esc, "ESC")
+        // The list is the data of the type `.`, one type on each line.
+        val listed = Regex("mime=${Regex.escape(base64("."))};([A-Za-z0-9+/=]+)").find(replies)?.groupValues?.get(1)
+        assertEquals(listOf("text/plain"), listed?.let { String(java.util.Base64.getDecoder().decode(it)).lines().filter(String::isNotEmpty) }, "The answer was: $answer")
+    }
+
     @Test
     fun aReaderThatRefusesGetsNoAnswerSent() {
         terminal.setClipboardReader { null }

@@ -202,7 +202,8 @@ public class GhosttyTerminal private constructor(
     @Volatile
     public var advertiseSixel: Boolean = false
 
-    // Not installed until a reader is set: having one also makes the terminal send the program paste events (mode 5522).
+    // Not installed until a reader is set: without one, a read is refused. Having one also turns on the Kitty paste events (mode 5522), but
+    // only for what is pasted with `ghostty_terminal_paste`, which is not bound: a paste here is `ghostty_paste_encode`, which sends the text.
     private var clipboardReader: ((GhosttyClipboardLocation) -> String?)? = null
     private var clipboardReadStub: MemorySegment? = null
 
@@ -1058,23 +1059,49 @@ public class GhosttyTerminal private constructor(
 
     private fun answerClipboardRead(read: MemorySegment) {
         val struct = read.reinterpret(GhosttyClipboardRead.layout().byteSize())
-        val text = clipboardReader?.invoke(clipboardLocation(GhosttyClipboardRead.location(struct))) ?: return
+        // The types that the program wants, in its order (OSC 52 asks for `text/plain`), and whether it also wants to know which there are
+        // (OSC 5522's `.`): the reader only has text.
+        val count = GhosttyClipboardRead.mimes_len(struct)
+        val size = GhosttyString.layout().byteSize()
+        val mimes = if (count == 0L) emptyList() else GhosttyClipboardRead.mimes(struct).reinterpret(count * size).let { array ->
+            (0 until count).map { copyString(array.asSlice(it * size, size)) }
+        }
+        val list = GhosttyClipboardRead.list(struct)
+        val chosen = chooseClipboardText(mimes)
         Arena.ofConfined().use { arena ->
-            val bytes = text.encodeToByteArray()
-            val data = arena.allocate(maxOf(bytes.size.toLong(), 1L))
-            MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.size)
-            val mime = arena.allocateFrom("text/plain")
-            val content = arena.allocate(GhosttyClipboardContent.layout())
-            GhosttyString.ptr(GhosttyClipboardContent.mime(content), mime)
-            GhosttyString.len(GhosttyClipboardContent.mime(content), mime.byteSize() - 1)
-            GhosttyString.ptr(GhosttyClipboardContent.data(content), data)
-            GhosttyString.len(GhosttyClipboardContent.data(content), bytes.size.toLong())
-
             val reply = arena.allocate(GhosttyClipboardReadReply.layout())
             GhosttyClipboardReadReply.size(reply, GhosttyClipboardReadReply.layout().byteSize())
+            if (mimes.isNotEmpty() && chosen == null && !list) {
+                // Not the user's clipboard, and nothing that a program could be refused for asking: there is no image to give.
+                GhosttyClipboardReadReply.result(reply, GhosttyVt.GHOSTTY_CLIPBOARD_READ_RESULT_UNSUPPORTED())
+                GhosttyClipboardReadReplyFn.invoke(GhosttyClipboardRead.reply(struct), struct, reply)
+                return
+            }
+            // Only reading the text is the user's to allow: the list says no more than that there is text, and is answered as Kitty does,
+            // without asking.
+            if (chosen != null) {
+                val text = clipboardReader?.invoke(clipboardLocation(GhosttyClipboardRead.location(struct))) ?: return
+                val bytes = text.encodeToByteArray()
+                val data = arena.allocate(maxOf(bytes.size.toLong(), 1L))
+                MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.size)
+                val mime = arena.allocateFrom(mimes[chosen])
+                val content = arena.allocate(GhosttyClipboardContent.layout())
+                GhosttyString.ptr(GhosttyClipboardContent.mime(content), mime)
+                GhosttyString.len(GhosttyClipboardContent.mime(content), mime.byteSize() - 1)
+                GhosttyString.ptr(GhosttyClipboardContent.data(content), data)
+                GhosttyString.len(GhosttyClipboardContent.data(content), bytes.size.toLong())
+                GhosttyClipboardReadReply.contents(reply, content)
+                GhosttyClipboardReadReply.contents_len(reply, 1)
+            }
+            if (list) {
+                val mime = arena.allocateFrom("text/plain")
+                val available = arena.allocate(GhosttyString.layout())
+                GhosttyString.ptr(available, mime)
+                GhosttyString.len(available, mime.byteSize() - 1)
+                GhosttyClipboardReadReply.available(reply, available)
+                GhosttyClipboardReadReply.available_len(reply, 1)
+            }
             GhosttyClipboardReadReply.result(reply, GhosttyVt.GHOSTTY_CLIPBOARD_READ_RESULT_SUCCESS())
-            GhosttyClipboardReadReply.contents(reply, content)
-            GhosttyClipboardReadReply.contents_len(reply, 1)
             GhosttyClipboardReadReplyFn.invoke(GhosttyClipboardRead.reply(struct), struct, reply)
         }
     }
