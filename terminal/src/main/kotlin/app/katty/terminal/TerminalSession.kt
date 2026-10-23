@@ -1210,7 +1210,7 @@ public class TerminalSession private constructor(
             val position = terminal.scrollbar
             if (position.offset + position.len < position.total) return false
             if (row != terminal.cursorRow) return false
-            val delta = column.coerceIn(0, terminal.cols - 1) - terminal.cursorColumn
+            val delta = charactersBetween(frameState.value.rows.getOrNull(row)?.cells, terminal.cursorColumn, column.coerceIn(0, terminal.cols - 1))
             if (delta == 0) return false
             keyEncoder.setOptionsFrom(terminal)
             val arrow = if (delta < 0) TerminalKey.ARROW_LEFT else TerminalKey.ARROW_RIGHT
@@ -1218,6 +1218,17 @@ public class TerminalSession private constructor(
         }
         keys.forEach(outgoing::put)
         return keys.isNotEmpty()
+    }
+
+    // How many presses of an arrow go from the cell [from] to the cell [to] of a row: one for each character, which a wide one is, whatever
+    // the cells it covers. Negative to the left. The cells are counted one each when the row is not known.
+    private fun charactersBetween(cells: List<TerminalCell>?, from: Int, to: Int): Int {
+        if (cells == null) return to - from
+        // The second cell of a wide character is the character.
+        val target = if (cells.getOrNull(to)?.width == TerminalCellWidth.SPACER_TAIL) to - 1 else to
+        val range = if (target >= from) from until target else target until from
+        val characters = range.count { cells.getOrNull(it)?.width.let { width -> width != TerminalCellWidth.SPACER_TAIL && width != TerminalCellWidth.SPACER_HEAD } }
+        return if (target >= from) characters else -characters
     }
 
     /**

@@ -155,7 +155,7 @@ class ShellIntegrationTest {
         }
     }
 
-    private fun movesTheCursorOfTheCommandLine(shell: String) {
+    private fun movesTheCursorOfTheCommandLine(shell: String, typed: String = "echo hello") {
         val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
         val session = start(shell, emptyHome(), directory)
         await("the first prompt") { session.workingDirectory.value != null }
@@ -165,8 +165,8 @@ class ShellIntegrationTest {
             cursor.x != null && cursor.x!! > 0 && !session.moveCursorTo(cursor.x!!, cursor.y!!)
         }
 
-        session.sendText("echo hello")
-        await("what is typed to be on the screen") { session.frames.value.rows.any { row -> "echo hello" in row.cells.joinToString("") { it.text } } }
+        session.sendText(typed)
+        await("what is typed to be on the screen") { session.frames.value.rows.any { row -> typed in row.cells.joinToString("") { it.text } } }
         val frame = session.frames.value
         val row = frame.cursor.y!!
         val line = frame.rows[row].cells.joinToString("") { it.text.ifEmpty { " " } }
@@ -180,6 +180,10 @@ class ShellIntegrationTest {
 
     @Test
     fun zshMovesTheCursorOfTheCommandLineToAClick() = movesTheCursorOfTheCommandLine("/bin/zsh")
+
+    // A wide character is two cells and one press of an arrow.
+    @Test
+    fun zshMovesTheCursorOverWideCharacters() = movesTheCursorOfTheCommandLine("/bin/zsh", "echo 中文 hello")
 
     @Test
     fun bashMovesTheCursorOfTheCommandLineToAClick() = movesTheCursorOfTheCommandLine("/bin/bash")
