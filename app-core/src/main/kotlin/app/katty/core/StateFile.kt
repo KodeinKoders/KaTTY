@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import java.io.IOException
+import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -59,13 +60,13 @@ public class StateFile(private val path: Path) {
         }
     }
 
-    /** Writes [state], replacing what is there. The selection's maximized terminal is not written: it is not for the next launch. */
+    /**
+     * Writes [state], replacing what is there. The selection's maximized terminal is not written: it is not for the next launch. One write at a
+     * time: the debounced one and the flush of the quit are on two threads.
+     */
+    @Synchronized
     public fun save(state: KattyState) {
-        val text = JSON.encodeToString(KattyState.serializer(), state.copy(selection = state.selection.copy(maximized = null)))
-        Files.createDirectories(path.toAbsolutePath().parent)
-        val temporary = path.resolveSibling(path.fileName.toString() + ".tmp")
-        Files.writeString(temporary, text, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
-        Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        writeAtomically(path, JSON.encodeToString(KattyState.serializer(), state.copy(selection = state.selection.copy(maximized = null))))
     }
 
     // Moves the file to a name that says why, and starts empty.
@@ -103,13 +104,21 @@ public class StatePersistence(
     scope: CoroutineScope,
     delay: Duration = 500.milliseconds,
 ) {
+    // The writes, and whether the last one was made: a debounced write that comes after the flush of the quit would write over it.
+    private val writing = Any()
+    private var flushed = false
+
     private val job: Job = scope.launch {
-        store.state.debounce(delay).collect { write(it) }
+        store.state.debounce(delay).collect { state -> synchronized(writing) { if (!flushed) write(state) } }
     }
 
-    /** Writes the state now: when the application quits. */
+    /** Writes the state now, and nothing after it: when the application quits. */
     public fun flush() {
-        write(store.state.value)
+        synchronized(writing) {
+            flushed = true
+            job.cancel()
+            write(store.state.value)
+        }
     }
 
     /** Stops writing. */
@@ -124,5 +133,25 @@ public class StatePersistence(
             // The application works without it, and the next change tries again.
             logger.error("Could not save the state", e)
         }
+    }
+}
+
+/**
+ * Writes [text] to [path] through a file of its own in the same folder, written to the disk and then moved in its place: a crash leaves the old
+ * file or the new one, never half of one, and two writes do not share the file that is moved.
+ */
+internal fun writeAtomically(path: Path, text: String) {
+    val folder = path.toAbsolutePath().parent
+    Files.createDirectories(folder)
+    val temporary = Files.createTempFile(folder, "${path.fileName}.", ".tmp")
+    try {
+        FileChannel.open(temporary, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING).use { channel ->
+            val bytes = java.nio.ByteBuffer.wrap(text.toByteArray(Charsets.UTF_8))
+            while (bytes.hasRemaining()) channel.write(bytes)
+            channel.force(true)
+        }
+        Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    } finally {
+        Files.deleteIfExists(temporary)
     }
 }

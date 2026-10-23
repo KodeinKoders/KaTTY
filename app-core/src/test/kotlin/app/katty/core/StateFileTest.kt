@@ -128,6 +128,47 @@ class StateFileTest {
     }
 
     @Test
+    fun twoWritersAtOnceLeaveAWholeFile() {
+        // The debounced writer and the flush of the quit, on two threads.
+        val state = built()
+        val failures = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val writers = List(2) {
+            Thread {
+                try {
+                    repeat(300) { file.save(state) }
+                } catch (e: Throwable) {
+                    failures += e
+                }
+            }.apply { start() }
+        }
+        writers.forEach { it.join() }
+
+        assertEquals(emptyList(), failures.toList())
+        assertEquals(state, file.load())
+        assertEquals(listOf("state.json"), directory.listDirectoryEntries().map { it.fileName.toString() })
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun nothingIsWrittenAfterTheLastFlush() {
+        val scope = TestScope(StandardTestDispatcher())
+        var n = 0
+        val store = KattyStore(newId = { "id${n++}" })
+        val persistence = StatePersistence(store, file, scope.backgroundScope, delay = kotlin.time.Duration.parse("500ms"))
+        scope.runCurrent()
+        store.addProject("/a")
+        persistence.flush()
+        val flushed = file.load()
+
+        // What changes as the application ends (the sessions that are closed) is not written over what the quit wrote.
+        store.addProject("/b")
+        scope.advanceTimeBy(1_000)
+        scope.runCurrent()
+
+        assertEquals(flushed, file.load())
+    }
+
+    @Test
     fun aDamagedFileIsKeptAsideAndTheStateIsEmpty() {
         path.writeText("{ not json")
 

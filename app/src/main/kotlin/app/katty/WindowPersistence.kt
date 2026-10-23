@@ -1,5 +1,6 @@
 package app.katty
 
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.FlowPreview
@@ -82,25 +83,29 @@ internal const val WINDOW_WRITE_DELAY_MS = 500L
  */
 @Composable
 internal fun keepWindowGeometry(state: WindowState, file: WindowFile, initial: WindowGeometry, open: (() -> Boolean)? = null): () -> Unit {
-    val kept = remember { arrayOf(initial) }
+    // What is kept is read by the write on the IO thread: it writes the latest, so that a flush (`open = false` when the user closes the board
+    // window) that came meanwhile is not written over by what it had read before.
+    val kept = remember { AtomicReference(initial) }
     val latestOpen = rememberUpdatedState(open)
     val record = {
-        val geometry = geometryOf(state.placement, state.isMinimized, state.position, state.size, kept[0])
-        kept[0] = latestOpen.value?.let { geometry.copy(open = it()) } ?: geometry
+        val geometry = geometryOf(state.placement, state.isMinimized, state.position, state.size, kept.get())
+        kept.set(latestOpen.value?.let { geometry.copy(open = it()) } ?: geometry)
     }
+    // One write at a time, of what is kept when it is done.
+    val write = { runCatching { synchronized(file) { file.save(kept.get()) } } }
     @OptIn(FlowPreview::class)
     LaunchedEffect(state) {
         snapshotFlow { listOf(state.placement, state.isMinimized, state.position, state.size) }
             .debounce(WINDOW_WRITE_DELAY_MS)
             .collect {
-                val before = kept[0]
+                val before = kept.get()
                 record()
-                if (kept[0] != before) withContext(Dispatchers.IO) { runCatching { file.save(kept[0]) } }
+                if (kept.get() != before) withContext(Dispatchers.IO) { write() }
             }
     }
     val flush = {
         record()
-        runCatching { file.save(kept[0]) }
+        write()
         Unit
     }
     // A window that leaves the composition (the application quits with it open) is written once more.

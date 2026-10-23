@@ -98,4 +98,23 @@ class WindowFileTest {
         assertNotEquals(directories.stateFile, directories.windowFile)
         assertEquals("window.json", directories.windowFile.fileName.toString())
     }
+
+    @Test
+    fun twoWritersAtOnceLeaveAWholeFile() {
+        val geometry = WindowGeometry(width = 900f, height = 600f)
+        val failures = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val writers = List(2) {
+            Thread {
+                try {
+                    repeat(300) { file.save(geometry) }
+                } catch (e: Throwable) {
+                    failures += e
+                }
+            }.apply { start() }
+        }
+        writers.forEach { it.join() }
+
+        assertEquals(emptyList(), failures.toList())
+        assertEquals(geometry, file.load())
+    }
 }

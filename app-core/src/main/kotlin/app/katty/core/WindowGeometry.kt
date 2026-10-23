@@ -7,8 +7,6 @@ import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 
 private val logger = LoggerFactory.getLogger("app.katty.core.WindowFile")
 
@@ -96,12 +94,10 @@ public class WindowFile(private val path: Path, private val default: WindowGeome
         }
     }
 
-    /** Writes [geometry] through a temporary file, so that a crash does not leave half of it. */
+    /** Writes [geometry] through a file of its own, so that a crash does not leave half of it; one write at a time. */
+    @Synchronized
     public fun save(geometry: WindowGeometry) {
-        Files.createDirectories(path.toAbsolutePath().parent)
-        val temporary = path.resolveSibling(path.fileName.toString() + ".tmp")
-        Files.writeString(temporary, JSON.encodeToString(WindowGeometry.serializer(), geometry), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
-        Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        writeAtomically(path, JSON.encodeToString(WindowGeometry.serializer(), geometry))
     }
 
     private companion object {
