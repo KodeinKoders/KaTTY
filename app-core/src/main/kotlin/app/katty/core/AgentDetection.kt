@@ -30,12 +30,13 @@ public object AgentDetection {
 
     private fun readLoginShellPath(shell: String, timeoutMs: Long): String? =
         try {
-            val process = ProcessBuilder(shell, "-l", "-c", "printf %s \"\$PATH\"")
+            // Between two markers: what the login files print (a greeting, a notice) comes before and after it.
+            val process = ProcessBuilder(shell, "-l", "-c", "printf '$PATH_MARK%s$PATH_MARK' \"\$PATH\"")
                 .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()
             val output = process.inputStream.readBytes().decodeToString()
-            if (process.waitFor(timeoutMs, TimeUnit.MILLISECONDS) && process.exitValue() == 0) output.trim().takeIf { it.isNotEmpty() } else null
+            if (process.waitFor(timeoutMs, TimeUnit.MILLISECONDS) && process.exitValue() == 0) betweenMarks(output) else null
         } catch (e: Exception) {
             null
         }
@@ -53,4 +54,15 @@ public object AgentDetection {
         }
         return found
     }
+
+    // What the shell printed between the two marks, `null` when they are not there or there is nothing between them.
+    private fun betweenMarks(output: String): String? {
+        val start = output.indexOf(PATH_MARK)
+        val end = output.indexOf(PATH_MARK, start + PATH_MARK.length)
+        if (start < 0 || end < 0) return null
+        return output.substring(start + PATH_MARK.length, end).takeIf { it.isNotEmpty() }
+    }
+
+    // What no profile prints: the PATH is between two of them.
+    private const val PATH_MARK = "__KATTY_PATH__"
 }

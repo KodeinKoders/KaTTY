@@ -84,7 +84,19 @@ class AgentDetectionTest {
 
     @Test
     fun readsThePathOfALoginShell() {
-        val shell = root.resolve("fake-shell").also { it.writeText("#!/bin/sh\nprintf '%s' /opt/one:/opt/two\n"); it.toFile().setExecutable(true) }
+        // A shell that runs what it is given (`-l -c <script>`), with the PATH of a profile: as a real one does.
+        val shell = root.resolve("fake-shell").also { it.writeText("#!/bin/sh\nPATH=/opt/one:/opt/two:\$PATH exec /bin/sh -c \"\$3\"\n"); it.toFile().setExecutable(true) }
+
+        assertEquals("/opt/one:/opt/two", AgentDetection.loginShellPath(shell.toString())?.split(':')?.take(2)?.joinToString(":"))
+    }
+
+    @Test
+    fun whatTheProfilePrintsIsNotPartOfThePath() {
+        // A greeting, a fortune, a version manager's notice: before and after what the command prints.
+        val shell = root.resolve("chatty-shell").also {
+            it.writeText("#!/bin/sh\necho Welcome back\nPATH=/opt/one:/opt/two /bin/sh -c \"\$3\"\necho bye\n")
+            it.toFile().setExecutable(true)
+        }
 
         assertEquals("/opt/one:/opt/two", AgentDetection.loginShellPath(shell.toString()))
     }
