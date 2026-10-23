@@ -482,6 +482,13 @@ fun DecoratedWindowScope.KattyWindowContent(
         if (renamingWorkspace != null && !shown) renamingWorkspace = null
         if (renamingProject != null && !shown) renamingProject = null
     }
+    // A rename of what is gone (closed by a shortcut, a menu, the palette) ends: nothing draws it, and it would keep the terminals from the keyboard.
+    LaunchedEffect(state.projects, renamingTerminal, renamingWorkspace, renamingProject) {
+        val current = store.state.value
+        if (renamingTerminal?.let(current::locate) == null) renamingTerminal = null
+        if (renamingWorkspace != null && current.projects.none { p -> p.workspaces.any { it.id == renamingWorkspace } }) renamingWorkspace = null
+        if (renamingProject != null && current.projects.none { it.id == renamingProject }) renamingProject = null
+    }
     LaunchedEffect(renamingTerminal, settings.view) {
         if (renamingTerminal != null && store.state.value.settings.view != MainView.TERMINALS) renamingTerminal = null
     }
@@ -491,6 +498,7 @@ fun DecoratedWindowScope.KattyWindowContent(
         if (editingShortcuts) return@handler false
         val shortcut = event.appShortcut() ?: return@handler false
         if (blockingDialog || (menuOpen && shortcut != AppShortcut.MENU) || (attentionOpen && shortcut != AppShortcut.ATTENTION) || (paletteOpen && shortcut != AppShortcut.PALETTE)) return@handler true
+        if (blockedWhileRenaming(shortcut, state.selection.terminal, state.selection.workspace, renamingTerminal, renamingWorkspace)) return@handler true
         val terminal = state.selection.terminal
         // What acts on a terminal is for the terminals, not for the board, which shows none.
         val onTerminals = settings.view == MainView.TERMINALS
@@ -874,3 +882,19 @@ private fun revealInFileManager(directory: String) {
  */
 internal fun findTarget(finding: TerminalId?, shown: Set<TerminalId>, running: Set<TerminalId>): TerminalId? =
     finding?.takeIf { it in shown && it in running }
+
+/**
+ * Whether [shortcut] is kept from acting while a name is being edited: closing or restarting the terminal that is being renamed, or closing the
+ * workspace that is, would take the field away under the keys.
+ */
+internal fun blockedWhileRenaming(
+    shortcut: AppShortcut,
+    selectedTerminal: TerminalId?,
+    selectedWorkspace: WorkspaceId?,
+    renamingTerminal: TerminalId?,
+    renamingWorkspace: WorkspaceId?,
+): Boolean = when (shortcut) {
+    AppShortcut.CLOSE_TERMINAL, AppShortcut.RESTART_TERMINAL -> renamingTerminal != null && renamingTerminal == selectedTerminal
+    AppShortcut.CLOSE_WORKSPACE -> renamingWorkspace != null && renamingWorkspace == selectedWorkspace
+    else -> false
+}
