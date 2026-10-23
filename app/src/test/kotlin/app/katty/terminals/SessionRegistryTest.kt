@@ -105,6 +105,35 @@ class SessionRegistryTest {
     }
 
     @Test
+    fun reopeningAShellForgetsWhatRanOverTheOldOneForGood() {
+        // The first shell of each terminal runs a program; the ones that are opened again do not.
+        val begun = java.util.concurrent.ConcurrentHashMap<String, Int>()
+        val reopening = SessionRegistry(
+            store, scope, starter = Dispatchers.Unconfined, loadTheme = { null },
+            start = { spec, _ ->
+                val first = begun.merge(spec.id.value, 1, Int::plus) == 1
+                TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", if (first) "set -m; sleep 30" else "sleep 30"), directory = spec.directory)
+            },
+        )
+        try {
+            store.addProject("/tmp")
+            repeat(7) { store.split(store.state.value.selection.terminal!!, SplitDirection.ROW) }
+            reopening.sync(store.state.value)
+            val ids = store.state.value.allTerminals().map { it.terminal.id }
+            awaitUntil("every program to be kept") { ids.all { store.state.value.locate(it)?.terminal?.running != null } }
+
+            ids.forEach(reopening::restart)
+            // A poll of an old shell that was on its way to write when it was stopped would put its program back.
+            Thread.sleep(1_200)
+
+            assertTrue(ids.all { store.state.value.locate(it)?.terminal?.running == null }, "What ran over an old shell came back")
+            assertTrue(reopening.processNames.value.keys.all { it in reopening.handles.value.keys })
+        } finally {
+            reopening.close()
+        }
+    }
+
+    @Test
     fun quittingClosesTheSessionsTogether() {
         // Programs that ignore the hang-up: each is killed after its grace, which one after another would add up.
         script = "trap '' HUP; while :; do sleep 1; done"

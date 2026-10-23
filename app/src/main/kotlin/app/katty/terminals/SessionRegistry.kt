@@ -36,6 +36,7 @@ import java.nio.file.Path
 import app.katty.terminal.TerminalEvent
 import kotlinx.coroutines.launch
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import org.slf4j.LoggerFactory
@@ -120,6 +121,10 @@ class SessionRegistry(
     // What each session follows, the scheme it has now, and the generation of the shell that is being started for each terminal. Under the
     // registry's monitor: a shell that has started is published from [starter].
     private val followers = HashMap<TerminalId, Job>()
+
+    // Whether the followers of each session may still write: they are cancelled when it stops, but a poll that is between two suspensions goes on
+    // to its writes. Checked and cleared under the flag's own monitor, so that nothing is written once [stop] has returned.
+    private val alive = HashMap<TerminalId, AtomicBoolean>()
     private val schemes = HashMap<TerminalId, String>()
     private val starting = HashMap<TerminalId, Int>()
     private var visible: Set<TerminalId>? = null
@@ -181,11 +186,11 @@ class SessionRegistry(
     fun restart(id: TerminalId) {
         val state = store.state.value
         val location = state.locate(id) ?: return
-        // A new shell is a plain one: what ran over the old is not started again.
-        store.setRunning(id, null)
         val spec = startingPlace(location.terminal, location.project.directory).copy(running = null)
         val old = mutableHandles.value[id] ?: return
         stop(old)
+        // A new shell is a plain one: what ran over the old is not started again. After the old one's poll can write no more.
+        store.setRunning(id, null)
         mutableHandles.value = mutableHandles.value - id
         val generation = (generations[id] ?: 0) + 1
         generations[id] = generation
@@ -202,6 +207,8 @@ class SessionRegistry(
         val all = synchronized(this) {
             closed = true
             starting.clear()
+            alive.values.forEach { flag -> synchronized(flag) { flag.set(false) } }
+            alive.clear()
             followers.values.forEach { it.cancel() }
             followers.clear()
             mutableHandles.value.also { mutableHandles.value = emptyMap() }
@@ -255,6 +262,9 @@ class SessionRegistry(
     private fun follow(spec: TerminalSpec, session: TerminalSession, generation: Int): TerminalHandle {
         val handle = TerminalHandle(spec.id, session, generation = generation, shellName = shellName())
         // Where the shell goes is where it starts the next time, and what repository it is in is read again then, and when a command ends.
+        val flag = AtomicBoolean(true).also { alive[spec.id] = it }
+        // What the followers write, only while the session is followed.
+        val whileFollowed = { write: () -> Unit -> synchronized(flag) { if (flag.get()) write() } }
         followers[spec.id] = scope.launch {
             // The session that an OpenCode in this terminal last reported working or waiting: it reports a record for each of those, with the
             // session's id as its id, and takes it off when the session rests, so it is kept here. It is the terminal's own session, which a
@@ -277,7 +287,7 @@ class SessionRegistry(
                     // The shell ended (after `exec vim`, the program was the shell): nothing runs over it any more, and nothing is to be started
                     // again over it at the next launch. Quitting cancels this before it closes the sessions, which keeps what ran then.
                     if (session.exited.value != null) {
-                        store.setRunning(spec.id, null)
+                        whileFollowed { store.setRunning(spec.id, null) }
                         break
                     }
                     val systemName = session.foregroundProcessName()
@@ -288,7 +298,7 @@ class SessionRegistry(
                     val name = Agent.executableOf(systemName, command?.argv)
                     handle.processState.value = name
                     if (name == null || name == handle.shellName) reportedSession.set(null)
-                    if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) mutableProcessNames.update { it + (spec.id to name) }
+                    if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) whileFollowed { mutableProcessNames.update { it + (spec.id to name) } }
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
                     if (name != null) {
                         var running = command?.let { withContext(Dispatchers.IO) { it.toRunning(reportedSession = reportedSession.get()) } }
@@ -316,7 +326,7 @@ class SessionRegistry(
                             if (command.pid == resumedPid && (running.agentSession == null || guessed)) running = running.copy(agentSession = resumed.second)
                         }
                         if (command != null) graceUntil = 0L
-                        if (running != null || System.nanoTime() >= graceUntil) store.setRunning(spec.id, running)
+                        if (running != null || System.nanoTime() >= graceUntil) whileFollowed { store.setRunning(spec.id, running) }
                     }
                     delay(PROCESS_POLL_MS)
                 }
@@ -330,13 +340,14 @@ class SessionRegistry(
                 val directory = session.workingDirectory.value ?: spec.directory
                 val info = withContext(Dispatchers.IO) { GitReader.read(Path.of(directory)) }
                 handle.gitState.value = info
-                mutableGitInfos.update { it + (spec.id to info) }
+                whileFollowed { mutableGitInfos.update { it + (spec.id to info) } }
             }
         }
         return handle
     }
 
     private fun stop(handle: TerminalHandle) {
+        alive.remove(handle.id)?.let { flag -> synchronized(flag) { flag.set(false) } }
         followers.remove(handle.id)?.cancel()
         mutableProcessNames.update { it - handle.id }
         mutableGitInfos.update { it - handle.id }
