@@ -48,7 +48,7 @@ class RestoreTest {
             val second = KattyStore(file.load())
             val started = mutableMapOf<String, String>()
             val registry = SessionRegistry(
-                second, scope, loadTheme = { null },
+                second, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null },
                 start = { spec, _ ->
                     started[spec.id.value] = spec.directory
                     TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory)

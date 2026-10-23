@@ -25,7 +25,7 @@ class AgentTrackerTest {
     private val scripts = ArrayDeque<String>()
 
     private val registry = SessionRegistry(
-        store, scope, loadTheme = { null },
+        store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null },
         start = { spec, _ ->
             TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", scripts.removeFirstOrNull() ?: "sleep 60"), directory = spec.directory, shellIntegration = false)
         },

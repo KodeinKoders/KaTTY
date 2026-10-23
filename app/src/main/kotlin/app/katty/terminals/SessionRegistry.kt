@@ -16,6 +16,7 @@ import app.katty.core.toTyped
 import app.katty.terminal.TerminalSession
 import app.katty.terminal.TerminalTheme
 import app.katty.terminal.themes.ITermColorSchemes
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,15 +79,21 @@ class TerminalHandle(
  * gone, and gives each session its color scheme. It also tells the store where each shell goes, so that a terminal that is started again
  * starts there.
  *
+ * A shell is started on [starter], not on the thread that calls [sync] (the UI's: starting a program and reading a color scheme take a moment, and
+ * a folder on a network drive longer), and its handle is in [handles] once it has started: a terminal has none for that moment. A terminal that
+ * is gone, or started again, before its shell has started has that shell closed.
+ *
  * @param start Starts the shell of a terminal. Tests give their own program.
- * @param loadTheme The colors of a color scheme, `null` when it cannot be read.
+ * @param loadTheme The colors of a color scheme, `null` when it cannot be read. Each one is read once.
  * @param shellIntegration Where the scripts of the shell integration are kept (see [TerminalSession.start]).
+ * @param starter Where the shells are started and the color schemes read. Tests give one that does it at once, on the caller's thread.
  */
 class SessionRegistry(
     private val store: KattyStore,
     private val scope: CoroutineScope,
     private val loadTheme: (String) -> TerminalTheme? = ::loadColorScheme,
     shellIntegration: Path? = null,
+    private val starter: CoroutineDispatcher = Dispatchers.IO,
     private val start: (TerminalSpec, TerminalTheme?) -> TerminalSession = { spec, theme -> startShell(spec, theme, shellIntegration) },
 ) {
     private val mutableHandles = MutableStateFlow<Map<TerminalId, TerminalHandle>>(emptyMap())
@@ -110,36 +117,55 @@ class SessionRegistry(
      */
     val gitInfos: StateFlow<Map<TerminalId, GitInfo?>> get() = mutableGitInfos
 
-    // What each session follows and the scheme it has now.
+    // What each session follows, the scheme it has now, and the generation of the shell that is being started for each terminal. Under the
+    // registry's monitor: a shell that has started is published from [starter].
     private val followers = HashMap<TerminalId, Job>()
     private val schemes = HashMap<TerminalId, String>()
+    private val starting = HashMap<TerminalId, Int>()
     private var visible: Set<TerminalId>? = null
     private var generations = HashMap<TerminalId, Int>()
+    private var closed = false
 
-    /** Makes the sessions match the terminals of [state]. Call it from one thread, the UI's. */
+    // The color schemes that were read, by name: a change of the default one is given to every terminal.
+    private val themes = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<TerminalTheme>>()
+
+    private fun theme(name: String): TerminalTheme? = themes.computeIfAbsent(name) { java.util.Optional.ofNullable(loadTheme(it)) }.orElse(null)
+
+    /** Makes the sessions match the terminals of [state]: the shells of the new ones are started, the ones that are gone are closed. */
+    @Synchronized
     fun sync(state: KattyState) {
-        val wanted = state.allTerminals().associate { it.terminal.id to startingPlace(it.terminal, it.project.directory) }
+        val terminals = state.allTerminals()
+        val wanted = terminals.map { it.terminal.id }.toSet()
         val current = mutableHandles.value
         var next = current
 
-        for (id in current.keys - wanted.keys) {
+        for (id in current.keys - wanted) {
             next = next - id
             stop(current.getValue(id))
         }
-        for ((id, spec) in wanted) {
-            val scheme = spec.colorScheme ?: state.settings.colorScheme
-            if (id !in current) {
-                next = next + (id to begin(spec, scheme, generations[id] ?: 0))
+        // A shell that is being started for a terminal that is gone is closed when it has started.
+        starting.keys.retainAll(wanted)
+        for (place in terminals) {
+            val id = place.terminal.id
+            val scheme = place.terminal.colorScheme ?: state.settings.colorScheme
+            if (id !in current && id !in starting) {
+                // Where it starts is only worked out for a terminal that is new: it asks the file system.
+                begin(startingPlace(place.terminal, place.project.directory), scheme, generations[id] ?: 0)
             } else if (schemes[id] != scheme) {
                 schemes[id] = scheme
-                current.getValue(id).session?.let { session -> loadTheme(scheme)?.let(session::setTheme) }
+                current[id]?.session?.let { session -> scope.launch(starter) { theme(scheme)?.let(session::setTheme) } }
             }
         }
         if (next !== current) mutableHandles.value = next
         applyVisibility()
     }
 
+    /** The color scheme that the terminal [id] is given. */
+    @Synchronized
+    internal fun schemeOf(id: TerminalId): String? = schemes[id]
+
     /** Shows the sessions of [ids] and pauses the others: what is not on the screen does not need frames. */
+    @Synchronized
     fun setVisible(ids: Set<TerminalId>) {
         visible = ids
         applyVisibility()
@@ -151,6 +177,7 @@ class SessionRegistry(
     }
 
     /** Ends the shell of the terminal and starts another in its place: what "Reopen shell" does. */
+    @Synchronized
     fun restart(id: TerminalId) {
         val state = store.state.value
         val location = state.locate(id) ?: return
@@ -159,10 +186,10 @@ class SessionRegistry(
         val spec = startingPlace(location.terminal, location.project.directory).copy(running = null)
         val old = mutableHandles.value[id] ?: return
         stop(old)
+        mutableHandles.value = mutableHandles.value - id
         val generation = (generations[id] ?: 0) + 1
         generations[id] = generation
-        val scheme = spec.colorScheme ?: state.settings.colorScheme
-        mutableHandles.value = mutableHandles.value + (id to begin(spec, scheme, generation))
+        begin(spec, spec.colorScheme ?: state.settings.colorScheme, generation)
         applyVisibility()
     }
 
@@ -172,10 +199,13 @@ class SessionRegistry(
      * one waits for its program to end.
      */
     fun close() {
-        val all = mutableHandles.value
-        mutableHandles.value = emptyMap()
-        followers.values.forEach { it.cancel() }
-        followers.clear()
+        val all = synchronized(this) {
+            closed = true
+            starting.clear()
+            followers.values.forEach { it.cancel() }
+            followers.clear()
+            mutableHandles.value.also { mutableHandles.value = emptyMap() }
+        }
         val sessions = all.values.mapNotNull { it.session }
         val closed = CountDownLatch(sessions.size)
         for (session in sessions) {
@@ -190,14 +220,39 @@ class SessionRegistry(
         if (!closed.await(CLOSE_ALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)) logger.warn("Some sessions did not close within {}ms", CLOSE_ALL_TIMEOUT_MS)
     }
 
-    private fun begin(spec: TerminalSpec, scheme: String, generation: Int): TerminalHandle {
+    // Starts the shell of [spec] on [starter], and publishes its handle once it has started, if the terminal still wants it. Under the monitor.
+    private fun begin(spec: TerminalSpec, scheme: String, generation: Int) {
         schemes[spec.id] = scheme
-        val session = try {
-            start(spec, loadTheme(scheme))
-        } catch (e: Exception) {
-            logger.error("Could not start the shell of {}", spec.id.value, e)
-            return TerminalHandle(spec.id, null, e.message ?: e.toString(), generation)
+        starting[spec.id] = generation
+        scope.launch(starter) {
+            val started = try {
+                Result.success(start(spec, theme(scheme)))
+            } catch (e: Exception) {
+                logger.error("Could not start the shell of {}", spec.id.value, e)
+                Result.failure(e)
+            }
+            val session = started.getOrNull()
+            val wanted = synchronized(this@SessionRegistry) {
+                // The terminal is gone, was started again, or the application quits: this shell is nobody's.
+                if (closed || starting[spec.id] != generation) {
+                    false
+                } else {
+                    starting.remove(spec.id)
+                    val handle = session?.let { follow(spec, it, generation) }
+                        ?: TerminalHandle(spec.id, null, started.exceptionOrNull()?.let { it.message ?: it.toString() }, generation)
+                    // A scheme that was chosen while it started.
+                    schemes[spec.id]?.takeIf { it != scheme }?.let { latest -> session?.let { s -> scope.launch(starter) { theme(latest)?.let(s::setTheme) } } }
+                    mutableHandles.update { it + (spec.id to handle) }
+                    applyVisibility()
+                    true
+                }
+            }
+            if (!wanted) session?.close()
         }
+    }
+
+    // The handle of the shell that started, with what follows it. Under the monitor.
+    private fun follow(spec: TerminalSpec, session: TerminalSession, generation: Int): TerminalHandle {
         val handle = TerminalHandle(spec.id, session, generation = generation, shellName = shellName())
         // Where the shell goes is where it starts the next time, and what repository it is in is read again then, and when a command ends.
         followers[spec.id] = scope.launch {

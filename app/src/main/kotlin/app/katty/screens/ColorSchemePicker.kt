@@ -23,7 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +68,7 @@ import app.katty.ui.stepped
 import app.katty.ui.OneLine
 import app.katty.ui.SectionLabel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
@@ -256,18 +257,24 @@ private const val PREVIEW_TEXT =
 @Composable
 private fun SchemePreview(entry: ITermColorSchemeInfo?, modifier: Modifier) {
     val colors = Katty.colors
-    val session = remember {
-        // A program that does nothing, for the time that the picker is open: the preview only has to be a terminal that can be drawn.
-        // It starts with the colors of the scheme, so that it is not drawn in the wrong ones for a moment.
-        val theme = entry?.name?.let { name -> runCatching { ITermColorSchemes.load(name) }.getOrNull() }
-        TerminalSession.start(cols = 60, rows = 12, command = listOf("/bin/sleep", "86400"), shellIntegration = false, theme = theme)
-            .also { it.writeToScreen(PREVIEW_TEXT) }
+    // A program that does nothing, for the time that the picker is open: the preview only has to be a terminal that can be drawn. It starts
+    // with the colors of the scheme, so that it is not drawn in the wrong ones for a moment. Started and closed off the thread that draws: a
+    // program starts, and closing waits for it to end.
+    val initialScheme = remember { entry?.name }
+    val session by produceState<TerminalSession?>(null) {
+        val started = withContext(Dispatchers.IO) {
+            val theme = initialScheme?.let { name -> runCatching { ITermColorSchemes.load(name) }.getOrNull() }
+            TerminalSession.start(cols = 60, rows = 12, command = listOf("/bin/sleep", "86400"), shellIntegration = false, theme = theme)
+                .also { it.writeToScreen(PREVIEW_TEXT) }
+        }
+        value = started
+        awaitDispose { Dispatchers.IO.asExecutor().execute { started.close() } }
     }
-    DisposableEffect(session) { onDispose { session.close() } }
-    LaunchedEffect(entry?.name) {
+    LaunchedEffect(entry?.name, session) {
+        val shown = session ?: return@LaunchedEffect
         val name = entry?.name ?: return@LaunchedEffect
         val theme = withContext(Dispatchers.IO) { runCatching { ITermColorSchemes.load(name) }.getOrNull() } ?: return@LaunchedEffect
-        session.setTheme(theme)
+        shown.setTheme(theme)
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -275,7 +282,7 @@ private fun SchemePreview(entry: ITermColorSchemeInfo?, modifier: Modifier) {
             Text(if (entry?.dark == true) "Dark" else "Light", color = colors.muted)
         }
         Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(6.dp)).border(1.dp, colors.line, RoundedCornerShape(6.dp))) {
-            Terminal(session, Modifier.fillMaxSize(), fontSize = 12.sp, focusOnStart = false)
+            session?.let { Terminal(it, Modifier.fillMaxSize(), fontSize = 12.sp, focusOnStart = false) }
         }
         SectionLabel("PALETTE")
         if (entry != null) {

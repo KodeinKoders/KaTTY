@@ -52,7 +52,7 @@ class WorkspaceAreaTest {
     private val store = KattyStore(newId = { "id${counter++}" })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val registry = SessionRegistry(
-        store, scope, loadTheme = { null },
+        store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null },
         // An interactive zsh with no startup files: what a user has, so that its name is the terminal's.
         start = { spec, _ -> TerminalSession.start(80, 10, command = listOf("/bin/zsh", "-f", "-i"), directory = spec.directory, shellIntegration = false) },
     )

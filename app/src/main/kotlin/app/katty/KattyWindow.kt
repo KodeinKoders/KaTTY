@@ -233,7 +233,11 @@ fun DecoratedWindowScope.KattyWindowContent(
     }
 
     // The sessions follow the terminals of the store, and the ones that are not on the screen are paused.
-    LaunchedEffect(state.projects, state.settings.colorScheme) { registry.sync(state) }
+    // Only when a terminal comes or goes, or its scheme changes: the state changes at every `cd` and every move of a divider.
+    val sessionsKey = remember(state.projects, state.settings.colorScheme) {
+        state.allTerminals().map { it.terminal.id to (it.terminal.colorScheme ?: state.settings.colorScheme) }
+    }
+    LaunchedEffect(sessionsKey) { registry.sync(store.state.value) }
     // No terminal is on the screen while the board is.
     val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
     // A find bar that is not on the screen any more (another workspace, the board, a terminal closed or started again) is closed: its query was

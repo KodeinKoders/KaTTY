@@ -30,7 +30,7 @@ class RunningRestoreTest {
 
     // A real zsh, as the application starts one, with the program of the terminal typed in it as `startShell` does.
     private val registry = SessionRegistry(
-        store, scope,
+        store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined,
         loadTheme = { null },
         start = { spec, _ ->
             TerminalSession.start(

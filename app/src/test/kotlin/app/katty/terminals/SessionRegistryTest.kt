@@ -28,7 +28,7 @@ class SessionRegistryTest {
     private var script = "sleep 30"
 
     private val registry = SessionRegistry(
-        store, scope,
+        store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined,
         loadTheme = { name -> themes += name; null },
         start = { spec, _ ->
             TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), directory = spec.directory).also { started += it }
@@ -54,6 +54,54 @@ class SessionRegistryTest {
         assertEquals(3, registry.handles.value.size)
         assertEquals(store.state.value.allTerminals().map { it.terminal.id }.toSet(), registry.handles.value.keys)
         assertTrue(registry.handles.value.values.all { it.session != null })
+    }
+
+    // A registry whose shells take long to start, as a program on a slow disk does, started where they would be.
+    private fun slowRegistry(made: MutableList<TerminalSession>) = SessionRegistry(
+        store, scope, loadTheme = { null }, starter = Dispatchers.IO,
+        start = { spec, _ ->
+            Thread.sleep(500)
+            TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), directory = spec.directory).also { synchronized(made) { made += it } }
+        },
+    )
+
+    @Test
+    fun aShellThatTakesLongToStartDoesNotHoldTheCaller() {
+        val made = mutableListOf<TerminalSession>()
+        val slow = slowRegistry(made)
+        try {
+            store.addProject("/tmp")
+            val id = store.state.value.selection.terminal!!
+
+            val begun = System.nanoTime()
+            slow.sync(store.state.value)
+            val tookMs = (System.nanoTime() - begun) / 1_000_000
+
+            assertTrue(tookMs < 200, "Syncing took ${tookMs}ms: it is the UI's thread")
+            awaitUntil("the shell to have started") { slow.handles.value[id]?.session != null }
+        } finally {
+            slow.close()
+        }
+    }
+
+    @Test
+    fun aTerminalThatIsGoneBeforeItsShellStartedHasThatShellClosed() {
+        val made = mutableListOf<TerminalSession>()
+        val slow = slowRegistry(made)
+        try {
+            store.addProject("/tmp")
+            val id = store.state.value.selection.terminal!!
+            slow.sync(store.state.value)
+
+            store.closeTerminal(id)
+            slow.sync(store.state.value)
+
+            awaitUntil("the shell to have started") { synchronized(made) { made.isNotEmpty() } }
+            awaitUntil("and to be closed") { synchronized(made) { made.single() }.exited.value != null }
+            assertNull(slow.handles.value[id])
+        } finally {
+            slow.close()
+        }
     }
 
     @Test
@@ -141,7 +189,7 @@ class SessionRegistryTest {
 
     @Test
     fun aShellThatCannotBeStartedLeavesATerminalWithItsFailure() {
-        val failing = SessionRegistry(store, scope, loadTheme = { null }, start = { _, _ -> throw IllegalStateException("no such shell") })
+        val failing = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { _, _ -> throw IllegalStateException("no such shell") })
         store.addProject("/tmp")
 
         failing.sync(store.state.value)
@@ -156,12 +204,16 @@ class SessionRegistryTest {
         store.addProject("/tmp")
         val id = store.state.value.selection.terminal!!
         sync()
+        assertEquals("Alabaster", registry.schemeOf(id))
         store.setColorScheme(id, "Nord")
         sync()
+        assertEquals("Nord", registry.schemeOf(id))
         store.setColorScheme(id, null)
         sync()
+        assertEquals("Alabaster", registry.schemeOf(id))
 
-        assertEquals(listOf("Alabaster", "Nord", "Alabaster"), themes)
+        // Each scheme is read once.
+        assertEquals(listOf("Alabaster", "Nord"), themes)
     }
 
     @Test
@@ -245,7 +297,7 @@ class SessionRegistryTest {
             store.addProject(project.path)
             store.setDirectory(store.state.value.selection.terminal!!, inside.path)
             val directories = mutableListOf<String>()
-            val recording = SessionRegistry(store, scope, loadTheme = { null }, start = { spec, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
+            val recording = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { spec, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
 
             recording.sync(store.state.value)
 
@@ -263,7 +315,7 @@ class SessionRegistryTest {
             store.addProject(project.path)
             store.setDirectory(store.state.value.selection.terminal!!, "/nonexistent/folder")
             val directories = mutableListOf<String>()
-            val recording = SessionRegistry(store, scope, loadTheme = { null }, start = { spec, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
+            val recording = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { spec, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
 
             recording.sync(store.state.value)
 
