@@ -1,10 +1,13 @@
 package app.katty.core
 
 import app.katty.core.sqlite.SqliteDatabase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -261,10 +264,15 @@ public class UsageService(
             val source = sources[agent] ?: continue
             val reading = try {
                 source.read()
+            } catch (e: CancellationException) {
+                // The readings were started again (the agents that are wanted changed): this one is not a failure, and what was read stays.
+                throw e
             } catch (e: Exception) {
                 logger.debug("Could not read the usage of {}", agent, e)
                 null
             }
+            // A reading that did not suspend may end after the loop was cancelled: it is not written over what the new one does.
+            currentCoroutineContext().ensureActive()
             mutableReadings.value = if (reading == null) mutableReadings.value - agent else mutableReadings.value + (agent to reading)
         }
     }

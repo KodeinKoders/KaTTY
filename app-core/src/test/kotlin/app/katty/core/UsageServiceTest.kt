@@ -68,6 +68,33 @@ class UsageServiceTest {
     }
 
     @Test
+    fun changingTheAgentsWhileOneIsReadKeepsTheReadingsOfTheOthers() {
+        // After their first reading, the agents are slow: a reading is in progress when the agents that are wanted change.
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val calls = java.util.concurrent.ConcurrentHashMap<Agent, AtomicInteger>()
+        fun source(agent: Agent, percent: Int) = UsageSource {
+            if (calls.computeIfAbsent(agent) { AtomicInteger() }.incrementAndGet() > 1) gate.await()
+            reading(agent, percent)
+        }
+        val service = UsageService(
+            scope,
+            mapOf(Agent.CLAUDE to source(Agent.CLAUDE, 10), Agent.CODEX to source(Agent.CODEX, 20), Agent.COPILOT to UsageSource { reading(Agent.COPILOT, 30) }),
+            interval = 60_000.milliseconds,
+        )
+        service.want(setOf(Agent.CLAUDE, Agent.CODEX))
+        await("both are read") { service.readings.value.keys == setOf(Agent.CLAUDE, Agent.CODEX) }
+        service.want(setOf(Agent.CLAUDE, Agent.CODEX, Agent.COPILOT))
+        await("a slow reading of claude") { calls.getValue(Agent.CLAUDE).get() == 2 }
+
+        // The reading that is in progress is cancelled.
+        service.want(setOf(Agent.CLAUDE, Agent.CODEX))
+        Thread.sleep(300)
+
+        assertEquals(setOf(Agent.CLAUDE, Agent.CODEX), service.readings.value.keys, "The readings of the agents that are still wanted stay")
+        service.stop()
+    }
+
+    @Test
     fun readsAgainAfterTheInterval() {
         val count = AtomicInteger()
         val service = UsageService(scope, mapOf(Agent.CLAUDE to UsageSource { reading(Agent.CLAUDE, count.incrementAndGet()) }), interval = 50.milliseconds)
