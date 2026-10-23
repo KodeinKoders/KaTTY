@@ -7,6 +7,7 @@ import app.katty.core.GitReader
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
 import app.katty.core.RestorePolicy
+import app.katty.core.SessionLookups
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
 import app.katty.core.apartFromOthers
@@ -285,6 +286,8 @@ class SessionRegistry(
                 // so it is kept for that program (the first of the agent that is seen), and not for another that is started after it.
                 val resumed = spec.running?.takeIf { it.agent != null }?.let { it.agent to it.agentSession }
                 var resumedPid = 0
+                // Finding the conversation of an agent reads its files: it is done again every few seconds, not at every poll.
+                val lookups = SessionLookups()
                 while (isActive) {
                     // The shell ended (after `exec vim`, the program was the shell): nothing runs over it any more, and nothing is to be started
                     // again over it at the next launch. Quitting cancels this before it closes the sessions, which keeps what ran then.
@@ -303,7 +306,7 @@ class SessionRegistry(
                     if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) whileFollowed { mutableProcessNames.update { it + (spec.id to name) } }
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
                     if (name != null) {
-                        var running = command?.let { withContext(Dispatchers.IO) { it.toRunning(reportedSession = reportedSession.get()) } }
+                        var running = command?.let { withContext(Dispatchers.IO) { it.toRunning(reportedSession = reportedSession.get(), lookups = lookups) } }
                         // An agent that only guesses its conversation by its directory cannot tell it from another's when another terminal runs the same agent there:
                         // it comes back on none (an OpenCode, unless it reported its session, guesses as well).
                         var ambiguous = false

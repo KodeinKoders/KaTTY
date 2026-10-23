@@ -5,6 +5,9 @@ import app.katty.core.sqlite.SqliteException
 import app.katty.core.sqlite.SqliteRow
 import java.nio.file.Path
 
+// A session id that did not fit a record's id: `ses_` and 16 digits of its SHA-256.
+private val HASHED_ID = Regex("ses_([0-9a-f]{16})")
+
 /**
  * What OpenCode keeps of its sessions, read from its SQLite database (`~/.local/share/opencode/opencode.db`), **read-only**. OpenCode 1.x
  * has `session` and `message`, 2.x `session_v2` and `session_message`: both are read, and a table that is not there counts as empty. A read
@@ -151,7 +154,7 @@ internal class OpenCodeStore(
 
     private fun <T> read(block: SqliteDatabase.() -> T?): T? = SqliteDatabase.read(database) { it.block() }
 
-    private fun hashed(reported: String): String? = Regex("ses_([0-9a-f]{16})").matchEntire(reported)?.groupValues?.get(1)
+    private fun hashed(reported: String): String? = HASHED_ID.matchEntire(reported)?.groupValues?.get(1)
 
     private fun sha256(id: String): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(id.toByteArray()).joinToString("") { "%02x".format(it) }

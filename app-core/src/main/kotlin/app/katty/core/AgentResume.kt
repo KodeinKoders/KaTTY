@@ -137,7 +137,7 @@ public object AgentResume {
         val projects = home.resolve(".claude/projects")
         // Its folder is named after the directory it ran in, every character that is not a letter or a digit a dash: one stat. A name that
         // was made another way is looked for in all of them.
-        val directory = record.string("cwd")?.replace(Regex("[^A-Za-z0-9]"), "-")
+        val directory = record.string("cwd")?.replace(NOT_ALPHANUMERIC, "-")
         if (directory != null && projects.resolve("$directory/$id.jsonl").isFile) return id
         return id.takeIf { projects.listFiles { f -> f.isDirectory }?.any { it.resolve("$id.jsonl").isFile } == true }
     }
@@ -200,7 +200,7 @@ public object AgentResume {
     private fun isUnderscoreId(id: String): Boolean = UNDERSCORE_ID.matches(id)
 
     // `ses_` and what OpenCode makes the rest of an id of: it goes into a command line.
-    private fun isOpenCodeId(id: String): Boolean = Regex("ses_[A-Za-z0-9]+").matches(id)
+    private fun isOpenCodeId(id: String): Boolean = OPENCODE_ID.matches(id)
 
     /**
      * The command line that starts [agent] again, from the one it had ([original]): the program, a few of its options that say how it was
@@ -512,4 +512,6 @@ public object AgentResume {
 
     private val SESSION_ID = Regex("[A-Za-z0-9][A-Za-z0-9-]{7,63}")
     private val UNDERSCORE_ID = Regex("[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+    private val OPENCODE_ID = Regex("ses_[A-Za-z0-9]+")
+    private val NOT_ALPHANUMERIC = Regex("[^A-Za-z0-9]")
 }

@@ -4,6 +4,9 @@ import app.katty.terminal.TerminalProgramState
 import app.katty.terminal.TerminalProgramStatus
 import java.io.File
 
+// The programs that run an agent that is a script: the script is the agent.
+private val INTERPRETER = Regex("(?i)(python[0-9.]*|node)")
+
 /**
  * The coding agents that the application knows by name: their name, as the user sees it, and the program that runs them.
  * They are not what decides that a terminal is on the board (any program that reports is): they give a logo, a name, a usage reading and a resume.
@@ -100,7 +103,7 @@ public enum class Agent(
             // Whatever the launcher is called (`cursor-agent`, `agent`), the script it runs says whose it is.
             entries.firstOrNull { agent -> agent.scriptContains != null && argv.drop(1).any { it.endsWith("/index.js") && agent.scriptContains in it } }?.let { return it }
             val program = argv.firstOrNull()?.let { File(it).name } ?: return null
-            if (!Regex("(?i)(python[0-9.]*|node)").matches(program)) return fromProcess(program)
+            if (!INTERPRETER.matches(program)) return fromProcess(program)
             return argv.getOrNull(1)?.let { File(it).name }?.let { script -> entries.firstOrNull { it.interpreted && script in it.names } }
         }
     }

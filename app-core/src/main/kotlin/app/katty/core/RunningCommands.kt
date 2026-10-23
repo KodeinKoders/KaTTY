@@ -15,13 +15,17 @@ private const val MAX_COMMAND_CHARS = 2000
  * @param reportedSession The session that the program has said it is in (OSC 7501), when it says it: it is what an OpenCode is told apart by.
  * @param searchPath Where the shell looks for programs (as `PATH`): the login shell's when it was read ([AgentDetection.knownLoginPath]), which
  * the application's is not when it was opened from the Finder.
- * @param sessionId The id of the conversation that the agent [Agent] runs as the pid, which started at the time; by default [AgentResume.sessionId].
+ * @param lookups What was found of the conversation before, for a terminal that is asked again and again: by default it is looked for each time.
+ * @param sessionId The id of the conversation that the agent [Agent] runs as the pid, which started at the time; by default [AgentResume.sessionId],
+ * through [lookups] when there are.
  */
 public fun ForegroundCommand.toRunning(
     reportedSession: String? = null,
     searchPath: String = AgentDetection.knownLoginPath ?: System.getenv("PATH").orEmpty(),
+    lookups: SessionLookups? = null,
     sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt ->
-        AgentResume.sessionId(agent, pid, startedAt, cwd = directory, groupPids = groupPids, reportedSession = reportedSession, tty = tty, argv = argv)
+        val find = { AgentResume.sessionId(agent, pid, startedAt, cwd = directory, groupPids = groupPids, reportedSession = reportedSession, tty = tty, argv = argv) }
+        if (lookups != null) lookups.sessionOf(agent, pid, startedAt, reportedSession, find) else find()
     },
 ): RunningCommand? {
     if (pipeline || argv.isEmpty()) return null
