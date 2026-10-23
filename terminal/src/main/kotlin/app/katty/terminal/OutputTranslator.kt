@@ -51,7 +51,7 @@ internal data class CellGeometry(val cellWidthPx: Int, val cellHeightPx: Int, va
  *
  * Not thread-safe: the reader of the program's output is the only one that uses it.
  */
-internal class OutputTranslator(
+internal open class OutputTranslator(
     private val maxPayload: Int = MAX_PAYLOAD,
     private val geometry: () -> CellGeometry = { CellGeometry(8, 16, 80, 24) },
 ) {
@@ -96,7 +96,7 @@ internal class OutputTranslator(
      * Translates the first [length] bytes of [buffer], and returns how many bytes of [output] are the result. [output] is [buffer] itself
      * when nothing changed and nothing is held, which is almost always.
      */
-    fun filter(buffer: ByteArray, length: Int): Int {
+    open fun filter(buffer: ByteArray, length: Int): Int {
         if (state == State.GROUND && !contains(buffer, length)) {
             output = buffer
             return length

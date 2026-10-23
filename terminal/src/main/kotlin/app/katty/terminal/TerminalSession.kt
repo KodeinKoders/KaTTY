@@ -1379,14 +1379,8 @@ public class TerminalSession private constructor(
         if (!closed.compareAndSet(false, true)) return
         logger.debug("Closing the session")
 
-        // Ending the program ends the reader, and unblocks the writer. A hang-up, as a terminal whose window closes sends: an interactive
-        // shell ignores SIGTERM, and on a hang-up it saves its history and hangs up its jobs. What does not end soon is killed.
-        (process as? UnixPtyProcess)?.hangup() ?: process.destroy()
-        if (!process.waitFor(HANGUP_GRACE_MS, TimeUnit.MILLISECONDS)) {
-            logger.debug("The program did not end within {}ms of the hang-up, killing it", HANGUP_GRACE_MS)
-            process.destroyForcibly()
-            process.waitFor(KILL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        }
+        // Ending the program ends the reader, and unblocks the writer.
+        endProgram()
         outgoing.put(STOP)
         frameRequests.close()
 
@@ -1422,10 +1416,21 @@ public class TerminalSession private constructor(
         }
     }
 
+    // A hang-up, as a terminal whose window closes sends: an interactive shell ignores SIGTERM, and on a hang-up it saves its history and hangs
+    // up its jobs. What does not end soon is killed.
+    private fun endProgram() {
+        (process as? UnixPtyProcess)?.hangup() ?: process.destroy()
+        if (!process.waitFor(HANGUP_GRACE_MS, TimeUnit.MILLISECONDS)) {
+            logger.debug("The program did not end within {}ms of the hang-up, killing it", HANGUP_GRACE_MS)
+            process.destroyForcibly()
+            process.waitFor(KILL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        }
+    }
+
     private fun readOutput() {
         val buffer = ByteArray(READ_BUFFER_SIZE)
         // Only this thread uses it.
-        val translator = OutputTranslator(geometry = { geometry })
+        val translator = makeTranslator { geometry }
         try {
             val input = process.inputStream
             while (true) {
@@ -1449,11 +1454,17 @@ public class TerminalSession private constructor(
         } catch (e: IOException) {
             // The pty is closed, which is how the program exiting shows on some platforms.
             logger.debug("The pty closed while reading", e)
+        } catch (e: Throwable) {
+            // Anything else (a bug, the memory that ran out): nothing reads the program's output any more, and a program that writes would wait
+            // for good. It is ended, and the terminal says so, rather than staying frozen with nothing to say why.
+            logger.error("Reading the output of the program failed: it is ended", e)
+            endProgram()
         }
         val code = try {
             process.waitFor()
         } catch (_: InterruptedException) {
-            return
+            Thread.currentThread().interrupt()
+            -1
         }
         logger.info("The program exited with code {}", code)
         if (programStatusStore.programExited()) programStatusState.value = programStatusStore.snapshot()
@@ -1824,6 +1835,10 @@ public class TerminalSession private constructor(
         private const val INITIAL_CELL_HEIGHT_PX = 16
 
         private const val READ_BUFFER_SIZE = 64 * 1024
+        // What makes the translator of each session's output: a test of a reader that fails gives one that fails.
+        @Volatile
+        internal var makeTranslator: (() -> CellGeometry) -> OutputTranslator = { geometry -> OutputTranslator(geometry = geometry) }
+
         // How long a program has to end after the hang-up of [close], and how long a killed one, and the threads, have after that.
         private const val HANGUP_GRACE_MS = 300L
         private const val KILL_TIMEOUT_MS = 500L

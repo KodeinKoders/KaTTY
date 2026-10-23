@@ -1041,6 +1041,25 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun aReaderThatFailsEndsTheProgramAndSaysThatItEnded() {
+        val previous = TerminalSession.makeTranslator
+        // A failure that is not the pty's: a bug, or the memory that ran out.
+        TerminalSession.makeTranslator = { geometry ->
+            object : OutputTranslator(geometry = geometry) {
+                override fun filter(buffer: ByteArray, length: Int): Int = throw IllegalStateException("A translator that fails")
+            }
+        }
+        try {
+            val session = start("echo hello; sleep 30")
+
+            // The terminal says that its program ended, rather than freezing with nothing to say why.
+            assertNotEquals(0, session.awaitExit())
+        } finally {
+            TerminalSession.makeTranslator = previous
+        }
+    }
+
+    @Test
     fun closingHangsUpAShellWhichSavesItsHistoryAndEndsAtOnce() {
         val history = Files.createTempFile("katty-history", "")
         try {
