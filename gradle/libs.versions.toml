@@ -1,6 +1,5 @@
 [versions]
 buildConfig = "6.1.2"               # https://github.com/gmazzo/gradle-buildconfig-plugin/releases
-composeMaterial3 = "1.12.0-alpha03" # https://github.com/JetBrains/compose-multiplatform/releases
 composeMultiplatform = "1.12.1"     # https://github.com/JetBrains/compose-multiplatform/releases
 coroutines = "1.11.0"               # https://github.com/Kotlin/kotlinx.coroutines/releases
 jewel = "0.41.0-262.10968.63"       # https://github.com/JetBrains/intellij-community/releases (Jewel is in the platform/jewel directory; its Maven versions are on https://central.sonatype.com/artifact/org.jetbrains.jewel/jewel-int-ui-standalone)
@@ -19,7 +18,6 @@ kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization"
 
 [libraries]
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
-compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "composeMaterial3" }
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
 
