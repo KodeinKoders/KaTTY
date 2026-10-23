@@ -105,4 +105,28 @@ class OpenHandsStoreTest {
         assertNull(store().sessionFor(work.toString(), 9_000_000, listOf("openhands", "--resume", dashed(a))))
         assertNull(OpenHandsStore(root.resolve("nowhere")).sessionFor(work.toString(), 0, listOf("openhands")))
     }
+
+    @Test
+    fun aConversationThatHasNoEventsYetDoesNotHideTheOthers() {
+        conversation(a, created = 9_500_000)
+        // Made a moment ago, its first event not written yet.
+        conversation(c, created = 9_600_000, events = false)
+
+        assertEquals(dashed(a), store().sessionFor(work.toString(), 9_000_000, listOf("openhands")))
+    }
+
+    @Test
+    fun aConversationWhoseStateCouldNotBeReadIsReadAgainLater() {
+        val folder = conversation(a, created = 9_500_000)
+        val state = folder.resolve("base_state.json")
+        val written = Files.readString(state)
+        // Caught while it is written.
+        Files.writeString(state, "{")
+        assertEquals(null, store().sessionFor(work.toString(), 9_000_000, listOf("openhands")))
+
+        Files.writeString(state, written)
+        Files.setLastModifiedTime(folder, FileTime.fromMillis(9_500_000))
+
+        assertEquals(dashed(a), store().sessionFor(work.toString(), 9_000_000, listOf("openhands")))
+    }
 }

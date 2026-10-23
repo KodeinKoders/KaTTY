@@ -63,18 +63,26 @@ internal class OpenHandsStore(private val conversations: Path = defaultDirectory
     // It was told to resume a conversation and not which one: `--resume` alone, or with `--last`.
     private fun told(argv: List<String>): Boolean = resumeId(argv) == null && argv.drop(1).any { it == "--last" || it == "--resume" }
 
-    // The first event is the system prompt, written when the conversation is made: the time of its file is the time of the conversation.
+    // The first event is the system prompt, written when the conversation is made: the time of its file is the time of the conversation. `null` for a
+    // conversation that has none yet (it is being made): it is not a reason to give up on the others.
     private fun createdAt(folder: Path): Long? =
-        Files.newDirectoryStream(folder.resolve("events"), "event-00000-*.json").use { files -> files.firstOrNull()?.getLastModifiedTime()?.toMillis() }
+        try {
+            Files.newDirectoryStream(folder.resolve("events"), "event-00000-*.json").use { files -> files.firstOrNull()?.getLastModifiedTime()?.toMillis() }
+        } catch (e: Exception) {
+            null
+        }
 
-    private fun workingDirectory(folder: Path): String? =
-        directories.computeIfAbsent("$conversations/${folder.fileName}") {
-            try {
-                WORKING_DIR.find(Files.readString(folder.resolve("base_state.json")))?.groupValues?.get(1)?.let { Json.decodeFromString<String>("\"$it\"") }
-            } catch (e: Exception) {
-                null
-            } ?: ""
-        }.takeIf { it.isNotEmpty() }
+    // Kept once it was read: a state that could not be (it is being written) is read again the next time.
+    private fun workingDirectory(folder: Path): String? {
+        val key = "$conversations/${folder.fileName}"
+        directories[key]?.let { return it }
+        val read = try {
+            WORKING_DIR.find(Files.readString(folder.resolve("base_state.json")))?.groupValues?.get(1)?.let { Json.decodeFromString<String>("\"$it\"") }
+        } catch (e: Exception) {
+            null
+        }
+        return read?.also { directories[key] = it }
+    }
 
     // Both are real paths: the program says the directory as the system does, and it is compared to the process's own.
     private fun sameDirectory(recorded: String, cwd: String): Boolean =
