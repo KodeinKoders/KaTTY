@@ -39,10 +39,6 @@ internal class WheelScroller {
         remainder -= whole
         return whole.coerceIn(-maxRows, maxRows)
     }
-
-    fun reset() {
-        remainder = 0f
-    }
 }
 
 /**
@@ -74,10 +70,6 @@ internal class WheelNormalizer {
         if (!alone || rotation == 0) return precise
         val notches = max(abs(precise), abs(rotation.toFloat()))
         return if (precise < 0f) -notches else notches
-    }
-
-    fun reset() {
-        lastMs = null
     }
 
     private companion object {

@@ -41,15 +41,6 @@ class WheelScrollerTest {
         assertEquals(0, wheel.add(0.1f, 24), "It does not go on after it stopped")
         assertEquals(-24, wheel.add(-100f, maxRows = 24))
     }
-
-    @Test
-    fun resetForgetsWhatWasLeft() {
-        wheel.add(0.3f, 24)
-
-        wheel.reset()
-
-        assertEquals(0, wheel.add(0.3f, 24))
-    }
 }
 
 class WheelNormalizerTest {
@@ -119,14 +110,6 @@ class WheelNormalizerTest {
 
         // The vertical scroll that was 10 ms ago does not make this horizontal click a part of a stream.
         assertEquals(1f, x.normalize(0.1f, 1, 10))
-    }
-
-    @Test
-    fun resetForgetsTheLastEvent() {
-        wheel.normalize(0.1f, 1, 0)
-        wheel.reset()
-
-        assertEquals(1f, wheel.normalize(0.1f, 1, 10))
     }
 }
 
