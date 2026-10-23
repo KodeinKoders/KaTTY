@@ -104,9 +104,14 @@ class AgentTracker(
         update(id, report ?: return)
     }
 
+    // The map is read and written under the monitor: the sessions report on their own threads, and two updates that read it before either wrote
+    // it lost the first. The transition is told outside it.
     private fun update(id: TerminalId, summary: app.katty.core.AgentReport) {
         var transition: AgentTransition? = null
-        mutableInfos.value = synchronized(this) {
+        synchronized(this) {
+            // A session that was let go (closed, replaced by another shell) says nothing any more: a report of it that comes late does not bring
+            // the terminal back.
+            if (id !in follows) return
             latest[id] = summary
             // A report says that a program runs in the terminal, and may name it; no record at all (what is left when a `done` was seen) is
             // that program, at rest, until the shell has the terminal again.
@@ -127,7 +132,7 @@ class AgentTracker(
             // A terminal that has said nothing is at rest: becoming so is not a change.
             val from = before?.state ?: AgentState.IDLE
             if (from != report.state) transition = AgentTransition(id, from, info)
-            mutableInfos.value + (id to info)
+            mutableInfos.value = mutableInfos.value + (id to info)
         }
         transition?.let { mutableTransitions.tryEmit(it) }
     }

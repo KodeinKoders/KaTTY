@@ -56,6 +56,19 @@ class AgentTrackerTest {
     }
 
     @Test
+    fun reportsThatComeAtTheSameMomentFromManyTerminalsAreAllKept() {
+        // Each session reports on its own thread: two updates that read the same map, and wrote it one after the other, lost the first.
+        repeat(16) { scripts += "sleep 1; ${report("state=working", "app=claude-code")}; sleep 60" }
+        store.addProject("/tmp")
+        repeat(15) { store.split(store.state.value.selection.terminal!!, SplitDirection.ROW) }
+        registry.sync(store.state.value)
+        tracker.sync(registry.handles.value)
+        val ids = store.state.value.allTerminals().map { it.terminal.id }
+
+        await("every terminal to be working") { ids.all { tracker.infos.value[it]?.state == AgentState.WORKING } }
+    }
+
+    @Test
     fun aTerminalThatSaysNothingIsAtRest() {
         scripts += "sleep 60"
         val id = start()
