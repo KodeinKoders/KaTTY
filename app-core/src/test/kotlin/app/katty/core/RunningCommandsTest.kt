@@ -92,6 +92,19 @@ class RunningCommandsTest {
     }
 
     @Test
+    fun anOpenCodeThatThePathOfTheLoginShellResolvesIsKeptByItsName() {
+        // Homebrew's link to the file of a version, which an upgrade removes; KaTTY opened from the Finder has not got that PATH.
+        val root = java.nio.file.Files.createTempDirectory("katty-path").toFile().also { it.deleteOnExit() }
+        val real = root.resolve("Cellar/opencode/1.2.3/bin/opencode").also { it.parentFile.mkdirs(); it.writeText("#!/bin/sh\n"); it.setExecutable(true) }
+        val bin = root.resolve("bin").also { it.mkdirs() }
+        java.nio.file.Files.createSymbolicLink(bin.resolve("opencode").toPath(), real.toPath())
+
+        val running = command("opencode", executable = real.canonicalPath).toRunning(searchPath = bin.path) { _, _, _ -> null }!!
+
+        assertEquals(listOf("opencode"), running.argv)
+    }
+
+    @Test
     fun anOpenCodeWithNoExecutableIsKeptAsItWasTyped() {
         assertEquals(listOf("opencode"), command("opencode", executable = null).toRunning { _, _, _ -> null }!!.argv)
     }

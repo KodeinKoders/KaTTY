@@ -11,10 +11,24 @@ import java.util.concurrent.TimeUnit
  */
 public object AgentDetection {
     /**
-     * The `PATH` that a login shell has, or `null` if it could not be read in [timeoutMs]. It starts the shell once; the caller keeps what
-     * it got.
+     * The `PATH` of the user's login shell, once [loginShellPath] has read it, and `null` before: what a program run over a shell is looked for
+     * in, which a call that cannot wait for a shell to start reads.
      */
-    public fun loginShellPath(shell: String = System.getenv("SHELL") ?: "/bin/zsh", timeoutMs: Long = 8_000): String? =
+    @Volatile
+    public var knownLoginPath: String? = null
+        private set
+
+    /**
+     * The `PATH` that a login shell has, or `null` if it could not be read in [timeoutMs]. It starts the shell once; the caller keeps what
+     * it got, and so does [knownLoginPath].
+     */
+    public fun loginShellPath(shell: String = userShell(), timeoutMs: Long = 8_000): String? =
+        // Only the user's own shell says what the user's PATH is.
+        readLoginShellPath(shell, timeoutMs)?.also { if (shell == userShell()) knownLoginPath = it }
+
+    private fun userShell(): String = System.getenv("SHELL") ?: "/bin/zsh"
+
+    private fun readLoginShellPath(shell: String, timeoutMs: Long): String? =
         try {
             val process = ProcessBuilder(shell, "-l", "-c", "printf %s \"\$PATH\"")
                 .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
