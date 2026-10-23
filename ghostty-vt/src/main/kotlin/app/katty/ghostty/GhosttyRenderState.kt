@@ -47,11 +47,18 @@ public class GhosttyRenderState : AutoCloseable {
     init {
         NativeLibrary.ensureLoaded()
 
+        // What was made before one that failed is freed with the arena.
+        var state: MemorySegment? = null
+        var iterator: MemorySegment? = null
         try {
-            handle = newHandle { GhosttyVt.ghostty_render_state_new(MemorySegment.NULL, it) }
-            rowIterator = newHandle { GhosttyVt.ghostty_render_state_row_iterator_new(MemorySegment.NULL, it) }
+            state = newHandle { GhosttyVt.ghostty_render_state_new(MemorySegment.NULL, it) }
+            iterator = newHandle { GhosttyVt.ghostty_render_state_row_iterator_new(MemorySegment.NULL, it) }
             rowCells = newHandle { GhosttyVt.ghostty_render_state_row_cells_new(MemorySegment.NULL, it) }
+            handle = state
+            rowIterator = iterator
         } catch (e: Throwable) {
+            iterator?.let { GhosttyVt.ghostty_render_state_row_iterator_free(it) }
+            state?.let { GhosttyVt.ghostty_render_state_free(it) }
             arena.close()
             throw e
         }
@@ -143,7 +150,6 @@ public class GhosttyRenderState : AutoCloseable {
                         GhosttyVt.GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW() -> GhosttyCursorStyle.BLOCK_HOLLOW
                         else -> GhosttyCursorStyle.BLOCK
                     },
-                    wideTail = GhosttyRenderStateCursor.wide_tail(cursor),
                     passwordInput = GhosttyRenderStateCursor.password_input(cursor),
                 )
             }

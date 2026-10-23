@@ -57,8 +57,6 @@ public data class GhosttyRenderCursor(
     public val visible: Boolean,
     public val blinking: Boolean,
     public val style: GhosttyCursorStyle,
-    /** Whether the cursor is on the right half of a wide character. */
-    public val wideTail: Boolean,
     /** Whether the program is reading a password: the typed characters should not be shown. */
     public val passwordInput: Boolean,
 )

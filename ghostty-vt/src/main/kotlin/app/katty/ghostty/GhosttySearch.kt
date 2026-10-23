@@ -194,7 +194,11 @@ public class GhosttySearch(private val terminal: GhosttyTerminal) : AutoCloseabl
         return (GhosttyPointCoordinate.x(out).toInt() and 0xFFFF) to GhosttyPointCoordinate.y(out)
     }
 
-    private fun requireOpen() = check(!closed) { "The search is closed" }
+    // The search reads its terminal's grid: once the terminal is freed, its handle is no terminal any more.
+    private fun requireOpen() {
+        check(!closed) { "The search is closed" }
+        terminal.requireOpen()
+    }
 
     override fun close() {
         if (closed) return

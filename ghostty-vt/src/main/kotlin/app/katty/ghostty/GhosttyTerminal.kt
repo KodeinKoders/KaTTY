@@ -1126,7 +1126,8 @@ public class GhosttyTerminal private constructor(
 
     // The answer to XTVERSION: a string that stays valid after the callback returns, since the terminal reads it then. It is kept for as long
     // as the version does not change; the empty one is the library's own name.
-    private val emptyVersion: MemorySegment by lazy { callbacks.allocate(GhosttyString.layout()) }
+    // Made at once: it is what the callback gives when making the version failed, which an allocation that fails again would throw into native code.
+    private val emptyVersion: MemorySegment = callbacks.allocate(GhosttyString.layout())
     private var versionText: String? = null
     private var versionStruct: MemorySegment? = null
 
@@ -1391,12 +1392,18 @@ public class GhosttyTerminal private constructor(
         ): GhosttyTerminal {
             NativeLibrary.ensureLoaded()
             val handle = decodeSnapshot(snapshot)
-            val (cols, rows) = Arena.ofConfined().use { arena ->
-                val out = arena.allocate(ValueLayout.JAVA_SHORT)
-                checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_COLS(), out), "ghostty_terminal_get(COLS)")
-                val cols = out.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF
-                checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_ROWS(), out), "ghostty_terminal_get(ROWS)")
-                cols to (out.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF)
+            val (cols, rows) = try {
+                Arena.ofConfined().use { arena ->
+                    val out = arena.allocate(ValueLayout.JAVA_SHORT)
+                    checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_COLS(), out), "ghostty_terminal_get(COLS)")
+                    val cols = out.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF
+                    checkResult(GhosttyVt.ghostty_terminal_get(handle, GhosttyVt.GHOSTTY_TERMINAL_DATA_ROWS(), out), "ghostty_terminal_get(ROWS)")
+                    cols to (out.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF)
+                }
+            } catch (e: Throwable) {
+                // Nothing has it yet: it is freed here.
+                GhosttyVt.ghostty_terminal_free(handle)
+                throw e
             }
             // The terminal frees the handle itself if it cannot be set up.
             return GhosttyTerminal(handle, cols, rows, terminfoName, defaultCursorBlink, scrollbackMaxBytes, imageStorageLimitBytes, defaultCursorStyle)

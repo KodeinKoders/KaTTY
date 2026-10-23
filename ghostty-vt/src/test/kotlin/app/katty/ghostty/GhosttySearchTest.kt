@@ -3,6 +3,7 @@ package app.katty.ghostty
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -195,6 +196,20 @@ class GhosttySearchTest {
         val orphan = GhosttySearch(other)
         other.close()
 
+        orphan.close()
+    }
+
+    @Test
+    fun aSearchWhoseTerminalIsClosedSaysSoRatherThanReadingIt() {
+        val other = GhosttyTerminal(cols = 20, rows = 5)
+        val orphan = GhosttySearch(other)
+        other.vtWrite("hello")
+        orphan.setNeedle("hello")
+        other.close()
+
+        // Its grid is freed memory now: asking for what it found throws, as the terminal's own calls do.
+        assertFailsWith<IllegalStateException> { orphan.viewportMatches() }
+        assertFailsWith<IllegalStateException> { orphan.selectedMatch() }
         orphan.close()
     }
 }
