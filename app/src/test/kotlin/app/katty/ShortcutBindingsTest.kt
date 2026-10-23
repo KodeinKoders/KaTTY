@@ -219,4 +219,21 @@ class ShortcutBindingsTest {
         for (shortcut in AppShortcut.entries) assertTrue(shortcut.title.isNotBlank(), "$shortcut")
         assertEquals(ShortcutGroup.entries.toSet(), AppShortcut.entries.map { it.group }.toSet(), "No group is empty")
     }
+
+    @Test
+    fun aFileCannotTakeTheKeysOfTheTerminalOrBindTwoShortcutsToTheSameKeys() {
+        // ⌘C copies in a terminal: a shortcut written with it by hand keeps its default.
+        val copy = ShortcutMap.of(mapOf("SPLIT_MAIN" to "meta:67"))
+        assertTrue(copy.isDefault(AppShortcut.SPLIT_MAIN))
+        assertNull(copy.lookup(Awt.VK_C, meta = true, ctrl = false, alt = false, shift = false))
+
+        // Two shortcuts with the same keys: one of them keeps its default, and the keys are one shortcut's.
+        val twice = ShortcutMap.of(mapOf("SPLIT_MAIN" to "meta+ctrl+alt:74", "FIND" to "meta+ctrl+alt:74"))
+        assertEquals(1, listOf(AppShortcut.SPLIT_MAIN, AppShortcut.FIND).count { twice.isDefault(it) })
+        assertTrue(twice.lookup(Awt.VK_J, meta = true, ctrl = true, alt = true, shift = false) in setOf(AppShortcut.SPLIT_MAIN, AppShortcut.FIND))
+
+        // And the keys of a default that is still there.
+        val taken = ShortcutMap.of(mapOf("FIND" to "meta:68"))
+        assertTrue(taken.isDefault(AppShortcut.FIND), "⌘D is the main split's")
+    }
 }

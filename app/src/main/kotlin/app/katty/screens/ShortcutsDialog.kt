@@ -137,13 +137,19 @@ internal fun record(map: ShortcutMap, shortcut: AppShortcut, pending: KeyBinding
     val alone = !pressed.meta && !pressed.ctrl && !pressed.alt && !pressed.shift
     if (alone && code == Awt.VK_ESCAPE) return RecordingResult.Cancel
     if (alone && (code == Awt.VK_BACK_SPACE || code == Awt.VK_DELETE)) return RecordingResult.Done(map.with(shortcut, null))
+    // The first default is the default: the shortcut gets its defaults back, the other keys that mean the same included.
+    val bound = { from: ShortcutMap ->
+        val first = shortcut.defaults.firstOrNull()
+        val isFirst = first != null && first.sameModifiers(pressed) && (shortcut.takesDigit || first.keyCode == pressed.keyCode)
+        if (isFirst) from.reset(shortcut) else from.with(shortcut, pressed)
+    }
     return when (val check = map.check(shortcut, pressed)) {
-        BindingCheck.Ok -> RecordingResult.Done(map.with(shortcut, pressed))
+        BindingCheck.Ok -> RecordingResult.Done(bound(map))
         BindingCheck.NeedsCommand -> RecordingResult.Refused("A shortcut has to include ⌘, so that the programs in your terminals never see it.")
         is BindingCheck.Reserved -> RecordingResult.Refused(check.reason)
         is BindingCheck.Taken ->
             if (pressed == pending) {
-                RecordingResult.Done(map.with(check.by, null).with(shortcut, pressed))
+                RecordingResult.Done(bound(map.with(check.by, null)))
             } else {
                 val keys = if (shortcut.takesDigit) pressed.modifiersText + "1…9" else pressed.label
                 RecordingResult.Refused("$keys is used by “${check.by.title}”. Press it again to take it, or Esc to cancel.", pending = pressed)

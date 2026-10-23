@@ -315,4 +315,13 @@ class ShortcutsDialogTest {
         onNodeWithText("Search by action or keys").assertExists()
         assertEquals(ShortcutMap.DEFAULT, map)
     }
+
+    @Test
+    fun recordingTheFirstDefaultAgainGivesBackTheDefaultsWithTheirAliases() {
+        val changed = ShortcutMap.DEFAULT.with(AppShortcut.FONT_BIGGER, app.katty.KeyBinding(Awt.VK_J))
+
+        val result = record(changed, AppShortcut.FONT_BIGGER, null, AppShortcut.FONT_BIGGER.defaults.first())
+
+        assertTrue(result is RecordingResult.Done && result.map.isDefault(AppShortcut.FONT_BIGGER), "$result")
+    }
 }

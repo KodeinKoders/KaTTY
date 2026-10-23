@@ -183,7 +183,8 @@ internal class ShortcutMap private constructor(private val bindings: Map<AppShor
 
         /**
          * The defaults with [overrides] (as [ShortcutMap.overrides] writes them) put on them. A name that is not a shortcut, a value that cannot be read, and a
-         * binding that does not include Command (which would take a key that a terminal needs) are left out: that shortcut keeps its default.
+         * binding that [check] refuses (it does not include Command, the terminal or the system keeps it, another shortcut has it: a file edited by hand)
+         * are left out: that shortcut keeps its default. Of two overrides with the same keys, the one that comes later in the file keeps them.
          */
         fun of(overrides: Map<String, String>): ShortcutMap {
             if (overrides.isEmpty()) return DEFAULT
@@ -196,7 +197,13 @@ internal class ShortcutMap private constructor(private val bindings: Map<AppShor
                     KeyBinding.decode(value)?.takeIf { it.meta && !KeyBinding.isModifier(it.keyCode) }?.let { changed[shortcut] = listOf(it) }
                 }
             }
-            return ShortcutMap(DEFAULT.bindings + changed)
+            var map = ShortcutMap(DEFAULT.bindings + changed)
+            for ((shortcut, list) in changed) {
+                val binding = list.singleOrNull() ?: continue
+                // Against the others as they are in the end, without this one's own keys.
+                if (ShortcutMap(map.bindings - shortcut).check(shortcut, binding) != BindingCheck.Ok) map = map.reset(shortcut)
+            }
+            return map
         }
 
         // What the terminal handles itself before the program, and what the system keeps: with Command and nothing else.
