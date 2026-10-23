@@ -14,9 +14,6 @@ public data class SessionUsage(val contextPercent: Int?, val costUsd: Double?)
  * somewhere to read it from, so that others can be added; OpenCode and Kilo Code have one.
  */
 public interface SessionUsageReader {
-    /** The session of the program that runs in [cwd] and started at [startedAtMs], or `null` when there is none or it cannot be told. */
-    public fun sessionFor(cwd: String, startedAtMs: Long): String?
-
     /** When session [id] last changed, in milliseconds since the epoch: cheap, so that the session is only read again when it moved. */
     public fun updatedAt(id: String): Long?
 
@@ -27,8 +24,6 @@ public interface SessionUsageReader {
 /** OpenCode's, and Kilo Code's whose CLI is OpenCode's, from the database ([OpenCodeStore]). */
 public class OpenCodeUsageReader internal constructor(private val store: OpenCodeStore) : SessionUsageReader {
     public constructor() : this(OpenCodeStore())
-
-    override fun sessionFor(cwd: String, startedAtMs: Long): String? = store.sessionFor(cwd, startedAtMs)
 
     override fun updatedAt(id: String): Long? = store.updatedAt(id)
 

@@ -242,10 +242,10 @@ internal open class OutputTranslator(
             }
 
             State.OSC_HOLD -> when (b) {
-                BEL -> { finishString(osc = true, terminator = byteArrayOf(b)); }
+                BEL -> finishString(osc = true)
                 CAN, SUB -> { discardPayload(); emit(b); state = State.GROUND }
                 ESC -> { state = State.OSC_HOLD_ESC }
-                else -> Unit
+                // Nothing else comes here: `holdString` keeps every other byte.
             }
             State.DCS_HOLD -> when (b) {
                 CAN, SUB -> { discardPayload(); emit(b); state = State.GROUND }
@@ -255,7 +255,7 @@ internal open class OutputTranslator(
             }
             State.OSC_HOLD_ESC, State.DCS_HOLD_ESC -> {
                 if (b == BACKSLASH) {
-                    finishString(osc = state == State.OSC_HOLD_ESC, terminator = byteArrayOf(ESC, b))
+                    finishString(osc = state == State.OSC_HOLD_ESC)
                 } else {
                     // The escape ended the string, which was cut short: what it held is given up, and the escape is read.
                     discardPayload()
@@ -498,7 +498,7 @@ internal open class OutputTranslator(
     }
 
     // The end of a string that was kept: what it says is turned into what the terminal reads.
-    private fun finishString(osc: Boolean, terminator: ByteArray) {
+    private fun finishString(osc: Boolean) {
         modified = true
         if (!dropping) {
             try {

@@ -22,7 +22,6 @@ class SessionUsageTrackerTest {
         val updated = HashMap<String, Long>()
         val usages = HashMap<String, SessionUsage>()
         val reads = mutableListOf<String>()
-        override fun sessionFor(cwd: String, startedAtMs: Long): String? = null
         override fun updatedAt(id: String): Long? = updated[id]
         override fun read(id: String): SessionUsage? = usages[id].also { reads += id }
     }
