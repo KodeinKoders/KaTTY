@@ -225,6 +225,22 @@ class ScrollbarInteractionTest {
     }
 
     @Test
+    fun aPressInTheStripIsNotItsOwnWhileItIsNotShownOrTheProgramHasTheMouse() {
+        val press = PointerInfo(PointerInfo.Kind.PRESS, 795f, 300f, left, setOf(left))
+
+        assertFalse(interaction.handle(press, geometry, width = 800f, stripWidth = 12f, shown = false) { rows += it }, "Faded out: the cell under it is the terminal's")
+        assertFalse(interaction.handle(press, geometry, width = 800f, stripWidth = 12f, programHasMouse = true) { rows += it }, "The program asked for the mouse")
+        assertEquals(emptyList(), rows)
+        assertFalse(interaction.dragging)
+    }
+
+    @Test
+    fun hoveringTheStripWhileTheProgramHasTheMouseIsTheProgramsToo() {
+        assertFalse(interaction.handle(PointerInfo(PointerInfo.Kind.MOVE, 795f, 100f, null, emptySet()), geometry, width = 800f, stripWidth = 12f, programHasMouse = true) { rows += it })
+        assertFalse(interaction.hovered)
+    }
+
+    @Test
     fun whatIsNotInTheStripIsNotItsOwn() {
         assertFalse(handle(PointerInfo.Kind.PRESS, 700f, 10f, left, setOf(left)))
         assertFalse(handle(PointerInfo.Kind.MOVE, 700f, 10f))

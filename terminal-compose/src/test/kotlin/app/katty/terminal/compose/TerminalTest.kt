@@ -751,6 +751,23 @@ class TerminalTest {
     }
 
     @Test
+    fun aClickInTheLastColumnIsTheProgramsWhenThereIsHistory() {
+        // With history the scrollbar has its strip along the right edge, faded out: a program that asked for the mouse still gets the clicks there.
+        val session = session("""seq 1 200; printf '\033[?1000h\033[?1006h'; stty raw -echo; echo ready; head -c20 | tr -d '\033' | od -An -c""", cols = 80, rows = 24)
+        val scene = show(session, windowFocused = true)
+        scene.renderUntil("the program to be ready, with history") {
+            val frame = session.frames.value
+            frame.cols != 80 && frame.mouseTracking && frame.scrollbar != null && frame.rows.indices.any { "ready" in frame.text(it) }
+        }
+        scene.settle()
+        val cols = session.frames.value.cols
+
+        scene.click(cellCenter(cols - 1, 1))
+
+        session.awaitReports(scene, "[<0;$cols;2M[<0;$cols;2m")
+    }
+
+    @Test
     fun shiftSwallowsAClickWithItsRelease() {
         val (scene, session) = mouseScene("\\033[?1000h\\033[?1006h", bytes = 2 * 9)
 
@@ -1224,6 +1241,8 @@ class TerminalTest {
         val geometry = geometry(frame)
         val middle = geometry.thumbTop + geometry.thumbHeight / 2
 
+        // The pointer comes over the strip (the first event is the one that enters the terminal), which shows the scrollbar.
+        scene.move(Offset(strip, middle + 1), held = false)
         scene.move(Offset(strip, middle), held = false)
         scene.press(Offset(strip, middle))
         scene.move(Offset(strip, 100f), held = true)
@@ -1239,6 +1258,8 @@ class TerminalTest {
         val (scene, session) = historyScene()
         val geometry = geometry(session.frames.value)
 
+        // The pointer comes over the strip (the first event is the one that enters the terminal), which shows the scrollbar.
+        scene.move(Offset(strip, 51f), held = false)
         scene.move(Offset(strip, 50f), held = false)
         scene.press(Offset(strip, 50f))
         scene.release(Offset(strip, 50f))

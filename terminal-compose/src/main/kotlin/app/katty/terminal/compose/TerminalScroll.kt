@@ -133,13 +133,24 @@ internal class ScrollbarInteraction {
     }
 
     /**
+     * @param programHasMouse Whether the program asked for the mouse: the strip is then the program's cells, as the rest is, and is not taken.
+     * @param shown Whether the scrollbar can be seen: a press where it cannot is on the cells under it. Hovering the strip shows it.
      * @return Whether the event is the scrollbar's: it is then not for the terminal.
      */
-    fun handle(event: PointerInfo, geometry: ScrollbarGeometry, width: Float, stripWidth: Float, scrollToRow: (Long) -> Unit): Boolean {
-        val inStrip = event.x >= width - stripWidth
+    fun handle(
+        event: PointerInfo,
+        geometry: ScrollbarGeometry,
+        width: Float,
+        stripWidth: Float,
+        programHasMouse: Boolean = false,
+        shown: Boolean = true,
+        scrollToRow: (Long) -> Unit,
+    ): Boolean {
+        // A drag of the thumb that started goes on, whatever the program asks for meanwhile.
+        val inStrip = event.x >= width - stripWidth && (!programHasMouse || dragging)
         when (event.kind) {
             PointerInfo.Kind.PRESS -> {
-                if (!inStrip) return false
+                if (!inStrip || !shown) return false
                 if (event.button != TerminalMouseButton.LEFT) return true
                 if (event.y in geometry.thumbTop..(geometry.thumbTop + geometry.thumbHeight)) {
                     grab = event.y - geometry.thumbTop

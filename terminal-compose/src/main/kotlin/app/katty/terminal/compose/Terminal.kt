@@ -375,7 +375,11 @@ public fun Terminal(
                         val position = latestFrame.value.scrollbar
                         if (position != null && !selection.selecting) {
                             val geometry = ScrollbarGeometry(size.height.toFloat(), position, with(density) { SCROLLBAR_MIN_THUMB_HEIGHT.toPx() })
-                            val handled = scrollbarInteraction.handle(info, geometry, size.width.toFloat(), with(density) { SCROLLBAR_STRIP_WIDTH.toPx() }) {
+                            val handled = scrollbarInteraction.handle(
+                                info, geometry, size.width.toFloat(), with(density) { SCROLLBAR_STRIP_WIDTH.toPx() },
+                                // Hovered, it is being shown: the pointer that reached the strip made it appear.
+                                programHasMouse = tracking, shown = scrollbarAlpha > 0f || scrollbarInteraction.hovered,
+                            ) {
                                 scrolledAt++
                                 session.scrollToRow(it)
                             }
