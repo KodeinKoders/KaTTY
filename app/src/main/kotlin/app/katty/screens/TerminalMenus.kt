@@ -28,11 +28,13 @@ class TerminalMenuActions(
     val moveTo: (WorkspaceId) -> Unit,
     val colorScheme: () -> Unit,
     val copyDirectory: () -> Unit,
+    /** Starts the terminal's shell again, which asks first while a program runs in it, as the shortcut does. */
+    val restart: () -> Unit,
     val close: () -> Unit,
 )
 
 /**
- * The menu that the header of a pane opens: renaming, splitting, moving to another workspace, copying where the shell is, closing.
+ * The menu that the header of a pane opens: renaming, splitting, moving to another workspace, copying where the shell is, restarting, closing.
  *
  * @param destinations The other workspaces of the terminal's project. There is no entry to move to when there are none.
  * @param colorSchemeHint What the terminal's color scheme is: `Default`, or the name of the one that it has.
@@ -56,6 +58,7 @@ fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, a
     divider()
     action("Copy working directory", onClick = actions.copyDirectory)
     divider()
+    action("Restart terminal", AppShortcut.RESTART_TERMINAL.label, onClick = actions.restart)
     action("Close terminal", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.close)
 }
 

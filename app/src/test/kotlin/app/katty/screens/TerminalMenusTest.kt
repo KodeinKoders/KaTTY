@@ -20,6 +20,7 @@ class TerminalMenusTest {
         moveTo = { calls += "move ${it.value}" },
         colorScheme = { calls += "colorScheme" },
         copyDirectory = { calls += "copyDirectory" },
+        restart = { calls += "restart" },
         close = { calls += "close" },
     )
 
@@ -49,9 +50,16 @@ class TerminalMenusTest {
         val entries = terminalMenu(listOf(WorkspaceChoice(WorkspaceId("w"), "release-notes")), "Default", menuActions)
 
         assertEquals(
-            listOf("Rename terminal", "---", "Split right", "Split down", "---", "Move to workspace ›", "Color scheme", "---", "Copy working directory", "---", "Close terminal"),
+            listOf("Rename terminal", "---", "Split right", "Split down", "---", "Move to workspace ›", "Color scheme", "---", "Copy working directory", "---", "Restart terminal", "Close terminal"),
             entries.labels(),
         )
+    }
+
+    @Test
+    fun restartingATerminalShowsItsShortcut() {
+        val restart = terminalMenu(emptyList(), "Default", menuActions).action("Restart terminal")
+
+        assertEquals(app.katty.AppShortcut.RESTART_TERMINAL.label, restart.shortcut)
     }
 
     @Test
@@ -92,22 +100,22 @@ class TerminalMenusTest {
         val entries = terminalMenu(emptyList(), "Default", menuActions)
 
         assertFalse(entries.any { it is MenuSubmenu })
-        assertEquals(listOf("Rename terminal", "---", "Split right", "Split down", "---", "Color scheme", "---", "Copy working directory", "---", "Close terminal"), entries.labels())
+        assertEquals(listOf("Rename terminal", "---", "Split right", "Split down", "---", "Color scheme", "---", "Copy working directory", "---", "Restart terminal", "Close terminal"), entries.labels())
     }
 
     @Test
     fun theItemsOfTheMenuDoWhatTheySay() {
         val entries = terminalMenu(emptyList(), "Default", menuActions)
 
-        listOf("Rename terminal", "Split right", "Split down", "Copy working directory", "Close terminal").forEach { entries.action(it).onClick() }
+        listOf("Rename terminal", "Split right", "Split down", "Copy working directory", "Restart terminal", "Close terminal").forEach { entries.action(it).onClick() }
 
-        assertEquals(listOf("rename", "splitRight", "splitDown", "copyDirectory", "close"), calls)
+        assertEquals(listOf("rename", "splitRight", "splitDown", "copyDirectory", "restart", "close"), calls)
     }
 
     @Test
     fun aTerminalWithANameOfItsOwnCanGoBackToTheNameOfItsProcess() {
         val withName = TerminalMenuActions(
-            rename = {}, useProcessName = { calls += "revert" }, splitRight = {}, splitDown = {}, moveTo = {}, colorScheme = {}, copyDirectory = {}, close = {},
+            rename = {}, useProcessName = { calls += "revert" }, splitRight = {}, splitDown = {}, moveTo = {}, colorScheme = {}, copyDirectory = {}, restart = {}, close = {},
         )
 
         val entries = terminalMenu(emptyList(), "Default", withName)

@@ -166,6 +166,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                     splitDown = { context.store.splitVisually(spec.id, right = false, flipped = context.flipped) },
                     moveTo = { context.actions.onMove(spec.id, it) },
                     copyDirectory = { copyToClipboard(spec.directory) },
+                    restart = { context.actions.onReopen(spec.id) },
                     close = { context.actions.onClose(spec.id) },
                 ),
                 vertical = context.flipped,
