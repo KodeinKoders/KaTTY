@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -25,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.unit.dp
 import app.katty.core.usageKey
 import app.katty.core.AgentState
@@ -36,12 +34,8 @@ import app.katty.core.Agent
 import app.katty.core.AgentDetection
 import app.katty.core.AgentStates
 import app.katty.core.AttentionItem
-import app.katty.core.CloseDecision
-import app.katty.core.Direction
 import app.katty.core.KattyDirectories
 import app.katty.core.UsageService
-import app.katty.core.Settings
-import app.katty.core.splitToNudge
 import app.katty.core.usageSources
 import app.katty.core.KattyStore
 import app.katty.core.MainView
@@ -49,24 +43,17 @@ import app.katty.core.Orientation
 import app.katty.core.orientation
 import app.katty.core.Project
 import app.katty.core.ProjectId
-import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
 import app.katty.core.attention
 import app.katty.core.terminalIdentity
 import app.katty.core.board
 import app.katty.core.Ide
-import app.katty.core.closeTerminalDecision
-import app.katty.core.closeWorkspaceDecision
-import app.katty.core.WorkspaceId
-import app.katty.core.neighbour
 import app.katty.core.terminals
 import app.katty.screens.AgentBoard
 import app.katty.screens.AgentToast
 import app.katty.screens.CommandPalette
 import app.katty.screens.ShortcutsDialog
-import app.katty.screens.PaletteHandlers
-import app.katty.screens.splitVisually
 import app.katty.screens.paletteCommands
 import app.katty.screens.AttentionBell
 import app.katty.screens.AttentionPopover
@@ -98,13 +85,11 @@ import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.terminals.SessionUsageTracker
 import app.katty.ui.glyph
-import app.katty.terminal.TerminalSession
 import app.katty.terminal.compose.TerminalFont
 import app.katty.terminal.themes.ITermColorSchemes
 import app.katty.ui.ConfirmDialog
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -114,6 +99,7 @@ import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.DecoratedWindowScope
 import org.jetbrains.jewel.window.TitleBar
+import org.jetbrains.jewel.window.TitleBarScope
 import java.awt.Desktop
 import java.io.File
 
@@ -132,38 +118,31 @@ fun DecoratedWindowScope.KattyWindowContent(
     onOpenAbout: () -> Unit = {},
     keys: WindowKeys = WindowKeys(),
 ) {
+    KattyWindowContent(store, registry, tracker, sessionUsage, directories, bridge, onOpenBoardWindow, onOpenAbout, keys, window) { content ->
+        TitleBar { content() }
+    }
+}
+
+/**
+ * The window's content, given the [window] it is in (`null` in a test, where there is none: it is brought to the front and is the parent of
+ * the folder chooser) and the [titleBar] that holds what the title bar shows, Jewel's in the window.
+ */
+@Composable
+internal fun KattyWindowContent(
+    store: KattyStore,
+    registry: SessionRegistry,
+    tracker: AgentTracker,
+    sessionUsage: SessionUsageTracker,
+    directories: KattyDirectories,
+    bridge: WindowBridge,
+    onOpenBoardWindow: () -> Unit,
+    onOpenAbout: () -> Unit,
+    keys: WindowKeys,
+    window: java.awt.Frame?,
+    titleBar: @Composable (content: @Composable TitleBarScope.() -> Unit) -> Unit,
+) {
     val state by store.state.collectAsState()
     val settings = state.settings
-    var renamingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
-    var renamingProject by remember { mutableStateOf<ProjectId?>(null) }
-    var removing by remember { mutableStateOf<ProjectId?>(null) }
-    var renamingTerminal by remember { mutableStateOf<TerminalId?>(null) }
-    var findingTerminal by remember { mutableStateOf<TerminalId?>(null) }
-    var menuOpen by remember { mutableStateOf(false) }
-    var attentionOpen by remember { mutableStateOf(false) }
-    var paletteOpen by remember { mutableStateOf(false) }
-    var editingShortcuts by remember { mutableStateOf(false) }
-    // The terminal that is selected takes the keyboard back whenever this changes: when what had it (a palette, a menu, a rename) is gone, and when a
-    // terminal is opened, even if it is the one that was selected.
-    var focusTick by remember { mutableIntStateOf(0) }
-    // The project that the board shows, `null` for every project.
-    var boardFilter by remember { mutableStateOf<ProjectId?>(null) }
-    var toast by remember { mutableStateOf<AttentionItem?>(null) }
-    // Whose color scheme is being chosen: the default of the settings (`null` target with the flag), or a terminal's.
-    var picking by remember { mutableStateOf<SchemeTarget?>(null) }
-    val families by produceState(emptyList<String>()) { value = withContext(Dispatchers.IO) { SystemFonts.monospacedFamilies() } }
-    // The font of the terminals: the family that the user chose, or the bundled one when there is none or it cannot be used.
-    val font by produceState(TerminalFont.bundled(), settings.fontFamily) {
-        value = withContext(Dispatchers.Default) {
-            settings.fontFamily?.let { family -> runCatching { TerminalFont.system(family) }.getOrNull() } ?: TerminalFont.bundled()
-        }
-    }
-    // What the user has to confirm before it is closed.
-    var closingWorkspace by remember { mutableStateOf<WorkspaceId?>(null) }
-    var closingTerminal by remember { mutableStateOf<TerminalId?>(null) }
-    var restartingTerminal by remember { mutableStateOf<TerminalId?>(null) }
-    // A paste that could run commands, waiting for the user's answer.
-    var pasting by remember { mutableStateOf<PasteRequest?>(null) }
     val handles by registry.handles.collectAsState()
     // Where each terminal is in git: a workspace says the branch that its terminals share.
     val gits by registry.gitInfos.collectAsState()
@@ -171,6 +150,56 @@ fun DecoratedWindowScope.KattyWindowContent(
     val infos by tracker.infos.collectAsState()
     // What the session of the agent in each terminal has used.
     val usages by sessionUsage.usages.collectAsState()
+    // The shape of the window decides the layout when the user left it to Auto.
+    val size = LocalWindowInfo.current.containerSize
+    val vertical = settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
+
+    // What the window holds and does: the shortcuts and the palette run its actions. What it is given is what this composition collected.
+    val openBoardWindow by rememberUpdatedState(onOpenBoardWindow)
+    val openAbout by rememberUpdatedState(onOpenAbout)
+    val windowScope = rememberCoroutineScope()
+    val controller = remember {
+        val platform = object : WindowPlatform {
+            override fun chooseFolder(title: String, initial: String?) = chooseFolder(window, title, initial)
+            override fun copy(text: String) = copyToClipboard(text)
+            override fun readClipboard() = app.katty.readClipboard()
+            override fun reveal(directory: String) = revealInFileManager(directory)
+            override fun openIn(bundleId: String, directory: String) = openInApplication(bundleId, directory)
+            override fun openBoardWindow() = openBoardWindow()
+            override fun openAbout() = openAbout()
+        }
+        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen)
+    }
+    SideEffect {
+        controller.handles = handles
+        controller.infos = infos
+        controller.vertical = vertical
+    }
+    var renamingWorkspace by controller::renamingWorkspace
+    var renamingProject by controller::renamingProject
+    var removing by controller::removing
+    var renamingTerminal by controller::renamingTerminal
+    var findingTerminal by controller::findingTerminal
+    var menuOpen by controller::menuOpen
+    var attentionOpen by controller::attentionOpen
+    var paletteOpen by controller::paletteOpen
+    var editingShortcuts by controller::editingShortcuts
+    var focusTick by controller::focusTick
+    var boardFilter by controller::boardFilter
+    var toast by controller::toast
+    var picking by controller::picking
+    var closingWorkspace by controller::closingWorkspace
+    var closingTerminal by controller::closingTerminal
+    var restartingTerminal by controller::restartingTerminal
+    val pasting = controller.pasting
+
+    val families by produceState(emptyList<String>()) { value = withContext(Dispatchers.IO) { SystemFonts.monospacedFamilies() } }
+    // The font of the terminals: the family that the user chose, or the bundled one when there is none or it cannot be used.
+    val font by produceState(TerminalFont.bundled(), settings.fontFamily) {
+        value = withContext(Dispatchers.Default) {
+            settings.fontFamily?.let { family -> runCatching { TerminalFont.system(family) }.getOrNull() } ?: TerminalFont.bundled()
+        }
+    }
     val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
     val stateOf: (TerminalId) -> AgentState = agentStates::stateOf
     LaunchedEffect(handles) { tracker.sync(handles) }
@@ -183,18 +212,15 @@ fun DecoratedWindowScope.KattyWindowContent(
     }
     // The editors that are installed: LaunchServices knows, and is asked again when the window gets the focus, with the agents.
     val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { installedIdes() } }
+    SideEffect { controller.installedIdes = installedIdes }
     val ides = installedIdes.keys.toList()
-    val openProjectIn: (ProjectId, Ide) -> Unit = { id, ide ->
-        val directory = state.projects.firstOrNull { it.id == id }?.directory
-        val bundleId = installedIdes[ide]
-        if (directory != null && bundleId != null) openInApplication(bundleId, directory)
-    }
     val usageScope = rememberCoroutineScope()
     val sources = remember(detected) { usageSources(detected, directories.usageDirectory) }
     // Only the agents that KaTTY can read a usage from are offered by the usage panel.
     val detectedAgents = Agent.entries.filter { it in sources }
     val usage = remember(sources) { UsageService(usageScope, sources) }
     DisposableEffect(usage) { onDispose { usage.stop() } }
+    SideEffect { controller.refreshUsage = usage::refreshNow }
     LaunchedEffect(usage, settings.usageShown) { usage.want(detectedAgents.filter { it.id in settings.usageShown }.toSet()) }
     val readings by usage.readings.collectAsState()
     val refreshingUsage by usage.refreshing.collectAsState()
@@ -224,9 +250,6 @@ fun DecoratedWindowScope.KattyWindowContent(
             tracker.markSeen(id)
         }
     }
-    // The shape of the window decides the layout when the user left it to Auto.
-    val size = LocalWindowInfo.current.containerSize
-    val vertical = settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
     val describe: (TerminalSpec) -> TerminalSummary = { spec ->
         val identity = terminalIdentity(spec.name, infos[spec.id]?.report, handles[spec.id]?.processName?.value, handles[spec.id]?.shellName ?: "shell")
         TerminalSummary(spec.id, identity.title, identity.agent.glyph(), stateOf(spec.id))
@@ -240,147 +263,43 @@ fun DecoratedWindowScope.KattyWindowContent(
     LaunchedEffect(sessionsKey) { registry.sync(store.state.value) }
     // No terminal is on the screen while the board is.
     val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
-    // A find bar that is not on the screen any more (another workspace, the board, a terminal closed or started again) is closed: its query was
-    // cleared with it, and the find shortcuts would step a search that nobody sees.
-    LaunchedEffect(shown, handles) {
-        if (findingTerminal != null && findTarget(findingTerminal, shown, handles.filterValues { it.session != null }.keys) == null) findingTerminal = null
-    }
+    LaunchedEffect(shown, handles) { controller.dropStaleFind() }
     LaunchedEffect(shown, handles.keys) { registry.setVisible(shown) }
 
-    // What shows a rename of a workspace is the sidebar (not folded into the rail) or the tabs, over the terminals and not the board: when it is
-    // not there, nothing could end the rename, and the terminals would not get the keyboard back.
-    val showWorkspaceHost = {
-        val current = store.state.value.settings
-        if (current.view != MainView.TERMINALS || (!vertical && current.sidebarCollapsed)) {
-            store.updateSettings { it.copy(view = MainView.TERMINALS, sidebarCollapsed = if (vertical) it.sidebarCollapsed else false) }
-        }
-    }
-    val showTerminals = {
-        if (store.state.value.settings.view != MainView.TERMINALS) store.updateSettings { it.copy(view = MainView.TERMINALS) }
-    }
-    val addProject = {
-        val folder = chooseFolder(window, "Add project folder", state.selectedProject?.directory)
-        if (folder != null) {
-            val before = state.projects.size
-            store.addProject(folder)
-            // A project that is new has a workspace with its default name, which opens for editing as a new workspace does.
-            if (store.state.value.projects.size > before) {
-                showWorkspaceHost()
-                renamingWorkspace = store.state.value.selection.workspace
-            }
-        }
-        Unit
-    }
-    val newWorkspace = {
-        state.selection.project?.let { project ->
-            showWorkspaceHost()
-            renamingWorkspace = store.addWorkspace(project)
-        }
-        Unit
-    }
-    // A program other than the shell has the terminal: closing or restarting it would stop it.
-    val running: (TerminalId) -> Boolean = { id ->
-        val handle = handles[id]
-        handle?.session?.exited?.value == null && handle?.processName?.value.let { it != null && it != handle?.shellName }
-    }
-    // Closing asks first when a program, or an agent that is active, would be stopped, and does not otherwise.
-    val closeWorkspace: (WorkspaceId) -> Unit = { id ->
-        if (state.closeWorkspaceDecision(id, stateOf, running) == CloseDecision.NOW) store.closeWorkspace(id) else closingWorkspace = id
-    }
-    val closeTerminal: (TerminalId) -> Unit = { id ->
-        if (state.closeTerminalDecision(id, stateOf, running) == CloseDecision.NOW) store.closeTerminal(id) else closingTerminal = id
-    }
-    val restartTerminal: (TerminalId) -> Unit = { id -> if (running(id)) restartingTerminal = id else registry.restart(id) }
-    // Goes to a terminal, whatever the window is showing.
-    val openTerminal: (TerminalId) -> Unit = { id ->
-        store.updateSettings { it.copy(view = MainView.TERMINALS) }
-        store.focus(id)
-        // Where it is can be seen.
-        state.locate(id)?.project?.id?.let { store.setProjectOpen(it, true) }
-        attentionOpen = false
-        toast = null
-        focusTick++
-    }
+    // The actions that the drawing below gives its parts.
+    val addProject = controller::addProject
+    val newWorkspace = controller::newWorkspace
+    val closeWorkspace = controller::closeWorkspace
+    val closeTerminal = controller::closeTerminal
+    val restartTerminal = controller::restartTerminal
+    val openTerminal = controller::openTerminal
+    val jumpToWaiting = controller::jumpToWaiting
+    val openProjectIn = controller::openProjectIn
+    val running = controller::running
+    val pasteInto = controller::pasteInto
+    val confirmPaste: suspend (String) -> Boolean = controller::confirmPaste
+    val selectedSession = controller::selectedSession
+    // The vertical layout draws every split turned.
+    val flipped = vertical
+
     // A card that is clicked in the board window: its terminal is selected here, and this window comes to the front.
     LaunchedEffect(bridge) {
         bridge.openTerminal.collect { id ->
             openTerminal(id)
-            window.extendedState = window.extendedState and java.awt.Frame.ICONIFIED.inv()
-            window.toFront()
-            window.requestFocus()
+            window?.let {
+                it.extendedState = it.extendedState and java.awt.Frame.ICONIFIED.inv()
+                it.toFront()
+                it.requestFocus()
+            }
         }
     }
     // The board window that opened by itself at launch took the focus: it goes back to this one.
     LaunchedEffect(bridge) {
         bridge.focusMain.collect {
-            window.toFront()
-            window.requestFocus()
+            window?.toFront()
+            window?.requestFocus()
         }
     }
-    // Goes to a workspace, whatever the window is showing, and gives the keyboard to its terminal.
-    val goToWorkspace: (WorkspaceId) -> Unit = { id ->
-        store.selectWorkspace(id)
-        if (store.state.value.settings.view != MainView.TERMINALS) store.updateSettings { it.copy(view = MainView.TERMINALS) }
-        focusTick++
-    }
-    // Goes to a project, at the workspace that was selected in it last, whatever the window is showing.
-    val goToProject: (ProjectId) -> Unit = { id ->
-        store.selectProject(id)
-        store.setProjectOpen(id, true)
-        showTerminals()
-        focusTick++
-    }
-    // The state of the store, not the one of the last drawing: keys that repeat come faster than that.
-    val stepProject: (Int) -> Unit = { delta -> store.state.value.projectStep(delta)?.let(goToProject) }
-    val stepWorkspace: (Int) -> Unit = { delta -> store.state.value.workspaceStep(delta)?.let(goToWorkspace) }
-    // The vertical layout draws every split turned.
-    val flipped = vertical
-    val focusNeighbour = { direction: Direction ->
-        val workspace = state.selectedWorkspace
-        val from = state.selection.terminal
-        if (workspace != null && from != null) workspace.layout.neighbour(from, direction, flipped)?.let(store::focus)
-        Unit
-    }
-    // The session of the selected terminal: what the commands on the terminal's own keys act on.
-    val selectedSession = { state.selection.terminal?.let { handles[it]?.session } }
-    // Asked before a paste that could run commands, whatever pastes it (a terminal's keys and middle click, its menu, the palette): one
-    // question at a time, and a new one answers no to the one that was still waiting.
-    val confirmPaste: suspend (String) -> Boolean = remember {
-        { text ->
-            val request = PasteRequest(text)
-            pasting?.answer?.complete(false)
-            pasting = request
-            try {
-                request.answer.await()
-            } finally {
-                if (pasting === request) pasting = null
-            }
-        }
-    }
-    val pasteScope = rememberCoroutineScope()
-    val pasteInto: (TerminalSession, String) -> Unit = { session, text ->
-        if (!session.isPasteUnsafe(text)) session.paste(text) else pasteScope.launch { if (confirmPaste(text)) session.paste(text) }
-    }
-    // The next or the previous match of the search of the terminal that is searched: a terminal that is not opens its search, since there is no match to
-    // go to (the shortcut does the same).
-    val stepFind: (Boolean) -> Unit = { forward ->
-        val searched = findTarget(findingTerminal, shown, handles.filterValues { it.session != null }.keys)
-        if (searched == null) {
-            findingTerminal = state.selection.terminal
-        } else {
-            handles[searched]?.session?.search?.let { if (forward) it.next() else it.previous() }
-        }
-    }
-    // The nearest divider of the focused pane that the arrow goes along moves one step: as the screen shows the splits, turned in the vertical layout.
-    val resizeSplit: (Direction) -> Unit = { direction ->
-        val current = store.state.value
-        val workspace = current.selectedWorkspace
-        val from = current.selection.terminal
-        if (workspace != null && from != null) {
-            workspace.layout.splitToNudge(from, direction, SPLIT_STEP, vertical)?.let { (split, ratio) -> store.setSplitRatio(workspace.id, split, ratio) }
-        }
-    }
-    val jumpToWaiting = { attention.nextWaiting(state, state.selection.terminal)?.let(openTerminal); Unit }
     // A terminal that starts needing the user, finishes or fails, in one that the user is not looking at, is told in a notice.
     val windowFocusedNow by rememberUpdatedState(LocalWindowInfo.current.isWindowFocused)
     LaunchedEffect(Unit) {
@@ -398,162 +317,20 @@ fun DecoratedWindowScope.KattyWindowContent(
             toast = null
         }
     }
-    val paletteHandlers = PaletteHandlers(
-        addProject = addProject,
-        newWorkspace = newWorkspace,
-        renameWorkspace = { showWorkspaceHost(); renamingWorkspace = state.selection.workspace },
-        closeWorkspace = { state.selection.workspace?.let(closeWorkspace) },
-        splitRight = { state.selection.terminal?.let { store.splitVisually(it, right = true, flipped = vertical) } },
-        splitDown = { state.selection.terminal?.let { store.splitVisually(it, right = false, flipped = vertical) } },
-        renameTerminal = { showTerminals(); renamingTerminal = state.selection.terminal },
-        closeTerminal = { state.selection.terminal?.let(closeTerminal) },
-        restartTerminal = { state.selection.terminal?.let(restartTerminal) },
-        find = { findingTerminal = state.selection.terminal },
-        clearScreen = { state.selection.terminal?.let { handles[it]?.session?.clearScreen() } },
-        maximize = { store.maximize(if (state.selection.maximized == null) state.selection.terminal else null) },
-        colorScheme = { state.selection.terminal?.let { picking = SchemeTarget.Terminal(it) } },
-        toggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
-        showView = { view -> store.updateSettings { it.copy(view = view) } },
-        setLayout = { mode -> store.updateSettings { it.copy(layout = mode) } },
-        setTheme = { theme -> store.updateSettings { it.copy(theme = theme) } },
-        jumpToWaiting = jumpToWaiting,
-        markAllSeen = tracker::markAllSeen,
-        openBoardWindow = onOpenBoardWindow,
-        openTerminal = openTerminal,
-        openWorkspace = goToWorkspace,
-        selectProject = goToProject,
-        previousProject = { stepProject(-1) },
-        nextProject = { stepProject(1) },
-        renameProject = { showWorkspaceHost(); renamingProject = state.selection.project },
-        removeProject = { removing = state.selection.project },
-        revealProject = { state.selectedProject?.directory?.let(::revealInFileManager) },
-        ides = ides,
-        openProjectIn = { ide -> state.selection.project?.let { openProjectIn(it, ide) } },
-        moveProject = { delta ->
-            val projects = state.projects
-            val from = projects.indexOfFirst { it.id == state.selection.project }
-            if (from >= 0) store.moveProject(projects[from].id, (from + delta).coerceIn(projects.indices))
-        },
-        moveWorkspace = { delta ->
-            val workspaces = state.selectedProject?.workspaces.orEmpty()
-            val from = workspaces.indexOfFirst { it.id == state.selection.workspace }
-            if (from >= 0) store.moveWorkspace(workspaces[from].id, (from + delta).coerceIn(workspaces.indices))
-        },
-        moveTerminalTo = { workspace -> state.selection.terminal?.let { store.moveTerminal(it, workspace) } },
-        useProcessName = { state.selection.terminal?.let { store.renameTerminal(it, null) } },
-        copyDirectory = { state.selection.terminal?.let { id -> state.locate(id)?.terminal?.directory?.let(::copyToClipboard) } },
-        defaultColorScheme = { picking = SchemeTarget.Default },
-        toggleLigatures = { store.updateSettings { it.copy(ligatures = !it.ligatures) } },
-        refreshUsage = usage::refreshNow,
-        toggleCompactUsage = { setCompact(!settings.compactUsage) },
-        focusPane = focusNeighbour,
-        resizeSplit = resizeSplit,
-        findNext = { stepFind(true) },
-        findPrevious = { stepFind(false) },
-        copy = { selectedSession()?.selectedText()?.let(::copyToClipboard) },
-        paste = { selectedSession()?.let { session -> readClipboard()?.let { pasteInto(session, it) } } },
-        selectAll = { selectedSession()?.selectAll() },
-        previousPrompt = { selectedSession()?.scrollToPrompt(-1) },
-        nextPrompt = { selectedSession()?.scrollToPrompt(1) },
-        scrollPageUp = { selectedSession()?.scrollPage(-1) },
-        scrollPageDown = { selectedSession()?.scrollPage(1) },
-        scrollToTop = { selectedSession()?.scrollToTop() },
-        scrollToBottom = { selectedSession()?.scrollToBottom() },
-        editShortcuts = { editingShortcuts = true },
-        openAbout = onOpenAbout,
-        openAttention = { attentionOpen = true },
-        uiBigger = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(1)) } },
-        uiSmaller = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(-1)) } },
-        uiReset = { store.updateSettings { it.copy(uiScale = Settings.DEFAULT_UI_SCALE) } },
-        fontBigger = { store.updateSettings { it.copy(fontSize = it.fontSize + FONT_STEP) } },
-        fontSmaller = { store.updateSettings { it.copy(fontSize = it.fontSize - FONT_STEP) } },
-        fontReset = { store.updateSettings { it.copy(fontSize = Settings.DEFAULT_FONT_SIZE) } },
-        openMenu = { menuOpen = true },
-        previousWorkspace = { stepWorkspace(-1) },
-        nextWorkspace = { stepWorkspace(1) },
-    )
-    val closeSelectedWorkspace = { state.selection.workspace?.let(closeWorkspace); Unit }
 
-    // What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons.
-    val blockingDialog = picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null ||
-        pasting != null
-    val overlayOpen = blockingDialog || editingShortcuts || paletteOpen || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null || renamingTerminal != null
+    val overlayOpen = controller.overlayOpen
     LaunchedEffect(overlayOpen) { if (!overlayOpen) focusTick++ }
-    // A rename that nothing draws would keep the terminals from the keyboard for good: the board shows no names, and the rail no field.
-    LaunchedEffect(renamingWorkspace, renamingProject, settings.view, settings.sidebarCollapsed, vertical) {
-        val current = store.state.value.settings
-        val shown = current.view == MainView.TERMINALS && (vertical || !current.sidebarCollapsed)
-        if (renamingWorkspace != null && !shown) renamingWorkspace = null
-        if (renamingProject != null && !shown) renamingProject = null
-    }
-    // A rename of what is gone (closed by a shortcut, a menu, the palette) ends: nothing draws it, and it would keep the terminals from the keyboard.
-    LaunchedEffect(state.projects, renamingTerminal, renamingWorkspace, renamingProject) {
-        val current = store.state.value
-        if (renamingTerminal?.let(current::locate) == null) renamingTerminal = null
-        if (renamingWorkspace != null && current.projects.none { p -> p.workspaces.any { it.id == renamingWorkspace } }) renamingWorkspace = null
-        if (renamingProject != null && current.projects.none { it.id == renamingProject }) renamingProject = null
-    }
-    LaunchedEffect(renamingTerminal, settings.view) {
-        if (renamingTerminal != null && store.state.value.settings.view != MainView.TERMINALS) renamingTerminal = null
+    // A rename that nothing draws, or of what is gone (closed by a shortcut, a menu, the palette), ends: it would keep the terminals from the keyboard.
+    LaunchedEffect(state.projects, renamingTerminal, renamingWorkspace, renamingProject, settings.view, settings.sidebarCollapsed, vertical) {
+        controller.dropStaleRenames()
     }
     // The shortcuts of the window, on the window itself: they work whatever has the focus, and when nothing has it.
-    val shortcutHandler: (KeyEvent) -> Boolean = handler@{ event ->
-        // The dialog where they are changed sees every key, the ones that are shortcuts too: they are what it records.
-        if (editingShortcuts) return@handler false
-        val shortcut = event.appShortcut() ?: return@handler false
-        if (blockingDialog || (menuOpen && shortcut != AppShortcut.MENU) || (attentionOpen && shortcut != AppShortcut.ATTENTION) || (paletteOpen && shortcut != AppShortcut.PALETTE)) return@handler true
-        if (blockedWhileRenaming(shortcut, state.selection.terminal, state.selection.workspace, renamingTerminal, renamingWorkspace)) return@handler true
-        val terminal = state.selection.terminal
-        // What acts on a terminal is for the terminals, not for the board, which shows none.
-        val onTerminals = settings.view == MainView.TERMINALS
-        when (shortcut) {
-            AppShortcut.ADD_PROJECT -> addProject()
-            AppShortcut.NEW_WORKSPACE -> newWorkspace()
-            AppShortcut.CLOSE_WORKSPACE -> closeSelectedWorkspace()
-            AppShortcut.SPLIT_MAIN -> if (onTerminals) terminal?.let { store.split(it, SplitDirection.ROW) }
-            AppShortcut.SPLIT_OTHER -> if (onTerminals) terminal?.let { store.split(it, SplitDirection.COLUMN) }
-            AppShortcut.CLOSE_TERMINAL -> if (onTerminals) terminal?.let(closeTerminal)
-            AppShortcut.RESTART_TERMINAL -> if (onTerminals) terminal?.let(restartTerminal)
-            AppShortcut.JUMP_TO_WAITING -> jumpToWaiting()
-            AppShortcut.ATTENTION -> attentionOpen = !attentionOpen
-            AppShortcut.MAXIMIZE -> if (onTerminals) terminal?.let { store.maximize(if (state.selection.maximized == null) it else null) }
-            AppShortcut.RESIZE_LEFT -> if (onTerminals) resizeSplit(Direction.LEFT)
-            AppShortcut.RESIZE_RIGHT -> if (onTerminals) resizeSplit(Direction.RIGHT)
-            AppShortcut.RESIZE_UP -> if (onTerminals) resizeSplit(Direction.UP)
-            AppShortcut.RESIZE_DOWN -> if (onTerminals) resizeSplit(Direction.DOWN)
-            AppShortcut.FIND_NEXT -> if (onTerminals) stepFind(true)
-            AppShortcut.FIND_PREVIOUS -> if (onTerminals) stepFind(false)
-            AppShortcut.FONT_BIGGER -> store.updateSettings { it.copy(fontSize = it.fontSize + FONT_STEP) }
-            AppShortcut.FONT_SMALLER -> store.updateSettings { it.copy(fontSize = it.fontSize - FONT_STEP) }
-            AppShortcut.FONT_RESET -> store.updateSettings { it.copy(fontSize = Settings.DEFAULT_FONT_SIZE) }
-            AppShortcut.MENU -> menuOpen = !menuOpen
-            AppShortcut.BOARD -> store.updateSettings { it.copy(view = if (it.view == MainView.BOARD) MainView.TERMINALS else MainView.BOARD) }
-            // The vertical layout has no sidebar, and the board has its own.
-            AppShortcut.SIDEBAR -> if (!vertical && onTerminals) store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) }
-            AppShortcut.PALETTE -> paletteOpen = !paletteOpen
-            AppShortcut.FOCUS_LEFT -> if (onTerminals) focusNeighbour(Direction.LEFT)
-            AppShortcut.FOCUS_RIGHT -> if (onTerminals) focusNeighbour(Direction.RIGHT)
-            AppShortcut.FOCUS_UP -> if (onTerminals) focusNeighbour(Direction.UP)
-            AppShortcut.FOCUS_DOWN -> if (onTerminals) focusNeighbour(Direction.DOWN)
-            AppShortcut.CLEAR_SCREEN -> if (onTerminals) terminal?.let { handles[it]?.session?.clearScreen() }
-            AppShortcut.FIND -> if (onTerminals) findingTerminal = terminal
-            AppShortcut.RENAME_TERMINAL -> if (terminal != null) { showTerminals(); renamingTerminal = terminal }
-            AppShortcut.RENAME_WORKSPACE -> state.selection.workspace?.let { showWorkspaceHost(); renamingWorkspace = it }
-            AppShortcut.WORKSPACE_PREVIOUS -> stepWorkspace(-1)
-            AppShortcut.WORKSPACE_NEXT -> stepWorkspace(1)
-            AppShortcut.PROJECT_PREVIOUS -> stepProject(-1)
-            AppShortcut.PROJECT_NEXT -> stepProject(1)
-            AppShortcut.WORKSPACE_NUMBER -> event.shortcutNumber()?.let { number -> store.state.value.workspaceByNumber(number)?.let(goToWorkspace) }
-            AppShortcut.PANE_NUMBER -> event.shortcutNumber()?.let { number -> store.state.value.terminalByNumber(number)?.let(openTerminal) }
-        }
-        true
-    }
-    SideEffect { keys.handler = shortcutHandler }
+    SideEffect { keys.handler = { event -> controller.handle(event.appShortcut(), event.shortcutNumber()) } }
     // What the user bound the shortcuts to, for the whole application: what shows a label draws it again when that changes.
     val shortcutMap = remember(settings.shortcuts) { ShortcutMap.of(settings.shortcuts) }
     SideEffect { Shortcuts.map = shortcutMap }
 
-    TitleBar {
+    titleBar {
         TitleBarContent(
             state,
             onToggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
@@ -648,7 +425,7 @@ fun DecoratedWindowScope.KattyWindowContent(
             val usageBar: @Composable () -> Unit = {
                 UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
             }
-            val reveal: (ProjectId) -> Unit = { id -> state.projects.firstOrNull { it.id == id }?.let { revealInFileManager(it.directory) } }
+            val reveal: (ProjectId) -> Unit = controller::revealProject
             if (settings.view == MainView.BOARD) {
                 // A project that was removed is not a filter any more.
                 val filter = boardFilter?.takeIf { id -> state.projects.any { it.id == id } }
@@ -747,7 +524,7 @@ fun DecoratedWindowScope.KattyWindowContent(
             // of the terminal that its output is written under.
             val hasSelection = remember { selectedSession()?.selectedText() != null }
             val commands = remember(state, infos, handles, vertical, shortcutMap) {
-                paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = paletteHandlers, vertical = vertical, hasSelection = hasSelection)
+                paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical, hasSelection = hasSelection)
             }
             CommandPalette(commands.entries, onRun = { entry -> paletteOpen = false; commands.run(entry) }, onDismiss = { paletteOpen = false })
         }
@@ -818,23 +595,6 @@ fun DecoratedWindowScope.KattyWindowContent(
 /** How long a notice stays. */
 private const val TOAST_MS = 6_000L
 
-/** How much of a split a press of the resize shortcut moves, and how much the font grows or shrinks for one of the zoom ones. */
-private const val SPLIT_STEP = 0.05f
-private const val FONT_STEP = 1f
-
-/** A paste that waits for the user: [answer] is completed with whether to paste [text]. */
-private class PasteRequest(val text: String) {
-    val answer = CompletableDeferred<Boolean>()
-}
-
-/** Whose color scheme the picker chooses. */
-private sealed interface SchemeTarget {
-    /** The default of the settings, which the terminals that have no scheme of their own follow. */
-    data object Default : SchemeTarget
-
-    data class Terminal(val id: TerminalId) : SchemeTarget
-}
-
 /** What a project without workspaces shows. */
 @Composable
 private fun EmptyProject(modifier: Modifier, onNewWorkspace: () -> Unit) {
@@ -867,7 +627,7 @@ private fun RemoveProjectDialog(project: Project, onConfirm: () -> Unit, onCance
     )
 }
 
-private fun revealInFileManager(directory: String) {
+internal fun revealInFileManager(directory: String) {
     val file = File(directory)
     try {
         if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
@@ -878,27 +638,4 @@ private fun revealInFileManager(directory: String) {
     } catch (e: Exception) {
         org.slf4j.LoggerFactory.getLogger("app.katty.KattyWindow").warn("Could not show {} in the file manager", directory, e)
     }
-}
-
-/**
- * The terminal whose search the find shortcuts step: the one whose find bar is open ([finding]), while it is on the screen ([shown]) and has a
- * session ([running]). `null` otherwise, and the shortcuts open a find bar on the selected terminal instead.
- */
-internal fun findTarget(finding: TerminalId?, shown: Set<TerminalId>, running: Set<TerminalId>): TerminalId? =
-    finding?.takeIf { it in shown && it in running }
-
-/**
- * Whether [shortcut] is kept from acting while a name is being edited: closing or restarting the terminal that is being renamed, or closing the
- * workspace that is, would take the field away under the keys.
- */
-internal fun blockedWhileRenaming(
-    shortcut: AppShortcut,
-    selectedTerminal: TerminalId?,
-    selectedWorkspace: WorkspaceId?,
-    renamingTerminal: TerminalId?,
-    renamingWorkspace: WorkspaceId?,
-): Boolean = when (shortcut) {
-    AppShortcut.CLOSE_TERMINAL, AppShortcut.RESTART_TERMINAL -> renamingTerminal != null && renamingTerminal == selectedTerminal
-    AppShortcut.CLOSE_WORKSPACE -> renamingWorkspace != null && renamingWorkspace == selectedWorkspace
-    else -> false
 }
