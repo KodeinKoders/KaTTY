@@ -1,14 +1,9 @@
 package app.katty.terminal
 
 import app.katty.ghostty.GhosttyBuildInfo
-import app.katty.ghostty.GhosttyCompressionMode
-import app.katty.ghostty.GhosttyCompressionResult
-import app.katty.ghostty.GhosttyImage
-import app.katty.ghostty.GhosttyImagePlacement
 import app.katty.ghostty.GhosttyKeyEncoder
 import app.katty.ghostty.GhosttyMode
 import app.katty.ghostty.GhosttyMouseEncoder
-import app.katty.ghostty.GhosttyMouseShape
 import app.katty.ghostty.GhosttyProgramKind
 import app.katty.ghostty.GhosttyProgramState
 import app.katty.ghostty.GhosttyProgressState
@@ -17,23 +12,14 @@ import app.katty.ghostty.GhosttyPromptKind
 import app.katty.ghostty.GhosttyScreen
 import app.katty.ghostty.GhosttyScrollViewport
 import app.katty.ghostty.GhosttySnapshotException
-import app.katty.ghostty.GhosttyDirty
-import app.katty.ghostty.GhosttyScrollbar
 import app.katty.ghostty.GhosttySelectionGesture
 import app.katty.ghostty.GhosttyRenderState
-import app.katty.ghostty.GhosttyRowId
 import app.katty.ghostty.GhosttyTerminal
 import app.katty.ghostty.GhosttyTrackedRef
 import com.pty4j.PtyProcess
 import com.pty4j.PtyProcessBuilder
 import com.pty4j.WinSize
 import com.pty4j.unix.UnixPtyProcess
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -41,10 +27,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
@@ -60,8 +44,6 @@ import kotlin.concurrent.write
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 
 private val logger = LoggerFactory.getLogger(TerminalSession::class.java)
 
@@ -125,6 +107,18 @@ public class TerminalSession private constructor(
     // What goes to the program: the keys, and what the terminal answers to its queries.
     private val outgoing = LinkedBlockingQueue<ByteArray>()
 
+    // What makes the frames, and the searches it asks for the matches of each. It makes the first frame now: what it reads of the session is
+    // above.
+    private val producer = FrameProducer(terminal, renderState, lock, { closed.get() }, object : FrameProducer.Session {
+        override val cellWidthPx: Int get() = this@TerminalSession.cellWidthPx
+        override val cellHeightPx: Int get() = this@TerminalSession.cellHeightPx
+        override val theme: TerminalTheme? get() = this@TerminalSession.theme
+        override fun unselect() = this@TerminalSession.unselect()
+        override fun readingPassword(): Boolean = withPty(false) { fd -> isPtyReadingPassword(fd) }
+    })
+
+    private val sessionSearch: SessionSearch get() = producer.search
+
     // What is typed when the shell first waits for a command (see [TypedCommand]): sent once, by whichever of the prompt marks or the timer
     // gets there first. Fish has no mark of the end of the prompt, so it is sent at the start of it.
     private val pendingInput = AtomicReference<ByteArray?>()
@@ -134,7 +128,7 @@ public class TerminalSession private constructor(
 
     // Without prompt marks nothing says when the shell is ready: a second is what a shell takes to start in the usual case.
     private fun typeAfterQuiet() {
-        producerScope.launch {
+        producer.scope.launch {
             delay(TYPE_WITHOUT_MARKS_DELAY)
             typePending()
         }
@@ -144,10 +138,10 @@ public class TerminalSession private constructor(
     // may start another program in its place. Long after the start, and once the shell has said nothing for a second, what is still waiting
     // is typed, if the shell still has the terminal.
     private fun typeIfTheMarksDoNotCome(shell: String) {
-        producerScope.launch {
+        producer.scope.launch {
             delay(MARKS_EXPECTED_DELAY)
             while (pendingInput.get() != null) {
-                val quiet = (System.nanoTime() - lastOutputNanos).nanoseconds
+                val quiet = (System.nanoTime() - producer.lastOutputNanos).nanoseconds
                 if (quiet < TYPE_WITHOUT_MARKS_DELAY) {
                     delay(TYPE_WITHOUT_MARKS_DELAY - quiet)
                     continue
@@ -166,56 +160,14 @@ public class TerminalSession private constructor(
     private fun typePending() {
         val bytes = pendingInput.getAndSet(null) ?: return
         send(bytes)
-        frameRequests.trySend(Unit)
+        producer.request()
     }
-
-    // A conflated channel: any number of signals while a frame is being produced mean one more frame.
-    private val frameRequests = Channel<Unit>(Channel.CONFLATED)
-
-    // When the reader last fed the terminal, in System.nanoTime() terms: what the producer waits on.
-    @Volatile
-    private var lastOutputNanos = System.nanoTime() - 1_000_000_000L
 
     // Whether the shell is reading a command line, between the marks that it makes at the end of the prompt and at the start of the output
     // (OSC 133 B and C): written under the lock, by the reader.
     private var inputActive = false
 
-    // When the program began to hold the screen (synchronized output), in System.nanoTime() terms, 0 when it does not: the producer
-    // makes no frame meanwhile.
-    @Volatile
-    private var holdSinceNanos = 0L
-
-    // The rows of the last frame, to hand the same ones out again when they did not change. Only used by
-    // the producer, once it runs.
-    private var rowCache: Map<GhosttyRowId, TerminalRow> = emptyMap()
-
-    // Set when what the rows are drawn from changed, with no change of the rows: the producer forgets what it kept.
-    @Volatile
-    private var rowCacheStale = false
-
-    // A change of [setBoldIsBright] that the producer has not made yet.
-    @Volatile
-    private var boldIsBrightRequest: Boolean? = null
-
-    // The images of the last frames, by id, which are only the ones whose placements exist: what is deleted frees its memory.
-    // Only the frame producer uses it, once it runs. It is before the first frame, which uses it.
-    private val imageCache = HashMap<Int, TerminalImage>()
-
-    // One coroutine at a time, so that what only the producer touches (the render state, the caches) is never used by two, and on the threads
-    // that every session shares rather than one of its own. IO and not Default: closing a session waits for the producer, and many
-    // sessions that close at the same time must not wait for each other on the workers that the producers need.
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val producerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
-
-    // Both searches, and what they keep. Before the first frame, which asks it for the matches.
-    private val sessionSearch = SessionSearch(terminal, lock, { closed.get() }, { frameRequests.trySend(Unit) }, producerScope)
-
-    private val frameState = MutableStateFlow(produceFrame())
-
     private val exitCode = MutableStateFlow<Int?>(null)
-
-    // Whether frames are produced: see [setVisible].
-    private val visibleState = MutableStateFlow(true)
 
     private val titleState = MutableStateFlow("")
     private val workingDirectoryState = MutableStateFlow<String?>(null)
@@ -239,7 +191,7 @@ public class TerminalSession private constructor(
      * second: what the program writes in between is merged, and a frame waits for the output to pause for a
      * moment (3 milliseconds, at most eight), so that a redraw is not shown half-way.
      */
-    public val frames: StateFlow<TerminalFrame> get() = frameState
+    public val frames: StateFlow<TerminalFrame> get() = producer.frames
 
     /**
      * The exit code of the program, once it has exited.
@@ -247,7 +199,7 @@ public class TerminalSession private constructor(
     public val exited: StateFlow<Int?> get() = exitCode
 
     /** Whether frames are produced: see [setVisible]. */
-    public val visible: StateFlow<Boolean> get() = visibleState
+    public val visible: StateFlow<Boolean> get() = producer.visible
 
     /**
      * Tells the session whether anybody looks at it. A session that is not visible does not produce frames, which is the work that
@@ -263,10 +215,7 @@ public class TerminalSession private constructor(
      * A host that keeps a hidden [app.katty.terminal.TerminalSession] composed sees the blank frame.
      */
     public fun setVisible(visible: Boolean) {
-        if (visibleState.value == visible) return
-        visibleState.value = visible
-        // What happened while it was hidden is shown by the frame that this asks for, even if nothing asked for one since.
-        if (visible) frameRequests.trySend(Unit)
+        producer.setVisible(visible)
     }
 
     /** The title that the program set (OSC 0 or 2), empty when it did not. */
@@ -309,133 +258,15 @@ public class TerminalSession private constructor(
             workingDirectoryState.value = decodeWorkingDirectory(terminal.pwd)
         }
 
-        producerScope.launch {
-            for (request in frameRequests) {
-                // A request that comes while the session is hidden waits here, and the ones after it merge into the next one: showing
-                // it again makes one frame, which is not followed by another for the request that was already served.
-                if (!visibleState.value) {
-                    visibleState.first { it }
-                    frameRequests.tryReceive()
-                }
-                val started = TimeSource.Monotonic.markNow()
-                settle(started)
-                awaitHold()
-                // Hidden while it waited: the frame is for when it is shown.
-                if (!visibleState.value) {
-                    visibleState.first { it }
-                    frameRequests.tryReceive()
-                }
-                try {
-                    frameState.value = produceFrame()
-                } catch (e: Throwable) {
-                    if (closed.get()) break
-                    logger.error("Could not produce a frame", e)
-                }
-
-                // What is requested while waiting is merged into the one next frame, so the last output is
-                // always published, only later. After an idle period there is nothing to wait for.
-                val remaining = MIN_FRAME_INTERVAL - started.elapsedNow()
-                if (remaining.isPositive()) delay(remaining)
-            }
-        }
-        // What a hidden session lets go of. It cannot be in the loop above, which waits for a request: this one acts as soon as the session is
-        // hidden. Both run one at a time on the producer's dispatcher, so neither interrupts the other half way.
-        producerScope.launch {
-            visibleState.collectLatest { visible -> if (!visible) releaseWhileHidden() }
-        }
+        producer.start()
         reader.start()
         writer.start()
-    }
-
-    // What the session does while it is hidden: the frame and what is kept for the next one are dropped, since nobody looks, and
-    // the history is compressed, which is lost to nobody: reading it decompresses it. It ends when the session is shown.
-    private suspend fun releaseWhileHidden() {
-        frameState.value = blankFrame(frameState.value)
-        rowCache = emptyMap()
-        imageCache.clear()
-
-        var seen = compressionActivity() ?: return
-        delay(HIDDEN_IDLE)
-        while (true) {
-            // Something was written: it is not an idle moment, which is when compressing is for.
-            val now = compressionActivity() ?: return
-            if (now != seen) {
-                seen = now
-                delay(HIDDEN_IDLE)
-                continue
-            }
-            when (compressOnce() ?: return) {
-                GhosttyCompressionResult.UNSUPPORTED -> return
-                GhosttyCompressionResult.PENDING -> delay(COMPRESSION_STEP_PAUSE)
-                GhosttyCompressionResult.COMPLETE -> {
-                    // Nothing to do until the terminal changes: it is looked at now and then.
-                    seen = compressionActivity() ?: return
-                    while (compressionActivity() == seen) delay(HIDDEN_POLL)
-                    seen = compressionActivity() ?: return
-                    delay(HIDDEN_IDLE)
-                }
-            }
-        }
-    }
-
-    private fun compressionActivity(): Long? = whileOpen(null) { terminal.compressionActivity() }
-
-    // A bounded amount of compression, under the lock for that long.
-    private fun compressOnce(): GhosttyCompressionResult? = whileOpen(null) { terminal.compress(GhosttyCompressionMode.INCREMENTAL) }
-
-    // What a terminal that nobody sees is: the colors and the size, nothing on it.
-    private fun blankFrame(last: TerminalFrame): TerminalFrame {
-        val blank = TerminalRow(TerminalRowId(0, 0), emptyList())
-        return TerminalFrame(
-            cols = last.cols,
-            rows = List(last.rows.size) { blank },
-            background = last.background,
-            foreground = last.foreground,
-            cursorColor = last.cursorColor,
-            cursor = TerminalCursor(x = null, y = null, visible = false, blinking = false, shape = last.cursor.shape),
-            cursorTextColor = last.cursorTextColor,
-            boldColor = last.boldColor,
-            alternateScreen = last.alternateScreen,
-        )
     }
 
     /** How much native memory the session holds: its history, its screens and its images. */
     public fun memoryUsage(): TerminalMemoryUsage = whileOpen(TerminalMemoryUsage(0, 0, 0)) {
         val usage = terminal.memoryUsage()
         TerminalMemoryUsage(usage.residentBytes, usage.compressedBytes, usage.imageBytes)
-    }
-
-    /**
-     * Waits for the program's output to pause, so that a redraw is shown whole.
-     *
-     * A program redraws in several writes, a fraction of a millisecond apart, that are read separately: zsh,
-     * moving the selection in its completion menu, moves the cursor down to the menu, draws the entries, and
-     * moves the cursor back to the line. A frame made after the first of them has the cursor in the menu, and
-     * the next frame is only made one frame interval later, so it is that frame that the display shows for a
-     * moment.
-     *
-     * The wait is at most [SETTLE_MAX] from [requested], so a program that never pauses is still shown, and
-     * it is part of the interval between two frames, which it does not lengthen.
-     */
-    private suspend fun settle(requested: TimeMark) {
-        while (true) {
-            val quiet = (System.nanoTime() - lastOutputNanos).nanoseconds
-            if (quiet >= SETTLE_QUIET || requested.elapsedNow() >= SETTLE_MAX) return
-            delay(1)
-        }
-    }
-
-    /**
-     * Waits while the program holds the screen (synchronized output, mode 2026): it is drawing a frame, and the one that is shown stays
-     * until it has finished. A program that does not finish is shown after [HOLD_MAX], as Ghostty does, so that it cannot freeze the screen.
-     * The frame that is kept is the last one made, which is made as before: this only keeps the next one from being made.
-     */
-    private suspend fun awaitHold() {
-        while (true) {
-            val since = holdSinceNanos
-            if (since == 0L || (System.nanoTime() - since).nanoseconds >= HOLD_MAX) return
-            delay(1)
-        }
     }
 
     /**
@@ -473,7 +304,7 @@ public class TerminalSession private constructor(
         }
         if (bytes.isNotEmpty()) {
             send(bytes)
-            frameRequests.trySend(Unit)
+            producer.request()
         }
     }
 
@@ -483,7 +314,7 @@ public class TerminalSession private constructor(
             if (closed.get()) return closedValue
             block()
         }
-        frameRequests.trySend(Unit)
+        producer.request()
         return result
     }
 
@@ -545,7 +376,7 @@ public class TerminalSession private constructor(
             List(kotlin.math.abs(rows)) { keyEncoder.encode(KeyInput(key).toGhostty()) }.filter { it.isNotEmpty() }
         }
         bytes?.forEach(outgoing::put)
-        frameRequests.trySend(Unit)
+        producer.request()
     }
 
     // What the terminal reports is called back while it is written to, on the reader's thread, under the lock: it only records,
@@ -553,9 +384,7 @@ public class TerminalSession private constructor(
     // [publishAfterWrite].
     private fun installEffects() {
         terminal.onRenderHold = { held ->
-            holdSinceNanos = if (held) System.nanoTime() else 0L
-            // What was kept back is shown now.
-            if (!held) frameRequests.trySend(Unit)
+            producer.hold(held)
         }
         terminal.onBell = { eventFlow.tryEmit(TerminalEvent.Bell) }
         terminal.onTitleChanged = { titleChanged = true }
@@ -656,7 +485,7 @@ public class TerminalSession private constructor(
      * (its `id=` is not readable): two links of the same address that touch are one.
      */
     public fun linkAt(column: Int, row: Int): TerminalLink? {
-        val rows = frameState.value.rows
+        val rows = producer.frames.value.rows
         val cells = rows.getOrNull(row)?.cells ?: return null
         if (column !in cells.indices) return null
         return whileOpen(null) { markedLink(rows, column, row, terminal::hyperlinkAt) ?: writtenLink(rows, column, row) }
@@ -799,7 +628,7 @@ public class TerminalSession private constructor(
             publishAfterWrite()
             inputActive
         }
-        frameRequests.trySend(Unit)
+        producer.request()
         if (atPrompt) send(byteArrayOf(CONTROL_L))
     }
 
@@ -992,7 +821,7 @@ public class TerminalSession private constructor(
             val position = terminal.scrollbar
             if (position.offset + position.len < position.total) return false
             if (row != terminal.cursorRow) return false
-            val delta = charactersBetween(frameState.value.rows.getOrNull(row)?.cells, terminal.cursorColumn, column.coerceIn(0, terminal.cols - 1))
+            val delta = charactersBetween(producer.frames.value.rows.getOrNull(row)?.cells, terminal.cursorColumn, column.coerceIn(0, terminal.cols - 1))
             if (delta == 0) return false
             keyEncoder.setOptionsFrom(terminal)
             val arrow = if (delta < 0) TerminalKey.ARROW_LEFT else TerminalKey.ARROW_RIGHT
@@ -1025,7 +854,7 @@ public class TerminalSession private constructor(
             selectionGesture.reset()
             terminal.adjustSelection(adjustment.toGhostty())
         }
-        if (adjusted) frameRequests.trySend(Unit)
+        if (adjusted) producer.request()
         return adjusted
     }
 
@@ -1041,7 +870,7 @@ public class TerminalSession private constructor(
             selectionGesture.reset()
             terminal.selectCommandOutput(start).also { if (it) hasSelection = true }
         }
-        if (selected) frameRequests.trySend(Unit)
+        if (selected) producer.request()
         return selected
     }
 
@@ -1102,7 +931,7 @@ public class TerminalSession private constructor(
             val done = withPty(false) { fd -> setPtyWindowSize(fd, cols, rows, cols * cellWidthPx, rows * cellHeightPx) }
             if (!done) process.winSize = WinSize(cols, rows)
         }
-        frameRequests.trySend(Unit)
+        producer.request()
     }
 
     /**
@@ -1135,7 +964,7 @@ public class TerminalSession private constructor(
         }
         if (report != null) send(report)
         // The terminal flags every row as changed, so the rows are read again, with their new colors.
-        frameRequests.trySend(Unit)
+        producer.request()
     }
 
     /**
@@ -1143,9 +972,7 @@ public class TerminalSession private constructor(
      * default. What is on the screen is read again, with it.
      */
     public fun setBoldIsBright(enabled: Boolean) {
-        // The render state is the producer's: it takes the request at its next frame.
-        boldIsBrightRequest = enabled
-        frameRequests.trySend(Unit)
+        producer.setBoldIsBright(enabled)
     }
 
     /**
@@ -1158,10 +985,9 @@ public class TerminalSession private constructor(
         // Ending the program ends the reader, and unblocks the writer.
         endProgram()
         outgoing.put(STOP)
-        frameRequests.close()
 
         // The producer first: it uses the render state, which is freed below.
-        runBlocking { producerScope.coroutineContext.job.cancelAndJoin() }
+        producer.close()
 
         reader.join(KILL_TIMEOUT_MS)
         writer.join(KILL_TIMEOUT_MS)
@@ -1223,8 +1049,7 @@ public class TerminalSession private constructor(
                     }
                 }
                 if (!fed) break
-                lastOutputNanos = System.nanoTime()
-                frameRequests.trySend(Unit)
+                producer.outputWritten()
             }
         } catch (e: IOException) {
             // The pty is closed, which is how the program exiting shows on some platforms.
@@ -1243,7 +1068,7 @@ public class TerminalSession private constructor(
         }
         logger.info("The program exited with code {}", code)
         programStatusStore.programExited()
-        frameRequests.trySend(Unit)
+        producer.request()
         exitCode.value = code
     }
 
@@ -1275,201 +1100,11 @@ public class TerminalSession private constructor(
     @Volatile
     private var writerGone = false
 
-    // Whether the program turned the echo off to read a line: a password.
-    private fun readingPassword(): Boolean = withPty(false) { fd -> isPtyReadingPassword(fd) }
-
-    // Only the update reads the terminal, so only it is under the lock: reading the rows, which is the
-    // costly part, does not hold up the thread that feeds the terminal.
-    private fun produceFrame(): TerminalFrame {
-        boldIsBrightRequest?.let { enabled ->
-            boldIsBrightRequest = null
-            if (renderState.boldIsBright != enabled) {
-                renderState.boldIsBright = enabled
-                // The rows are only read again if they changed, or if they are not known.
-                rowCacheStale = true
-            }
-        }
-        val tracking: Boolean
-        val alternate: Boolean
-        val shape: GhosttyMouseShape
-        val position: GhosttyScrollbar
-        val placements: List<GhosttyImagePlacement>
-        val fresh = HashMap<Int, GhosttyImage>()
-        val cellWidth: Int
-        val cellHeight: Int
-        val searchLook: SessionSearch.Look
-        lock.withLock {
-            renderState.update(terminal)
-            // As of this moment, with the rows that are read for it: what is found is where it is on this frame.
-            searchLook = sessionSearch.look(renderState.dirty != GhosttyDirty.CLEAN)
-            tracking = terminal.mouseTracking
-            alternate = terminal.activeScreen == GhosttyScreen.ALTERNATE
-            shape = terminal.mouseShape
-            position = terminal.scrollbar
-            cellWidth = cellWidthPx
-            cellHeight = cellHeightPx
-
-            // Where the images are changes when the screen scrolls, so it is read for every frame, but only while there are any.
-            placements = if (terminal.kittyGeneration == 0L) emptyList() else terminal.kittyPlacements()
-            // The pixels are the terminal's, valid until it changes: what is new is copied here, and made into RGBA after.
-            for (placement in placements) {
-                // The image of a virtual placement is drawn where placeholder cells are, so it is needed whether or not it is visible.
-                if ((!placement.visible && !placement.isVirtual) || placement.imageId in fresh) continue
-                val known = imageCache[placement.imageId]
-                if (known != null && known.generation == placement.imageGeneration) continue
-                terminal.kittyImage(placement.imageId)?.let { fresh[placement.imageId] = it }
-            }
-        }
-        val realImages = imagePlacements(placements, fresh, cellWidth, cellHeight)
-
-        if (rowCacheStale) {
-            rowCacheStale = false
-            rowCache = emptyMap()
-        }
-        val previous = rowCache
-        val rows = renderState.readRows { id, dirty -> dirty || id !in previous }
-        val terminalRows = rows.map { row ->
-            val cells = row.cells ?: return@map previous.getValue(row.id)
-            val rebuilt = cells.map { it.toTerminal() }
-            // The dirty flag is conservative: libghostty also flags the row that the cursor leaves. A row
-            // that did not change keeps its identity, which is what a renderer's cache relies on.
-            val old = previous[row.id]
-            if (old != null && old.cells == rebuilt && old.wrapped == row.wrap && old.hasPlaceholder == row.hasPlaceholder) {
-                old
-            } else {
-                TerminalRow(TerminalRowId(row.id.bits0, row.id.bits1), rebuilt, row.wrap, row.hasPlaceholder)
-            }
-        }
-        rowCache = rows.indices.associate { rows[it].id to terminalRows[it] }
-
-        // libghostty keeps a selection on its cells when the program writes over them. What was selected is then
-        // not what is there: the selection goes, which is what happens when what is selected changes, and not
-        // when it is only redrawn as it was (the row is then the same object).
-        val written = rows.indices.any { i ->
-            val before = previous[rows[i].id]
-            rows[i].selection != null && before != null && before !== terminalRows[i]
-        }
-        if (written) {
-            lock.withLock { unselect() }
-            frameRequests.trySend(Unit)
-        }
-        val selection = if (written || rows.all { it.selection == null }) emptyList() else rows.map { it.selection }
-
-        // What the placeholder cells show, under the text; with the images that programs placed, by layer.
-        val images = if (terminalRows.any { it.hasPlaceholder }) {
-            (realImages + placeholderPlacements(terminalRows, placements, cellWidth, cellHeight)).sortedBy { it.layer.ordinal }
-        } else {
-            realImages
-        }
-
-        val colors = renderState.colors
-        val frame = TerminalFrame(
-            cols = renderState.cols,
-            rows = terminalRows,
-            background = colors.background.toTerminal(),
-            foreground = colors.foreground.toTerminal(),
-            cursorColor = colors.cursor?.toTerminal(),
-            cursor = renderState.cursor.toTerminal().let { cursor ->
-                // The terminal cannot tell that the program reads a password: the pty can.
-                if (cursor.passwordInput || !readingPassword()) cursor else cursor.copy(passwordInput = true)
-            },
-            cursorTextColor = theme?.cursorText,
-            boldColor = theme?.bold,
-            mouseTracking = tracking,
-            pointerShape = shape.toTerminal(),
-            selection = selection,
-            selectionColor = theme?.selection,
-            selectedTextColor = theme?.selectedText,
-            // Nothing to scroll when everything is on the screen: no scrollbar.
-            scrollbar = if (position.total > position.len) TerminalScrollbar(position.total, position.offset, position.len) else null,
-            images = images,
-            alternateScreen = alternate,
-            searchMatches = sessionSearch.matches(searchLook, terminalRows, position, renderState.cols),
-        )
-        renderState.clean()
-        return frame
-    }
-
-    // What is shown of the images, in cells, in the order that it is drawn in.
-    private fun imagePlacements(
-        placements: List<GhosttyImagePlacement>,
-        fresh: Map<Int, GhosttyImage>,
-        cellWidth: Int,
-        cellHeight: Int,
-    ): List<TerminalImagePlacement> {
-        imageCache.keys.retainAll(placements.mapTo(HashSet()) { it.imageId })
-        for ((id, image) in fresh) {
-            imageCache[id] = TerminalImage(id, image.generation, image.width, image.height, image.toRgba())
-        }
-        if (placements.isEmpty()) return emptyList()
-
-        return placements
-            .filter { it.visible && !it.isVirtual && it.imageId in imageCache }
-            .sortedBy { it.z }
-            .map {
-                TerminalImagePlacement(
-                    image = imageCache.getValue(it.imageId),
-                    left = it.viewportCol + it.xOffset / cellWidth.toFloat(),
-                    top = it.viewportRow + it.yOffset / cellHeight.toFloat(),
-                    width = it.pixelWidth / cellWidth.toFloat(),
-                    height = it.pixelHeight / cellHeight.toFloat(),
-                    sourceX = it.sourceX,
-                    sourceY = it.sourceY,
-                    sourceWidth = it.sourceWidth,
-                    sourceHeight = it.sourceHeight,
-                    layer = when {
-                        it.z < Int.MIN_VALUE / 2 -> TerminalImageLayer.BELOW_BACKGROUND
-                        it.z < 0 -> TerminalImageLayer.BELOW_TEXT
-                        else -> TerminalImageLayer.ABOVE_TEXT
-                    },
-                )
-            }
-    }
-
-    // The parts of images that unicode placeholders show: one image for each run of them, where the cells are. The grid that an image is fitted
-    // in is the one of its virtual placement.
-    private fun placeholderPlacements(
-        rows: List<TerminalRow>,
-        placements: List<GhosttyImagePlacement>,
-        cellWidth: Int,
-        cellHeight: Int,
-    ): List<TerminalImagePlacement> {
-        val virtual = placements.filter { it.isVirtual }
-        return placeholderRuns(rows).mapNotNull { run ->
-            val image = imageCache[run.imageId] ?: return@mapNotNull null
-            // The exact placement if the cells name one, else the image's own, which is the lowest of its placements.
-            val target = if (run.placementId > 0) {
-                virtual.firstOrNull { it.imageId == run.imageId && it.placementId == run.placementId }
-            } else {
-                virtual.filter { it.imageId == run.imageId }.minByOrNull { it.placementId }
-            } ?: return@mapNotNull null
-            val gridRows = if (target.rows > 0) target.rows else (image.height + cellHeight - 1) / cellHeight
-            val gridColumns = if (target.columns > 0) target.columns else (image.width + cellWidth - 1) / cellWidth
-            if (gridRows <= 0 || gridColumns <= 0) return@mapNotNull null
-            val place = placeholderPlacement(run, image.width, image.height, gridColumns, gridRows, cellWidth, cellHeight) ?: return@mapNotNull null
-            TerminalImagePlacement(
-                image = image,
-                left = run.startColumn + (place.offsetXPx / cellWidth).toFloat(),
-                top = run.row + (place.offsetYPx / cellHeight).toFloat(),
-                width = (place.widthPx / cellWidth).toFloat(),
-                height = (place.heightPx / cellHeight).toFloat(),
-                sourceX = place.sourceX,
-                sourceY = place.sourceY,
-                sourceWidth = place.sourceWidth,
-                sourceHeight = place.sourceHeight,
-                // Ghostty draws them under the text.
-                layer = TerminalImageLayer.BELOW_TEXT,
-            )
-        }
-    }
 
     public companion object {
         /** What the terminal tells programs it is, and what they look up to know what it can do. */
         private const val TERM = "xterm-256color"
 
-        // A program that floods the output must not keep the producer, and the lock it takes to read the
-        // terminal, busy: more frames than a display shows are of no use.
-        private val MIN_FRAME_INTERVAL = 1.seconds / 60
         private val TYPE_WITHOUT_MARKS_DELAY = 1.seconds
 
         // How long a shell that marks its prompts has to mark the first one before what waits for it is typed without it.
@@ -1477,16 +1112,6 @@ public class TerminalSession private constructor(
 
         // What a shell takes as "clear the screen and draw the prompt again".
         private const val CONTROL_L: Byte = 0x0C
-
-        // A frame is made once the program has been silent for this long, or after SETTLE_MAX anyway. The writes
-        // of a redraw are 0.02 to 0.7 ms apart when zsh draws its completion menu, and the margin is for the
-        // reader's thread being late. This is up to 3 ms of latency, which is what shows a redraw whole. They are
-        // whole milliseconds, which is the resolution of delay on the producer's dispatcher.
-        private val SETTLE_QUIET = 3.milliseconds
-        private val SETTLE_MAX = 8.milliseconds
-
-        // How long a program may hold the screen (synchronized output) before it is shown anyway: Ghostty's own limit.
-        private val HOLD_MAX = 1.seconds
 
         /** What the terminal calls itself: XTVERSION, and what programs find in `TERM_PROGRAM`. */
         private const val TERMINAL_NAME = "KaTTY"
@@ -1512,12 +1137,6 @@ public class TerminalSession private constructor(
 
         // How much memory the history may take, which is Ghostty's own default.
         private const val SCROLLBACK_MAX_BYTES = 10_000_000L
-
-        // A hidden session starts to compress its history after this long without output, looks at whether it has changed this
-        // often once it has compressed what it could, and pauses between the steps of a pass.
-        private val HIDDEN_IDLE = 1.seconds
-        private val HIDDEN_POLL = 1.seconds
-        private val COMPRESSION_STEP_PAUSE = 5.milliseconds
 
         // A snapshot that fails because the program is in the middle of a long sequence is tried again this many times, this far apart.
         private const val SNAPSHOT_ATTEMPTS = 5
