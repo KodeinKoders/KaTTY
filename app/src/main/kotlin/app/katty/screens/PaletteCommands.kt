@@ -15,6 +15,7 @@ import app.katty.core.PaletteGroup
 import app.katty.core.ProjectId
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
+import app.katty.core.SecureInput
 import app.katty.core.ThemeMode
 import app.katty.core.WorkspaceId
 import app.katty.core.terminals
@@ -39,6 +40,8 @@ class PaletteHandlers(
     val showView: (MainView) -> Unit,
     val setLayout: (LayoutMode) -> Unit,
     val setTheme: (ThemeMode) -> Unit,
+    /** When what is typed in the terminals is kept from the other applications. */
+    val setSecureInput: (SecureInput) -> Unit = {},
     val jumpToWaiting: () -> Unit,
     val markAllSeen: () -> Unit,
     /** Opens the board in a window of its own, or brings that window to the front when it is open. */
@@ -261,5 +264,8 @@ fun paletteCommands(
     command("theme-light", "Theme: light") { handlers.setTheme(ThemeMode.LIGHT) }
     command("theme-dark", "Theme: dark") { handlers.setTheme(ThemeMode.DARK) }
     command("theme-system", "Theme: system") { handlers.setTheme(ThemeMode.SYSTEM) }
+    command("secure-never", "Secure keyboard entry: never") { handlers.setSecureInput(SecureInput.NEVER) }
+    command("secure-passwords", "Secure keyboard entry: at password prompts") { handlers.setSecureInput(SecureInput.PASSWORD_PROMPTS) }
+    command("secure-always", "Secure keyboard entry: always") { handlers.setSecureInput(SecureInput.ALWAYS) }
     return PaletteCommands(entries, actions)
 }

@@ -3,9 +3,13 @@ package app.katty
 import app.katty.core.Direction
 import app.katty.core.KattyStore
 import app.katty.core.MainView
+import app.katty.core.SecureInput
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.terminals
+import app.katty.screens.paletteCommands
+import app.katty.screens.toTerminal
+import app.katty.terminal.compose.TerminalSecureInput
 import app.katty.terminals.TerminalHandle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -160,6 +164,21 @@ class WindowControllerTest {
 
         assertNull(controller.renamingWorkspace)
         assertNull(controller.renamingTerminal)
+    }
+
+    @Test
+    fun thePaletteSetsWhenTheKeysAreKeptFromTheOtherApplications() {
+        val commands = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = controller.paletteHandlers())
+        val entry = commands.entries.single { it.label == "Secure keyboard entry: always" }
+
+        commands.run(entry)
+
+        assertEquals(SecureInput.ALWAYS, state.settings.secureInput)
+        // What the terminals are given of it.
+        assertEquals(
+            listOf(TerminalSecureInput.NEVER, TerminalSecureInput.PASSWORD_PROMPTS, TerminalSecureInput.ALWAYS),
+            SecureInput.entries.map { it.toTerminal() },
+        )
     }
 
     @Test

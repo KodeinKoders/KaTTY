@@ -187,7 +187,7 @@ class MainMenuRenderTest {
     @Test
     fun drawsTheMenuInBothThemes() {
         for (dark in listOf(false, true)) {
-            val rendered = app.katty.ui.render("main-menu-${if (dark) "dark" else "light"}", 640, 900, dark = dark) {
+            val rendered = app.katty.ui.render("main-menu-${if (dark) "dark" else "light"}", 640, 1300, dark = dark) {
                 androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().padding(8.dp)) {
                     MainMenu(
                         settings = Settings(layout = LayoutMode.HORIZONTAL, theme = if (dark) ThemeMode.DARK else ThemeMode.LIGHT),

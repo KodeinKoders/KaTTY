@@ -33,6 +33,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import app.katty.core.LayoutMode
 import app.katty.core.Settings
+import app.katty.core.SecureInput
 import app.katty.core.ThemeMode
 import app.katty.terminal.themes.ITermColorSchemeInfo
 import app.katty.ui.CheckSetting
@@ -109,6 +110,19 @@ fun MainMenu(
             Separator()
             Section("KEYBOARD") {
                 Field("Keyboard shortcuts…", "Edit the keyboard shortcuts", onEditShortcuts)
+            }
+            Separator()
+            Section("SECURE KEYBOARD ENTRY") {
+                Choice(
+                    listOf(
+                        ChoiceOption(SecureInput.NEVER, "Never"),
+                        ChoiceOption(SecureInput.PASSWORD_PROMPTS, "Passwords"),
+                        ChoiceOption(SecureInput.ALWAYS, "Always"),
+                    ),
+                    settings.secureInput, { value -> onChange { it.copy(secureInput = value) } },
+                    Modifier.padding(horizontal = 4.dp),
+                )
+                Caption("Keeps what is typed in a terminal from the other applications. Text expanders and global shortcuts stop working meanwhile.")
             }
             Separator()
             Section("FONT FAMILY") {

@@ -82,6 +82,8 @@ import app.katty.ui.OneLine
 import androidx.compose.runtime.withFrameNanos
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import app.katty.core.SecureInput
+import app.katty.terminal.compose.TerminalSecureInput
 
 /** The height of the header of a pane. */
 val PANE_HEADER_HEIGHT = 30.dp
@@ -212,6 +214,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         fontSize = context.settings.fontSize.sp,
                         font = context.font,
                         ligatures = context.settings.ligatures,
+                        secureInput = context.settings.secureInput.toTerminal(),
                         padding = PaddingValues(TERMINAL_PADDING),
                         focusRequester = handle.focus,
                         focusOnStart = false,
@@ -333,4 +336,11 @@ internal fun PaneHeader(
         )
         trailing()
     }
+}
+
+/** What a terminal is given of the setting. */
+internal fun SecureInput.toTerminal(): TerminalSecureInput = when (this) {
+    SecureInput.NEVER -> TerminalSecureInput.NEVER
+    SecureInput.PASSWORD_PROMPTS -> TerminalSecureInput.PASSWORD_PROMPTS
+    SecureInput.ALWAYS -> TerminalSecureInput.ALWAYS
 }

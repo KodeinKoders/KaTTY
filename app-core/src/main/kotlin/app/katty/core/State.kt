@@ -20,6 +20,21 @@ public enum class ThemeMode {
     SYSTEM,
 }
 
+/**
+ * When what is typed in a terminal is kept from the other programs of the system (macOS's secure keyboard entry). It also stops what listens to
+ * the keys for the user (a text expander, a global shortcut) while it is on, which is why it is off by default.
+ */
+@Serializable
+public enum class SecureInput {
+    NEVER,
+
+    /** While a program reads a password: it turned the echo off. */
+    PASSWORD_PROMPTS,
+
+    /** Whenever a terminal has the keys. */
+    ALWAYS,
+}
+
 /** What the window shows: the terminals of the workspace, or the board of the agents of the projects. */
 @Serializable
 public enum class MainView {
@@ -37,6 +52,7 @@ public enum class MainView {
  * them (`meta+shift:68`, or `none` for a shortcut that has been unbound): only what is not the default, so that a default that changes is followed.
  * @param uiScale How big the text of the application is, as a multiple of its usual size (not the terminals': they have [fontSize]); one of
  * [UI_SCALES].
+ * @param secureInput When what is typed in the terminals is kept from the other programs.
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
  * @param usageHidden The limits of those agents that are not shown, each made by [usageKey]. It is the hidden ones that are kept, so that a
  * limit that an agent starts to report later is shown.
@@ -51,6 +67,7 @@ public data class Settings(
     val uiScale: Float = DEFAULT_UI_SCALE,
     val shortcuts: Map<String, String> = emptyMap(),
     val ligatures: Boolean = true,
+    val secureInput: SecureInput = SecureInput.NEVER,
     val usageShown: Set<String> = setOf("claude", "codex", "antigravity", "opencode", "kilocode", "omp"),
     val usageHidden: Set<String> = emptySet(),
     val compactUsage: Boolean = false,

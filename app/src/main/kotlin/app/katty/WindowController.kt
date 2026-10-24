@@ -424,6 +424,7 @@ internal class WindowController(
         showView = { view -> store.updateSettings { it.copy(view = view) } },
         setLayout = { mode -> store.updateSettings { it.copy(layout = mode) } },
         setTheme = { theme -> store.updateSettings { it.copy(theme = theme) } },
+        setSecureInput = { secure -> store.updateSettings { it.copy(secureInput = secure) } },
         jumpToWaiting = ::jumpToWaiting,
         markAllSeen = markAllSeen,
         openBoardWindow = platform::openBoardWindow,
