@@ -341,9 +341,14 @@ class WorkspaceAreaTest {
         val first = store.state.value.selection.terminal!!
         store.split(first, SplitDirection.ROW)
         show()
+        val columns = { registry.handles.value[first]!!.session!!.frames.value.cols }
+        // The pane gives its session its size at its first layout, and a frame has it a moment later: the width to start from is that one, not
+        // the 80 columns that a session starts with.
+        waitForIdle()
+        val sized = System.nanoTime() + 5_000_000_000L
+        while (columns() == 80 && System.nanoTime() < sized) Thread.sleep(20)
         mainClock.autoAdvance = false
         val start = onAllNodesWithContentDescription("Maximize pane")[0].fetchSemanticsNode().boundsInRoot.left
-        val columns = { registry.handles.value[first]!!.session!!.frames.value.cols }
         val startColumns = columns()
 
         onAllNodesWithContentDescription("Maximize pane")[0].performClick()
