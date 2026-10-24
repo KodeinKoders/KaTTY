@@ -403,11 +403,10 @@ public class TerminalSession private constructor(
         }
     }
 
-    private fun compressionActivity(): Long? = lock.withLock { if (closed.get()) null else terminal.compressionActivity() }
+    private fun compressionActivity(): Long? = whileOpen(null) { terminal.compressionActivity() }
 
     // A bounded amount of compression, under the lock for that long.
-    private fun compressOnce(): GhosttyCompressionResult? =
-        lock.withLock { if (closed.get()) null else terminal.compress(GhosttyCompressionMode.INCREMENTAL) }
+    private fun compressOnce(): GhosttyCompressionResult? = whileOpen(null) { terminal.compress(GhosttyCompressionMode.INCREMENTAL) }
 
     // What a terminal that nobody sees is: the colors and the size, nothing on it.
     private fun blankFrame(last: TerminalFrame): TerminalFrame {
@@ -426,8 +425,7 @@ public class TerminalSession private constructor(
     }
 
     /** How much native memory the session holds: its history, its screens and its images. */
-    public fun memoryUsage(): TerminalMemoryUsage = lock.withLock {
-        if (closed.get()) return TerminalMemoryUsage(0, 0, 0)
+    public fun memoryUsage(): TerminalMemoryUsage = whileOpen(TerminalMemoryUsage(0, 0, 0)) {
         val usage = terminal.memoryUsage()
         TerminalMemoryUsage(usage.residentBytes, usage.compressedBytes, usage.imageBytes)
     }
@@ -504,6 +502,23 @@ public class TerminalSession private constructor(
         }
     }
 
+    /** Runs [block] under the lock unless the session is closed (it then gives [closedValue]), and asks for a frame after it: what changes what is shown. */
+    private inline fun <T> mutate(closedValue: T, block: () -> T): T {
+        val result = lock.withLock {
+            if (closed.get()) return closedValue
+            block()
+        }
+        frameRequests.trySend(Unit)
+        return result
+    }
+
+    private inline fun mutate(block: () -> Unit) = mutate(Unit, block)
+
+    /** Runs [block] under the lock unless the session is closed, when it gives [closedValue]: what reads the terminal and changes nothing that is shown. */
+    private inline fun <T> whileOpen(closedValue: T, block: () -> T): T = lock.withLock {
+        if (closed.get()) closedValue else block()
+    }
+
     /** Scrolls the viewport by [rows] rows through the history: up is negative. Nothing on the alternate screen, which has none. */
     public fun scrollBy(rows: Int) {
         scroll(GhosttyScrollViewport.Delta(rows.toLong()))
@@ -511,7 +526,7 @@ public class TerminalSession private constructor(
 
     /** Scrolls a page: [direction] is `-1` for up and `1` for down. A page is the screen but a row, so that what was at the edge stays in view. */
     public fun scrollPage(direction: Int) {
-        val rows = lock.withLock { if (closed.get()) return else terminal.rows }
+        val rows = whileOpen(null) { terminal.rows } ?: return
         scrollBy(direction.coerceIn(-1, 1) * maxOf(1, rows - 1))
     }
 
@@ -669,10 +684,7 @@ public class TerminalSession private constructor(
         val rows = frameState.value.rows
         val cells = rows.getOrNull(row)?.cells ?: return null
         if (column !in cells.indices) return null
-        return lock.withLock {
-            if (closed.get()) return null
-            marked(rows, column, row) ?: written(rows, column, row)
-        }
+        return whileOpen(null) { marked(rows, column, row) ?: written(rows, column, row) }
     }
 
     // The last cell of a row that is a character of it: a wide character that did not fit leaves a blank one at the end.
@@ -765,13 +777,7 @@ public class TerminalSession private constructor(
         return TerminalLink(text.substring(range.first, range.last + 1), segments)
     }
 
-    private fun scroll(to: GhosttyScrollViewport) {
-        lock.withLock {
-            if (closed.get()) return
-            terminal.scroll(to)
-        }
-        frameRequests.trySend(Unit)
-    }
+    private fun scroll(to: GhosttyScrollViewport): Unit = mutate { terminal.scroll(to) }
 
     // What is typed brings the screen back, where the program's cursor is. Under the lock.
     private fun snapToBottom() {
@@ -785,19 +791,15 @@ public class TerminalSession private constructor(
      * the line; a single click selects nothing yet and unselects what was selected. Selecting is the terminal's
      * own, and the program is told nothing: it is for the caller to decide which presses are for it.
      */
-    public fun selectionPress(column: Float, row: Float) {
-        lock.withLock {
-            if (closed.get()) return
-            val at = locate(column, row)
-            val selected = selectionGesture.press(
-                at.column, at.row, at.xPx, at.yPx,
-                timeNs = System.nanoTime(),
-                repeatDistancePx = REPEAT_CLICK_DISTANCE_PX,
-                repeatIntervalNs = REPEAT_CLICK_INTERVAL_NS,
-            )
-            if (selected) hasSelection = true else unselect()
-        }
-        frameRequests.trySend(Unit)
+    public fun selectionPress(column: Float, row: Float): Unit = mutate {
+        val at = locate(column, row)
+        val selected = selectionGesture.press(
+            at.column, at.row, at.xPx, at.yPx,
+            timeNs = System.nanoTime(),
+            repeatDistancePx = REPEAT_CLICK_DISTANCE_PX,
+            repeatIntervalNs = REPEAT_CLICK_INTERVAL_NS,
+        )
+        if (selected) hasSelection = true else unselect()
     }
 
     /**
@@ -805,23 +807,18 @@ public class TerminalSession private constructor(
      *
      * @param rectangle Whether to select a block of cells instead of a flow of text.
      */
-    public fun selectionDrag(column: Float, row: Float, rectangle: Boolean = false): TerminalAutoscroll {
-        val autoscroll = lock.withLock {
-            if (closed.get()) return TerminalAutoscroll.NONE
-            // The position is not kept inside the screen, or the gesture would not know that it is past an edge.
-            val at = locate(column, row, clampPosition = false)
-            val selected = selectionGesture.drag(
-                at.column, at.row, at.xPx, at.yPx,
-                cols = terminal.cols,
-                cellWidthPx = cellWidthPx,
-                screenHeightPx = terminal.rows * cellHeightPx,
-                rectangle = rectangle,
-            )
-            if (selected) hasSelection = true
-            selectionGesture.autoscroll().toTerminal()
-        }
-        frameRequests.trySend(Unit)
-        return autoscroll
+    public fun selectionDrag(column: Float, row: Float, rectangle: Boolean = false): TerminalAutoscroll = mutate(TerminalAutoscroll.NONE) {
+        // The position is not kept inside the screen, or the gesture would not know that it is past an edge.
+        val at = locate(column, row, clampPosition = false)
+        val selected = selectionGesture.drag(
+            at.column, at.row, at.xPx, at.yPx,
+            cols = terminal.cols,
+            cellWidthPx = cellWidthPx,
+            screenHeightPx = terminal.rows * cellHeightPx,
+            rectangle = rectangle,
+        )
+        if (selected) hasSelection = true
+        selectionGesture.autoscroll().toTerminal()
     }
 
     /**
@@ -830,26 +827,21 @@ public class TerminalSession private constructor(
      *
      * @return Which way it scrolled, [TerminalAutoscroll.NONE] when the drag is not past an edge any more or is over.
      */
-    public fun selectionAutoscroll(column: Float, row: Float, rectangle: Boolean = false): TerminalAutoscroll {
-        val direction = lock.withLock {
-            if (closed.get()) return TerminalAutoscroll.NONE
-            val direction = selectionGesture.autoscroll().toTerminal()
-            if (direction == TerminalAutoscroll.NONE) return@withLock direction
-            // The tick scrolls the viewport by a row itself, and extends the selection to the edge.
-            val at = locate(column, row, clampPosition = false)
-            val edgeRow = if (direction == TerminalAutoscroll.UP) 0 else terminal.rows - 1
-            val selected = selectionGesture.tick(
-                at.column, edgeRow, at.xPx, at.yPx,
-                cols = terminal.cols,
-                cellWidthPx = cellWidthPx,
-                screenHeightPx = terminal.rows * cellHeightPx,
-                rectangle = rectangle,
-            )
-            if (selected) hasSelection = true
-            direction
-        }
-        frameRequests.trySend(Unit)
-        return direction
+    public fun selectionAutoscroll(column: Float, row: Float, rectangle: Boolean = false): TerminalAutoscroll = mutate(TerminalAutoscroll.NONE) {
+        val direction = selectionGesture.autoscroll().toTerminal()
+        if (direction == TerminalAutoscroll.NONE) return@mutate direction
+        // The tick scrolls the viewport by a row itself, and extends the selection to the edge.
+        val at = locate(column, row, clampPosition = false)
+        val edgeRow = if (direction == TerminalAutoscroll.UP) 0 else terminal.rows - 1
+        val selected = selectionGesture.tick(
+            at.column, edgeRow, at.xPx, at.yPx,
+            cols = terminal.cols,
+            cellWidthPx = cellWidthPx,
+            screenHeightPx = terminal.rows * cellHeightPx,
+            rectangle = rectangle,
+        )
+        if (selected) hasSelection = true
+        direction
     }
 
     /**
@@ -857,53 +849,36 @@ public class TerminalSession private constructor(
      *
      * @return The text that is selected, for the caller to copy, or `null` if nothing is selected.
      */
-    public fun selectionRelease(column: Float, row: Float): String? {
-        val text = lock.withLock {
-            if (closed.get()) return null
-            val at = locate(column, row)
-            selectionGesture.release(at.column, at.row)
-            terminal.selectedText()?.takeIf { it.isNotEmpty() }
-        }
-        frameRequests.trySend(Unit)
-        return text
+    public fun selectionRelease(column: Float, row: Float): String? = mutate(null) {
+        val at = locate(column, row)
+        selectionGesture.release(at.column, at.row)
+        terminal.selectedText()?.takeIf { it.isNotEmpty() }
     }
 
     /** Unselects what is selected. */
-    public fun clearSelection() {
-        lock.withLock {
-            if (closed.get()) return
-            selectionGesture.reset()
-            unselect()
-        }
-        frameRequests.trySend(Unit)
+    public fun clearSelection(): Unit = mutate {
+        selectionGesture.reset()
+        unselect()
     }
 
     /**
      * Selects all the text of the history and the screen. It is the terminal's own selection, as the mouse makes it: it is in the
      * frames, [selectedText] gives its text, and what is typed for the program unselects it.
      */
-    public fun selectAll() {
-        lock.withLock {
-            if (closed.get()) return
-            selectionGesture.reset()
-            if (terminal.selectAll()) hasSelection = true
-        }
-        frameRequests.trySend(Unit)
+    public fun selectAll(): Unit = mutate {
+        selectionGesture.reset()
+        if (terminal.selectAll()) hasSelection = true
     }
 
     /**
      * Removes the history, and keeps what is on the screen: what a program does with `CSI 3 J`, which the program does not see here.
      * The selection goes with it, since the rows that it was on may be gone.
      */
-    public fun clearScrollback() {
-        lock.withLock {
-            if (closed.get()) return
-            selectionGesture.reset()
-            unselect()
-            terminal.vtWrite("\u001b[3J")
-            publishAfterWrite()
-        }
-        frameRequests.trySend(Unit)
+    public fun clearScrollback(): Unit = mutate {
+        selectionGesture.reset()
+        unselect()
+        terminal.vtWrite("\u001b[3J")
+        publishAfterWrite()
     }
 
     /**
@@ -994,11 +969,7 @@ public class TerminalSession private constructor(
      */
     public fun setScrollbackLimit(bytes: Long) {
         require(bytes >= 0) { "A limit is not negative: $bytes" }
-        lock.withLock {
-            if (closed.get()) return
-            terminal.setScrollbackMaxBytes(bytes)
-        }
-        frameRequests.trySend(Unit)
+        mutate { terminal.setScrollbackMaxBytes(bytes) }
     }
 
     /**
@@ -1007,11 +978,7 @@ public class TerminalSession private constructor(
      */
     public fun setImageStorageLimit(bytes: Long) {
         require(bytes >= 0) { "A limit is not negative: $bytes" }
-        lock.withLock {
-            if (closed.get()) return
-            terminal.setImageStorageLimit(bytes)
-        }
-        frameRequests.trySend(Unit)
+        mutate { terminal.setImageStorageLimit(bytes) }
     }
 
     /**
@@ -1042,40 +1009,36 @@ public class TerminalSession private constructor(
      * Whether pasting [text] could run commands that the user did not see: it has a newline or a carriage return and the program did not ask
      * for bracketed paste, or it holds the marker that ends one. The host asks the user before [paste] for what is.
      */
-    public fun isPasteUnsafe(text: String): Boolean = lock.withLock { !closed.get() && terminal.isPasteUnsafe(text) }
+    public fun isPasteUnsafe(text: String): Boolean = whileOpen(false) { terminal.isPasteUnsafe(text) }
 
     /** The search for a text in the history and the screen. */
     public val search: TerminalSearch = TerminalSearch(this)
 
     internal val searchState: StateFlow<TerminalSearchState> get() = searchStateFlow
 
-    internal fun setSearchQuery(query: String, regex: Boolean = false, caseSensitive: Boolean = false) {
-        lock.withLock {
-            if (closed.get()) return
-            searchQuery = query
-            regexMatchList = emptyList()
-            regexSelected = null
-            regexStale = true
-            regexGeneration++
-            regexPendingMove = null
-            regexTooSlow = false
-            if (query.isEmpty()) {
-                regexQuery = null
-                searcher?.setNeedle("")
-                searchStateFlow.value = TerminalSearchState()
-            } else if (regex) {
-                // libghostty's search is idle: this one is ours.
-                searcher?.setNeedle("")
-                val compiled = RegexQuery.of(query, caseSensitive).also { regexQuery = it }
-                searchStateFlow.value = TerminalSearchState(query = query, searching = compiled.pattern != null, error = compiled.error)
-            } else {
-                regexQuery = null
-                val active = searcher ?: GhosttySearch(terminal).also { searcher = it }
-                active.setNeedle(query)
-                searchStateFlow.value = TerminalSearchState(query = query, searching = true)
-            }
+    internal fun setSearchQuery(query: String, regex: Boolean = false, caseSensitive: Boolean = false): Unit = mutate {
+        searchQuery = query
+        regexMatchList = emptyList()
+        regexSelected = null
+        regexStale = true
+        regexGeneration++
+        regexPendingMove = null
+        regexTooSlow = false
+        if (query.isEmpty()) {
+            regexQuery = null
+            searcher?.setNeedle("")
+            searchStateFlow.value = TerminalSearchState()
+        } else if (regex) {
+            // libghostty's search is idle: this one is ours.
+            searcher?.setNeedle("")
+            val compiled = RegexQuery.of(query, caseSensitive).also { regexQuery = it }
+            searchStateFlow.value = TerminalSearchState(query = query, searching = compiled.pattern != null, error = compiled.error)
+        } else {
+            regexQuery = null
+            val active = searcher ?: GhosttySearch(terminal).also { searcher = it }
+            active.setNeedle(query)
+            searchStateFlow.value = TerminalSearchState(query = query, searching = true)
         }
-        frameRequests.trySend(Unit)
     }
 
     // Toward older content is libghostty's next: up the screen.
@@ -1100,7 +1063,7 @@ public class TerminalSession private constructor(
     private fun moveRegexSelection(towardOlder: Boolean) {
         val matches = regexMatchList
         if (matches.isEmpty()) return
-        val at = regexSelected?.let { current -> matches.indexOfFirst { it.row == current.row && it.start == current.start } }?.takeIf { it >= 0 }
+        val at = matches.indexOfMatch(regexSelected)
         val index = when {
             at == null -> if (towardOlder) matches.lastIndex else 0
             towardOlder -> (at - 1 + matches.size) % matches.size
@@ -1146,7 +1109,7 @@ public class TerminalSession private constructor(
             regexTooSlow = found == null
             regexMatchList = found.orEmpty()
             // What is selected goes on being so if it is still there, and is not any more if not.
-            regexSelected = regexSelected?.let { current -> regexMatchList.firstOrNull { it.row == current.row && it.start == current.start } }
+            regexSelected = regexMatchList.indexOfMatch(regexSelected)?.let(regexMatchList::get)
             regexPendingMove?.let { towardOlder ->
                 regexPendingMove = null
                 moveRegexSelection(towardOlder)
@@ -1190,9 +1153,7 @@ public class TerminalSession private constructor(
     }
 
     /** How many rows there are in the history and the screen. */
-    public fun rowCount(): Long = lock.withLock {
-        if (closed.get()) 0 else terminal.totalRows
-    }
+    public fun rowCount(): Long = whileOpen(0L) { terminal.totalRows }
 
     /**
      * The text of the rows [firstRow] to [lastRow] (the last one by default), both included, in the history and the screen: row 0 is the
@@ -1204,21 +1165,18 @@ public class TerminalSession private constructor(
      *
      * @throws IllegalArgumentException If the rows are not there.
      */
-    public fun readText(firstRow: Long = 0, lastRow: Long? = null, unwrap: Boolean = true): String = lock.withLock {
-        if (closed.get()) return ""
+    public fun readText(firstRow: Long = 0, lastRow: Long? = null, unwrap: Boolean = true): String = whileOpen("") {
         terminal.readRows(firstRow, lastRow ?: (terminal.totalRows - 1), unwrap)
     }
 
     /** The text of the rows that are in view. */
-    public fun viewportText(unwrap: Boolean = true): String = lock.withLock {
-        if (closed.get()) return ""
+    public fun viewportText(unwrap: Boolean = true): String = whileOpen("") {
         val position = terminal.scrollbar
         terminal.readRows(position.offset, position.offset + position.len - 1, unwrap)
     }
 
     /** The text of the screen, where the program's cursor is, whatever part of the history is in view. */
-    public fun screenText(unwrap: Boolean = true): String = lock.withLock {
-        if (closed.get()) return ""
+    public fun screenText(unwrap: Boolean = true): String = whileOpen("") {
         val total = terminal.totalRows
         terminal.readRows(total - terminal.rows, total - 1, unwrap)
     }
@@ -1228,8 +1186,7 @@ public class TerminalSession private constructor(
      * more. It needs the shell to mark its prompts and its commands (OSC 133): see `shellIntegration` of [start]. What a command that is
      * still running has written is there too.
      */
-    public fun lastCommandOutput(unwrap: Boolean = true): String? = lock.withLock {
-        if (closed.get()) return null
+    public fun lastCommandOutput(unwrap: Boolean = true): String? = whileOpen(null) {
         outputStart?.let { terminal.commandOutput(it, unwrap) }
     }
 
@@ -1333,8 +1290,8 @@ public class TerminalSession private constructor(
     }
 
     /** The text that is selected, for the caller to copy, as [format] says (the characters only by default), or `null` when nothing is. */
-    public fun selectedText(format: TerminalTextFormat = TerminalTextFormat.PLAIN): String? = lock.withLock {
-        if (closed.get()) null else terminal.selectedText(format.toGhostty())?.takeIf { it.isNotEmpty() }
+    public fun selectedText(format: TerminalTextFormat = TerminalTextFormat.PLAIN): String? = whileOpen(null) {
+        terminal.selectedText(format.toGhostty())?.takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -1367,13 +1324,9 @@ public class TerminalSession private constructor(
      *
      * Control sequences are interpreted, so a line ends with `\r\n`.
      */
-    public fun writeToScreen(text: String) {
-        lock.withLock {
-            if (closed.get()) return
-            terminal.vtWrite(text)
-            publishAfterWrite()
-        }
-        frameRequests.trySend(Unit)
+    public fun writeToScreen(text: String): Unit = mutate {
+        terminal.vtWrite(text)
+        publishAfterWrite()
     }
 
     /**
@@ -1692,18 +1645,19 @@ public class TerminalSession private constructor(
             searchStateFlow.value = TerminalSearchState(searchQuery, error = REGEX_TOO_SLOW)
             return emptyList()
         }
-        val index = selected?.let { current -> matches.indexOfFirst { it.row == current.row && it.start == current.start } }?.takeIf { it >= 0 }
+        val index = matches.indexOfMatch(selected)
         searchStateFlow.value = TerminalSearchState(searchQuery, matches.size, index?.let { it + 1 }, searching = false)
         val visible = ArrayList<TerminalSearchMatch>()
+        // The columns of the characters of a row, once for all the matches on it.
+        val columnsOfRow = HashMap<Int, IntArray>()
         for (match in matches) {
-            val y = match.row - position.offset
-            if (y < 0 || y >= rows.size) continue
-            val cells = rows[y.toInt()].cells
-            val columns = columnsOfCharacters(cells)
+            val y = (match.row - position.offset).takeIf { it >= 0 && it < rows.size }?.toInt() ?: continue
+            val cells = rows[y].cells
+            val columns = columnsOfRow.getOrPut(y) { columnsOfCharacters(cells) }
             val first = columns.getOrNull(match.start) ?: continue
             val lastChar = columns.getOrNull(match.end - 1) ?: continue
             val last = (lastChar + cellSpan(cells, lastChar) - 1).coerceAtMost(cells.size - 1)
-            visible += TerminalSearchMatch(y.toInt(), first..last, current = match === selected || (selected != null && match.row == selected.row && match.start == selected.start))
+            visible += TerminalSearchMatch(y, first..last, current = match.isAt(selected))
         }
         return visible
     }

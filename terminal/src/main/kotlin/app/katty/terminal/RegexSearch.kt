@@ -7,7 +7,13 @@ import java.util.regex.PatternSyntaxException
 // history and the screen, a row at a time, and it is pure so that it can be tested without a terminal.
 
 /** A match, on the [row] of the history and the screen (0 is the top of the history), by the characters of that row's text: [end] is past its last. */
-internal data class RegexMatch(val row: Long, val start: Int, val end: Int)
+internal data class RegexMatch(val row: Long, val start: Int, val end: Int) {
+    /** Whether [other] is this match, looked for again: what the screen did meanwhile may have moved its end, not where it is. */
+    fun isAt(other: RegexMatch?): Boolean = other != null && row == other.row && start == other.start
+}
+
+/** Where [match] is among these, looked for again ([RegexMatch.isAt]), `null` when it is not there any more or there is none. */
+internal fun List<RegexMatch>.indexOfMatch(match: RegexMatch?): Int? = match?.let { indexOfFirst(it::isAt).takeIf { index -> index >= 0 } }
 
 /** The pattern for [query], or `null` and the reason when it is not a regular expression. */
 internal class RegexQuery(val pattern: Pattern?, val error: String?) {
