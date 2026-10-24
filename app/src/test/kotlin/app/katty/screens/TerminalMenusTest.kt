@@ -32,6 +32,7 @@ class TerminalMenusTest {
         clearScreen = { calls += "clear" },
         splitRight = { calls += "splitRight" },
         splitDown = { calls += "splitDown" },
+        restart = { calls += "restart" },
         close = { calls += "close" },
     )
 
@@ -145,7 +146,7 @@ class TerminalMenusTest {
         val entries = terminalContextMenu(hasSelection = true, actions = contextActions)
 
         assertEquals(
-            listOf("Copy", "Paste", "Select all", "---", "Find…", "Clear screen and scrollback", "---", "Split right", "Split down", "---", "Close terminal"),
+            listOf("Copy", "Paste", "Select all", "---", "Find…", "Clear screen and scrollback", "---", "Split right", "Split down", "---", "Restart terminal", "Close terminal"),
             entries.labels(),
         )
     }
@@ -164,6 +165,13 @@ class TerminalMenusTest {
     }
 
     @Test
+    fun restartingFromTheContextMenuRestartsTheTerminal() {
+        terminalContextMenu(true, contextActions).action("Restart terminal").onClick()
+
+        assertEquals(listOf("restart"), calls)
+    }
+
+    @Test
     fun copyIsOnlyForWhatIsSelected() {
         assertTrue(terminalContextMenu(true, contextActions).action("Copy").enabled)
         assertFalse(terminalContextMenu(false, contextActions).action("Copy").enabled)
@@ -174,7 +182,7 @@ class TerminalMenusTest {
         val entries = terminalContextMenu(true, contextActions)
 
         assertEquals(
-            mapOf("Copy" to "⌘C", "Paste" to "⌘V", "Select all" to "⌘A", "Find…" to "⌘F", "Clear screen and scrollback" to "⌘L", "Split right" to "⌘D", "Split down" to "⌘⇧D", "Close terminal" to "⌘W"),
+            mapOf("Copy" to "⌘C", "Paste" to "⌘V", "Select all" to "⌘A", "Find…" to "⌘F", "Clear screen and scrollback" to "⌘L", "Split right" to "⌘D", "Split down" to "⌘⇧D", "Restart terminal" to "⌘R", "Close terminal" to "⌘W"),
             entries.filterIsInstance<MenuAction>().associate { it.label to it.shortcut },
         )
     }

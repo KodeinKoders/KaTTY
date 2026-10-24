@@ -71,6 +71,8 @@ class ContextMenuActions(
     val clearScreen: () -> Unit,
     val splitRight: () -> Unit,
     val splitDown: () -> Unit,
+    /** Starts the terminal's shell again, which asks first while a program runs in it, as the shortcut does. */
+    val restart: () -> Unit,
     val close: () -> Unit,
 )
 
@@ -89,5 +91,6 @@ fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, vert
     action("Split right", split.rightShortcut, onClick = actions.splitRight)
     action("Split down", split.downShortcut, onClick = actions.splitDown)
     divider()
+    action("Restart terminal", AppShortcut.RESTART_TERMINAL.label, onClick = actions.restart)
     action("Close terminal", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.close)
 }

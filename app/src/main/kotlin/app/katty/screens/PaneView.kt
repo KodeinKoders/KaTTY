@@ -236,6 +236,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                                 clearScreen = session::clearScreen,
                                 splitRight = { context.store.splitVisually(spec.id, right = true, flipped = context.flipped) },
                                 splitDown = { context.store.splitVisually(spec.id, right = false, flipped = context.flipped) },
+                                restart = { context.actions.onReopen(spec.id) },
                                 close = { context.actions.onClose(spec.id) },
                             ),
                             vertical = context.flipped,
