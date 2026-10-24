@@ -169,13 +169,16 @@ class AgentTrackerTest {
 
     @Test
     fun theAgentIsForgottenWhenTheShellHasTheTerminalAgain() {
-        // It reports, waits, and then the shell takes the terminal: the agent has ended.
+        // It reports, waits for a line (in a program of its own, `head`: the shell's own `read` would be the shell having the terminal), and then
+        // the shell takes the terminal: the agent has ended. A line and not a time, which a slow machine could take up before the test looks.
         val shell = System.getenv("SHELL") ?: "/bin/zsh"
-        scripts += "${report("state=done", "app=claude-code")}; sleep 2; exec $shell -f -i"
+        scripts += "${report("state=done", "app=claude-code")}; head -n 1 >/dev/null; exec $shell -f -i"
         val id = start()
         await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
         tracker.markSeen(id)
         await("at rest, still the agent") { tracker.infos.value[id]?.let { it.state == AgentState.IDLE && it.report.app == "claude-code" } == true }
+
+        registry.handles.value.getValue(id).session!!.sendText("\r")
 
         await("the shell has the terminal, the agent is gone") { tracker.infos.value[id]?.report?.reporting == false }
 
