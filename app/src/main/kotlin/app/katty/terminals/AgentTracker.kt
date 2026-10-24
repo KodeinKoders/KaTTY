@@ -91,27 +91,31 @@ class AgentTracker(
 
     // The program that has the terminal is the shell, or is not: an agent that ran in it is over, or one that is running is remembered.
     private fun programChanged(id: TerminalId, shell: Boolean) {
-        val (report, session) = synchronized(this) {
+        val session = synchronized(this) {
             val changed = if (shell) atShell.add(id) else atShell.remove(id)
             if (shell) reporters.remove(id)
             if (!changed) return
-            latest[id] to follows[id]?.session
+            follows[id]?.session
         }
         // An `idle` record outlives its program (Crush, agy and OpenCode leave one when they end). The shell is no program at rest, but when
         // another program takes the terminal the record would be taken for it: emacs shown as the agent that ended. It is the ended program's
         // and goes with it; a `done` or `error` is what the user has not seen yet and stays.
         if (shell) session?.programStatus?.value?.filter { it.state == TerminalProgramState.IDLE }?.forEach { session.clearProgramStatus(it.id) }
-        update(id, report ?: return)
+        // What the terminal shows is made again from its last report as it is now, under the monitor: one read before the records were cleared
+        // would put them back over what the session reported since, and the next program would get the card of the one that ended.
+        update(id, null)
     }
 
     // The map is read and written under the monitor: the sessions report on their own threads, and two updates that read it before either wrote
     // it lost the first. The transition is told outside it.
-    private fun update(id: TerminalId, summary: app.katty.core.AgentReport) {
+    // [reported] is what the session reported, or `null` to show the last report again (the program that has the terminal changed).
+    private fun update(id: TerminalId, reported: app.katty.core.AgentReport?) {
         var transition: AgentTransition? = null
         synchronized(this) {
             // A session that was let go (closed, replaced by another shell) says nothing any more: a report of it that comes late does not bring
             // the terminal back.
             if (id !in follows) return
+            val summary = reported ?: latest[id] ?: return
             latest[id] = summary
             // A report says that a program runs in the terminal, and may name it; no record at all (what is left when a `done` was seen) is
             // that program, at rest, until the shell has the terminal again.
