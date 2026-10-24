@@ -183,6 +183,21 @@ class TerminalAnswersTest {
     }
 
     @Test
+    fun theHtmlOfASelectionHasWhatTheProgramWroteAsTextNotAsMarkup() {
+        // What a program writes is its own: pasted as HTML, it must not become a tag, an attribute or an entity of the page.
+        val session = start("""printf '<b onclick="x">&amp;</b>'; sleep 30""")
+        session.awaitFrame { it.text().startsWith("<b") }
+
+        session.selectAll()
+        val html = session.selectedText(TerminalTextFormat.HTML)!!
+
+        assertTrue("&lt;b" in html, html)
+        assertTrue("&amp;amp;" in html, html)
+        assertFalse("<b" in html, html)
+        assertFalse("\"x\"" in html, html)
+    }
+
+    @Test
     fun theProgramFindsTheTerminalItRunsIn() {
         val session = start("""echo "program:${'$'}TERM_PROGRAM"""")
 

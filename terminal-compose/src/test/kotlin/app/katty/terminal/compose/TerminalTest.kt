@@ -962,6 +962,20 @@ class TerminalTest {
     }
 
     @Test
+    fun theHtmlOfACopyHasTheMarkupThatTheProgramWroteAsText() {
+        // After the text that the scene waits for: the tags are columns 12 to 19.
+        val (scene, _) = selectionScene("printf 'hello world <i>x</i>'; sleep 30", copyRichText = true)
+
+        scene.drag(at(12.2f, 0.5f), at(19.7f, 0.5f))
+        scene.awaitCopied("<i>x</i>")
+
+        scene.renderUntil("the HTML to be copied") { clipboard.copiedHtml.isNotEmpty() }
+        val html = clipboard.copiedHtml.last()
+        assertTrue("&lt;i&gt;x&lt;/i&gt;" in html, "The program's tags are text: $html")
+        assertTrue("<i>" !in html, "The program's tags are not markup: $html")
+    }
+
+    @Test
     fun aCopyIsOnlyTextWhenHtmlIsNotAskedFor() {
         val (scene, _) = selectionScene("printf 'hello world'; sleep 30")
 
