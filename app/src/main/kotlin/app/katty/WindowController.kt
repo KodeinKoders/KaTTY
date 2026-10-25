@@ -9,6 +9,7 @@ import app.katty.core.AgentState
 import app.katty.core.AttentionItem
 import app.katty.core.CloseDecision
 import app.katty.core.Direction
+import app.katty.core.GitReader
 import app.katty.core.Ide
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
@@ -33,6 +34,7 @@ import app.katty.terminals.TerminalHandle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.nio.file.Path
 
 /** How much of a split a press of the resize shortcut moves, and how much the font grows or shrinks for one of the zoom ones. */
 private const val SPLIT_STEP = 0.05f
@@ -318,9 +320,22 @@ internal class WindowController(
     }
 
     fun openProjectIn(id: ProjectId, ide: Ide) {
-        val directory = state.projects.firstOrNull { it.id == id }?.directory ?: return
+        openIn(state.projects.firstOrNull { it.id == id }?.directory ?: return, ide)
+    }
+
+    private fun openIn(directory: String, ide: Ide) {
         val bundleId = installedIdes[ide] ?: return
         platform.openIn(bundleId, directory)
+    }
+
+    /**
+     * The linked working tree (`git worktree add`) of the selected project's repository that the selected terminal's shell is in (its root,
+     * from any folder of it), `null` when it is in none: what the palette's editors open then. It reads a few files of git.
+     */
+    fun selectedWorktree(): String? {
+        val project = state.selectedProject ?: return null
+        val directory = state.selection.terminal?.let { state.locate(it) }?.terminal?.directory ?: return null
+        return GitReader.linkedWorktree(Path.of(project.directory), Path.of(directory))?.toString()
     }
 
     fun revealProject(id: ProjectId) {
@@ -435,7 +450,7 @@ internal class WindowController(
     }
 
     /** What the palette runs: the same actions as the shortcuts, under the same rules. */
-    fun paletteHandlers(): PaletteHandlers = PaletteHandlers(
+    fun paletteHandlers(worktree: String? = selectedWorktree()): PaletteHandlers = PaletteHandlers(
         addProject = ::addProject,
         newWorkspace = ::newWorkspace,
         renameWorkspace = ::renameWorkspace,
@@ -466,7 +481,9 @@ internal class WindowController(
         removeProject = { removing = state.selection.project },
         revealProject = { state.selection.project?.let(::revealProject) },
         ides = installedIdes.keys.toList(),
-        openProjectIn = { ide -> state.selection.project?.let { openProjectIn(it, ide) } },
+        // Read once for the palette that is opened: what it says is what it opens.
+        worktree = worktree,
+        openProjectIn = { ide -> if (worktree != null) openIn(worktree, ide) else state.selection.project?.let { openProjectIn(it, ide) } },
         moveProject = { delta ->
             val projects = state.projects
             moveSelected(delta, projects.map { it.id }, state.selection.project) { from, to -> store.moveProject(projects[from].id, to) }

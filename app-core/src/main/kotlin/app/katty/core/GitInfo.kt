@@ -59,6 +59,46 @@ public object GitReader {
         }
     }
 
+    /**
+     * The root of the linked working tree (`git worktree add`) that [directory] is in, when that tree is one of the repository that [project] is
+     * in: [project] may be the repository's main working tree, a folder of it, or another of its linked trees. `null` when [directory] is in the
+     * main working tree, in the tree that [project] is itself, in another repository, or in none.
+     */
+    public fun linkedWorktree(project: Path, directory: Path): Path? = try {
+        val dotGit = findDotGit(directory)?.takeIf { Files.isRegularFile(it) }
+        val gitDir = dotGit?.let(::linkedGitDir)
+        when {
+            dotGit == null || gitDir == null || gitDir.parent?.fileName?.toString() != "worktrees" -> null
+            // The tree that the project is: it is the project.
+            findDotGit(project)?.let(::realPath) == realPath(dotGit) -> null
+            commonDir(gitDir) != findDotGit(project)?.let(::repositoryOf) -> null
+            else -> dotGit.parent
+        }
+    } catch (e: IOException) {
+        null
+    }
+
+    // The git directory that a `.git` file points to.
+    private fun linkedGitDir(dotGit: Path): Path? {
+        val pointer = Files.readString(dotGit).lineSequence().firstOrNull { it.startsWith("gitdir:") }?.removePrefix("gitdir:")?.trim() ?: return null
+        return dotGit.parent.resolve(pointer).normalize()
+    }
+
+    // The repository's own git directory, which its linked trees share: `.git` itself, or what the git directory of a linked tree says in `commondir`.
+    private fun repositoryOf(dotGit: Path): Path? =
+        if (Files.isDirectory(dotGit)) realPath(dotGit) else linkedGitDir(dotGit)?.let(::commonDir)
+
+    private fun commonDir(gitDir: Path): Path {
+        val common = gitDir.resolve("commondir").takeIf(Files::isRegularFile)?.let { Files.readString(it).trim() }
+        return realPath(if (common.isNullOrEmpty()) gitDir else gitDir.resolve(common).normalize())
+    }
+
+    private fun realPath(path: Path): Path = try {
+        path.toRealPath()
+    } catch (e: IOException) {
+        path.toAbsolutePath().normalize()
+    }
+
     // The nearest `.git` above the folder (the folder itself included).
     private fun findDotGit(directory: Path): Path? {
         var current: Path? = directory.toAbsolutePath().normalize()

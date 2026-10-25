@@ -24,12 +24,15 @@ class WindowControllerTest {
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
     private val restarted = mutableListOf<TerminalId>()
+    private val opened = mutableListOf<Pair<String, String>>()
     private val platform = object : WindowPlatform {
         override fun chooseFolder(title: String, initial: String?): String? = null
         override fun copy(text: String) = Unit
         override fun readClipboard(): String? = null
         override fun reveal(directory: String) = Unit
-        override fun openIn(bundleId: String, directory: String) = Unit
+        override fun openIn(bundleId: String, directory: String) {
+            opened += bundleId to directory
+        }
         override fun openBoardWindow() = Unit
         override fun openAbout() = Unit
     }
@@ -203,6 +206,50 @@ class WindowControllerTest {
         assertFalse(kotlinx.coroutines.runBlocking { first.await() })
         assertFalse(kotlinx.coroutines.runBlocking { second.await() })
         assertNull(controller.quitting)
+    }
+
+    // The real git, so that the worktree is what git makes.
+    private fun git(directory: java.nio.file.Path, vararg arguments: String) {
+        val process = ProcessBuilder(listOf("git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main") + arguments)
+            .directory(directory.toFile()).redirectErrorStream(true).start()
+        val output = process.inputStream.readBytes().decodeToString()
+        check(process.waitFor() == 0) { "git ${arguments.joinToString(" ")} failed: $output" }
+    }
+
+    @Test
+    fun theEditorsOpenTheWorktreeThatTheSelectedTerminalIsInElseTheProject() {
+        val root = java.nio.file.Files.createTempDirectory("katty-worktree").toRealPath()
+        try {
+            val repo = java.nio.file.Files.createDirectories(root.resolve("api"))
+            git(repo, "init")
+            java.nio.file.Files.writeString(repo.resolve("a.txt"), "a")
+            git(repo, "add", ".")
+            git(repo, "commit", "-m", "first")
+            val tree = root.resolve("api-feature")
+            git(repo, "worktree", "add", "-b", "feature", tree.toString())
+            val deep = java.nio.file.Files.createDirectories(tree.resolve("src/deep"))
+            val counted = KattyStore(newId = { "w${counter++}" })
+            counted.addProject(repo.toString())
+            val terminalHere = counted.state.value.selection.terminal!!
+            val inProject = WindowController(counted, CoroutineScope(Dispatchers.Unconfined), platform, {}, {})
+            inProject.installedIdes = mapOf(app.katty.core.Ide.INTELLIJ_IDEA to "com.jetbrains.intellij")
+
+            // In a folder of the worktree: the worktree's root.
+            counted.setDirectory(terminalHere, deep.toString())
+            val handlers = inProject.paletteHandlers()
+            assertEquals(tree.toString(), handlers.worktree)
+            handlers.openProjectIn(app.katty.core.Ide.INTELLIJ_IDEA)
+
+            // Back in the project: the project.
+            counted.setDirectory(terminalHere, repo.toString())
+            val back = inProject.paletteHandlers()
+            assertNull(back.worktree)
+            back.openProjectIn(app.katty.core.Ide.INTELLIJ_IDEA)
+
+            assertEquals(listOf("com.jetbrains.intellij" to tree.toString(), "com.jetbrains.intellij" to repo.toString()), opened)
+        } finally {
+            root.toFile().deleteRecursively()
+        }
     }
 
     @Test

@@ -377,6 +377,22 @@ class CommandPaletteTest {
     }
 
     @Test
+    fun theEditorsOpenTheWorktreeThatTheTerminalIsInAndSaySo() {
+        store.addProject("/dev/api-gateway")
+        val inWorktree = PaletteHandlers(
+            addProject = {}, newWorkspace = {}, renameWorkspace = {}, closeWorkspace = {}, splitRight = {}, splitDown = {}, renameTerminal = {},
+            closeTerminal = {}, restartTerminal = {}, find = {}, clearScreen = {}, maximize = {}, colorScheme = {}, toggleSidebar = {}, showView = {},
+            setLayout = {}, setTheme = {}, jumpToWaiting = {}, markAllSeen = {}, openBoardWindow = {}, openTerminal = {}, openWorkspace = {},
+            ides = listOf(Ide.INTELLIJ_IDEA), worktree = "/dev/api-gateway-feature",
+        )
+
+        val labels = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = inWorktree).entries.map { it.label }
+
+        assertTrue("Open worktree in IntelliJ IDEA" in labels, labels.toString())
+        assertTrue(labels.none { it.startsWith("Open project in") })
+    }
+
+    @Test
     fun aWorkspaceMovesUpOrDownOnlyWhereThereIsRoom() {
         store.addProject("/dev/api-gateway")
         val project = state.selection.project!!

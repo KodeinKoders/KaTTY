@@ -112,4 +112,60 @@ class GitReaderTest {
 
         assertEquals(GitInfo("main", GitKind.BRANCH), GitReader.read(repo))
     }
+
+    // --- The linked working tree of a project ---
+
+    @Test
+    fun aDirectoryInALinkedWorkingTreeOfTheProjectsRepositoryIsInThatTree() {
+        val repo = repository()
+        git(repo, "worktree", "add", "-b", "feature", root.resolve("feature").toString())
+        val tree = root.resolve("feature")
+        val deep = tree.resolve("src/deep").createDirectories()
+
+        assertEquals(tree, GitReader.linkedWorktree(repo, tree))
+        assertEquals(tree, GitReader.linkedWorktree(repo, deep), "A folder of it is in it")
+    }
+
+    @Test
+    fun theMainWorkingTreeIsNoLinkedOne() {
+        val repo = repository()
+        git(repo, "worktree", "add", "-b", "feature", root.resolve("feature").toString())
+
+        assertNull(GitReader.linkedWorktree(repo, repo))
+        assertNull(GitReader.linkedWorktree(repo, repo.resolve("src").createDirectories()))
+    }
+
+    @Test
+    fun aProjectThatIsAFolderOfTheRepositoryHasItsLinkedTreesToo() {
+        val repo = repository()
+        val project = repo.resolve("services/api").createDirectories()
+        git(repo, "worktree", "add", "-b", "feature", root.resolve("feature").toString())
+
+        assertEquals(root.resolve("feature"), GitReader.linkedWorktree(project, root.resolve("feature")))
+    }
+
+    @Test
+    fun aLinkedTreeOfAnotherRepositoryIsNotTheProjects() {
+        val repo = repository()
+        val other = root.resolve("other").createDirectories()
+        git(other, "init")
+        other.resolve("b.txt").writeText("b")
+        git(other, "add", ".")
+        git(other, "commit", "-m", "first")
+        git(other, "worktree", "add", "-b", "elsewhere", root.resolve("elsewhere").toString())
+
+        assertNull(GitReader.linkedWorktree(repo, root.resolve("elsewhere")))
+        assertNull(GitReader.linkedWorktree(repo, root), "Not in a repository at all")
+    }
+
+    @Test
+    fun aProjectThatIsItselfALinkedTreeIsTheProjectNotAnotherTree() {
+        val repo = repository()
+        git(repo, "worktree", "add", "-b", "feature", root.resolve("feature").toString())
+        git(repo, "worktree", "add", "-b", "other", root.resolve("other-tree").toString())
+        val project = root.resolve("feature")
+
+        assertNull(GitReader.linkedWorktree(project, project.resolve("src").createDirectories()), "The project's own tree")
+        assertEquals(root.resolve("other-tree"), GitReader.linkedWorktree(project, root.resolve("other-tree")))
+    }
 }
