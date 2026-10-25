@@ -287,13 +287,20 @@ public fun Terminal(
     val bellPulse = remember { Animatable(0f) }
 
     // What a program puts in the clipboard (OSC 52): the system's goes there, and what a middle click pastes is kept here. The bell rings.
-    LaunchedEffect(session, bell) {
+    // The events are not kept for a collector that comes late: the collector is the session's, and reads the settings as they are now, so that
+    // changing one does not start it again and lose what is emitted meanwhile. A session that no `Terminal` shows has no collector: what it
+    // writes to the clipboard is dropped, on purpose, since only a terminal on the screen may write it.
+    val latestBell = rememberUpdatedState(bell)
+    val latestCopy = rememberUpdatedState(copy)
+    val latestPrimary = rememberUpdatedState(primary)
+    LaunchedEffect(session) {
         var lastBeep = 0L
         session.events.collect { event ->
+            val bell = latestBell.value
             when (event) {
                 is TerminalEvent.ClipboardWrite -> when (event.location) {
-                    TerminalClipboardLocation.STANDARD -> copy(event.text)
-                    TerminalClipboardLocation.PRIMARY, TerminalClipboardLocation.SELECTION -> primary.text = event.text
+                    TerminalClipboardLocation.STANDARD -> latestCopy.value(event.text)
+                    TerminalClipboardLocation.PRIMARY, TerminalClipboardLocation.SELECTION -> latestPrimary.value.text = event.text
                 }
                 is TerminalEvent.Bell -> {
                     if (bell.visual) launch {

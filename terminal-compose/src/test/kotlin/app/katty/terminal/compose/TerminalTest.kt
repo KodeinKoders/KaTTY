@@ -431,6 +431,31 @@ class TerminalTest {
     }
 
     @Test
+    fun aClipboardWriteRightAfterTheBellSettingChangesIsNotLost() {
+        // The events are not kept for a collector that comes late: one that is started again when the setting changes loses what comes meanwhile.
+        val session = session("printf 'hello world'; sleep 30", cols = 80, rows = 24)
+        val bell = androidx.compose.runtime.mutableStateOf(TerminalBell.VISUAL)
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(
+                LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true },
+                androidx.compose.ui.platform.LocalClipboard provides clipboard,
+            ) {
+                Terminal(session, Modifier.fillMaxSize(), bell = bell.value)
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the terminal to show the text") { session.frames.value.text(0).startsWith("hello world") }
+        scene.settle()
+
+        bell.value = TerminalBell.NONE
+        scene.render()
+        // Written by the terminal itself, at once: the event is emitted on this thread, right after the drawing that saw the change.
+        session.writeToScreen("\u001b]52;c;aGVsbG8=\u0007")
+
+        scene.renderUntil("hello to be in the clipboard") { "hello" in clipboard.copied }
+    }
+
+    @Test
     fun jumpsToThePreviousPromptWithTheKeys() {
         val (scene, session) = terminalScene(
             """i=0; while [ ${'$'}i -lt 100 ]; do printf '\033]133;A\007prompt %s\r\n' ${'$'}i; i=${'$'}((i+1)); done; sleep 30""",
