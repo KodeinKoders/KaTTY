@@ -137,30 +137,45 @@ internal fun commandLine(arena: Arena, pid: Int): List<String> {
     val buffer = arena.allocate(capacity)
     size.set(ValueLayout.JAVA_LONG, 0, capacity)
     if (sysctl.invokeExact(name, 3, buffer, size, MemorySegment.NULL, 0L) as Int != 0) return emptyList()
-    val length = size.get(ValueLayout.JAVA_LONG, 0).toInt()
-    return parseProcessArguments(buffer.asSlice(0, length.toLong()).toArray(ValueLayout.JAVA_BYTE))
+    val length = size.get(ValueLayout.JAVA_LONG, 0)
+    return try {
+        parseProcessArguments(buffer, length).arguments
+    } finally {
+        // The environment follows the arguments, with the secrets that programs are given: it is not left in memory that is freed.
+        buffer.fill(0)
+    }
 }
 
-/** The arguments of a `KERN_PROCARGS2` buffer: what follows the executable's path and its padding, as many as the count at the start says. */
-internal fun parseProcessArguments(bytes: ByteArray): List<String> {
-    if (bytes.size < 4) return emptyList()
+/** What [parseProcessArguments] read: the arguments, and the offset just past the last one, which nothing after was read from. */
+internal class ProcessArguments(val arguments: List<String>, val end: Long)
+
+/**
+ * The arguments of the first [length] bytes of a `KERN_PROCARGS2` buffer: what follows the executable's path and its padding, as many as the
+ * count at the start says. Each one is copied on its own, and what follows the last (the environment, which holds secrets) is not read.
+ */
+internal fun parseProcessArguments(buffer: MemorySegment, length: Long): ProcessArguments {
+    if (length < 4) return ProcessArguments(emptyList(), 0)
     // The count is the machine's byte order, little-endian on Apple Silicon.
-    val count = (bytes[0].toInt() and 0xFF) or ((bytes[1].toInt() and 0xFF) shl 8) or ((bytes[2].toInt() and 0xFF) shl 16) or
-        ((bytes[3].toInt() and 0xFF) shl 24)
-    var index = 4
+    val count = buffer.get(ValueLayout.JAVA_INT_UNALIGNED.withOrder(java.nio.ByteOrder.LITTLE_ENDIAN), 0)
+    fun at(index: Long) = buffer.get(ValueLayout.JAVA_BYTE, index).toInt()
+    var index = 4L
     // The path of the executable.
-    while (index < bytes.size && bytes[index].toInt() != 0) index++
+    while (index < length && at(index) != 0) index++
     // The nulls that pad it.
-    while (index < bytes.size && bytes[index].toInt() == 0) index++
-    val arguments = ArrayList<String>(count)
-    while (arguments.size < count && index < bytes.size) {
+    while (index < length && at(index) == 0) index++
+    val arguments = ArrayList<String>(count.coerceIn(0, 4096))
+    while (arguments.size < count && index < length) {
         val start = index
-        while (index < bytes.size && bytes[index].toInt() != 0) index++
-        arguments += String(bytes, start, index - start, Charsets.UTF_8)
+        while (index < length && at(index) != 0) index++
+        arguments += String(buffer.asSlice(start, index - start).toArray(ValueLayout.JAVA_BYTE), Charsets.UTF_8)
         index++
     }
-    return arguments
+    return ProcessArguments(arguments, minOf(index, length))
 }
+
+/** The arguments of a `KERN_PROCARGS2` buffer, as [parseProcessArguments] reads them. */
+internal fun parseProcessArguments(bytes: ByteArray): List<String> =
+    parseProcessArguments(MemorySegment.ofArray(bytes), bytes.size.toLong()).arguments
 
 private fun currentDirectory(arena: Arena, pid: Int): String? {
     val info = arena.allocate(VNODEPATHINFO_SIZE.toLong())

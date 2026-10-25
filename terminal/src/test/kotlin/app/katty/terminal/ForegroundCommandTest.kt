@@ -136,6 +136,19 @@ class ForegroundCommandTest {
         assertEquals(listOf("echo", "hi there"), parseProcessArguments(buffer))
     }
 
+    @Test
+    fun readsNothingOfTheEnvironmentThatFollowsTheArguments() {
+        val arguments = "echo\u0000hi there\u0000"
+        val head = byteArrayOf(2, 0, 0, 0) + "/bin/echo\u0000\u0000\u0000".encodeToByteArray()
+        val buffer = head + arguments.encodeToByteArray() + "API_KEY=secret\u0000HOME=/x\u0000".encodeToByteArray()
+
+        val parsed = parseProcessArguments(java.lang.foreign.MemorySegment.ofArray(buffer), buffer.size.toLong())
+
+        assertEquals(listOf("echo", "hi there"), parsed.arguments)
+        // What was read stops at the end of the last argument: the environment, its secrets with it, is not copied.
+        assertEquals((head.size + arguments.length).toLong(), parsed.end)
+    }
+
     private companion object {
         const val TIMEOUT_MS = 15_000L
     }
