@@ -34,6 +34,24 @@ public fun Workspace.sharedGit(gits: Map<TerminalId, GitInfo?>): GitInfo? {
 }
 
 /**
+ * Where a terminal that is restarted starts, from [directory], where its shell last was: the root of [project] when it was in it (or in a folder
+ * of it, a linked working tree that is inside it too), else the root of the linked working tree of the project's repository that it was in
+ * ([GitReader.linkedWorktree]), else the root of the project. It reads a few files of git.
+ */
+public fun restartDirectory(project: String, directory: String): String {
+    val projectPath = realPath(Path.of(project))
+    val directoryPath = realPath(Path.of(directory))
+    if (directoryPath.startsWith(projectPath)) return project
+    return GitReader.linkedWorktree(projectPath, directoryPath)?.toString() ?: project
+}
+
+private fun realPath(path: Path): Path = try {
+    path.toRealPath()
+} catch (e: IOException) {
+    path.toAbsolutePath().normalize()
+}
+
+/**
  * Reads where a folder is in a git repository from the files of git, without starting it: it is read for every pane, again whenever its
  * shell changes directory and when a command ends.
  *

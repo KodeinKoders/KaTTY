@@ -25,12 +25,14 @@ class SessionRegistryTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val started = mutableListOf<TerminalSession>()
     private val themes = mutableListOf<String>()
+    private val directories = mutableListOf<String>()
     private var script = "sleep 30"
 
     private val registry = SessionRegistry(
         store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined,
         loadTheme = { name -> themes += name; null },
         start = { spec, _ ->
+            directories += spec.directory
             TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), directory = spec.directory).also { started += it }
         },
     )
@@ -383,6 +385,25 @@ class SessionRegistryTest {
         assertNotSame(before.session, after.session)
         assertEquals(1, after.generation)
         assertEquals(2, started.size)
+    }
+
+    @Test
+    fun aTerminalThatIsRestartedStartsAtTheRootOfItsProject() {
+        val project = java.nio.file.Files.createTempDirectory("katty-restart").toRealPath()
+        try {
+            val deep = java.nio.file.Files.createDirectories(project.resolve("src/deep"))
+            store.addProject(project.toString())
+            val id = store.state.value.selection.terminal!!
+            store.setDirectory(id, deep.toString())
+            sync()
+
+            registry.restart(id)
+
+            assertEquals(listOf(deep.toString(), project.toString()), directories, "The first shell where it was, the new one at the root")
+            assertEquals(project.toString(), store.state.value.locate(id)!!.terminal.directory)
+        } finally {
+            project.toFile().deleteRecursively()
+        }
     }
 
     @Test

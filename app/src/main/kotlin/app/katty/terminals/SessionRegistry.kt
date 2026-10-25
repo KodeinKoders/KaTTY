@@ -12,6 +12,7 @@ import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
 import app.katty.core.apartFromOthers
 import app.katty.core.sessionOf
+import app.katty.core.restartDirectory
 import app.katty.core.toRunning
 import app.katty.core.toTyped
 import app.katty.terminal.TerminalSession
@@ -189,7 +190,10 @@ class SessionRegistry(
     fun restart(id: TerminalId) {
         val state = store.state.value
         val location = state.locate(id) ?: return
-        val spec = startingPlace(location.terminal, location.project.directory).copy(running = null)
+        // At the root of the project, or of the worktree it was in: a new shell starts where the work is, not in the folder the last one was in.
+        val directory = restartDirectory(location.project.directory, location.terminal.directory)
+        if (directory != location.terminal.directory) store.setDirectory(id, directory)
+        val spec = startingPlace(location.terminal.copy(directory = directory), location.project.directory).copy(running = null)
         val old = mutableHandles.value[id] ?: return
         stop(old)
         // A new shell is a plain one: what ran over the old is not started again. After the old one's poll can write no more.

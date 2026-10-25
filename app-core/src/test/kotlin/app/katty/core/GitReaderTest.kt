@@ -168,4 +168,46 @@ class GitReaderTest {
         assertNull(GitReader.linkedWorktree(project, project.resolve("src").createDirectories()), "The project's own tree")
         assertEquals(root.resolve("other-tree"), GitReader.linkedWorktree(project, root.resolve("other-tree")))
     }
+
+    // --- Where a terminal that is restarted starts ---
+
+    @Test
+    fun aTerminalInTheProjectRestartsAtTheProjectsRoot() {
+        val repo = repository()
+        val deep = repo.resolve("src/deep").createDirectories()
+
+        assertEquals(repo.toString(), restartDirectory(repo.toString(), repo.toString()))
+        assertEquals(repo.toString(), restartDirectory(repo.toString(), deep.toString()))
+    }
+
+    @Test
+    fun aTerminalInAWorktreeOfTheProjectRestartsAtTheWorktreesRoot() {
+        val repo = repository()
+        val tree = root.resolve("feature")
+        git(repo, "worktree", "add", "-b", "feature", tree.toString())
+        val deep = tree.resolve("src/deep").createDirectories()
+
+        assertEquals(tree.toString(), restartDirectory(repo.toString(), deep.toString()))
+        assertEquals(tree.toString(), restartDirectory(repo.toString(), tree.toString()))
+    }
+
+    @Test
+    fun aWorktreeInsideTheProjectIsTheProject() {
+        val repo = repository()
+        val tree = repo.resolve(".worktrees/feature")
+        git(repo, "worktree", "add", "-b", "feature", tree.toString())
+
+        assertEquals(repo.toString(), restartDirectory(repo.toString(), tree.resolve("src").createDirectories().toString()))
+    }
+
+    @Test
+    fun aTerminalAnywhereElseRestartsAtTheProjectsRoot() {
+        val repo = repository()
+        val project = repo.resolve("services/api").createDirectories()
+        val elsewhere = root.resolve("elsewhere").createDirectories()
+
+        assertEquals(repo.toString(), restartDirectory(repo.toString(), elsewhere.toString()))
+        assertEquals(project.toString(), restartDirectory(project.toString(), repo.toString()), "The rest of the repository is not the project")
+        assertEquals(repo.toString(), restartDirectory(repo.toString(), root.resolve("gone").toString()), "A folder that is not there any more")
+    }
 }
