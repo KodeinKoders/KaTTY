@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.drawText
@@ -329,30 +330,13 @@ private fun DrawScope.drawPreparedSprite(prepared: PreparedSprite, top: Float, c
             size = Size(r.right - r.left, r.bottom - r.top),
         )
     }
-    for (polygon in sprite.polygons) {
-        val path = Path().apply {
-            polygon.forEachIndexed { index, (x, y) ->
-                if (index == 0) moveTo(prepared.left + x, top + y) else lineTo(prepared.left + x, top + y)
-            }
-            close()
-        }
-        drawPath(path, color)
-    }
-    for (stroke in sprite.strokes) {
-        val path = Path().apply {
-            for (command in stroke.commands) {
-                when (command) {
-                    is PathCommand.MoveTo -> moveTo(prepared.left + command.x, top + command.y)
-                    is PathCommand.LineTo -> lineTo(prepared.left + command.x, top + command.y)
-                    is PathCommand.QuadTo -> quadraticTo(
-                        prepared.left + command.controlX, top + command.controlY, prepared.left + command.x, top + command.y,
-                    )
-                }
-            }
-        }
+    if (sprite.polygons.isEmpty() && sprite.strokes.isEmpty()) return
+    // The paths are the row's, made once from its top.
+    translate(top = top) {
+        for (path in prepared.polygonPaths) drawPath(path, color)
         // Clipped to the cell: a line that goes to its corner is not wider than the cell.
-        clipRect(prepared.left, top, prepared.left + prepared.width, top + cellHeight) {
-            drawPath(path, color, style = Stroke(width = stroke.width))
+        if (prepared.strokePaths.isNotEmpty()) clipRect(prepared.left, 0f, prepared.left + prepared.width, cellHeight) {
+            for ((path, width) in prepared.strokePaths) drawPath(path, color, style = Stroke(width = width))
         }
     }
 }

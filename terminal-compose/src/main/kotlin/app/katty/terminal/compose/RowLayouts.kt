@@ -1,6 +1,7 @@
 package app.katty.terminal.compose
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.TextLayoutResult
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalRow
@@ -9,8 +10,37 @@ internal fun Int.toColor(): Color = Color(0xFF000000.toInt() or this)
 
 internal class PreparedText(val run: TextRun, val layout: TextLayoutResult)
 
-/** A character drawn as a shape: [sprite] is in the pixels of its cell, which starts at [left] and is [width] wide. */
-internal class PreparedSprite(val left: Float, val width: Float, val sprite: Sprite, val foreground: Int, val blink: Boolean = false)
+/**
+ * A character drawn as a shape: [sprite] is in the pixels of its cell, which starts at [left] and is [width] wide. Its polygons and strokes are
+ * paths, made once from the top of the row (they are drawn moved to it) and kept with the row: they were made again at each drawing, which a
+ * blinking cursor asks for twice a second.
+ */
+internal class PreparedSprite(val left: Float, val width: Float, val sprite: Sprite, val foreground: Int, val blink: Boolean = false) {
+    // Made and used by the thread that draws.
+    val polygonPaths: List<Path> by lazy(LazyThreadSafetyMode.NONE) {
+        sprite.polygons.map { polygon ->
+            Path().apply {
+                polygon.forEachIndexed { index, (x, y) -> if (index == 0) moveTo(left + x, y) else lineTo(left + x, y) }
+                close()
+            }
+        }
+    }
+
+    /** The paths of the strokes, with their widths. */
+    val strokePaths: List<Pair<Path, Float>> by lazy(LazyThreadSafetyMode.NONE) {
+        sprite.strokes.map { stroke ->
+            Path().apply {
+                for (command in stroke.commands) {
+                    when (command) {
+                        is PathCommand.MoveTo -> moveTo(left + command.x, command.y)
+                        is PathCommand.LineTo -> lineTo(left + command.x, command.y)
+                        is PathCommand.QuadTo -> quadraticTo(left + command.controlX, command.controlY, left + command.x, command.y)
+                    }
+                }
+            } to stroke.width
+        }
+    }
+}
 
 /** Everything a row is drawn with, which is what is worth keeping from one frame to the next. */
 internal class PreparedRow(
