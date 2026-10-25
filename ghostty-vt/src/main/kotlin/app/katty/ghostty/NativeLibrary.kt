@@ -8,11 +8,68 @@ import java.io.ByteArrayInputStream
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import javax.imageio.ImageIO
 import javax.imageio.stream.MemoryCacheImageInputStream
 
 private val logger = LoggerFactory.getLogger(NativeLibrary::class.java)
+
+// The folders that the library is extracted to, and the ones that earlier versions made with `createTempDirectory`, a number after the prefix.
+private const val EXTRACTION_PREFIX = "katty-ghostty"
+private val LEFTOVER_EXTRACTION = Regex("$EXTRACTION_PREFIX[0-9]+")
+
+/** The SHA-256 of [bytes], in hexadecimal. */
+internal fun sha256(bytes: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+/**
+ * The file [fileName] in `katty-ghostty-<hash>` of [parent], with [bytes] in it, whose SHA-256 is [hash]: the one that is there when it holds them,
+ * else written again. A new copy is written to a file of its own and moved in place, so that two processes that start together never load half
+ * of one.
+ */
+internal fun extractLibrary(bytes: ByteArray, hash: String, parent: Path, fileName: String): Path {
+    val directory = Files.createDirectories(parent.resolve("$EXTRACTION_PREFIX-${hash.take(16)}"))
+    val file = directory.resolve(fileName)
+    val current = try {
+        Files.isRegularFile(file) && Files.size(file) == bytes.size.toLong() && sha256(Files.readAllBytes(file)) == hash
+    } catch (e: IOException) {
+        false
+    }
+    if (current) return file
+    val written = Files.createTempFile(directory, ".$fileName", ".tmp")
+    try {
+        Files.write(written, bytes)
+        Files.move(written, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+    } finally {
+        Files.deleteIfExists(written)
+    }
+    return file
+}
+
+/**
+ * Removes what earlier versions left in [parent]: a folder for each run, which was never deleted. A library that a process still runs from can
+ * be removed on macOS. What cannot be removed is left.
+ */
+internal fun removeLeftoverExtractions(parent: Path) {
+    try {
+        Files.newDirectoryStream(parent) { LEFTOVER_EXTRACTION.matches(it.fileName.toString()) && Files.isDirectory(it) }.use { folders ->
+            for (folder in folders) {
+                try {
+                    Files.newDirectoryStream(folder).use { files -> files.forEach(Files::deleteIfExists) }
+                    Files.deleteIfExists(folder)
+                } catch (e: IOException) {
+                    logger.debug("Could not remove {}", folder, e)
+                }
+            }
+        }
+    } catch (e: IOException) {
+        logger.debug("Could not look for what earlier versions left in {}", parent, e)
+    }
+}
 
 /**
  * Loads the libghostty-vt dylib bundled in the jar, once.
@@ -32,25 +89,12 @@ internal object NativeLibrary {
         load()
     }
 
-    // The file that the library was loaded from.
-    private lateinit var libraryFile: java.nio.file.Path
-
     /**
-     * What identifies the library that is loaded: a hash of the file. Nothing in the library does, since it records neither its commit nor a
+     * What identifies the library that is loaded: a SHA-256 of it. Nothing in the library does, since it records neither its commit nor a
      * version that changes, and the snapshots that it makes are only good for the same one.
      */
-    val fingerprint: String by lazy {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        Files.newInputStream(libraryFile).use { input ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                digest.update(buffer, 0, read)
-            }
-        }
-        digest.digest().joinToString("") { "%02x".format(it) }
-    }
+    lateinit var fingerprint: String
+        private set
 
     fun ensureLoaded() {
         // Referencing the object runs its initializer, which is all there is to do.
@@ -67,17 +111,16 @@ internal object NativeLibrary {
             else -> throw unsupported()
         }
         val resource = "/app/katty/ghostty/native/$os-$arch/$LIBRARY_NAME.$extension"
-        val stream = NativeLibrary::class.java.getResourceAsStream(resource) ?: throw unsupported()
+        val bytes = NativeLibrary::class.java.getResourceAsStream(resource)?.use { it.readBytes() } ?: throw unsupported()
+        fingerprint = sha256(bytes)
 
-        // The dylib has to be a real file to be loaded, so it is extracted to a temporary directory, and deleted when the JVM exits. The
-        // directory stays: `deleteOnExit` deletes in the reverse order, so the directory is tried first, while the file is still in it.
-        val directory = Files.createTempDirectory("katty-ghostty")
-        val file = directory.resolve("$LIBRARY_NAME.$extension")
-        stream.use { Files.copy(it, file) }
-        file.toFile().deleteOnExit()
-        directory.toFile().deleteOnExit()
+        // The dylib has to be a real file to be loaded: it is extracted once, to a folder of the temporary directory named by what it is, which
+        // every run (and every test) of the same library uses again. macOS cleans its temporary directory of what is not used for days: it is
+        // then extracted again.
+        val temporary = Path.of(System.getProperty("java.io.tmpdir"))
+        val file = extractLibrary(bytes, fingerprint, temporary, "$LIBRARY_NAME.$extension")
+        removeLeftoverExtractions(temporary)
 
-        libraryFile = file
         System.load(file.toAbsolutePath().toString())
         logger.debug("Loaded libghostty-vt for {}-{} from {}", os, arch, file)
 
