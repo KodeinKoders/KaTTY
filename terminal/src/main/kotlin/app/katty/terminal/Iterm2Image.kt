@@ -21,6 +21,9 @@ internal object Iterm2Image {
     private const val PREFIX = "\u001b]1337;File="
     private const val MAX_PIXELS = 16L * 1024 * 1024
 
+    // How many times the terminal's width, or its height, a picture may be given.
+    private const val MAX_GRIDS = 4
+
     private class Size(val value: Double, val unit: Char)
 
     /**
@@ -77,7 +80,8 @@ internal object Iterm2Image {
         }
     }
 
-    // A size in cells, or null for "auto".
+    // A size in cells, or null for "auto". At most [MAX_GRIDS] times the terminal: a picture that much taller than the screen scrolls, and one that
+    // is wider is cut; what a program asks for past that (`width=1e10`) is no size to give the terminal.
     private fun cells(text: String?, cellPx: Int, count: Int): Int? {
         if (text == null || text.isEmpty() || text == "auto") return null
         val size = when {
@@ -86,10 +90,11 @@ internal object Iterm2Image {
             else -> Size(text.toDoubleOrNull() ?: return null, 'c')
         }
         val result = when (size.unit) {
-            'p' -> Math.ceil(size.value / cellPx.coerceAtLeast(1)).toInt()
-            '%' -> Math.round(count * size.value / 100.0).toInt()
-            else -> size.value.toInt()
+            'p' -> Math.ceil(size.value / cellPx.coerceAtLeast(1))
+            '%' -> Math.round(count * size.value / 100.0).toDouble()
+            else -> Math.floor(size.value)
         }
-        return result.takeIf { it > 0 }
+        if (result.isNaN() || result < 1) return null
+        return minOf(result, MAX_GRIDS.toDouble() * count.coerceAtLeast(1)).toInt()
     }
 }

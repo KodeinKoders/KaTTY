@@ -108,6 +108,14 @@ class Iterm2ImageTest {
     }
 
     @Test
+    fun aSizeIsAtMostFourTimesTheTerminal() {
+        assertEquals(4 * 80, parse("inline=1;width=1e10")!!.columns, "Not Int.MAX_VALUE")
+        assertEquals(4 * 80, parse("inline=1;width=99999999999px")!!.columns)
+        assertEquals(4 * 24, parse("inline=1;height=1000000%")!!.rows)
+        assertEquals(60, parse("inline=1;height=60")!!.rows, "Taller than the screen is allowed: it scrolls")
+    }
+
+    @Test
     fun theSizeCanBeInPixelsOrInPercentOfTheTerminal() {
         assertEquals(5, parse("inline=1;width=33px")!!.columns, "33 pixels of 8 take 5 cells")
         assertEquals(1, parse("inline=1;height=5px")!!.rows)

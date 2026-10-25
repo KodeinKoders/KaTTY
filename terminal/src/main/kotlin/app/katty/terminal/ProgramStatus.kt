@@ -137,15 +137,32 @@ internal class ProgramStatusStore(
     }
 }
 
-// What a program writes in its title and its message is shown to a person, so what changes the order of what they read, or what cannot be
-// seen, is taken out: the direction marks, the zero width spaces and the joiners that hold no word together. The ones that emoji and some
-// scripts need are kept.
+// How long a title or a message may be: what is shown is a line, and a program could send megabytes.
+private const val MAX_TEXT = 256
+
+// What a program writes in its title and its message is shown to a person, on one line, so what changes the order of what they read, or what
+// cannot be seen, is taken out: the direction marks, the zero width spaces and the joiners that hold no word together, the characters that
+// draw nothing (the soft hyphen, the Hangul fillers…) and the controls. A line break is a space. The joiners that emoji and some scripts need
+// are kept. What is past [MAX_TEXT] is cut, not in the middle of a character that takes two.
 private fun clean(text: String): String {
-    if (text.none { isHidden(it) }) return text
-    return text.filterNot { isHidden(it) }
+    val cleaned = if (text.none { isHidden(it) || isBreak(it) }) text else buildString {
+        for (c in text) {
+            when {
+                isBreak(c) -> append(' ')
+                !isHidden(c) -> append(c)
+            }
+        }
+    }
+    if (cleaned.length <= MAX_TEXT) return cleaned
+    val end = if (cleaned[MAX_TEXT - 1].isHighSurrogate()) MAX_TEXT - 1 else MAX_TEXT
+    return cleaned.substring(0, end)
 }
 
+private fun isBreak(c: Char): Boolean = c == '\n' || c == '\r' || c.code == 0x85 || c.code == 0x2028 || c.code == 0x2029
+
 private fun isHidden(c: Char): Boolean = when (c.code) {
-    0x061C, 0x200B, 0x200E, 0x200F, in 0x202A..0x202E, in 0x2060..0x2064, in 0x2066..0x2069, 0xFEFF -> true
+    in 0x00..0x1F, 0x7F, in 0x80..0x9F -> !isBreak(c)
+    0x00AD, 0x034F, 0x061C, 0x115F, 0x1160, 0x180E, 0x200B, 0x200E, 0x200F, in 0x202A..0x202E, in 0x2060..0x2064, in 0x2066..0x2069, 0x3164,
+    0xFEFF, 0xFFA0 -> true
     else -> false
 }

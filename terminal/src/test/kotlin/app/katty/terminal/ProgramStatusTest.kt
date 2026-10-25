@@ -159,6 +159,30 @@ class ProgramStatusTest {
     }
 
     @Test
+    fun theOtherInvisibleCharactersAndTheControlsAreRemovedToo() {
+        // The soft hyphen, the combining grapheme joiner, the Mongolian vowel separator, the Hangul fillers, a bell and C1's next line.
+        put("", title = "a\u00ADb\u034Fc\u180Ed\u115Fe\u1160f\u3164g\uFFA0h\u0007i\u009Bj")
+
+        assertEquals("abcdefghij", store.snapshot().single().title)
+    }
+
+    @Test
+    fun aLineBreakIsASpaceSinceWhatIsShownIsOneLine() {
+        put("", message = "one\ntwo\r\nthree\u2028four\u2029five\u0085six")
+
+        assertEquals("one two  three four five six", store.snapshot().single().message)
+    }
+
+    @Test
+    fun aTitleOrAMessageThatIsTooLongIsCutWithoutBreakingACharacter() {
+        put("", title = "x".repeat(255) + "😀" + "y".repeat(1000), message = "z".repeat(10_000))
+
+        val record = store.snapshot().single()
+        assertEquals("x".repeat(255), record.title, "The emoji that would be cut in half is left out")
+        assertEquals(256, record.message.length)
+    }
+
+    @Test
     fun theJoinersThatEmojiNeedAreKept() {
         put("", message = "👩‍💻")
 
