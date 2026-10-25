@@ -66,20 +66,24 @@ internal fun takeAboutItem(onAbout: () -> Unit) {
 }
 
 /**
- * Makes the Quit item of the application menu of macOS, ⌘Q, the Dock's Quit and logging out call [onQuit] before the process ends, which
- * otherwise exits at once, without writing what the application keeps. [onQuit] runs on the thread that draws, as a click on the window's close
- * button does. Nothing is done elsewhere.
+ * Makes the Quit item of the application menu of macOS, ⌘Q, the Dock's Quit and logging out go through [onQuitRequest] before the process ends,
+ * which otherwise exits at once, without writing what the application keeps or asking anything. [onQuitRequest] runs on the thread that draws, as
+ * a click on the window's close button does, and calls `answer` once, later if it asks the user: `true` lets the process end (after it has done
+ * what quitting does), `false` cancels the quit. A cancelled logout stops: it is what asking is for, as Terminal.app does with what runs in it.
+ * Nothing is done elsewhere.
  */
-internal fun takeQuitItem(onQuit: () -> Unit) {
+internal fun takeQuitItem(onQuitRequest: (answer: (Boolean) -> Unit) -> Unit) {
     if (!System.getProperty("os.name").startsWith("Mac")) return
     try {
         if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
             Desktop.getDesktop().setQuitHandler { _, response ->
-                try {
-                    if (EventQueue.isDispatchThread()) onQuit() else EventQueue.invokeAndWait(onQuit)
-                } finally {
-                    // Not cancelled: a quit that logging out asks for would stop the logout.
-                    response.performQuit()
+                EventQueue.invokeLater {
+                    try {
+                        onQuitRequest { quit -> if (quit) response.performQuit() else response.cancelQuit() }
+                    } catch (e: Throwable) {
+                        logger.warn("Asking whether to quit failed: quitting", e)
+                        response.performQuit()
+                    }
                 }
             }
         }

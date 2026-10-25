@@ -13,6 +13,7 @@ import app.katty.terminal.compose.TerminalSecureInput
 import app.katty.terminals.TerminalHandle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -179,6 +180,29 @@ class WindowControllerTest {
             listOf(TerminalSecureInput.NEVER, TerminalSecureInput.PASSWORD_PROMPTS, TerminalSecureInput.ALWAYS),
             SecureInput.entries.map { it.toTerminal() },
         )
+    }
+
+    @Test
+    fun quittingWithNothingToStopDoesNotAsk() = kotlinx.coroutines.runBlocking {
+        assertTrue(controller.confirmQuit())
+        assertNull(controller.quitting)
+    }
+
+    @Test
+    fun quittingWhileAProgramRunsWaitsForTheAnswerAndTwoRequestsShareIt() {
+        runProgram(terminal)
+        val first = CoroutineScope(Dispatchers.Unconfined).async { controller.confirmQuit() }
+        val second = CoroutineScope(Dispatchers.Unconfined).async { controller.confirmQuit() }
+
+        val request = controller.quitting!!
+        assertTrue(controller.blockingDialog, "The question is a dialog: the shortcuts wait")
+        assertEquals(listOf(terminal), controller.stoppedByQuitting().map { it.terminal.id })
+        assertFalse(first.isCompleted)
+        request.answer.complete(false)
+
+        assertFalse(kotlinx.coroutines.runBlocking { first.await() })
+        assertFalse(kotlinx.coroutines.runBlocking { second.await() })
+        assertNull(controller.quitting)
     }
 
     @Test

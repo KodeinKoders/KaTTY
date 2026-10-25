@@ -16,6 +16,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.KattyDirectories
 import app.katty.core.KattyStore
@@ -28,6 +29,7 @@ import app.katty.ui.KattyTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import org.jetbrains.jewel.window.TitleBarScope
 import java.nio.file.Files
@@ -51,6 +53,7 @@ class KattyWindowContentTest {
     private val usage = SessionUsageTracker(scope, emptyMap(), { emptyMap() }, { null }, { null })
     private val directories = KattyDirectories(Files.createTempDirectory("katty-window"))
     private val keys = WindowKeys()
+    private val bridge = WindowBridge()
 
     private val state get() = store.state.value
 
@@ -73,7 +76,7 @@ class KattyWindowContentTest {
         setContent {
             KattyTheme(false) {
                 Column {
-                    KattyWindowContent(store, registry, tracker, usage, directories, WindowBridge(), {}, {}, keys, window = null) { content ->
+                    KattyWindowContent(store, registry, tracker, usage, directories, bridge, {}, {}, keys, window = null) { content ->
                         Row { with(PlainTitleBar) { content() } }
                     }
                 }
@@ -117,5 +120,23 @@ class KattyWindowContentTest {
 
         onNodeWithText("Close the last terminal?", useUnmergedTree = true).assertExists()
         assertEquals(terminal, state.selection.terminal, "It is not closed before the user says so")
+    }
+
+    @Test
+    fun quittingWhileAProgramRunsAsksAndCancelKeepsTheApplication() = runComposeUiTest {
+        command = listOf("/bin/sh", "-c", "sleep 30")
+        store.addProject(directories.support.toString())
+        showWindow()
+        val terminal = state.selection.terminal!!
+        waitUntil(timeoutMillis = 5_000) { registry.processNames.value[terminal] == "sleep" }
+
+        val answer = CoroutineScope(Dispatchers.Default).async { bridge.confirmQuit!!.invoke() }
+
+        // The question is asked from another thread: it is there once the window has drawn it.
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Quit KaTTY?", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Cancel", useUnmergedTree = true).performClick()
+        waitUntil(timeoutMillis = 5_000) { answer.isCompleted }
+        assertEquals(false, answer.getCompleted())
+        onNodeWithText("Quit KaTTY?", useUnmergedTree = true).assertDoesNotExist()
     }
 }

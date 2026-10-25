@@ -24,6 +24,13 @@ class WindowBridge {
      */
     @Volatile
     var flushBoardWindow: (() -> Unit)? = null
+
+    /**
+     * Whether to quit, asked of the main window while it is composed: it asks the user first when programs or agents would be stopped. `null`
+     * when there is no main window to ask, and the application quits.
+     */
+    @Volatile
+    var confirmQuit: (suspend () -> Boolean)? = null
 }
 
 /** The time in milliseconds, which moves on by itself every 30 seconds: what the ages on the screen are told from. */

@@ -39,6 +39,19 @@ public fun KattyState.closeTerminalDecision(id: TerminalId, stateOf: (TerminalId
     return if (running(id) || (alone && stateOf(id).isActive())) CloseDecision.CONFIRM else CloseDecision.NOW
 }
 
+/**
+ * The terminals that quitting stops, in every workspace: the ones where a program other than the shell runs, and the ones whose agent is active.
+ * They come back over their shells at the next launch, but what they were in the middle of is lost.
+ *
+ * @param running Whether a program other than the shell has the terminal.
+ */
+public fun KattyState.stoppedByQuitting(stateOf: (TerminalId) -> AgentState, running: (TerminalId) -> Boolean): List<KattyState.Location> =
+    allTerminals().filter { running(it.terminal.id) || stateOf(it.terminal.id).isActive() }
+
+/** What quitting needs: asking when it stops something ([stoppedByQuitting]), as closing a workspace does. */
+public fun KattyState.quitDecision(stateOf: (TerminalId) -> AgentState, running: (TerminalId) -> Boolean): CloseDecision =
+    if (stoppedByQuitting(stateOf, running).isEmpty()) CloseDecision.NOW else CloseDecision.CONFIRM
+
 /** Whether closing the project [id] ends an agent that is active: its removal asks in any case, and says it. */
 public fun KattyState.activeTerminals(project: ProjectId, stateOf: (TerminalId) -> AgentState): List<TerminalSpec> =
     projects.firstOrNull { it.id == project }?.workspaces.orEmpty().flatMap { it.layout.terminals() }.filter { stateOf(it.id).isActive() }

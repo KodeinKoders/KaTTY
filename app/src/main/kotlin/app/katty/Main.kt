@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -35,6 +36,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.window.DecoratedWindow
 
@@ -94,7 +96,24 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
         }
     }
     val latestQuit = rememberUpdatedState(quit)
-    DisposableEffect(Unit) { takeQuitItem { latestQuit.value() }; onDispose { } }
+    // Quitting asks first, in the main window, when programs or agents would be stopped: from the close button and from the system's Quit alike.
+    val quitScope = rememberCoroutineScope()
+    val requestQuit: (answer: (Boolean) -> Unit) -> Unit = { answer ->
+        quitScope.launch {
+            val confirmed = try {
+                bridge.confirmQuit?.invoke() != false
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                true
+            }
+            try {
+                if (confirmed) latestQuit.value()
+            } finally {
+                answer(confirmed)
+            }
+        }
+    }
+    DisposableEffect(Unit) { takeQuitItem(requestQuit); onDispose { } }
 
     val settings by store.state.collectAsState().let { state -> derivedStateOf { state.value.settings } }
     val dark = when (settings.theme) {
@@ -116,7 +135,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     DisposableEffect(Unit) { takeAboutItem { aboutOpen = true }; onDispose { } }
     KattyTheme(dark) {
         DecoratedWindow(
-            onCloseRequest = quit,
+            onCloseRequest = { requestQuit {} },
             title = "KaTTY",
             icon = remember { AppIcon.painter() },
             state = windowState,

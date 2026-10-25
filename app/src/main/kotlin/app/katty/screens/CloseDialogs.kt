@@ -1,6 +1,7 @@
 package app.katty.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -23,17 +24,33 @@ import org.jetbrains.jewel.ui.component.Text
  * A terminal as a list in a dialog tells it: what runs in it, and what it is doing.
  *
  * @param running Whether a program other than the shell has it, which closing it stops.
+ * @param place Where it is (`project / workspace`), for a list of terminals of more than one workspace; `null` when it goes without saying.
  */
-data class TerminalSummary(val id: TerminalId, val title: String, val glyph: AgentGlyph, val state: AgentState, val running: Boolean = false)
+data class TerminalSummary(
+    val id: TerminalId,
+    val title: String,
+    val glyph: AgentGlyph,
+    val state: AgentState,
+    val running: Boolean = false,
+    val place: String? = null,
+)
 
 @Composable
 private fun SummaryRow(summary: TerminalSummary) {
     val colors = Katty.colors
     Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         AgentTile(summary.glyph, size = TileSize.LIST)
-        OneLine(summary.title, Modifier.weight(1f), color = colors.text)
+        if (summary.place == null) {
+            OneLine(summary.title, Modifier.weight(1f), color = colors.text)
+        } else {
+            Column(Modifier.weight(1f)) {
+                OneLine(summary.title, color = colors.text)
+                OneLine(summary.place, color = colors.muted)
+            }
+        }
         StateGlyph(summary.state)
-        Text(summary.state.label(), color = colors.muted)
+        // A program that reports nothing (an editor, a build) is not at rest: it is what closing would stop.
+        Text(if (summary.running && summary.state == AgentState.IDLE) "Running" else summary.state.label(), color = colors.muted)
     }
 }
 
@@ -47,6 +64,22 @@ fun CloseWorkspaceDialog(workspaceName: String, terminals: List<TerminalSummary>
         title = "Close “$workspaceName”?",
         message = "Closing this workspace ends all of its terminals. " + stoppedByClosing(terminals),
         confirmLabel = "Close workspace",
+        onConfirm = onConfirm,
+        onCancel = onCancel,
+        details = { terminals.forEach { SummaryRow(it) } },
+    )
+}
+
+/**
+ * Asked before the application quits while it would stop something: the terminals where a program runs or an agent is active, in every
+ * workspace, with where they are. They come back over their shells at the next launch, but what they were in the middle of is lost.
+ */
+@Composable
+fun QuitDialog(terminals: List<TerminalSummary>, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    ConfirmDialog(
+        title = "Quit KaTTY?",
+        message = stoppedByClosing(terminals) + " They come back over their shells next time, but what they were doing is lost.",
+        confirmLabel = "Quit",
         onConfirm = onConfirm,
         onCancel = onCancel,
         details = { terminals.forEach { SummaryRow(it) } },

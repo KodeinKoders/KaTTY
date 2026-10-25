@@ -10,6 +10,7 @@ import app.katty.core.AttentionItem
 import app.katty.core.CloseDecision
 import app.katty.core.Direction
 import app.katty.core.Ide
+import app.katty.core.KattyState
 import app.katty.core.KattyStore
 import app.katty.core.MainView
 import app.katty.core.ProjectId
@@ -21,6 +22,8 @@ import app.katty.core.attention
 import app.katty.core.closeTerminalDecision
 import app.katty.core.closeWorkspaceDecision
 import app.katty.core.neighbour
+import app.katty.core.quitDecision
+import app.katty.core.stoppedByQuitting
 import app.katty.core.splitToNudge
 import app.katty.core.terminals
 import app.katty.screens.PaletteHandlers
@@ -54,6 +57,11 @@ internal interface WindowPlatform {
 
 /** A paste that waits for the user: [answer] is completed with whether to paste [text]. */
 internal class PasteRequest(val text: String) {
+    val answer = CompletableDeferred<Boolean>()
+}
+
+/** A quit that waits for the user, whose [answer] is whether to quit. */
+internal class QuitRequest {
     val answer = CompletableDeferred<Boolean>()
 }
 
@@ -113,6 +121,9 @@ internal class WindowController(
     // A paste that could run commands, waiting for the user's answer.
     var pasting by mutableStateOf<PasteRequest?>(null)
 
+    // A quit that would stop what runs, waiting for the user's answer.
+    var quitting by mutableStateOf<QuitRequest?>(null)
+
     /** The sessions of the terminals, as the registry has them now. */
     var handles: Map<TerminalId, TerminalHandle> = emptyMap()
 
@@ -132,7 +143,8 @@ internal class WindowController(
 
     /** What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons. */
     val blockingDialog: Boolean by derivedStateOf {
-        picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null
+        picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
+            quitting != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -253,6 +265,23 @@ internal class WindowController(
      * Asks the user before a paste that could run commands, whatever pastes it (a terminal's keys and middle click, its menu, the palette): one
      * question at a time, and a new one answers no to the one that was still waiting.
      */
+    /**
+     * Whether to quit: at once when nothing would be stopped, else when the user says so in the dialog that lists what would be ([stoppedByQuitting]).
+     * A second request while the question waits (the close button, then ⌘Q) has the same answer.
+     */
+    suspend fun confirmQuit(): Boolean {
+        if (state.quitDecision(::stateOf, ::running) == CloseDecision.NOW) return true
+        val request = quitting ?: QuitRequest().also { quitting = it }
+        return try {
+            request.answer.await()
+        } finally {
+            if (quitting === request) quitting = null
+        }
+    }
+
+    /** The terminals that quitting would stop, with where they are. */
+    fun stoppedByQuitting(): List<KattyState.Location> = state.stoppedByQuitting(::stateOf, ::running)
+
     suspend fun confirmPaste(text: String): Boolean {
         val request = PasteRequest(text)
         pasting?.answer?.complete(false)

@@ -98,4 +98,22 @@ class ClosingTest {
 
         assertEquals(listOf(first, third), active.map { it.id })
     }
+
+    @Test
+    fun quittingAsksForTheTerminalsOfEveryWorkspaceWhereAProgramRunsOrAnAgentIsActive() {
+        val project = store.addProject("/a")
+        val first = state.selection.terminal!!
+        val second = store.split(first, SplitDirection.ROW)!!
+        store.addWorkspace(project)
+        val third = state.selection.terminal!!
+        store.addProject("/b")
+        val fourth = state.selection.terminal!!
+        val states = statesOf(first to AgentState.DONE, second to AgentState.ERROR, third to AgentState.IDLE)
+
+        assertEquals(CloseDecision.NOW, state.quitDecision(statesOf(first to AgentState.DONE), none), "Shells at their prompts, and an agent that is done")
+        // A failure that the user has not seen is active: quitting would lose what it said.
+        assertEquals(listOf(second, fourth), state.stoppedByQuitting(states) { it == fourth }.map { it.terminal.id })
+        assertEquals(CloseDecision.CONFIRM, state.quitDecision(states) { it == fourth })
+        assertEquals(CloseDecision.CONFIRM, state.quitDecision(statesOf(third to AgentState.WORKING), none))
+    }
 }

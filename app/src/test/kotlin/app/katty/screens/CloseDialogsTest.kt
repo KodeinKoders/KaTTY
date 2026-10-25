@@ -60,6 +60,22 @@ class CloseDialogsTest {
     }
 
     @Test
+    fun quittingListsWhatItStopsWithWhereItIs() = runComposeUiTest {
+        val answers = mutableListOf<String>()
+        val stopped = listOf(terminals[0].copy(place = "api / refactor-auth"), summary("d", "vim", AgentGlyph.SHELL, AgentState.IDLE).copy(running = true, place = "web / main"))
+        setContent { KattyTheme(false) { QuitDialog(stopped, onConfirm = { answers += "quit" }, onCancel = { answers += "cancel" }) } }
+
+        onNodeWithText("Quit KaTTY?").assertExists()
+        onNodeWithText("1 agent is still active and 1 program is still running: they will be stopped.", substring = true).assertExists()
+        onNodeWithText("api / refactor-auth").assertExists()
+        onNodeWithText("web / main").assertExists()
+        onNodeWithText("Running").assertExists()
+        onNodeWithText("Cancel").performClick()
+        onNodeWithText("Quit").performClick()
+        assertEquals(listOf("cancel", "quit"), answers)
+    }
+
+    @Test
     fun theButtonsConfirmAndCancel() = runComposeUiTest {
         val answers = mutableListOf<String>()
         setContent { KattyTheme(false) { CloseWorkspaceDialog("ws", terminals, onConfirm = { answers += "confirm" }, onCancel = { answers += "cancel" }) } }
@@ -144,6 +160,12 @@ class CloseDialogsTest {
 
     @Test
     fun drawsTheDialogsInBothThemes() {
+        render("quit-light", 1120, 720, dark = false) {
+            QuitDialog(
+                listOf(terminals[0].copy(place = "api / refactor-auth"), summary("d", "vim", AgentGlyph.SHELL, AgentState.IDLE).copy(running = true, place = "web / main")),
+                onConfirm = {}, onCancel = {},
+            )
+        }
         for (dark in listOf(false, true)) {
             val rendered = render("close-workspace-${if (dark) "dark" else "light"}", 1120, 720, dark = dark) {
                 CloseWorkspaceDialog("refactor-auth", terminals, onConfirm = {}, onCancel = {})

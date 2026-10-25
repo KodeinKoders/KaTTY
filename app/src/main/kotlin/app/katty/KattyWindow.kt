@@ -71,6 +71,7 @@ import app.katty.screens.MainMenu
 import app.katty.screens.CloseWorkspaceDialog
 import app.katty.screens.RestartTerminalDialog
 import app.katty.screens.PasteDialog
+import app.katty.screens.QuitDialog
 import app.katty.screens.PaneActions
 import app.katty.screens.ProjectTabs
 import app.katty.screens.Rail
@@ -323,6 +324,11 @@ internal fun KattyWindowContent(
     // A rename that nothing draws, or of what is gone (closed by a shortcut, a menu, the palette), ends: it would keep the terminals from the keyboard.
     LaunchedEffect(state.projects, renamingTerminal, renamingWorkspace, renamingProject, settings.view, settings.sidebarCollapsed, vertical) {
         controller.dropStaleRenames()
+    }
+    // Quitting asks this window first, while it is there.
+    DisposableEffect(bridge, controller) {
+        bridge.confirmQuit = controller::confirmQuit
+        onDispose { if (bridge.confirmQuit != null) bridge.confirmQuit = null }
     }
     // The shortcuts of the window, on the window itself: they work whatever has the focus, and when nothing has it.
     SideEffect { keys.handler = { event -> controller.handle(event.appShortcut(), event.shortcutNumber()) } }
@@ -588,6 +594,12 @@ internal fun KattyWindowContent(
         }
         pasting?.let { request ->
             PasteDialog(request.text, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
+        }
+        controller.quitting?.let { request ->
+            val stopped = controller.stoppedByQuitting().map { location ->
+                describe(location.terminal).copy(running = running(location.terminal.id), place = "${location.project.name} / ${location.workspace.name}")
+            }
+            QuitDialog(stopped, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
         }
     }
 }
