@@ -95,15 +95,15 @@ class ChoiceOption<T>(val value: T, val label: String)
  * the closest of its components.
  */
 @Composable
-fun <T> Choice(options: List<ChoiceOption<T>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+fun <T> Choice(options: List<ChoiceOption<T>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val buttons = options.map { option ->
         SegmentedControlButtonData(selected = option.value == selected, content = { Text(option.label) }, onSelect = { onSelect(option.value) })
     }
-    SegmentedControl(buttons, modifier)
+    SegmentedControl(buttons, modifier, enabled = enabled)
 }
 
 /** An on or off setting: Jewel has no toggle switch, so it is a checkbox, with its text beside it. */
 @Composable
-fun CheckSetting(text: String, checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    CheckboxRow(text, checked, onChange, modifier)
+fun CheckSetting(text: String, checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    CheckboxRow(text, checked, onChange, modifier, enabled = enabled)
 }

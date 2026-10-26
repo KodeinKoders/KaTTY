@@ -125,6 +125,17 @@ fun MainMenu(
                 Caption("Keeps what is typed in a terminal from the other applications. Text expanders and global shortcuts stop working meanwhile.")
             }
             Separator()
+            Section("AGENT USAGE") {
+                CheckSetting("Show agent usage", settings.showUsage, { value -> onChange { it.copy(showUsage = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                Choice(
+                    listOf(ChoiceOption(false, "Panel"), ChoiceOption(true, "Window")),
+                    settings.usageInWindow, { value -> onChange { it.copy(usageInWindow = value) } },
+                    Modifier.padding(horizontal = 4.dp),
+                    enabled = settings.showUsage,
+                )
+                Caption("The window is for another screen. Closing it puts the usage back in the panel.")
+            }
+            Separator()
             Section("FONT FAMILY") {
                 FontField(settings.fontFamily, fontFamilies) { family -> onChange { it.copy(fontFamily = family) } }
                 FontSizeStepper(settings.fontSize) { size -> onChange { it.copy(fontSize = size) } }

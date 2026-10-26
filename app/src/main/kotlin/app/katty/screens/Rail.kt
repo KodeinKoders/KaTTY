@@ -91,6 +91,7 @@ fun Rail(
     state: KattyState,
     store: KattyStore,
     onAddProject: () -> Unit,
+    onOpenRecent: () -> Unit = {},
     modifier: Modifier = Modifier,
     states: AgentStates = NoAgentStates,
     gits: Map<TerminalId, GitInfo?> = emptyMap(),
@@ -119,7 +120,7 @@ fun Rail(
                     }
                 }
             }
-            AddTile(onAddProject)
+            AddProjectMenuHost(onAddProject, onOpenRecent) { AddTile(onAddProject) }
         }
         usage()
     }

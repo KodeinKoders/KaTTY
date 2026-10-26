@@ -27,6 +27,8 @@ toc::[]
 It holds *workspaces*, and each workspace holds terminals in a layout of splits.
 * Split a terminal right or down, drag the gap between panes to resize them, maximize one pane to focus on it, and move a terminal to another workspace of its project.
 * Rename projects, workspaces and terminals, and drag projects and workspaces to reorder them.
+* Show the usage of your agents in the panel, in a window of its own for another screen, or not at all, from the settings menu.
+* Open again a project that you removed: right-click the add project button, or run "Open recent project…" in the command palette, to pick among the last 50 that are not open.
 * Open a project's folder in an editor or IDE from its right-click menu (*Open in*) or the command palette: Visual Studio Code, the JetBrains IDEs, Android Studio, Xcode, Eclipse, Sublime Text and others, each only when it is installed.
 * Three layouts: *horizontal*, with a sidebar that folds into a slim rail; *vertical*, with tabs along the top; and *auto*, which picks the vertical one when the window is taller than it is wide.
 * Light, dark or system theme.

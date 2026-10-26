@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.runSkikoComposeUiTest
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
 import app.katty.core.LayoutMode
 import app.katty.core.Settings
@@ -59,6 +61,26 @@ class MainMenuTest {
     }
 
     @Test
+    fun theUsageIsShownOrHiddenAndPutInThePanelOrInAWindowButNotWhileHidden() = runComposeUiTest {
+        show()
+        onNodeWithText("AGENT USAGE").assertExists()
+
+        onNodeWithText("Window").performClick()
+        waitForIdle()
+        assertTrue(settings.usageInWindow)
+        onNodeWithText("Panel").performClick()
+        waitForIdle()
+        assertFalse(settings.usageInWindow)
+
+        onNodeWithText("Show agent usage").performClick()
+        waitForIdle()
+        assertFalse(settings.showUsage)
+        onNodeWithText("Window").performClick()
+        waitForIdle()
+        assertFalse(settings.usageInWindow, "The choice does nothing while the usage is hidden")
+    }
+
+    @Test
     fun theLayoutAndTheThemeAreChosenAmongTheirOptions() = runComposeUiTest {
         show()
 
@@ -85,8 +107,9 @@ class MainMenuTest {
         onNodeWithText("14.5 px").assertExists()
     }
 
+    // A taller window than the default: with the usage section the menu does not fit in 768 pixels, and what is out of the window cannot be clicked.
     @Test
-    fun ligaturesAreTurnedOffAndOn() = runComposeUiTest {
+    fun ligaturesAreTurnedOffAndOn() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
         show()
 
         onNodeWithText("Font ligatures").performClick()

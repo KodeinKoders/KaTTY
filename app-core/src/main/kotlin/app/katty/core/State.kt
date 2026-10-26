@@ -54,6 +54,9 @@ public enum class MainView {
  * [UI_SCALES].
  * @param secureInput When what is typed in the terminals is kept from the other programs.
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
+ * @param showUsage Whether the usage of the agents is shown at all.
+ * @param usageInWindow Whether it is shown in a window of its own instead of the panel. It only counts while [showUsage] is on, and goes back to
+ * `false` when the user closes that window.
  * @param usageHidden The limits of those agents that are not shown, each made by [usageKey]. It is the hidden ones that are kept, so that a
  * limit that an agent starts to report later is shown.
  */
@@ -71,6 +74,8 @@ public data class Settings(
     val usageShown: Set<String> = setOf("claude", "codex", "antigravity", "opencode", "kilocode", "omp"),
     val usageHidden: Set<String> = emptySet(),
     val compactUsage: Boolean = false,
+    val showUsage: Boolean = true,
+    val usageInWindow: Boolean = false,
     val sidebarCollapsed: Boolean = false,
     val view: MainView = MainView.TERMINALS,
 ) {

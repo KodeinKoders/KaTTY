@@ -28,7 +28,7 @@ import org.jetbrains.jewel.ui.component.Text
  * are listed under it by [detected].
  */
 @Composable
-fun Welcome(onAddProject: () -> Unit, modifier: Modifier = Modifier, detected: @Composable () -> Unit = {}) {
+fun Welcome(onAddProject: () -> Unit, modifier: Modifier = Modifier, onOpenRecent: () -> Unit = {}, detected: @Composable () -> Unit = {}) {
     val colors = Katty.colors
     Box(modifier.fillMaxSize().background(colors.bg), contentAlignment = Alignment.Center) {
         Column(
@@ -43,10 +43,12 @@ fun Welcome(onAddProject: () -> Unit, modifier: Modifier = Modifier, detected: @
                 color = colors.muted, textAlign = TextAlign.Center,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                DefaultButton(onClick = onAddProject) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(KattyIcons.FolderPlus, androidx.compose.ui.graphics.Color.White, size = 16.dp)
-                        Text("Add project folder…")
+                AddProjectMenuHost(onAddProject, onOpenRecent) {
+                    DefaultButton(onClick = onAddProject) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(KattyIcons.FolderPlus, androidx.compose.ui.graphics.Color.White, size = 16.dp)
+                            Text("Add project folder…")
+                        }
                     }
                 }
                 // The keys that the user bound it to, and none when it is bound to none.

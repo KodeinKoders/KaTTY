@@ -102,6 +102,9 @@ internal class WindowController(
     var menuOpen by mutableStateOf(false)
     var attentionOpen by mutableStateOf(false)
     var paletteOpen by mutableStateOf(false)
+
+    /** The list of the projects that were opened before, which works like the palette. */
+    var recentOpen by mutableStateOf(false)
     var editingShortcuts by mutableStateOf(false)
 
     // The terminal that is selected takes the keyboard back whenever this changes: when what had it (a palette, a menu, a rename) is gone, and when a
@@ -146,7 +149,7 @@ internal class WindowController(
     /** What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons. */
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
-            quitting != null
+            quitting != null || recentOpen
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -185,6 +188,18 @@ internal class WindowController(
             showWorkspaceHost()
             renamingWorkspace = state.selection.workspace
         }
+    }
+
+    fun openRecent() {
+        paletteOpen = false
+        menuOpen = false
+        recentOpen = true
+    }
+
+    /** Opens a project of the recent list again, and goes to it. */
+    fun openRecentProject(directory: String, name: String) {
+        recentOpen = false
+        goToProject(store.addProject(directory, name))
     }
 
     fun newWorkspace() {
@@ -378,6 +393,7 @@ internal class WindowController(
         val terminal = state.selection.terminal
         when (shortcut) {
             AppShortcut.ADD_PROJECT -> addProject()
+            AppShortcut.OPEN_RECENT -> openRecent()
             AppShortcut.NEW_WORKSPACE -> newWorkspace()
             AppShortcut.CLOSE_WORKSPACE -> state.selection.workspace?.let(::closeWorkspace)
             AppShortcut.SPLIT_MAIN -> onTerminal { store.split(it, SplitDirection.ROW) }
@@ -452,6 +468,7 @@ internal class WindowController(
     /** What the palette runs: the same actions as the shortcuts, under the same rules. */
     fun paletteHandlers(worktree: String? = selectedWorktree()): PaletteHandlers = PaletteHandlers(
         addProject = ::addProject,
+        openRecent = ::openRecent,
         newWorkspace = ::newWorkspace,
         renameWorkspace = ::renameWorkspace,
         closeWorkspace = { state.selection.workspace?.let(::closeWorkspace) },
@@ -499,6 +516,8 @@ internal class WindowController(
         toggleLigatures = { store.updateSettings { it.copy(ligatures = !it.ligatures) } },
         refreshUsage = { refreshUsage() },
         toggleCompactUsage = { store.updateSettings { it.copy(compactUsage = !it.compactUsage) } },
+        toggleShowUsage = { store.updateSettings { it.copy(showUsage = !it.showUsage) } },
+        toggleUsageInWindow = { store.updateSettings { it.copy(usageInWindow = !it.usageInWindow) } },
         focusPane = { direction -> onTerminals { focusNeighbour(direction) } },
         resizeSplit = { direction -> onTerminals { resizeSplit(direction) } },
         findNext = { onTerminals { stepFind(true) } },

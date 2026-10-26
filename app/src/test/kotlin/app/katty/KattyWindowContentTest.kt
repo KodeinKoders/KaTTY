@@ -107,6 +107,22 @@ class KattyWindowContentTest {
     }
 
     @Test
+    fun theUsageIsInThePanelUnlessItIsHiddenOrInAWindow() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+        onAllNodesWithText("AGENT USAGE").assertCountEquals(1)
+
+        store.updateSettings { it.copy(showUsage = false) }
+        waitForIdle()
+        onAllNodesWithText("AGENT USAGE").assertCountEquals(0)
+
+        // Back to shown, in the panel. In its own window it is not in the panel, but that composes a real window, which this test has none of.
+        store.updateSettings { it.copy(showUsage = true, usageInWindow = false) }
+        waitForIdle()
+        onAllNodesWithText("AGENT USAGE").assertCountEquals(1)
+    }
+
+    @Test
     fun closingATerminalWhereAProgramRunsAsksFirst() = runComposeUiTest {
         command = listOf("/bin/sh", "-c", "sleep 30")
         store.addProject(directories.support.toString())

@@ -18,6 +18,12 @@ public class KattyDirectories(public val support: Path) {
     /** Where the board window was, how big and in which mode: the main window's own file is [windowFile]. */
     public val boardWindowFile: Path get() = support.resolve("board-window.json")
 
+    /** The last projects that were opened, for "Open recent": a history of its own, which the state file does not hold. */
+    public val recentProjectsFile: Path get() = support.resolve("recent-projects.json")
+
+    /** Where the agent usage window was, how big and in which mode, when the usage is shown in a window. */
+    public val usageWindowFile: Path get() = support.resolve("usage-window.json")
+
     /**
      * The directory that the commands of the agents that report their usage run in. `claude -p` records a session for the directory it
      * runs in, which must not be one of the user's projects.

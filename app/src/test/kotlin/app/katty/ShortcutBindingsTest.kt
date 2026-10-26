@@ -24,7 +24,7 @@ class ShortcutBindingsTest {
     fun theDefaultsAreWrittenAsTheyAlwaysWere() {
         // Written out, not computed: what the menus and the palette have shown must not change by itself.
         val expected = mapOf(
-            AppShortcut.ADD_PROJECT to "⌘O", AppShortcut.NEW_WORKSPACE to "⌘N", AppShortcut.CLOSE_WORKSPACE to "⌘⇧W", AppShortcut.SPLIT_MAIN to "⌘D",
+            AppShortcut.ADD_PROJECT to "⌘O", AppShortcut.OPEN_RECENT to "⌘⇧O", AppShortcut.NEW_WORKSPACE to "⌘N", AppShortcut.CLOSE_WORKSPACE to "⌘⇧W", AppShortcut.SPLIT_MAIN to "⌘D",
             AppShortcut.SPLIT_OTHER to "⌘⇧D", AppShortcut.CLOSE_TERMINAL to "⌘W", AppShortcut.RESTART_TERMINAL to "⌘R", AppShortcut.JUMP_TO_WAITING to "⌘⇧J",
             AppShortcut.ATTENTION to "⌘J", AppShortcut.BOARD to "⌘⇧B", AppShortcut.SIDEBAR to "⌘B", AppShortcut.MAXIMIZE to "⌘⇧↩",
             AppShortcut.RESIZE_LEFT to "⌘⌃←", AppShortcut.RESIZE_RIGHT to "⌘⌃→", AppShortcut.RESIZE_UP to "⌘⌃↑", AppShortcut.RESIZE_DOWN to "⌘⌃↓",

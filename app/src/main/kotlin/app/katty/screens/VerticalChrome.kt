@@ -85,6 +85,7 @@ fun ProjectTabs(
     state: KattyState,
     store: KattyStore,
     onAddProject: () -> Unit,
+    onOpenRecent: () -> Unit = {},
     onRemoveProject: (ProjectId) -> Unit,
     onReveal: (ProjectId) -> Unit,
     renamingProject: ProjectId?,
@@ -117,7 +118,9 @@ fun ProjectTabs(
                 )
             }
         }
-        KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, Modifier.padding(horizontal = 6.dp), shortcut = AppShortcut.ADD_PROJECT.label)
+        AddProjectMenuHost(onAddProject, onOpenRecent) {
+            KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, Modifier.padding(horizontal = 6.dp), shortcut = AppShortcut.ADD_PROJECT.label)
+        }
     }
 }
 

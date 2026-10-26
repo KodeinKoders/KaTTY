@@ -1,6 +1,8 @@
 package app.katty
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +54,10 @@ import app.katty.core.Ide
 import app.katty.core.terminals
 import app.katty.screens.AgentBoard
 import app.katty.screens.AgentToast
+import app.katty.core.RecentProjects
+import app.katty.core.RecentProjectsFile
 import app.katty.screens.CommandPalette
+import app.katty.screens.RecentProjectsPopup
 import app.katty.screens.ShortcutsDialog
 import app.katty.screens.paletteCommands
 import app.katty.screens.AttentionBell
@@ -184,6 +189,11 @@ internal fun KattyWindowContent(
     var menuOpen by controller::menuOpen
     var attentionOpen by controller::attentionOpen
     var paletteOpen by controller::paletteOpen
+    val recentOpen = controller.recentOpen
+    // The projects that were opened before: it watches the store, so it is kept for as long as the window is.
+    val recent = remember { RecentProjects(store, RecentProjectsFile(directories.recentProjectsFile), windowScope) }
+    DisposableEffect(recent) { onDispose { recent.stop() } }
+    val openRecent = controller::openRecent
     var editingShortcuts by controller::editingShortcuts
     var focusTick by controller::focusTick
     var boardFilter by controller::boardFilter
@@ -381,7 +391,7 @@ internal fun KattyWindowContent(
 
     Box(Modifier.fillMaxSize().background(Katty.colors.bg)) {
         if (state.projects.isEmpty()) {
-            Welcome(onAddProject = addProject, detected = { DetectedAgents(detected) })
+            Welcome(onAddProject = addProject, onOpenRecent = openRecent, detected = { DetectedAgents(detected) })
         } else {
             val workspace = state.selectedWorkspace
             val area: @Composable (Modifier, Boolean) -> Unit = { areaModifier, header ->
@@ -425,11 +435,13 @@ internal fun KattyWindowContent(
                     )
                 }
             }
+            // In the panel only while it is shown and not in its own window.
+            val usageInPanel = settings.showUsage && !settings.usageInWindow
             val usageSection: @Composable () -> Unit = {
-                UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
+                if (usageInPanel) UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
             }
             val usageBar: @Composable () -> Unit = {
-                UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
+                if (usageInPanel) UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
             }
             val reveal: (ProjectId) -> Unit = controller::revealProject
             if (settings.view == MainView.BOARD) {
@@ -458,6 +470,7 @@ internal fun KattyWindowContent(
                     ProjectTabs(
                         state, store,
                         onAddProject = addProject,
+                        onOpenRecent = openRecent,
                         onRemoveProject = { removing = it },
                         onReveal = reveal,
                         ides = ides,
@@ -486,9 +499,9 @@ internal fun KattyWindowContent(
                 Row(Modifier.fillMaxSize()) {
                     if (settings.sidebarCollapsed) {
                         Rail(
-                            state, store, onAddProject = addProject, states = agentStates, gits = gits,
+                            state, store, onAddProject = addProject, onOpenRecent = openRecent, states = agentStates, gits = gits,
                             usage = {
-                                Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (usageInPanel) Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     OpenSessionsLine(openSessions, UsageVariant.RAIL, hidden = settings.usageHidden)
                                     UsageList(detectedAgents.filter { it.id in settings.usageShown }, readings, usageNow, UsageVariant.RAIL, hidden = settings.usageHidden)
                                 }
@@ -499,6 +512,7 @@ internal fun KattyWindowContent(
                             state = state,
                             store = store,
                             onAddProject = addProject,
+                            onOpenRecent = openRecent,
                             onRemoveProject = { removing = it },
                             onCloseWorkspace = closeWorkspace,
                             onReveal = reveal,
@@ -518,6 +532,24 @@ internal fun KattyWindowContent(
             }
         }
 
+        if (settings.showUsage && settings.usageInWindow) {
+            UsageWindow(
+                settings.effectiveUiScale, directories.usageWindowFile,
+                onClose = { store.updateSettings { it.copy(usageInWindow = false) } },
+            ) {
+                // As the window is shaped: a wide one has the bar of the vertical layout (the agents side by side), a tall one the list of the sidebar.
+                val windowSize = LocalWindowInfo.current.containerSize
+                if (windowSize.width > windowSize.height) {
+                    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
+                    }
+                }
+            }
+        }
         if (editingShortcuts) {
             ShortcutsDialog(
                 map = shortcutMap,
@@ -533,6 +565,11 @@ internal fun KattyWindowContent(
                 paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical, hasSelection = hasSelection)
             }
             CommandPalette(commands.entries, onRun = { entry -> paletteOpen = false; commands.run(entry) }, onDismiss = { paletteOpen = false })
+        }
+        if (recentOpen) {
+            // The folders that can be opened are asked once, when the list opens.
+            val projects = remember { recent.closed(store.state.value) }
+            RecentProjectsPopup(projects, onOpen = { controller.openRecentProject(it.directory, it.name) }, onDismiss = { controller.recentOpen = false })
         }
         toast?.let { item ->
             AgentToast(item, now, onClick = { openTerminal(item.terminal.id) }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))

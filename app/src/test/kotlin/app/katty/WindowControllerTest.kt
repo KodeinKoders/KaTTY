@@ -57,6 +57,29 @@ class WindowControllerTest {
     }
 
     @Test
+    fun theRecentListOpensFromThePaletteAndItsChoiceAddsAndSelectsTheProject() {
+        controller.paletteOpen = true
+        controller.paletteHandlers().openRecent()
+
+        assertTrue(controller.recentOpen)
+        assertFalse(controller.paletteOpen, "The palette stays over the list")
+        // Nothing the shortcuts do reaches the window behind it.
+        val before = state
+        assertTrue(controller.handle(AppShortcut.SPLIT_MAIN, null))
+        assertEquals(before, state)
+
+        controller.openRecentProject("/tmp/other", "Other")
+
+        controller.handle(AppShortcut.OPEN_RECENT, null)
+        assertTrue(controller.recentOpen, "The shortcut opens the list")
+        controller.recentOpen = false
+
+        assertFalse(controller.recentOpen)
+        assertEquals("Other", state.selectedProject?.name)
+        assertEquals("/tmp/other", state.selectedProject?.directory)
+    }
+
+    @Test
     fun thePaletteDoesNotActOnATerminalWhileTheBoardIsShown() {
         showBoard()
         val handlers = controller.paletteHandlers()

@@ -43,6 +43,18 @@ class StateFileTest {
     }
 
     @Test
+    fun theUsageIsShownInThePanelUnlessAFileSaysOtherwise() {
+        path.writeText("""{"version": ${KattyState.VERSION}, "settings": {"compactUsage": true}}""")
+        val settings = file.load().settings
+        assertTrue(settings.showUsage)
+        assertFalse(settings.usageInWindow)
+
+        file.save(KattyState(settings = Settings(showUsage = false, usageInWindow = true)))
+        assertEquals(false, file.load().settings.showUsage)
+        assertTrue(file.load().settings.usageInWindow)
+    }
+
+    @Test
     fun aRunningProgramSurvivesBeingWrittenAndReadAndAnOldFileHasNone() {
         var n = 0
         val store = KattyStore(newId = { "id${n++}" })

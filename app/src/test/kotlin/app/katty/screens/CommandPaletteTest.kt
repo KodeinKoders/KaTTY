@@ -24,6 +24,7 @@ import app.katty.core.MainView
 import app.katty.core.PaletteEntry
 import app.katty.core.Ide
 import app.katty.core.PaletteGroup
+import app.katty.core.RecentProject
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.ui.KattyTheme
@@ -438,6 +439,13 @@ class CommandPaletteTest {
 
         assertTrue("Turn font ligatures on" in labels())
         assertTrue("Show the usage in full" in labels())
+        assertTrue("Hide agent usage" in labels())
+        assertTrue("Show agent usage in a window" in labels())
+        store.updateSettings { it.copy(usageInWindow = true) }
+        assertTrue("Show agent usage in the panel" in labels())
+        store.updateSettings { it.copy(showUsage = false) }
+        assertTrue("Show agent usage" in labels())
+        assertTrue(labels().none { it.startsWith("Show agent usage in") }, "No choice of place while it is hidden")
         for (label in listOf("Choose the default color scheme…", "Refresh the usage of the agents", "Open the main menu", "Bigger terminal font", "Smaller terminal font", "Default terminal font size", "Bigger interface text", "Smaller interface text", "Default interface text size", "Show the agents that need you")) {
             assertTrue(label in labels(), label)
         }
@@ -470,4 +478,25 @@ class CommandPaletteTest {
         assertEquals(emptyList(), calls)
     }
 
+
+    @Test
+    fun theRecentProjectsFilterWithTheFocusedFieldAndOpenWithTheArrowsAndEnter() = runComposeUiTest {
+        val projects = listOf(RecentProject("/dev/api", "api", 3), RecentProject("/dev/web", "web", 2), RecentProject("/dev/apps", "apps", 1))
+        val opened = mutableListOf<String>()
+        setContent { KattyTheme(false) { RecentProjectsPopup(projects, onOpen = { opened += it.name }, onDismiss = {}) } }
+
+        onNodeWithContentDescription("Recent projects").assertExists()
+        onNodeWithText("/dev/web").assertExists()
+        // The field has the focus from the start: no click.
+        onNode(hasSetTextAction()).performKeyInput { pressKey(Key.DirectionDown); pressKey(Key.Enter) }
+        waitForIdle()
+        assertEquals(listOf("web"), opened)
+
+        onNode(hasSetTextAction()).performTextInput("apps")
+        waitForIdle()
+        onNodeWithText("web").assertDoesNotExist()
+        onNode(hasSetTextAction()).performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+        assertEquals(listOf("web", "apps"), opened)
+    }
 }

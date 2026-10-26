@@ -54,6 +54,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.core.PaletteEntry
+import app.katty.core.RecentProject
 import app.katty.core.PaletteGroup
 import app.katty.core.PaletteMatch
 import app.katty.core.searchPalette
@@ -63,6 +64,7 @@ import app.katty.ui.ListKey
 import app.katty.ui.hoverHighlight
 import app.katty.ui.listKey
 import app.katty.ui.stepped
+import app.katty.ui.KattyIcon
 import app.katty.ui.KattyIcons
 import app.katty.ui.KeyCap
 import app.katty.ui.OneLine
@@ -106,7 +108,16 @@ fun PaletteButton(compact: Boolean, onClick: () -> Unit, modifier: Modifier = Mo
  * @param onRun Called with the entry that was chosen.
  */
 @Composable
-fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun CommandPalette(
+    entries: List<PaletteEntry>,
+    onRun: (PaletteEntry) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "Search or run a command…",
+    description: String = "Command palette",
+    toggleHint: Boolean = true,
+    icon: KattyIcon = KattyIcons.Search,
+) {
     val colors = Katty.colors
     val query = rememberTextFieldState()
     var text by remember { mutableStateOf("") }
@@ -128,10 +139,10 @@ fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, o
         Column(
             Modifier.padding(top = 90.dp).widthIn(max = 640.dp * uiScaleFactor()).fillMaxWidth().shadow(24.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(colors.panel)
                 .border(1.dp, colors.line, RoundedCornerShape(12.dp)).clickable(interactionSource = null, indication = null) {}
-                .semantics { contentDescription = "Command palette" },
+                .semantics { contentDescription = description },
         ) {
             Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(KattyIcons.Search, colors.muted, size = 18.dp)
+                Icon(icon, colors.muted, size = 18.dp)
                 TextField(
                     query,
                     Modifier.weight(1f).focusRequester(focus).onPreviewKeyEvent { event ->
@@ -143,7 +154,7 @@ fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, o
                             null -> false
                         }
                     },
-                    placeholder = { Text("Search or run a command…") },
+                    placeholder = { Text(placeholder) },
                 )
                 KeyCap("esc")
             }
@@ -161,7 +172,7 @@ fun CommandPalette(entries: List<PaletteEntry>, onRun: (PaletteEntry) -> Unit, o
                 FooterHint(listOf("↑", "↓"), "Navigate")
                 FooterHint(listOf("⏎"), "Open")
                 Box(Modifier.weight(1f))
-                AppShortcut.PALETTE.label.takeIf { it.isNotEmpty() }?.let { FooterHint(shortcutKeys(it).split(' '), "Toggle palette") }
+                AppShortcut.PALETTE.label.takeIf { toggleHint && it.isNotEmpty() }?.let { FooterHint(shortcutKeys(it).split(' '), "Toggle palette") }
             }
         }
     }
@@ -210,4 +221,29 @@ private fun PaletteRow(match: PaletteMatch, selected: Boolean, onClick: () -> Un
 internal fun shortcutKeys(shortcut: String): String {
     val modifiers = shortcut.takeWhile { it in "⌘⌥⇧⌃" }
     return (modifiers.map { it.toString() } + shortcut.drop(modifiers.length)).filter { it.isNotEmpty() }.joinToString(" ")
+}
+
+/** The id of the entry of a recent project in [RecentProjectsPopup]: its folder. */
+private const val RECENT_PREFIX = "recent:"
+
+/**
+ * The projects that were opened before, in a popup that works like the palette: a filter field that has the focus, the arrows, Enter and Escape.
+ * The folder is written with `~` for the home, as the context of each.
+ */
+@Composable
+fun RecentProjectsPopup(projects: List<RecentProject>, onOpen: (RecentProject) -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val home = System.getProperty("user.home").orEmpty()
+    val entries = remember(projects) {
+        projects.map { PaletteEntry(RECENT_PREFIX + it.directory, PaletteGroup.PROJECTS, it.name, if (home.isNotEmpty() && it.directory.startsWith("$home/")) "~" + it.directory.removePrefix(home) else it.directory) }
+    }
+    CommandPalette(
+        entries,
+        onRun = { entry -> projects.firstOrNull { RECENT_PREFIX + it.directory == entry.id }?.let(onOpen) },
+        onDismiss = onDismiss,
+        modifier = modifier,
+        placeholder = "Open a recent project…",
+        description = "Recent projects",
+        toggleHint = false,
+        icon = KattyIcons.Folder,
+    )
 }

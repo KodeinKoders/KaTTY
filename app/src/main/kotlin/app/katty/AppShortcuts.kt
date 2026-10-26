@@ -28,6 +28,7 @@ private fun cmd(key: Int, ctrl: Boolean = false, alt: Boolean = false, shift: Bo
 internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val defaults: List<KeyBinding>, val takesDigit: Boolean = false) {
     ADD_PROJECT(ShortcutGroup.PROJECTS, "Add a project folder", listOf(cmd(Awt.VK_O))),
     NEW_WORKSPACE(ShortcutGroup.PROJECTS, "New workspace", listOf(cmd(Awt.VK_N))),
+    OPEN_RECENT(ShortcutGroup.PROJECTS, "Open a recent project", listOf(cmd(Awt.VK_O, shift = true))),
     CLOSE_WORKSPACE(ShortcutGroup.PROJECTS, "Close the workspace", listOf(cmd(Awt.VK_W, shift = true))),
 
     /** Splits in the main direction of the layout: right in the horizontal one, down in the vertical one. */

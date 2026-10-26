@@ -13,6 +13,16 @@ class NavigationMenusTest {
         projectMenu(onNewWorkspace = {}, onRename = {}, onReveal = {}, onRemove = {}, ides = ides, onOpenIn = { opened += it })
 
     @Test
+    fun theAddProjectMenuOffersTheFolderChooserAndTheRecentProjects() {
+        val calls = mutableListOf<String>()
+        val actions = addProjectMenu({ calls += "add" }, { calls += "recent" }).filterIsInstance<MenuAction>()
+
+        assertEquals(listOf("Add project folder…", "Open recent project…"), actions.map { it.label })
+        actions.forEach { it.onClick() }
+        assertEquals(listOf("add", "recent"), calls)
+    }
+
+    @Test
     fun theProjectMenuHasNoOpenInWhenNoEditorIsInstalled() {
         assertNull(menu(emptyList()).filterIsInstance<MenuSubmenu>().firstOrNull())
     }

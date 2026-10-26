@@ -23,6 +23,8 @@ import app.katty.core.terminals
 /** What the commands of the palette do: the window gives them, since it is what holds the dialogs and the selection. */
 class PaletteHandlers(
     val addProject: () -> Unit,
+    /** Opens the list of the projects that were opened before and are not open now. */
+    val openRecent: () -> Unit = {},
     val newWorkspace: () -> Unit,
     val renameWorkspace: () -> Unit,
     val closeWorkspace: () -> Unit,
@@ -75,6 +77,8 @@ class PaletteHandlers(
     val toggleLigatures: () -> Unit = {},
     val refreshUsage: () -> Unit = {},
     val toggleCompactUsage: () -> Unit = {},
+    val toggleShowUsage: () -> Unit = {},
+    val toggleUsageInWindow: () -> Unit = {},
     /** Makes the font of the terminals bigger or smaller by a step, or what it is by default. */
     val fontBigger: () -> Unit = {},
     val fontSmaller: () -> Unit = {},
@@ -176,6 +180,7 @@ fun paletteCommands(
     val selectedTerminal = state.selection.terminal?.let { state.locate(it) }
     val split = SplitLabels.of(vertical)
     command("add-project", "Add project folder…", AppShortcut.ADD_PROJECT.label, handlers.addProject)
+    command("open-recent", "Open recent project…", AppShortcut.OPEN_RECENT.label, handlers.openRecent)
     if (state.selection.project != null) command("new-workspace", "New workspace", AppShortcut.NEW_WORKSPACE.label, handlers.newWorkspace)
     state.selectedProject?.let { project ->
         val index = state.projects.indexOf(project)
@@ -258,6 +263,10 @@ fun paletteCommands(
     command("ligatures", if (state.settings.ligatures) "Turn font ligatures off" else "Turn font ligatures on", action = handlers.toggleLigatures)
     command("usage-refresh", "Refresh the usage of the agents", action = handlers.refreshUsage)
     command("usage-compact", if (state.settings.compactUsage) "Show the usage in full" else "Show the usage in a compact form", action = handlers.toggleCompactUsage)
+    command("usage-show", if (state.settings.showUsage) "Hide agent usage" else "Show agent usage", action = handlers.toggleShowUsage)
+    if (state.settings.showUsage) {
+        command("usage-window", if (state.settings.usageInWindow) "Show agent usage in the panel" else "Show agent usage in a window", action = handlers.toggleUsageInWindow)
+    }
     command("ui-bigger", "Bigger interface text", action = handlers.uiBigger)
     command("ui-smaller", "Smaller interface text", action = handlers.uiSmaller)
     command("ui-reset", "Default interface text size", action = handlers.uiReset)

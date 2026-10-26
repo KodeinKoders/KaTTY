@@ -24,6 +24,7 @@ class AppShortcutsTest {
     @Test
     fun commandAndAKeyIsAShortcutOfTheWindow() {
         assertEquals(AppShortcut.ADD_PROJECT, down(Key.O).appShortcut())
+        assertEquals(AppShortcut.OPEN_RECENT, down(Key.O, shift = true).appShortcut())
         assertEquals(AppShortcut.NEW_WORKSPACE, down(Key.N).appShortcut())
         assertEquals(AppShortcut.CLOSE_TERMINAL, down(Key.W).appShortcut())
         assertEquals(AppShortcut.CLOSE_WORKSPACE, down(Key.W, shift = true).appShortcut())

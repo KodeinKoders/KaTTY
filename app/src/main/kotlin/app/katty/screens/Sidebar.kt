@@ -99,6 +99,7 @@ fun Sidebar(
     state: KattyState,
     store: KattyStore,
     onAddProject: () -> Unit,
+    onOpenRecent: () -> Unit = {},
     onRemoveProject: (ProjectId) -> Unit,
     onCloseWorkspace: (WorkspaceId) -> Unit,
     onReveal: (ProjectId) -> Unit,
@@ -121,7 +122,9 @@ fun Sidebar(
             Spacer(Modifier.weight(1f))
             KattyIconButton(KattyIcons.ChevronsDown, "Open all projects", { store.setAllProjectsOpen(true) })
             KattyIconButton(KattyIcons.ChevronsUp, "Close all projects", { store.setAllProjectsOpen(false) })
-            KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, shortcut = AppShortcut.ADD_PROJECT.label)
+            AddProjectMenuHost(onAddProject, onOpenRecent) {
+                KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, shortcut = AppShortcut.ADD_PROJECT.label)
+            }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // The projects are dragged by their row, and the workspaces of the open one by theirs, each among its own.
