@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.window.rememberWindowState
+import org.jetbrains.jewel.window.DecoratedWindow
 import app.katty.core.AgentInfo
 import app.katty.core.AgentStates
 import app.katty.core.AgentState
@@ -38,12 +39,8 @@ import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.terminals.SessionUsageTracker
 import app.katty.terminals.TerminalHandle
-import app.katty.ui.Katty
-import app.katty.ui.OneLine
 import app.katty.ui.UiScale
 import kotlinx.coroutines.delay
-import org.jetbrains.jewel.window.DecoratedWindow
-import org.jetbrains.jewel.window.TitleBar
 
 /** How long after it opened at launch the board window hands the focus it is given back to the main window. */
 private const val LAUNCH_FOCUS_WINDOW_MS = 2_000L
@@ -127,7 +124,7 @@ fun BoardWindow(
             }
         }
         UiScale(state.settings.effectiveUiScale) {
-            TitleBar { OneLine("Agent board", color = Katty.colors.text) }
+            ShortTitleBar("Agent board")
             val size = LocalWindowInfo.current.containerSize
             val vertical = state.settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
             BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, usages = usages)

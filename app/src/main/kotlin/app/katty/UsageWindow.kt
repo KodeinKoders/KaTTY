@@ -14,13 +14,11 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.window.rememberWindowState
+import org.jetbrains.jewel.window.DecoratedWindow
 import app.katty.core.WindowFile
 import app.katty.core.WindowGeometry
 import app.katty.ui.Katty
-import app.katty.ui.OneLine
 import app.katty.ui.UiScale
-import org.jetbrains.jewel.window.DecoratedWindow
-import org.jetbrains.jewel.window.TitleBar
 import java.nio.file.Path
 
 /** The size of the usage window the first time it is opened. */
@@ -56,7 +54,7 @@ internal fun UsageWindow(uiScale: Float, geometryFile: Path, onClose: () -> Unit
     ) {
         // The scale is applied inside the window, which has a density of its own.
         UiScale(uiScale) {
-            TitleBar { OneLine("Agent usage", color = Katty.colors.text) }
+            ShortTitleBar("Agent usage")
             Box(Modifier.fillMaxSize().background(Katty.colors.side)) { content() }
         }
     }
