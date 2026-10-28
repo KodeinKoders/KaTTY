@@ -90,6 +90,31 @@ class TerminalLinksTest {
     }
 
     @Test
+    fun aNameThatTheNetworkChangedIsReadAgainWhenAnAddressDoesNotMatch() {
+        var remembered: String? = "old.home"
+        var reads = 0
+        val current = { reads++; "new.home" }
+        val remember = { name: String -> remembered = name }
+
+        assertTrue(isThisMachine("old.home", { remembered }, current, remember), "The name that is known needs no new reading")
+        assertEquals(0, reads)
+        // A shell that was started after the network changed says the new name.
+        assertTrue(isThisMachine("new.home", { remembered }, current, remember))
+        assertEquals("new.home", remembered, "The new name is kept")
+        assertTrue(isThisMachine("NEW.home", { remembered }, current, remember))
+        assertEquals(1, reads, "Once it is kept it is not read again")
+    }
+
+    @Test
+    fun anotherMachineIsStillAnotherMachineWhenTheNameIsReadAgain() {
+        var remembered: String? = "mac.home"
+        assertFalse(isThisMachine("build-server.example.com", { remembered }, { "mac.home" }, { remembered = it }))
+        assertFalse(isThisMachine("build-server.example.com", { remembered }, { null }, { remembered = it }), "A name that cannot be read says nothing")
+        assertFalse(isThisMachine("build-server.example.com", { remembered }, { "other.home" }, { remembered = it }))
+        assertEquals("other.home", remembered)
+    }
+
+    @Test
     fun anEscapeIsTwoHexadecimalDigits() {
         assertEquals("/tmp/%+F", decodeWorkingDirectory("file:///tmp/%+F"))
         assertEquals("/tmp/%-1", decodeWorkingDirectory("file:///tmp/%-1"))

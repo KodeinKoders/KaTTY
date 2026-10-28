@@ -82,7 +82,7 @@ public data class TerminalLinkSegment(val row: Int, val columns: IntRange)
  * The directory that the shell reported (OSC 7), as a path: a `file://host/path` URI of this machine is turned into its path, with the
  * percent-encoding removed, and a bare path is kept. `null` when there is none, and for a directory of another machine ([isRemoteDirectory]).
  */
-internal fun decodeWorkingDirectory(reported: String, isLocal: (String) -> Boolean = ::isLocalHost): String? {
+internal fun decodeWorkingDirectory(reported: String, isLocal: (String) -> Boolean = { isThisMachine(it) }): String? {
     if (reported.isEmpty()) return null
     if (!reported.startsWith("file://")) return reported
     val rest = reported.removePrefix("file://")
@@ -98,7 +98,7 @@ internal fun decodeWorkingDirectory(reported: String, isLocal: (String) -> Boole
  * Whether the directory that the shell reported is on another machine: the shell of a server that the user went to with `ssh` reports its
  * own, which is not a directory here. The terminal keeps the one it had.
  */
-internal fun isRemoteDirectory(reported: String, isLocal: (String) -> Boolean = ::isLocalHost): Boolean {
+internal fun isRemoteDirectory(reported: String, isLocal: (String) -> Boolean = { isThisMachine(it) }): Boolean {
     if (!reported.startsWith("file://")) return false
     val rest = reported.removePrefix("file://")
     return !isLocal(rest.substringBefore('/'))

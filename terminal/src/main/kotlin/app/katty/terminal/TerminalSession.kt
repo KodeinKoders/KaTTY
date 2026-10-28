@@ -47,6 +47,16 @@ import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger(TerminalSession::class.java)
 
+// The hosts whose directories were ignored, so that each is said once.
+private val ignoredHosts = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+// A directory that a shell reports for a machine that is not this one is dropped, which is what a shell over `ssh` needs; but it is also what a
+// shell does that says a name that is not the system's, and nothing else shows it: the terminal just does not follow the shell.
+private fun logIgnoredDirectory(reported: String) {
+    val host = reported.removePrefix("file://").substringBefore('/')
+    if (ignoredHosts.add(host)) logger.info("Ignoring the directory that a shell reported for the host '{}': this machine is '{}'", host, localHostName())
+}
+
 /**
  * A program running in a pseudo-terminal, and the virtual terminal that makes sense of what it writes.
  *
@@ -473,7 +483,11 @@ public class TerminalSession private constructor(
             workingDirectoryChanged = false
             // A directory of another machine (a shell over ssh) is not this one's: the terminal keeps the one it had.
             val pwd = terminal.pwd
-            if (!isRemoteDirectory(pwd)) workingDirectoryState.value = decodeWorkingDirectory(pwd)
+            if (!isRemoteDirectory(pwd)) {
+                workingDirectoryState.value = decodeWorkingDirectory(pwd)
+            } else {
+                logIgnoredDirectory(pwd)
+            }
         }
     }
 
