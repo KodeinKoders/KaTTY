@@ -42,7 +42,7 @@ public class GhosttyTerminalProgramStatus {
         GhosttyString.layout().withName("app"),
         GhosttyString.layout().withName("title"),
         GhosttyString.layout().withName("message")
-    ).withName("$anon$1268:9");
+    ).withName("$anon$1513:9");
 
     /**
      * The layout of this struct

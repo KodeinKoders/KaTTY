@@ -30,7 +30,7 @@ public class GhosttyTerminalUnknownStringSequence {
         GhosttyVt.C_BOOL.withName("truncated"),
         MemoryLayout.paddingLayout(7),
         GhosttyString.layout().withName("content")
-    ).withName("$anon$567:9");
+    ).withName("$anon$811:9");
 
     /**
      * The layout of this struct

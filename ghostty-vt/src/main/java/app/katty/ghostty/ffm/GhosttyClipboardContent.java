@@ -29,7 +29,7 @@ public class GhosttyClipboardContent {
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         GhosttyString.layout().withName("mime"),
         GhosttyString.layout().withName("data")
-    ).withName("$anon$714:9");
+    ).withName("$anon$959:9");
 
     /**
      * The layout of this struct

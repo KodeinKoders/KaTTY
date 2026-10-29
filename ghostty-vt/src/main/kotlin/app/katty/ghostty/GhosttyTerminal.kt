@@ -826,8 +826,8 @@ public class GhosttyTerminal private constructor(
             MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.size)
             !GhosttyVt.ghostty_paste_is_safe(data, bytes.size.toLong())
         }
-        // libghostty's check only looks for newlines, and its encoder keeps a carriage return as it is: it is Enter as well.
-        return (unsafe || '\r' in text) && (!isModeEnabled(GhosttyMode.BRACKETED_PASTE) || BRACKETED_PASTE_END in text)
+        // libghostty's check takes a carriage return for a newline too (Ghostty's #14687): it is Enter as well.
+        return unsafe && (!isModeEnabled(GhosttyMode.BRACKETED_PASTE) || BRACKETED_PASTE_END in text)
     }
 
     // How much of an unfinished escape sequence is kept, so that a snapshot taken in the middle of one can be restored. 0 keeps none.

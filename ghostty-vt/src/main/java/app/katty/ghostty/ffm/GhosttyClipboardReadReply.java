@@ -41,7 +41,7 @@ public class GhosttyClipboardReadReply {
         GhosttyVt.C_LONG.withName("available_len"),
         GhosttyVt.C_BOOL.withName("remember"),
         MemoryLayout.paddingLayout(7)
-    ).withName("$anon$924:9");
+    ).withName("$anon$1169:9");
 
     /**
      * The layout of this struct

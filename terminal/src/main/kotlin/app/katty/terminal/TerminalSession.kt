@@ -1235,7 +1235,7 @@ public class TerminalSession private constructor(
          * @param snapshot What the terminal was ([TerminalSession.snapshot]): the new session starts with its screen and its history, the
          * title and the directory, and [command] runs below them: a **new** program, since a process cannot be saved. The size is [cols] by
          * [rows], to which the old content is reflowed, and the old program's modes are taken off, so that a snapshot of an editor gives a
-         * shell with a plain mouse. Not restored: the images of the Kitty protocol, the selection, the viewport.
+         * shell with a plain mouse. Not restored: the selection, the viewport. The images of the Kitty protocol are.
          * @param boldIsBright Whether bold text in one of the 8 normal colors of the palette is drawn in the bright one, as terminals did when
          * they had no bold font. [setBoldIsBright] changes it.
          * @param typeAtPrompt A command to type in the shell when it first waits for one, as the user would (see [TypedCommand]). The shell has

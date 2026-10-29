@@ -31,7 +31,7 @@ public class GhosttyTerminalDesktopNotification {
         GhosttyVt.C_LONG.withName("size"),
         GhosttyString.layout().withName("title"),
         GhosttyString.layout().withName("body")
-    ).withName("$anon$1086:9");
+    ).withName("$anon$1331:9");
 
     /**
      * The layout of this struct

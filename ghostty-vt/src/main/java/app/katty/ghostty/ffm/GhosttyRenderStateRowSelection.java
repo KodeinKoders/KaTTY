@@ -32,7 +32,7 @@ public class GhosttyRenderStateRowSelection {
         GhosttyVt.C_SHORT.withName("start_x"),
         GhosttyVt.C_SHORT.withName("end_x"),
         MemoryLayout.paddingLayout(4)
-    ).withName("$anon$499:9");
+    ).withName("$anon$1000:9");
 
     /**
      * The layout of this struct

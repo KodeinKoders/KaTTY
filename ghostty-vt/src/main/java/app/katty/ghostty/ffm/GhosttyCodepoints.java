@@ -29,7 +29,7 @@ public class GhosttyCodepoints {
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         GhosttyVt.C_POINTER.withName("ptr"),
         GhosttyVt.C_LONG.withName("len")
-    ).withName("$anon$317:9");
+    ).withName("$anon$325:9");
 
     /**
      * The layout of this struct

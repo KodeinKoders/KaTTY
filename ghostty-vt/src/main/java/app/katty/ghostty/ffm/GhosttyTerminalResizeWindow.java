@@ -30,7 +30,7 @@ public class GhosttyTerminalResizeWindow {
         GhosttyVt.C_INT.withName("tag"),
         MemoryLayout.paddingLayout(4),
         GhosttyTerminalResizeWindowValue.layout().withName("value")
-    ).withName("$anon$1622:9");
+    ).withName("$anon$1867:9");
 
     /**
      * The layout of this struct

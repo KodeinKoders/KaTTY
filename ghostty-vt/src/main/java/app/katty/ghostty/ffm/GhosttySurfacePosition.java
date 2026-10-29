@@ -29,7 +29,7 @@ public class GhosttySurfacePosition {
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         GhosttyVt.C_DOUBLE.withName("x"),
         GhosttyVt.C_DOUBLE.withName("y")
-    ).withName("$anon$300:9");
+    ).withName("$anon$308:9");
 
     /**
      * The layout of this struct

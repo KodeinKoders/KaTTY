@@ -29,7 +29,7 @@ public class GhosttyTerminalResizeWindowValue {
     private static final GroupLayout $LAYOUT = MemoryLayout.unionLayout(
         GhosttyTerminalResizeWindowGrid.layout().withName("grid"),
         MemoryLayout.sequenceLayout(2, GhosttyVt.C_LONG_LONG).withName("_padding")
-    ).withName("$anon$1609:9");
+    ).withName("$anon$1854:9");
 
     /**
      * The layout of this union

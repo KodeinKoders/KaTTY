@@ -40,7 +40,7 @@ public class GhosttyTerminalSemanticPrompt {
         GhosttyVt.C_INT.withName("exit_code"),
         GhosttyString.layout().withName("command"),
         GhosttyString.layout().withName("error")
-    ).withName("$anon$1480:9");
+    ).withName("$anon$1725:9");
 
     /**
      * The layout of this struct

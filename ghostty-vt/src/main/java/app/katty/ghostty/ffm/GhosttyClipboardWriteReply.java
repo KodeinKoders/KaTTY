@@ -32,7 +32,7 @@ public class GhosttyClipboardWriteReply {
         GhosttyVt.C_INT.withName("result"),
         GhosttyVt.C_BOOL.withName("remember"),
         MemoryLayout.paddingLayout(3)
-    ).withName("$anon$763:9");
+    ).withName("$anon$1008:9");
 
     /**
      * The layout of this struct

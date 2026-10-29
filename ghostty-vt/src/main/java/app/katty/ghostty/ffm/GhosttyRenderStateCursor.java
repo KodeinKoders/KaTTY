@@ -45,7 +45,7 @@ public class GhosttyRenderStateCursor {
         GhosttyVt.C_BOOL.withName("password_input"),
         MemoryLayout.paddingLayout(2),
         GhosttyVt.C_INT.withName("visual_style")
-    ).withName("$anon$522:9");
+    ).withName("$anon$1023:9");
 
     /**
      * The layout of this struct

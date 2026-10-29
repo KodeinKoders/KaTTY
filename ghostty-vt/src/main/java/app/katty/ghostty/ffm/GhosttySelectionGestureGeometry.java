@@ -33,7 +33,7 @@ public class GhosttySelectionGestureGeometry {
         GhosttyVt.C_INT.withName("cell_width"),
         GhosttyVt.C_INT.withName("padding_left"),
         GhosttyVt.C_INT.withName("screen_height")
-    ).withName("$anon$382:9");
+    ).withName("$anon$386:9");
 
     /**
      * The layout of this struct

@@ -47,13 +47,10 @@ abstract class BuildLibGhosttyVt @Inject constructor(private val exec: ExecOpera
         exec.exec {
             executable = zigDirectory.get().file("zig").asFile.absolutePath
             workingDir = ghosttyDirectory.get().asFile
-            args(
-                listOf("build") + options.get() + listOf(
-                    "--prefix", output.absolutePath,
-                    "--cache-dir", cacheDirectory.get().dir("local").asFile.absolutePath,
-                    "--global-cache-dir", cacheDirectory.get().dir("global").asFile.absolutePath,
-                ),
-            )
+            args(listOf("build") + options.get() + listOf("--prefix", output.absolutePath))
+            // Zig's caches are in the build directory, not in the user's home, and not in the submodule. Zig 0.17 has no option for them.
+            environment("ZIG_LOCAL_CACHE_DIR", cacheDirectory.get().dir("local").asFile.absolutePath)
+            environment("ZIG_GLOBAL_CACHE_DIR", cacheDirectory.get().dir("global").asFile.absolutePath)
         }
     }
 }

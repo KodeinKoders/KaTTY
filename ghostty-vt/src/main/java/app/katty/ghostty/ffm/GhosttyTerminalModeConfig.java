@@ -30,7 +30,7 @@ public class GhosttyTerminalModeConfig {
         GhosttyVt.C_SHORT.withName("mode"),
         GhosttyVt.C_BOOL.withName("value"),
         MemoryLayout.paddingLayout(1)
-    ).withName("$anon$1932:9");
+    ).withName("$anon$2177:9");
 
     /**
      * The layout of this struct

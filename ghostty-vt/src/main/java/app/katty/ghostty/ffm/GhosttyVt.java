@@ -17,6 +17,555 @@ public class GhosttyVt extends GhosttyVt_1 {
     GhosttyVt() {
         // Should not be called directly
     }
+    private static final int GHOSTTY_KEY_DIGIT_4 = (int)10L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_DIGIT_4 = 10
+     * }
+     */
+    public static int GHOSTTY_KEY_DIGIT_4() {
+        return GHOSTTY_KEY_DIGIT_4;
+    }
+    private static final int GHOSTTY_KEY_DIGIT_5 = (int)11L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_DIGIT_5 = 11
+     * }
+     */
+    public static int GHOSTTY_KEY_DIGIT_5() {
+        return GHOSTTY_KEY_DIGIT_5;
+    }
+    private static final int GHOSTTY_KEY_DIGIT_6 = (int)12L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_DIGIT_6 = 12
+     * }
+     */
+    public static int GHOSTTY_KEY_DIGIT_6() {
+        return GHOSTTY_KEY_DIGIT_6;
+    }
+    private static final int GHOSTTY_KEY_DIGIT_7 = (int)13L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_DIGIT_7 = 13
+     * }
+     */
+    public static int GHOSTTY_KEY_DIGIT_7() {
+        return GHOSTTY_KEY_DIGIT_7;
+    }
+    private static final int GHOSTTY_KEY_DIGIT_8 = (int)14L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_DIGIT_8 = 14
+     * }
+     */
+    public static int GHOSTTY_KEY_DIGIT_8() {
+        return GHOSTTY_KEY_DIGIT_8;
+    }
+    private static final int GHOSTTY_KEY_DIGIT_9 = (int)15L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_DIGIT_9 = 15
+     * }
+     */
+    public static int GHOSTTY_KEY_DIGIT_9() {
+        return GHOSTTY_KEY_DIGIT_9;
+    }
+    private static final int GHOSTTY_KEY_EQUAL = (int)16L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_EQUAL = 16
+     * }
+     */
+    public static int GHOSTTY_KEY_EQUAL() {
+        return GHOSTTY_KEY_EQUAL;
+    }
+    private static final int GHOSTTY_KEY_INTL_BACKSLASH = (int)17L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_INTL_BACKSLASH = 17
+     * }
+     */
+    public static int GHOSTTY_KEY_INTL_BACKSLASH() {
+        return GHOSTTY_KEY_INTL_BACKSLASH;
+    }
+    private static final int GHOSTTY_KEY_INTL_RO = (int)18L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_INTL_RO = 18
+     * }
+     */
+    public static int GHOSTTY_KEY_INTL_RO() {
+        return GHOSTTY_KEY_INTL_RO;
+    }
+    private static final int GHOSTTY_KEY_INTL_YEN = (int)19L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_INTL_YEN = 19
+     * }
+     */
+    public static int GHOSTTY_KEY_INTL_YEN() {
+        return GHOSTTY_KEY_INTL_YEN;
+    }
+    private static final int GHOSTTY_KEY_A = (int)20L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_A = 20
+     * }
+     */
+    public static int GHOSTTY_KEY_A() {
+        return GHOSTTY_KEY_A;
+    }
+    private static final int GHOSTTY_KEY_B = (int)21L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_B = 21
+     * }
+     */
+    public static int GHOSTTY_KEY_B() {
+        return GHOSTTY_KEY_B;
+    }
+    private static final int GHOSTTY_KEY_C = (int)22L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_C = 22
+     * }
+     */
+    public static int GHOSTTY_KEY_C() {
+        return GHOSTTY_KEY_C;
+    }
+    private static final int GHOSTTY_KEY_D = (int)23L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_D = 23
+     * }
+     */
+    public static int GHOSTTY_KEY_D() {
+        return GHOSTTY_KEY_D;
+    }
+    private static final int GHOSTTY_KEY_E = (int)24L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_E = 24
+     * }
+     */
+    public static int GHOSTTY_KEY_E() {
+        return GHOSTTY_KEY_E;
+    }
+    private static final int GHOSTTY_KEY_F = (int)25L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_F = 25
+     * }
+     */
+    public static int GHOSTTY_KEY_F() {
+        return GHOSTTY_KEY_F;
+    }
+    private static final int GHOSTTY_KEY_G = (int)26L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_G = 26
+     * }
+     */
+    public static int GHOSTTY_KEY_G() {
+        return GHOSTTY_KEY_G;
+    }
+    private static final int GHOSTTY_KEY_H = (int)27L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_H = 27
+     * }
+     */
+    public static int GHOSTTY_KEY_H() {
+        return GHOSTTY_KEY_H;
+    }
+    private static final int GHOSTTY_KEY_I = (int)28L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_I = 28
+     * }
+     */
+    public static int GHOSTTY_KEY_I() {
+        return GHOSTTY_KEY_I;
+    }
+    private static final int GHOSTTY_KEY_J = (int)29L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_J = 29
+     * }
+     */
+    public static int GHOSTTY_KEY_J() {
+        return GHOSTTY_KEY_J;
+    }
+    private static final int GHOSTTY_KEY_K = (int)30L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_K = 30
+     * }
+     */
+    public static int GHOSTTY_KEY_K() {
+        return GHOSTTY_KEY_K;
+    }
+    private static final int GHOSTTY_KEY_L = (int)31L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_L = 31
+     * }
+     */
+    public static int GHOSTTY_KEY_L() {
+        return GHOSTTY_KEY_L;
+    }
+    private static final int GHOSTTY_KEY_M = (int)32L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_M = 32
+     * }
+     */
+    public static int GHOSTTY_KEY_M() {
+        return GHOSTTY_KEY_M;
+    }
+    private static final int GHOSTTY_KEY_N = (int)33L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_N = 33
+     * }
+     */
+    public static int GHOSTTY_KEY_N() {
+        return GHOSTTY_KEY_N;
+    }
+    private static final int GHOSTTY_KEY_O = (int)34L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_O = 34
+     * }
+     */
+    public static int GHOSTTY_KEY_O() {
+        return GHOSTTY_KEY_O;
+    }
+    private static final int GHOSTTY_KEY_P = (int)35L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_P = 35
+     * }
+     */
+    public static int GHOSTTY_KEY_P() {
+        return GHOSTTY_KEY_P;
+    }
+    private static final int GHOSTTY_KEY_Q = (int)36L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_Q = 36
+     * }
+     */
+    public static int GHOSTTY_KEY_Q() {
+        return GHOSTTY_KEY_Q;
+    }
+    private static final int GHOSTTY_KEY_R = (int)37L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_R = 37
+     * }
+     */
+    public static int GHOSTTY_KEY_R() {
+        return GHOSTTY_KEY_R;
+    }
+    private static final int GHOSTTY_KEY_S = (int)38L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_S = 38
+     * }
+     */
+    public static int GHOSTTY_KEY_S() {
+        return GHOSTTY_KEY_S;
+    }
+    private static final int GHOSTTY_KEY_T = (int)39L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_T = 39
+     * }
+     */
+    public static int GHOSTTY_KEY_T() {
+        return GHOSTTY_KEY_T;
+    }
+    private static final int GHOSTTY_KEY_U = (int)40L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_U = 40
+     * }
+     */
+    public static int GHOSTTY_KEY_U() {
+        return GHOSTTY_KEY_U;
+    }
+    private static final int GHOSTTY_KEY_V = (int)41L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_V = 41
+     * }
+     */
+    public static int GHOSTTY_KEY_V() {
+        return GHOSTTY_KEY_V;
+    }
+    private static final int GHOSTTY_KEY_W = (int)42L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_W = 42
+     * }
+     */
+    public static int GHOSTTY_KEY_W() {
+        return GHOSTTY_KEY_W;
+    }
+    private static final int GHOSTTY_KEY_X = (int)43L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_X = 43
+     * }
+     */
+    public static int GHOSTTY_KEY_X() {
+        return GHOSTTY_KEY_X;
+    }
+    private static final int GHOSTTY_KEY_Y = (int)44L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_Y = 44
+     * }
+     */
+    public static int GHOSTTY_KEY_Y() {
+        return GHOSTTY_KEY_Y;
+    }
+    private static final int GHOSTTY_KEY_Z = (int)45L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_Z = 45
+     * }
+     */
+    public static int GHOSTTY_KEY_Z() {
+        return GHOSTTY_KEY_Z;
+    }
+    private static final int GHOSTTY_KEY_MINUS = (int)46L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_MINUS = 46
+     * }
+     */
+    public static int GHOSTTY_KEY_MINUS() {
+        return GHOSTTY_KEY_MINUS;
+    }
+    private static final int GHOSTTY_KEY_PERIOD = (int)47L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_PERIOD = 47
+     * }
+     */
+    public static int GHOSTTY_KEY_PERIOD() {
+        return GHOSTTY_KEY_PERIOD;
+    }
+    private static final int GHOSTTY_KEY_QUOTE = (int)48L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_QUOTE = 48
+     * }
+     */
+    public static int GHOSTTY_KEY_QUOTE() {
+        return GHOSTTY_KEY_QUOTE;
+    }
+    private static final int GHOSTTY_KEY_SEMICOLON = (int)49L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_SEMICOLON = 49
+     * }
+     */
+    public static int GHOSTTY_KEY_SEMICOLON() {
+        return GHOSTTY_KEY_SEMICOLON;
+    }
+    private static final int GHOSTTY_KEY_SLASH = (int)50L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_SLASH = 50
+     * }
+     */
+    public static int GHOSTTY_KEY_SLASH() {
+        return GHOSTTY_KEY_SLASH;
+    }
+    private static final int GHOSTTY_KEY_ALT_LEFT = (int)51L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_ALT_LEFT = 51
+     * }
+     */
+    public static int GHOSTTY_KEY_ALT_LEFT() {
+        return GHOSTTY_KEY_ALT_LEFT;
+    }
+    private static final int GHOSTTY_KEY_ALT_RIGHT = (int)52L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_ALT_RIGHT = 52
+     * }
+     */
+    public static int GHOSTTY_KEY_ALT_RIGHT() {
+        return GHOSTTY_KEY_ALT_RIGHT;
+    }
+    private static final int GHOSTTY_KEY_BACKSPACE = (int)53L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_BACKSPACE = 53
+     * }
+     */
+    public static int GHOSTTY_KEY_BACKSPACE() {
+        return GHOSTTY_KEY_BACKSPACE;
+    }
+    private static final int GHOSTTY_KEY_CAPS_LOCK = (int)54L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_CAPS_LOCK = 54
+     * }
+     */
+    public static int GHOSTTY_KEY_CAPS_LOCK() {
+        return GHOSTTY_KEY_CAPS_LOCK;
+    }
+    private static final int GHOSTTY_KEY_CONTEXT_MENU = (int)55L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_CONTEXT_MENU = 55
+     * }
+     */
+    public static int GHOSTTY_KEY_CONTEXT_MENU() {
+        return GHOSTTY_KEY_CONTEXT_MENU;
+    }
+    private static final int GHOSTTY_KEY_CONTROL_LEFT = (int)56L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_CONTROL_LEFT = 56
+     * }
+     */
+    public static int GHOSTTY_KEY_CONTROL_LEFT() {
+        return GHOSTTY_KEY_CONTROL_LEFT;
+    }
+    private static final int GHOSTTY_KEY_CONTROL_RIGHT = (int)57L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_CONTROL_RIGHT = 57
+     * }
+     */
+    public static int GHOSTTY_KEY_CONTROL_RIGHT() {
+        return GHOSTTY_KEY_CONTROL_RIGHT;
+    }
+    private static final int GHOSTTY_KEY_ENTER = (int)58L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_ENTER = 58
+     * }
+     */
+    public static int GHOSTTY_KEY_ENTER() {
+        return GHOSTTY_KEY_ENTER;
+    }
+    private static final int GHOSTTY_KEY_META_LEFT = (int)59L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_META_LEFT = 59
+     * }
+     */
+    public static int GHOSTTY_KEY_META_LEFT() {
+        return GHOSTTY_KEY_META_LEFT;
+    }
+    private static final int GHOSTTY_KEY_META_RIGHT = (int)60L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_META_RIGHT = 60
+     * }
+     */
+    public static int GHOSTTY_KEY_META_RIGHT() {
+        return GHOSTTY_KEY_META_RIGHT;
+    }
+    private static final int GHOSTTY_KEY_SHIFT_LEFT = (int)61L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_SHIFT_LEFT = 61
+     * }
+     */
+    public static int GHOSTTY_KEY_SHIFT_LEFT() {
+        return GHOSTTY_KEY_SHIFT_LEFT;
+    }
+    private static final int GHOSTTY_KEY_SHIFT_RIGHT = (int)62L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_SHIFT_RIGHT = 62
+     * }
+     */
+    public static int GHOSTTY_KEY_SHIFT_RIGHT() {
+        return GHOSTTY_KEY_SHIFT_RIGHT;
+    }
+    private static final int GHOSTTY_KEY_SPACE = (int)63L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_SPACE = 63
+     * }
+     */
+    public static int GHOSTTY_KEY_SPACE() {
+        return GHOSTTY_KEY_SPACE;
+    }
+    private static final int GHOSTTY_KEY_TAB = (int)64L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_TAB = 64
+     * }
+     */
+    public static int GHOSTTY_KEY_TAB() {
+        return GHOSTTY_KEY_TAB;
+    }
+    private static final int GHOSTTY_KEY_CONVERT = (int)65L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_CONVERT = 65
+     * }
+     */
+    public static int GHOSTTY_KEY_CONVERT() {
+        return GHOSTTY_KEY_CONVERT;
+    }
+    private static final int GHOSTTY_KEY_KANA_MODE = (int)66L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_KANA_MODE = 66
+     * }
+     */
+    public static int GHOSTTY_KEY_KANA_MODE() {
+        return GHOSTTY_KEY_KANA_MODE;
+    }
+    private static final int GHOSTTY_KEY_NON_CONVERT = (int)67L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_NON_CONVERT = 67
+     * }
+     */
+    public static int GHOSTTY_KEY_NON_CONVERT() {
+        return GHOSTTY_KEY_NON_CONVERT;
+    }
+    private static final int GHOSTTY_KEY_DELETE = (int)68L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_DELETE = 68
+     * }
+     */
+    public static int GHOSTTY_KEY_DELETE() {
+        return GHOSTTY_KEY_DELETE;
+    }
+    private static final int GHOSTTY_KEY_END = (int)69L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_END = 69
+     * }
+     */
+    public static int GHOSTTY_KEY_END() {
+        return GHOSTTY_KEY_END;
+    }
+    private static final int GHOSTTY_KEY_HELP = (int)70L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_KEY_HELP = 70
+     * }
+     */
+    public static int GHOSTTY_KEY_HELP() {
+        return GHOSTTY_KEY_HELP;
+    }
     private static final int GHOSTTY_KEY_HOME = (int)71L;
     /**
      * {@snippet lang=c :
@@ -4963,6 +5512,15 @@ public class GhosttyVt extends GhosttyVt_1 {
     public static int GHOSTTY_SNAPSHOT_DECODER_OPT_COMPRESS_HISTORY() {
         return GHOSTTY_SNAPSHOT_DECODER_OPT_COMPRESS_HISTORY;
     }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_OPT_KITTY_IMAGE_STORAGE_LIMIT = (int)3L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_OPT_KITTY_IMAGE_STORAGE_LIMIT = 3
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_OPT_KITTY_IMAGE_STORAGE_LIMIT() {
+        return GHOSTTY_SNAPSHOT_DECODER_OPT_KITTY_IMAGE_STORAGE_LIMIT;
+    }
     private static final int GHOSTTY_SNAPSHOT_DECODER_OPT_MAX_VALUE = (int)2147483647L;
     /**
      * {@snippet lang=c :
@@ -4971,6 +5529,33 @@ public class GhosttyVt extends GhosttyVt_1 {
      */
     public static int GHOSTTY_SNAPSHOT_DECODER_OPT_MAX_VALUE() {
         return GHOSTTY_SNAPSHOT_DECODER_OPT_MAX_VALUE;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE = (int)0L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE = 0
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE() {
+        return GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_IMAGE = (int)1L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_IMAGE = 1
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_IMAGE() {
+        return GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_IMAGE;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_MAX_VALUE() {
+        return GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_MAX_VALUE;
     }
     private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_INVALID = (int)0L;
     /**
@@ -5061,6 +5646,87 @@ public class GhosttyVt extends GhosttyVt_1 {
      */
     public static int GHOSTTY_SNAPSHOT_DECODER_DATA_COMPRESS_HISTORY() {
         return GHOSTTY_SNAPSHOT_DECODER_DATA_COMPRESS_HISTORY;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGE_STORAGE_LIMIT = (int)10L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGE_STORAGE_LIMIT = 10
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGE_STORAGE_LIMIT() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGE_STORAGE_LIMIT;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND = (int)11L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND = 11
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_ID = (int)12L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_ID = 12
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_ID() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_ID;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_FRAME = (int)13L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_FRAME = 13
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_FRAME() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_FRAME;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_BYTES = (int)14L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_BYTES = 14
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_BYTES() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_BYTES;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_PRIMARY = (int)15L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_PRIMARY = 15
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_PRIMARY() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_PRIMARY;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_ALTERNATE = (int)16L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_ALTERNATE = 16
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_ALTERNATE() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_ALTERNATE;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_PRIMARY = (int)17L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_PRIMARY = 17
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_PRIMARY() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_PRIMARY;
+    }
+    private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_ALTERNATE = (int)18L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_ALTERNATE = 18
+     * }
+     */
+    public static int GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_ALTERNATE() {
+        return GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_ALTERNATE;
     }
     private static final int GHOSTTY_SNAPSHOT_DECODER_DATA_MAX_VALUE = (int)2147483647L;
     /**

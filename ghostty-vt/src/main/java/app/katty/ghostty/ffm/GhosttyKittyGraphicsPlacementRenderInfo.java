@@ -51,7 +51,7 @@ public class GhosttyKittyGraphicsPlacementRenderInfo {
         GhosttyVt.C_INT.withName("source_width"),
         GhosttyVt.C_INT.withName("source_height"),
         MemoryLayout.paddingLayout(4)
-    ).withName("$anon$462:9");
+    ).withName("$anon$597:9");
 
     /**
      * The layout of this struct

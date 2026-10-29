@@ -208,7 +208,7 @@ class GhosttySnapshotTest {
     }
 
     @Test
-    fun theImagesOfTheKittyProtocolAreNotSaved() {
+    fun theImagesOfTheKittyProtocolAreSaved() {
         GhosttyTerminal(cols = 20, rows = 10, imageStorageLimitBytes = 10_000_000).use { withImage ->
             withImage.resize(20, 10, 10, 20)
             withImage.vtWrite("\u001b_Ga=T,f=32,s=2,v=2,i=1;/////////////////////w==\u001b\\")
@@ -216,7 +216,9 @@ class GhosttySnapshotTest {
 
             val copy = GhosttyTerminal.restore(withImage.snapshot(), imageStorageLimitBytes = 10_000_000).also { restored += it }
 
-            assertEquals(emptyList(), copy.kittyPlacements())
+            // Their placements and their pixels, which an earlier libghostty did not keep.
+            assertEquals(1, copy.kittyPlacements().size)
+            assertEquals(withImage.kittyImage(1)!!.toRgba().toList(), copy.kittyImage(1)!!.toRgba().toList())
         }
     }
 

@@ -31,7 +31,7 @@ public class GhosttySelectionGestureBehaviors {
         GhosttyVt.C_INT.withName("single_click"),
         GhosttyVt.C_INT.withName("double_click"),
         GhosttyVt.C_INT.withName("triple_click")
-    ).withName("$anon$366:9");
+    ).withName("$anon$370:9");
 
     /**
      * The layout of this struct

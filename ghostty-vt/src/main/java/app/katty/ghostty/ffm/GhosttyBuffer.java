@@ -31,7 +31,7 @@ public class GhosttyBuffer {
         GhosttyVt.C_POINTER.withName("ptr"),
         GhosttyVt.C_LONG.withName("cap"),
         GhosttyVt.C_LONG.withName("len")
-    ).withName("$anon$282:9");
+    ).withName("$anon$290:9");
 
     /**
      * The layout of this struct

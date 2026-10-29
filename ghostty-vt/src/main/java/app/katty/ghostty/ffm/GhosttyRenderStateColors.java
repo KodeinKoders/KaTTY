@@ -38,7 +38,7 @@ public class GhosttyRenderStateColors {
         GhosttyVt.C_BOOL.withName("cursor_has_value"),
         MemoryLayout.sequenceLayout(256, GhosttyColorRgb.layout()).withName("palette"),
         MemoryLayout.paddingLayout(6)
-    ).withName("$anon$567:9");
+    ).withName("$anon$1068:9");
 
     /**
      * The layout of this struct

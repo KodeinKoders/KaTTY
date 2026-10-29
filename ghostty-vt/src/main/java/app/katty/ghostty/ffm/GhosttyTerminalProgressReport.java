@@ -32,7 +32,7 @@ public class GhosttyTerminalProgressReport {
         GhosttyVt.C_INT.withName("state"),
         GhosttyVt.C_CHAR.withName("progress"),
         MemoryLayout.paddingLayout(3)
-    ).withName("$anon$1144:9");
+    ).withName("$anon$1389:9");
 
     /**
      * The layout of this struct

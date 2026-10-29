@@ -54,7 +54,7 @@ public class GhosttyTerminalMemoryUsage {
         GhosttyVt.C_LONG_LONG.withName("alternate_compressed_pages"),
         GhosttyVt.C_LONG_LONG.withName("alternate_compressed_bytes"),
         GhosttyVt.C_LONG_LONG.withName("alternate_image_bytes")
-    ).withName("$anon$462:9");
+    ).withName("$anon$706:9");
 
     /**
      * The layout of this struct

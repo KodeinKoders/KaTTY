@@ -30,7 +30,7 @@ public class GhosttyTerminalUnknownSequence {
         GhosttyVt.C_INT.withName("tag"),
         MemoryLayout.paddingLayout(4),
         GhosttyTerminalUnknownSequenceValue.layout().withName("value")
-    ).withName("$anon$643:9");
+    ).withName("$anon$887:9");
 
     /**
      * The layout of this struct

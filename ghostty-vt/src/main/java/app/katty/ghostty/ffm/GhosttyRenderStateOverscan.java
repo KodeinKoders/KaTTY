@@ -29,7 +29,7 @@ public class GhosttyRenderStateOverscan {
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         GhosttyVt.C_SHORT.withName("above"),
         GhosttyVt.C_SHORT.withName("below")
-    ).withName("$anon$275:9");
+    ).withName("$anon$545:9");
 
     /**
      * The layout of this struct

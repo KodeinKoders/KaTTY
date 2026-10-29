@@ -2312,6 +2312,12 @@ class GhosttyVt_1 extends GhosttyVt$shared {
     public static final AddressLayout GhosttyRenderStateRowCells = GhosttyVt.C_POINTER;
     /**
      * {@snippet lang=c :
+     * typedef struct GhosttyRenderStateImageIteratorImpl *GhosttyRenderStateImageIterator
+     * }
+     */
+    public static final AddressLayout GhosttyRenderStateImageIterator = GhosttyVt.C_POINTER;
+    /**
+     * {@snippet lang=c :
      * typedef struct GhosttySearchImpl *GhosttySearch
      * }
      */
@@ -6871,14 +6877,14 @@ class GhosttyVt_1 extends GhosttyVt$shared {
     public static int GHOSTTY_OSC_COMMAND_KITTY_DND_PROTOCOL() {
         return GHOSTTY_OSC_COMMAND_KITTY_DND_PROTOCOL;
     }
-    private static final int GHOSTTY_OSC_COMMAND_CONTEXT_SIGNAL = (int)25L;
+    private static final int GHOSTTY_OSC_COMMAND_HIERARCHICAL_CONTEXT = (int)25L;
     /**
      * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_OSC_COMMAND_CONTEXT_SIGNAL = 25
+     * enum <anonymous>.GHOSTTY_OSC_COMMAND_HIERARCHICAL_CONTEXT = 25
      * }
      */
-    public static int GHOSTTY_OSC_COMMAND_CONTEXT_SIGNAL() {
-        return GHOSTTY_OSC_COMMAND_CONTEXT_SIGNAL;
+    public static int GHOSTTY_OSC_COMMAND_HIERARCHICAL_CONTEXT() {
+        return GHOSTTY_OSC_COMMAND_HIERARCHICAL_CONTEXT;
     }
     private static final int GHOSTTY_OSC_COMMAND_KITTY_DESKTOP_NOTIFICATION = (int)26L;
     /**
@@ -8085,6 +8091,68 @@ class GhosttyVt_1 extends GhosttyVt$shared {
         }
     }
 
+    private static class ghostty_kitty_graphics_animation_tick {
+        public static final FunctionDescriptor DESC = FunctionDescriptor.of(
+            GhosttyVt.C_INT,
+            GhosttyVt.C_POINTER,
+            GhosttyVt.C_LONG_LONG,
+            GhosttyVt.C_POINTER
+        );
+
+        public static final MemorySegment ADDR = SYMBOL_LOOKUP.findOrThrow("ghostty_kitty_graphics_animation_tick");
+
+        public static final MethodHandle HANDLE = Linker.nativeLinker().downcallHandle(ADDR, DESC);
+    }
+
+    /**
+     * Function descriptor for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_kitty_graphics_animation_tick(GhosttyKittyGraphics graphics, uint64_t now_ms, uint64_t *next_ms)
+     * }
+     */
+    public static FunctionDescriptor ghostty_kitty_graphics_animation_tick$descriptor() {
+        return ghostty_kitty_graphics_animation_tick.DESC;
+    }
+
+    /**
+     * Downcall method handle for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_kitty_graphics_animation_tick(GhosttyKittyGraphics graphics, uint64_t now_ms, uint64_t *next_ms)
+     * }
+     */
+    public static MethodHandle ghostty_kitty_graphics_animation_tick$handle() {
+        return ghostty_kitty_graphics_animation_tick.HANDLE;
+    }
+
+    /**
+     * Address for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_kitty_graphics_animation_tick(GhosttyKittyGraphics graphics, uint64_t now_ms, uint64_t *next_ms)
+     * }
+     */
+    public static MemorySegment ghostty_kitty_graphics_animation_tick$address() {
+        return ghostty_kitty_graphics_animation_tick.ADDR;
+    }
+
+    /**
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_kitty_graphics_animation_tick(GhosttyKittyGraphics graphics, uint64_t now_ms, uint64_t *next_ms)
+     * }
+     */
+    public static int ghostty_kitty_graphics_animation_tick(MemorySegment graphics, long now_ms, MemorySegment next_ms) {
+        var mh$ = ghostty_kitty_graphics_animation_tick.HANDLE;
+        try {
+            if (TRACE_DOWNCALLS) {
+                traceDowncall("ghostty_kitty_graphics_animation_tick", graphics, now_ms, next_ms);
+            }
+            return (int)mh$.invokeExact(graphics, now_ms, next_ms);
+        } catch (Error | RuntimeException ex) {
+           throw ex;
+        } catch (Throwable ex$) {
+           throw new AssertionError("should not reach here", ex$);
+        }
+    }
+
     private static class ghostty_kitty_graphics_image {
         public static final FunctionDescriptor DESC = FunctionDescriptor.of(
             GhosttyVt.C_POINTER,
@@ -9210,6 +9278,195 @@ class GhosttyVt_1 extends GhosttyVt$shared {
      */
     public static int GHOSTTY_TERMINAL_CURSOR_STYLE_MAX_VALUE() {
         return GHOSTTY_TERMINAL_CURSOR_STYLE_MAX_VALUE;
+    }
+    private static final int GHOSTTY_TERMINAL_BOUNDARY_GROUND = (int)1L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_BOUNDARY_GROUND = 1
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_BOUNDARY_GROUND() {
+        return GHOSTTY_TERMINAL_BOUNDARY_GROUND;
+    }
+    private static final int GHOSTTY_TERMINAL_BOUNDARY_APC_START = (int)2L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_BOUNDARY_APC_START = 2
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_BOUNDARY_APC_START() {
+        return GHOSTTY_TERMINAL_BOUNDARY_APC_START;
+    }
+    private static final int GHOSTTY_TERMINAL_BOUNDARY_APC_END = (int)4L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_BOUNDARY_APC_END = 4
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_BOUNDARY_APC_END() {
+        return GHOSTTY_TERMINAL_BOUNDARY_APC_END;
+    }
+    private static final int GHOSTTY_TERMINAL_BOUNDARY_DCS_START = (int)8L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_BOUNDARY_DCS_START = 8
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_BOUNDARY_DCS_START() {
+        return GHOSTTY_TERMINAL_BOUNDARY_DCS_START;
+    }
+    private static final int GHOSTTY_TERMINAL_BOUNDARY_DCS_END = (int)16L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_BOUNDARY_DCS_END = 16
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_BOUNDARY_DCS_END() {
+        return GHOSTTY_TERMINAL_BOUNDARY_DCS_END;
+    }
+    private static final int GHOSTTY_TERMINAL_BOUNDARY_OSC_START = (int)32L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_BOUNDARY_OSC_START = 32
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_BOUNDARY_OSC_START() {
+        return GHOSTTY_TERMINAL_BOUNDARY_OSC_START;
+    }
+    private static final int GHOSTTY_TERMINAL_BOUNDARY_OSC_END = (int)64L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_BOUNDARY_OSC_END = 64
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_BOUNDARY_OSC_END() {
+        return GHOSTTY_TERMINAL_BOUNDARY_OSC_END;
+    }
+    private static final int GHOSTTY_TERMINAL_BOUNDARY_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_BOUNDARY_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_BOUNDARY_MAX_VALUE() {
+        return GHOSTTY_TERMINAL_BOUNDARY_MAX_VALUE;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_KIND_APC = (int)0L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_KIND_APC = 0
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_KIND_APC() {
+        return GHOSTTY_TERMINAL_STRING_KIND_APC;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_KIND_DCS = (int)1L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_KIND_DCS = 1
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_KIND_DCS() {
+        return GHOSTTY_TERMINAL_STRING_KIND_DCS;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_KIND_OSC = (int)2L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_KIND_OSC = 2
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_KIND_OSC() {
+        return GHOSTTY_TERMINAL_STRING_KIND_OSC;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_KIND_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_KIND_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_KIND_MAX_VALUE() {
+        return GHOSTTY_TERMINAL_STRING_KIND_MAX_VALUE;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_INTRODUCER_ESC = (int)0L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_INTRODUCER_ESC = 0
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_INTRODUCER_ESC() {
+        return GHOSTTY_TERMINAL_STRING_INTRODUCER_ESC;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_INTRODUCER_C1 = (int)1L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_INTRODUCER_C1 = 1
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_INTRODUCER_C1() {
+        return GHOSTTY_TERMINAL_STRING_INTRODUCER_C1;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_INTRODUCER_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_INTRODUCER_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_INTRODUCER_MAX_VALUE() {
+        return GHOSTTY_TERMINAL_STRING_INTRODUCER_MAX_VALUE;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_END_ST_ESC = (int)0L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_END_ST_ESC = 0
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_END_ST_ESC() {
+        return GHOSTTY_TERMINAL_STRING_END_ST_ESC;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_END_ST_C1 = (int)1L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_END_ST_C1 = 1
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_END_ST_C1() {
+        return GHOSTTY_TERMINAL_STRING_END_ST_C1;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_END_CANCELLED = (int)2L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_END_CANCELLED = 2
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_END_CANCELLED() {
+        return GHOSTTY_TERMINAL_STRING_END_CANCELLED;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_END_ABORTED = (int)3L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_END_ABORTED = 3
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_END_ABORTED() {
+        return GHOSTTY_TERMINAL_STRING_END_ABORTED;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_END_BEL = (int)4L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_END_BEL = 4
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_END_BEL() {
+        return GHOSTTY_TERMINAL_STRING_END_BEL;
+    }
+    private static final int GHOSTTY_TERMINAL_STRING_END_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_TERMINAL_STRING_END_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_TERMINAL_STRING_END_MAX_VALUE() {
+        return GHOSTTY_TERMINAL_STRING_END_MAX_VALUE;
     }
     private static final int GHOSTTY_TERMINAL_UNKNOWN_SEQUENCE_APC = (int)0L;
     /**
@@ -10876,16 +11133,17 @@ class GhosttyVt_1 extends GhosttyVt$shared {
         }
     }
 
-    private static class ghostty_terminal_vt_write_until_ground {
+    private static class ghostty_terminal_vt_write_until {
         public static final FunctionDescriptor DESC = FunctionDescriptor.of(
             GhosttyVt.C_INT,
             GhosttyVt.C_POINTER,
             GhosttyVt.C_POINTER,
             GhosttyVt.C_LONG,
+            GhosttyVt.C_INT,
             GhosttyVt.C_POINTER
         );
 
-        public static final MemorySegment ADDR = SYMBOL_LOOKUP.findOrThrow("ghostty_terminal_vt_write_until_ground");
+        public static final MemorySegment ADDR = SYMBOL_LOOKUP.findOrThrow("ghostty_terminal_vt_write_until");
 
         public static final MethodHandle HANDLE = Linker.nativeLinker().downcallHandle(ADDR, DESC);
     }
@@ -10893,45 +11151,45 @@ class GhosttyVt_1 extends GhosttyVt$shared {
     /**
      * Function descriptor for:
      * {@snippet lang=c :
-     * GhosttyResult ghostty_terminal_vt_write_until_ground(GhosttyTerminal terminal, const uint8_t *data, size_t len, size_t *out_consumed)
+     * GhosttyResult ghostty_terminal_vt_write_until(GhosttyTerminal terminal, const uint8_t *data, size_t len, uint32_t boundaries, GhosttyTerminalWriteStop *out)
      * }
      */
-    public static FunctionDescriptor ghostty_terminal_vt_write_until_ground$descriptor() {
-        return ghostty_terminal_vt_write_until_ground.DESC;
+    public static FunctionDescriptor ghostty_terminal_vt_write_until$descriptor() {
+        return ghostty_terminal_vt_write_until.DESC;
     }
 
     /**
      * Downcall method handle for:
      * {@snippet lang=c :
-     * GhosttyResult ghostty_terminal_vt_write_until_ground(GhosttyTerminal terminal, const uint8_t *data, size_t len, size_t *out_consumed)
+     * GhosttyResult ghostty_terminal_vt_write_until(GhosttyTerminal terminal, const uint8_t *data, size_t len, uint32_t boundaries, GhosttyTerminalWriteStop *out)
      * }
      */
-    public static MethodHandle ghostty_terminal_vt_write_until_ground$handle() {
-        return ghostty_terminal_vt_write_until_ground.HANDLE;
+    public static MethodHandle ghostty_terminal_vt_write_until$handle() {
+        return ghostty_terminal_vt_write_until.HANDLE;
     }
 
     /**
      * Address for:
      * {@snippet lang=c :
-     * GhosttyResult ghostty_terminal_vt_write_until_ground(GhosttyTerminal terminal, const uint8_t *data, size_t len, size_t *out_consumed)
+     * GhosttyResult ghostty_terminal_vt_write_until(GhosttyTerminal terminal, const uint8_t *data, size_t len, uint32_t boundaries, GhosttyTerminalWriteStop *out)
      * }
      */
-    public static MemorySegment ghostty_terminal_vt_write_until_ground$address() {
-        return ghostty_terminal_vt_write_until_ground.ADDR;
+    public static MemorySegment ghostty_terminal_vt_write_until$address() {
+        return ghostty_terminal_vt_write_until.ADDR;
     }
 
     /**
      * {@snippet lang=c :
-     * GhosttyResult ghostty_terminal_vt_write_until_ground(GhosttyTerminal terminal, const uint8_t *data, size_t len, size_t *out_consumed)
+     * GhosttyResult ghostty_terminal_vt_write_until(GhosttyTerminal terminal, const uint8_t *data, size_t len, uint32_t boundaries, GhosttyTerminalWriteStop *out)
      * }
      */
-    public static int ghostty_terminal_vt_write_until_ground(MemorySegment terminal, MemorySegment data, long len, MemorySegment out_consumed) {
-        var mh$ = ghostty_terminal_vt_write_until_ground.HANDLE;
+    public static int ghostty_terminal_vt_write_until(MemorySegment terminal, MemorySegment data, long len, int boundaries, MemorySegment out) {
+        var mh$ = ghostty_terminal_vt_write_until.HANDLE;
         try {
             if (TRACE_DOWNCALLS) {
-                traceDowncall("ghostty_terminal_vt_write_until_ground", terminal, data, len, out_consumed);
+                traceDowncall("ghostty_terminal_vt_write_until", terminal, data, len, boundaries, out);
             }
-            return (int)mh$.invokeExact(terminal, data, len, out_consumed);
+            return (int)mh$.invokeExact(terminal, data, len, boundaries, out);
         } catch (Error | RuntimeException ex) {
            throw ex;
         } catch (Throwable ex$) {
@@ -12209,6 +12467,24 @@ class GhosttyVt_1 extends GhosttyVt$shared {
     public static int GHOSTTY_RENDER_STATE_DATA_OVERSCAN_REQUEST() {
         return GHOSTTY_RENDER_STATE_DATA_OVERSCAN_REQUEST;
     }
+    private static final int GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR = (int)22L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR = 22
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR() {
+        return GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR;
+    }
+    private static final int GHOSTTY_RENDER_STATE_DATA_IMAGE_PLACEMENTS_GENERATION = (int)23L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_DATA_IMAGE_PLACEMENTS_GENERATION = 23
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_DATA_IMAGE_PLACEMENTS_GENERATION() {
+        return GHOSTTY_RENDER_STATE_DATA_IMAGE_PLACEMENTS_GENERATION;
+    }
     private static final int GHOSTTY_RENDER_STATE_DATA_MAX_VALUE = (int)2147483647L;
     /**
      * {@snippet lang=c :
@@ -12244,6 +12520,285 @@ class GhosttyVt_1 extends GhosttyVt$shared {
      */
     public static int GHOSTTY_RENDER_STATE_OPTION_MAX_VALUE() {
         return GHOSTTY_RENDER_STATE_OPTION_MAX_VALUE;
+    }
+    private static final int GHOSTTY_IMAGE_PROTOCOL_KITTY = (int)0L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_IMAGE_PROTOCOL_KITTY = 0
+     * }
+     */
+    public static int GHOSTTY_IMAGE_PROTOCOL_KITTY() {
+        return GHOSTTY_IMAGE_PROTOCOL_KITTY;
+    }
+    private static final int GHOSTTY_IMAGE_PROTOCOL_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_IMAGE_PROTOCOL_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_IMAGE_PROTOCOL_MAX_VALUE() {
+        return GHOSTTY_IMAGE_PROTOCOL_MAX_VALUE;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND = (int)0L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND = 0
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND() {
+        return GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT = (int)1L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT = 1
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT() {
+        return GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT = (int)2L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT = 2
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT() {
+        return GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_LAYER_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_LAYER_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_LAYER_MAX_VALUE() {
+        return GHOSTTY_RENDER_STATE_IMAGE_LAYER_MAX_VALUE;
+    }
+    private static final int GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_VIRTUAL = (int)0L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_VIRTUAL = 0
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_VIRTUAL() {
+        return GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_VIRTUAL;
+    }
+    private static final int GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_RELATIVE = (int)1L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_RELATIVE = 1
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_RELATIVE() {
+        return GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_RELATIVE;
+    }
+    private static final int GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_FIXED = (int)2L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_FIXED = 2
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_FIXED() {
+        return GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_FIXED;
+    }
+    private static final int GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_MAX_VALUE() {
+        return GHOSTTY_RENDER_STATE_KITTY_PLACEMENT_KIND_MAX_VALUE;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_INVALID = (int)0L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_INVALID = 0
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_INVALID() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_INVALID;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL = (int)1L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL = 1
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_ID = (int)2L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_ID = 2
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_ID() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_ID;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION = (int)3L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION = 3
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER = (int)4L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER = 4
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_Z = (int)5L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_Z = 5
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_Z() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_Z;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL = (int)6L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL = 6
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_ROW = (int)7L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_ROW = 7
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_ROW() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_ROW;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_COLS = (int)8L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_COLS = 8
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_COLS() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_COLS;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_ROWS = (int)9L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_ROWS = 9
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_ROWS() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_ROWS;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_X = (int)10L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_X = 10
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_X() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_X;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y = (int)11L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y = 11
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH = (int)12L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH = 12
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT = (int)13L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT = 13
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_X = (int)14L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_X = 14
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_X() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_X;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_Y = (int)15L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_Y = 15
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_Y() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_Y;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH = (int)16L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH = 16
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT = (int)17L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT = 17
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_PLACEMENT_ID = (int)18L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_PLACEMENT_ID = 18
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_PLACEMENT_ID() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_PLACEMENT_ID;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_KIND = (int)19L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_KIND = 19
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_KIND() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_KIND;
+    }
+    private static final int GHOSTTY_RENDER_STATE_IMAGE_DATA_MAX_VALUE = (int)2147483647L;
+    /**
+     * {@snippet lang=c :
+     * enum <anonymous>.GHOSTTY_RENDER_STATE_IMAGE_DATA_MAX_VALUE = 2147483647
+     * }
+     */
+    public static int GHOSTTY_RENDER_STATE_IMAGE_DATA_MAX_VALUE() {
+        return GHOSTTY_RENDER_STATE_IMAGE_DATA_MAX_VALUE;
     }
     private static final int GHOSTTY_RENDER_STATE_ROW_DATA_INVALID = (int)0L;
     /**
@@ -13783,6 +14338,312 @@ class GhosttyVt_1 extends GhosttyVt$shared {
                 traceDowncall("ghostty_render_state_row_cells_free", cells);
             }
             mh$.invokeExact(cells);
+        } catch (Error | RuntimeException ex) {
+           throw ex;
+        } catch (Throwable ex$) {
+           throw new AssertionError("should not reach here", ex$);
+        }
+    }
+
+    private static class ghostty_render_state_image_iterator_new {
+        public static final FunctionDescriptor DESC = FunctionDescriptor.of(
+            GhosttyVt.C_INT,
+            GhosttyVt.C_POINTER,
+            GhosttyVt.C_POINTER
+        );
+
+        public static final MemorySegment ADDR = SYMBOL_LOOKUP.findOrThrow("ghostty_render_state_image_iterator_new");
+
+        public static final MethodHandle HANDLE = Linker.nativeLinker().downcallHandle(ADDR, DESC);
+    }
+
+    /**
+     * Function descriptor for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_iterator_new(const GhosttyAllocator *allocator, GhosttyRenderStateImageIterator *out_iterator)
+     * }
+     */
+    public static FunctionDescriptor ghostty_render_state_image_iterator_new$descriptor() {
+        return ghostty_render_state_image_iterator_new.DESC;
+    }
+
+    /**
+     * Downcall method handle for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_iterator_new(const GhosttyAllocator *allocator, GhosttyRenderStateImageIterator *out_iterator)
+     * }
+     */
+    public static MethodHandle ghostty_render_state_image_iterator_new$handle() {
+        return ghostty_render_state_image_iterator_new.HANDLE;
+    }
+
+    /**
+     * Address for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_iterator_new(const GhosttyAllocator *allocator, GhosttyRenderStateImageIterator *out_iterator)
+     * }
+     */
+    public static MemorySegment ghostty_render_state_image_iterator_new$address() {
+        return ghostty_render_state_image_iterator_new.ADDR;
+    }
+
+    /**
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_iterator_new(const GhosttyAllocator *allocator, GhosttyRenderStateImageIterator *out_iterator)
+     * }
+     */
+    public static int ghostty_render_state_image_iterator_new(MemorySegment allocator, MemorySegment out_iterator) {
+        var mh$ = ghostty_render_state_image_iterator_new.HANDLE;
+        try {
+            if (TRACE_DOWNCALLS) {
+                traceDowncall("ghostty_render_state_image_iterator_new", allocator, out_iterator);
+            }
+            return (int)mh$.invokeExact(allocator, out_iterator);
+        } catch (Error | RuntimeException ex) {
+           throw ex;
+        } catch (Throwable ex$) {
+           throw new AssertionError("should not reach here", ex$);
+        }
+    }
+
+    private static class ghostty_render_state_image_iterator_free {
+        public static final FunctionDescriptor DESC = FunctionDescriptor.ofVoid(
+            GhosttyVt.C_POINTER
+        );
+
+        public static final MemorySegment ADDR = SYMBOL_LOOKUP.findOrThrow("ghostty_render_state_image_iterator_free");
+
+        public static final MethodHandle HANDLE = Linker.nativeLinker().downcallHandle(ADDR, DESC);
+    }
+
+    /**
+     * Function descriptor for:
+     * {@snippet lang=c :
+     * void ghostty_render_state_image_iterator_free(GhosttyRenderStateImageIterator iterator)
+     * }
+     */
+    public static FunctionDescriptor ghostty_render_state_image_iterator_free$descriptor() {
+        return ghostty_render_state_image_iterator_free.DESC;
+    }
+
+    /**
+     * Downcall method handle for:
+     * {@snippet lang=c :
+     * void ghostty_render_state_image_iterator_free(GhosttyRenderStateImageIterator iterator)
+     * }
+     */
+    public static MethodHandle ghostty_render_state_image_iterator_free$handle() {
+        return ghostty_render_state_image_iterator_free.HANDLE;
+    }
+
+    /**
+     * Address for:
+     * {@snippet lang=c :
+     * void ghostty_render_state_image_iterator_free(GhosttyRenderStateImageIterator iterator)
+     * }
+     */
+    public static MemorySegment ghostty_render_state_image_iterator_free$address() {
+        return ghostty_render_state_image_iterator_free.ADDR;
+    }
+
+    /**
+     * {@snippet lang=c :
+     * void ghostty_render_state_image_iterator_free(GhosttyRenderStateImageIterator iterator)
+     * }
+     */
+    public static void ghostty_render_state_image_iterator_free(MemorySegment iterator) {
+        var mh$ = ghostty_render_state_image_iterator_free.HANDLE;
+        try {
+            if (TRACE_DOWNCALLS) {
+                traceDowncall("ghostty_render_state_image_iterator_free", iterator);
+            }
+            mh$.invokeExact(iterator);
+        } catch (Error | RuntimeException ex) {
+           throw ex;
+        } catch (Throwable ex$) {
+           throw new AssertionError("should not reach here", ex$);
+        }
+    }
+
+    private static class ghostty_render_state_image_iterator_next {
+        public static final FunctionDescriptor DESC = FunctionDescriptor.of(
+            GhosttyVt.C_BOOL,
+            GhosttyVt.C_POINTER
+        );
+
+        public static final MemorySegment ADDR = SYMBOL_LOOKUP.findOrThrow("ghostty_render_state_image_iterator_next");
+
+        public static final MethodHandle HANDLE = Linker.nativeLinker().downcallHandle(ADDR, DESC);
+    }
+
+    /**
+     * Function descriptor for:
+     * {@snippet lang=c :
+     * _Bool ghostty_render_state_image_iterator_next(GhosttyRenderStateImageIterator iterator)
+     * }
+     */
+    public static FunctionDescriptor ghostty_render_state_image_iterator_next$descriptor() {
+        return ghostty_render_state_image_iterator_next.DESC;
+    }
+
+    /**
+     * Downcall method handle for:
+     * {@snippet lang=c :
+     * _Bool ghostty_render_state_image_iterator_next(GhosttyRenderStateImageIterator iterator)
+     * }
+     */
+    public static MethodHandle ghostty_render_state_image_iterator_next$handle() {
+        return ghostty_render_state_image_iterator_next.HANDLE;
+    }
+
+    /**
+     * Address for:
+     * {@snippet lang=c :
+     * _Bool ghostty_render_state_image_iterator_next(GhosttyRenderStateImageIterator iterator)
+     * }
+     */
+    public static MemorySegment ghostty_render_state_image_iterator_next$address() {
+        return ghostty_render_state_image_iterator_next.ADDR;
+    }
+
+    /**
+     * {@snippet lang=c :
+     * _Bool ghostty_render_state_image_iterator_next(GhosttyRenderStateImageIterator iterator)
+     * }
+     */
+    public static boolean ghostty_render_state_image_iterator_next(MemorySegment iterator) {
+        var mh$ = ghostty_render_state_image_iterator_next.HANDLE;
+        try {
+            if (TRACE_DOWNCALLS) {
+                traceDowncall("ghostty_render_state_image_iterator_next", iterator);
+            }
+            return (boolean)mh$.invokeExact(iterator);
+        } catch (Error | RuntimeException ex) {
+           throw ex;
+        } catch (Throwable ex$) {
+           throw new AssertionError("should not reach here", ex$);
+        }
+    }
+
+    private static class ghostty_render_state_image_get {
+        public static final FunctionDescriptor DESC = FunctionDescriptor.of(
+            GhosttyVt.C_INT,
+            GhosttyVt.C_POINTER,
+            GhosttyVt.C_INT,
+            GhosttyVt.C_POINTER
+        );
+
+        public static final MemorySegment ADDR = SYMBOL_LOOKUP.findOrThrow("ghostty_render_state_image_get");
+
+        public static final MethodHandle HANDLE = Linker.nativeLinker().downcallHandle(ADDR, DESC);
+    }
+
+    /**
+     * Function descriptor for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_get(GhosttyRenderStateImageIterator iterator, GhosttyRenderStateImageData data, void *out)
+     * }
+     */
+    public static FunctionDescriptor ghostty_render_state_image_get$descriptor() {
+        return ghostty_render_state_image_get.DESC;
+    }
+
+    /**
+     * Downcall method handle for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_get(GhosttyRenderStateImageIterator iterator, GhosttyRenderStateImageData data, void *out)
+     * }
+     */
+    public static MethodHandle ghostty_render_state_image_get$handle() {
+        return ghostty_render_state_image_get.HANDLE;
+    }
+
+    /**
+     * Address for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_get(GhosttyRenderStateImageIterator iterator, GhosttyRenderStateImageData data, void *out)
+     * }
+     */
+    public static MemorySegment ghostty_render_state_image_get$address() {
+        return ghostty_render_state_image_get.ADDR;
+    }
+
+    /**
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_get(GhosttyRenderStateImageIterator iterator, GhosttyRenderStateImageData data, void *out)
+     * }
+     */
+    public static int ghostty_render_state_image_get(MemorySegment iterator, int data, MemorySegment out) {
+        var mh$ = ghostty_render_state_image_get.HANDLE;
+        try {
+            if (TRACE_DOWNCALLS) {
+                traceDowncall("ghostty_render_state_image_get", iterator, data, out);
+            }
+            return (int)mh$.invokeExact(iterator, data, out);
+        } catch (Error | RuntimeException ex) {
+           throw ex;
+        } catch (Throwable ex$) {
+           throw new AssertionError("should not reach here", ex$);
+        }
+    }
+
+    private static class ghostty_render_state_image_get_multi {
+        public static final FunctionDescriptor DESC = FunctionDescriptor.of(
+            GhosttyVt.C_INT,
+            GhosttyVt.C_POINTER,
+            GhosttyVt.C_LONG,
+            GhosttyVt.C_POINTER,
+            GhosttyVt.C_POINTER,
+            GhosttyVt.C_POINTER
+        );
+
+        public static final MemorySegment ADDR = SYMBOL_LOOKUP.findOrThrow("ghostty_render_state_image_get_multi");
+
+        public static final MethodHandle HANDLE = Linker.nativeLinker().downcallHandle(ADDR, DESC);
+    }
+
+    /**
+     * Function descriptor for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_get_multi(GhosttyRenderStateImageIterator iterator, size_t count, const GhosttyRenderStateImageData *keys, void **values, size_t *out_written)
+     * }
+     */
+    public static FunctionDescriptor ghostty_render_state_image_get_multi$descriptor() {
+        return ghostty_render_state_image_get_multi.DESC;
+    }
+
+    /**
+     * Downcall method handle for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_get_multi(GhosttyRenderStateImageIterator iterator, size_t count, const GhosttyRenderStateImageData *keys, void **values, size_t *out_written)
+     * }
+     */
+    public static MethodHandle ghostty_render_state_image_get_multi$handle() {
+        return ghostty_render_state_image_get_multi.HANDLE;
+    }
+
+    /**
+     * Address for:
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_get_multi(GhosttyRenderStateImageIterator iterator, size_t count, const GhosttyRenderStateImageData *keys, void **values, size_t *out_written)
+     * }
+     */
+    public static MemorySegment ghostty_render_state_image_get_multi$address() {
+        return ghostty_render_state_image_get_multi.ADDR;
+    }
+
+    /**
+     * {@snippet lang=c :
+     * GhosttyResult ghostty_render_state_image_get_multi(GhosttyRenderStateImageIterator iterator, size_t count, const GhosttyRenderStateImageData *keys, void **values, size_t *out_written)
+     * }
+     */
+    public static int ghostty_render_state_image_get_multi(MemorySegment iterator, long count, MemorySegment keys, MemorySegment values, MemorySegment out_written) {
+        var mh$ = ghostty_render_state_image_get_multi.HANDLE;
+        try {
+            if (TRACE_DOWNCALLS) {
+                traceDowncall("ghostty_render_state_image_get_multi", iterator, count, keys, values, out_written);
+            }
+            return (int)mh$.invokeExact(iterator, count, keys, values, out_written);
         } catch (Error | RuntimeException ex) {
            throw ex;
         } catch (Throwable ex$) {
@@ -15341,555 +16202,6 @@ class GhosttyVt_1 extends GhosttyVt$shared {
      */
     public static int GHOSTTY_KEY_DIGIT_3() {
         return GHOSTTY_KEY_DIGIT_3;
-    }
-    private static final int GHOSTTY_KEY_DIGIT_4 = (int)10L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_DIGIT_4 = 10
-     * }
-     */
-    public static int GHOSTTY_KEY_DIGIT_4() {
-        return GHOSTTY_KEY_DIGIT_4;
-    }
-    private static final int GHOSTTY_KEY_DIGIT_5 = (int)11L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_DIGIT_5 = 11
-     * }
-     */
-    public static int GHOSTTY_KEY_DIGIT_5() {
-        return GHOSTTY_KEY_DIGIT_5;
-    }
-    private static final int GHOSTTY_KEY_DIGIT_6 = (int)12L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_DIGIT_6 = 12
-     * }
-     */
-    public static int GHOSTTY_KEY_DIGIT_6() {
-        return GHOSTTY_KEY_DIGIT_6;
-    }
-    private static final int GHOSTTY_KEY_DIGIT_7 = (int)13L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_DIGIT_7 = 13
-     * }
-     */
-    public static int GHOSTTY_KEY_DIGIT_7() {
-        return GHOSTTY_KEY_DIGIT_7;
-    }
-    private static final int GHOSTTY_KEY_DIGIT_8 = (int)14L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_DIGIT_8 = 14
-     * }
-     */
-    public static int GHOSTTY_KEY_DIGIT_8() {
-        return GHOSTTY_KEY_DIGIT_8;
-    }
-    private static final int GHOSTTY_KEY_DIGIT_9 = (int)15L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_DIGIT_9 = 15
-     * }
-     */
-    public static int GHOSTTY_KEY_DIGIT_9() {
-        return GHOSTTY_KEY_DIGIT_9;
-    }
-    private static final int GHOSTTY_KEY_EQUAL = (int)16L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_EQUAL = 16
-     * }
-     */
-    public static int GHOSTTY_KEY_EQUAL() {
-        return GHOSTTY_KEY_EQUAL;
-    }
-    private static final int GHOSTTY_KEY_INTL_BACKSLASH = (int)17L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_INTL_BACKSLASH = 17
-     * }
-     */
-    public static int GHOSTTY_KEY_INTL_BACKSLASH() {
-        return GHOSTTY_KEY_INTL_BACKSLASH;
-    }
-    private static final int GHOSTTY_KEY_INTL_RO = (int)18L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_INTL_RO = 18
-     * }
-     */
-    public static int GHOSTTY_KEY_INTL_RO() {
-        return GHOSTTY_KEY_INTL_RO;
-    }
-    private static final int GHOSTTY_KEY_INTL_YEN = (int)19L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_INTL_YEN = 19
-     * }
-     */
-    public static int GHOSTTY_KEY_INTL_YEN() {
-        return GHOSTTY_KEY_INTL_YEN;
-    }
-    private static final int GHOSTTY_KEY_A = (int)20L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_A = 20
-     * }
-     */
-    public static int GHOSTTY_KEY_A() {
-        return GHOSTTY_KEY_A;
-    }
-    private static final int GHOSTTY_KEY_B = (int)21L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_B = 21
-     * }
-     */
-    public static int GHOSTTY_KEY_B() {
-        return GHOSTTY_KEY_B;
-    }
-    private static final int GHOSTTY_KEY_C = (int)22L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_C = 22
-     * }
-     */
-    public static int GHOSTTY_KEY_C() {
-        return GHOSTTY_KEY_C;
-    }
-    private static final int GHOSTTY_KEY_D = (int)23L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_D = 23
-     * }
-     */
-    public static int GHOSTTY_KEY_D() {
-        return GHOSTTY_KEY_D;
-    }
-    private static final int GHOSTTY_KEY_E = (int)24L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_E = 24
-     * }
-     */
-    public static int GHOSTTY_KEY_E() {
-        return GHOSTTY_KEY_E;
-    }
-    private static final int GHOSTTY_KEY_F = (int)25L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_F = 25
-     * }
-     */
-    public static int GHOSTTY_KEY_F() {
-        return GHOSTTY_KEY_F;
-    }
-    private static final int GHOSTTY_KEY_G = (int)26L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_G = 26
-     * }
-     */
-    public static int GHOSTTY_KEY_G() {
-        return GHOSTTY_KEY_G;
-    }
-    private static final int GHOSTTY_KEY_H = (int)27L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_H = 27
-     * }
-     */
-    public static int GHOSTTY_KEY_H() {
-        return GHOSTTY_KEY_H;
-    }
-    private static final int GHOSTTY_KEY_I = (int)28L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_I = 28
-     * }
-     */
-    public static int GHOSTTY_KEY_I() {
-        return GHOSTTY_KEY_I;
-    }
-    private static final int GHOSTTY_KEY_J = (int)29L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_J = 29
-     * }
-     */
-    public static int GHOSTTY_KEY_J() {
-        return GHOSTTY_KEY_J;
-    }
-    private static final int GHOSTTY_KEY_K = (int)30L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_K = 30
-     * }
-     */
-    public static int GHOSTTY_KEY_K() {
-        return GHOSTTY_KEY_K;
-    }
-    private static final int GHOSTTY_KEY_L = (int)31L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_L = 31
-     * }
-     */
-    public static int GHOSTTY_KEY_L() {
-        return GHOSTTY_KEY_L;
-    }
-    private static final int GHOSTTY_KEY_M = (int)32L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_M = 32
-     * }
-     */
-    public static int GHOSTTY_KEY_M() {
-        return GHOSTTY_KEY_M;
-    }
-    private static final int GHOSTTY_KEY_N = (int)33L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_N = 33
-     * }
-     */
-    public static int GHOSTTY_KEY_N() {
-        return GHOSTTY_KEY_N;
-    }
-    private static final int GHOSTTY_KEY_O = (int)34L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_O = 34
-     * }
-     */
-    public static int GHOSTTY_KEY_O() {
-        return GHOSTTY_KEY_O;
-    }
-    private static final int GHOSTTY_KEY_P = (int)35L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_P = 35
-     * }
-     */
-    public static int GHOSTTY_KEY_P() {
-        return GHOSTTY_KEY_P;
-    }
-    private static final int GHOSTTY_KEY_Q = (int)36L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_Q = 36
-     * }
-     */
-    public static int GHOSTTY_KEY_Q() {
-        return GHOSTTY_KEY_Q;
-    }
-    private static final int GHOSTTY_KEY_R = (int)37L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_R = 37
-     * }
-     */
-    public static int GHOSTTY_KEY_R() {
-        return GHOSTTY_KEY_R;
-    }
-    private static final int GHOSTTY_KEY_S = (int)38L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_S = 38
-     * }
-     */
-    public static int GHOSTTY_KEY_S() {
-        return GHOSTTY_KEY_S;
-    }
-    private static final int GHOSTTY_KEY_T = (int)39L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_T = 39
-     * }
-     */
-    public static int GHOSTTY_KEY_T() {
-        return GHOSTTY_KEY_T;
-    }
-    private static final int GHOSTTY_KEY_U = (int)40L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_U = 40
-     * }
-     */
-    public static int GHOSTTY_KEY_U() {
-        return GHOSTTY_KEY_U;
-    }
-    private static final int GHOSTTY_KEY_V = (int)41L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_V = 41
-     * }
-     */
-    public static int GHOSTTY_KEY_V() {
-        return GHOSTTY_KEY_V;
-    }
-    private static final int GHOSTTY_KEY_W = (int)42L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_W = 42
-     * }
-     */
-    public static int GHOSTTY_KEY_W() {
-        return GHOSTTY_KEY_W;
-    }
-    private static final int GHOSTTY_KEY_X = (int)43L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_X = 43
-     * }
-     */
-    public static int GHOSTTY_KEY_X() {
-        return GHOSTTY_KEY_X;
-    }
-    private static final int GHOSTTY_KEY_Y = (int)44L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_Y = 44
-     * }
-     */
-    public static int GHOSTTY_KEY_Y() {
-        return GHOSTTY_KEY_Y;
-    }
-    private static final int GHOSTTY_KEY_Z = (int)45L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_Z = 45
-     * }
-     */
-    public static int GHOSTTY_KEY_Z() {
-        return GHOSTTY_KEY_Z;
-    }
-    private static final int GHOSTTY_KEY_MINUS = (int)46L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_MINUS = 46
-     * }
-     */
-    public static int GHOSTTY_KEY_MINUS() {
-        return GHOSTTY_KEY_MINUS;
-    }
-    private static final int GHOSTTY_KEY_PERIOD = (int)47L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_PERIOD = 47
-     * }
-     */
-    public static int GHOSTTY_KEY_PERIOD() {
-        return GHOSTTY_KEY_PERIOD;
-    }
-    private static final int GHOSTTY_KEY_QUOTE = (int)48L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_QUOTE = 48
-     * }
-     */
-    public static int GHOSTTY_KEY_QUOTE() {
-        return GHOSTTY_KEY_QUOTE;
-    }
-    private static final int GHOSTTY_KEY_SEMICOLON = (int)49L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_SEMICOLON = 49
-     * }
-     */
-    public static int GHOSTTY_KEY_SEMICOLON() {
-        return GHOSTTY_KEY_SEMICOLON;
-    }
-    private static final int GHOSTTY_KEY_SLASH = (int)50L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_SLASH = 50
-     * }
-     */
-    public static int GHOSTTY_KEY_SLASH() {
-        return GHOSTTY_KEY_SLASH;
-    }
-    private static final int GHOSTTY_KEY_ALT_LEFT = (int)51L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_ALT_LEFT = 51
-     * }
-     */
-    public static int GHOSTTY_KEY_ALT_LEFT() {
-        return GHOSTTY_KEY_ALT_LEFT;
-    }
-    private static final int GHOSTTY_KEY_ALT_RIGHT = (int)52L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_ALT_RIGHT = 52
-     * }
-     */
-    public static int GHOSTTY_KEY_ALT_RIGHT() {
-        return GHOSTTY_KEY_ALT_RIGHT;
-    }
-    private static final int GHOSTTY_KEY_BACKSPACE = (int)53L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_BACKSPACE = 53
-     * }
-     */
-    public static int GHOSTTY_KEY_BACKSPACE() {
-        return GHOSTTY_KEY_BACKSPACE;
-    }
-    private static final int GHOSTTY_KEY_CAPS_LOCK = (int)54L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_CAPS_LOCK = 54
-     * }
-     */
-    public static int GHOSTTY_KEY_CAPS_LOCK() {
-        return GHOSTTY_KEY_CAPS_LOCK;
-    }
-    private static final int GHOSTTY_KEY_CONTEXT_MENU = (int)55L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_CONTEXT_MENU = 55
-     * }
-     */
-    public static int GHOSTTY_KEY_CONTEXT_MENU() {
-        return GHOSTTY_KEY_CONTEXT_MENU;
-    }
-    private static final int GHOSTTY_KEY_CONTROL_LEFT = (int)56L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_CONTROL_LEFT = 56
-     * }
-     */
-    public static int GHOSTTY_KEY_CONTROL_LEFT() {
-        return GHOSTTY_KEY_CONTROL_LEFT;
-    }
-    private static final int GHOSTTY_KEY_CONTROL_RIGHT = (int)57L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_CONTROL_RIGHT = 57
-     * }
-     */
-    public static int GHOSTTY_KEY_CONTROL_RIGHT() {
-        return GHOSTTY_KEY_CONTROL_RIGHT;
-    }
-    private static final int GHOSTTY_KEY_ENTER = (int)58L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_ENTER = 58
-     * }
-     */
-    public static int GHOSTTY_KEY_ENTER() {
-        return GHOSTTY_KEY_ENTER;
-    }
-    private static final int GHOSTTY_KEY_META_LEFT = (int)59L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_META_LEFT = 59
-     * }
-     */
-    public static int GHOSTTY_KEY_META_LEFT() {
-        return GHOSTTY_KEY_META_LEFT;
-    }
-    private static final int GHOSTTY_KEY_META_RIGHT = (int)60L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_META_RIGHT = 60
-     * }
-     */
-    public static int GHOSTTY_KEY_META_RIGHT() {
-        return GHOSTTY_KEY_META_RIGHT;
-    }
-    private static final int GHOSTTY_KEY_SHIFT_LEFT = (int)61L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_SHIFT_LEFT = 61
-     * }
-     */
-    public static int GHOSTTY_KEY_SHIFT_LEFT() {
-        return GHOSTTY_KEY_SHIFT_LEFT;
-    }
-    private static final int GHOSTTY_KEY_SHIFT_RIGHT = (int)62L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_SHIFT_RIGHT = 62
-     * }
-     */
-    public static int GHOSTTY_KEY_SHIFT_RIGHT() {
-        return GHOSTTY_KEY_SHIFT_RIGHT;
-    }
-    private static final int GHOSTTY_KEY_SPACE = (int)63L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_SPACE = 63
-     * }
-     */
-    public static int GHOSTTY_KEY_SPACE() {
-        return GHOSTTY_KEY_SPACE;
-    }
-    private static final int GHOSTTY_KEY_TAB = (int)64L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_TAB = 64
-     * }
-     */
-    public static int GHOSTTY_KEY_TAB() {
-        return GHOSTTY_KEY_TAB;
-    }
-    private static final int GHOSTTY_KEY_CONVERT = (int)65L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_CONVERT = 65
-     * }
-     */
-    public static int GHOSTTY_KEY_CONVERT() {
-        return GHOSTTY_KEY_CONVERT;
-    }
-    private static final int GHOSTTY_KEY_KANA_MODE = (int)66L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_KANA_MODE = 66
-     * }
-     */
-    public static int GHOSTTY_KEY_KANA_MODE() {
-        return GHOSTTY_KEY_KANA_MODE;
-    }
-    private static final int GHOSTTY_KEY_NON_CONVERT = (int)67L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_NON_CONVERT = 67
-     * }
-     */
-    public static int GHOSTTY_KEY_NON_CONVERT() {
-        return GHOSTTY_KEY_NON_CONVERT;
-    }
-    private static final int GHOSTTY_KEY_DELETE = (int)68L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_DELETE = 68
-     * }
-     */
-    public static int GHOSTTY_KEY_DELETE() {
-        return GHOSTTY_KEY_DELETE;
-    }
-    private static final int GHOSTTY_KEY_END = (int)69L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_END = 69
-     * }
-     */
-    public static int GHOSTTY_KEY_END() {
-        return GHOSTTY_KEY_END;
-    }
-    private static final int GHOSTTY_KEY_HELP = (int)70L;
-    /**
-     * {@snippet lang=c :
-     * enum <anonymous>.GHOSTTY_KEY_HELP = 70
-     * }
-     */
-    public static int GHOSTTY_KEY_HELP() {
-        return GHOSTTY_KEY_HELP;
     }
 }
 

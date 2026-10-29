@@ -29,7 +29,7 @@ public class GhosttyTerminalResizeWindowGrid {
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         GhosttyVt.C_SHORT.withName("rows"),
         GhosttyVt.C_SHORT.withName("columns")
-    ).withName("$anon$1596:9");
+    ).withName("$anon$1841:9");
 
     /**
      * The layout of this struct

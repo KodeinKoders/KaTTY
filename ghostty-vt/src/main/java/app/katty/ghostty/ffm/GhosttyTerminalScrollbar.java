@@ -31,7 +31,7 @@ public class GhosttyTerminalScrollbar {
         GhosttyVt.C_LONG_LONG.withName("total"),
         GhosttyVt.C_LONG_LONG.withName("offset"),
         GhosttyVt.C_LONG_LONG.withName("len")
-    ).withName("$anon$408:9");
+    ).withName("$anon$652:9");
 
     /**
      * The layout of this struct

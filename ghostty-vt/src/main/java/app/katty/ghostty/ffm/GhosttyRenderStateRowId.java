@@ -27,7 +27,7 @@ public class GhosttyRenderStateRowId {
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         MemoryLayout.sequenceLayout(2, GhosttyVt.C_LONG_LONG).withName("bits")
-    ).withName("$anon$299:9");
+    ).withName("$anon$569:9");
 
     /**
      * The layout of this struct

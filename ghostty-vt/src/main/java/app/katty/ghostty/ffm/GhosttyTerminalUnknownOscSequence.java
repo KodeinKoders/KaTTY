@@ -33,7 +33,7 @@ public class GhosttyTerminalUnknownOscSequence {
         GhosttyString.layout().withName("content"),
         GhosttyVt.C_INT.withName("terminator"),
         MemoryLayout.paddingLayout(4)
-    ).withName("$anon$593:9");
+    ).withName("$anon$837:9");
 
     /**
      * The layout of this struct

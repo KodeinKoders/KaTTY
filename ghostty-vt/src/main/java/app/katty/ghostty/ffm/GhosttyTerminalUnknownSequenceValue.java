@@ -31,7 +31,7 @@ public class GhosttyTerminalUnknownSequenceValue {
         GhosttyTerminalUnknownStringSequence.layout().withName("apc"),
         GhosttyTerminalUnknownOscSequence.layout().withName("osc"),
         MemoryLayout.sequenceLayout(16, GhosttyVt.C_LONG_LONG).withName("_padding")
-    ).withName("$anon$621:9");
+    ).withName("$anon$865:9");
 
     /**
      * The layout of this union
