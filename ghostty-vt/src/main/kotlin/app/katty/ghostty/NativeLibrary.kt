@@ -90,8 +90,10 @@ internal object NativeLibrary {
     }
 
     /**
-     * What identifies the library that is loaded: a SHA-256 of it. Nothing in the library does, since it records neither its commit nor a
-     * version that changes, and the snapshots that it makes are only good for the same one.
+     * What identifies the library that is loaded: a SHA-256 of its stamp, which the build writes next to it (the commit of Ghostty, the Zig
+     * and the options it was built with). Nothing in the library does, since it records neither its commit nor a version that changes, and
+     * the snapshots that it makes are only good for the same source. It is not a hash of the file: two builds of the same commit are not
+     * identical.
      */
     lateinit var fingerprint: String
         private set
@@ -112,13 +114,15 @@ internal object NativeLibrary {
         }
         val resource = "/app/katty/ghostty/native/$os-$arch/$LIBRARY_NAME.$extension"
         val bytes = NativeLibrary::class.java.getResourceAsStream(resource)?.use { it.readBytes() } ?: throw unsupported()
-        fingerprint = sha256(bytes)
+        val stamp = NativeLibrary::class.java.getResourceAsStream("/app/katty/ghostty/native/$os-$arch/$LIBRARY_NAME.stamp")?.use { it.readBytes() }
+            ?: throw IllegalStateException("The stamp of $LIBRARY_NAME is not in the resources: it is made by the build, with the library")
+        fingerprint = sha256(stamp)
 
-        // The dylib has to be a real file to be loaded: it is extracted once, to a folder of the temporary directory named by what it is, which
-        // every run (and every test) of the same library uses again. macOS cleans its temporary directory of what is not used for days: it is
-        // then extracted again.
+        // The dylib has to be a real file to be loaded: it is extracted once, to a folder of the temporary directory named by its bytes (not by
+        // the fingerprint: another build of the same commit is another file), which every run (and every test) of the same library uses again.
+        // macOS cleans its temporary directory of what is not used for days: it is then extracted again.
         val temporary = Path.of(System.getProperty("java.io.tmpdir"))
-        val file = extractLibrary(bytes, fingerprint, temporary, "$LIBRARY_NAME.$extension")
+        val file = extractLibrary(bytes, sha256(bytes), temporary, "$LIBRARY_NAME.$extension")
         removeLeftoverExtractions(temporary)
 
         System.load(file.toAbsolutePath().toString())

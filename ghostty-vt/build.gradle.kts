@@ -1,3 +1,4 @@
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 plugins {
@@ -31,6 +32,10 @@ abstract class BuildLibGhosttyVt @Inject constructor(private val exec: ExecOpera
     @get:Internal
     abstract val cacheDirectory: DirectoryProperty
 
+    /** What is given to `zig build` to say what is built, which is part of what identifies the library (see [StampLibGhosttyVt]). */
+    @get:Input
+    abstract val options: ListProperty<String>
+
     /** The install prefix: `lib/` has the library and `include/` its headers. */
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
@@ -43,21 +48,50 @@ abstract class BuildLibGhosttyVt @Inject constructor(private val exec: ExecOpera
             executable = zigDirectory.get().file("zig").asFile.absolutePath
             workingDir = ghosttyDirectory.get().asFile
             args(
-                "build",
-                "-Demit-lib-vt",
-                "-Doptimize=ReleaseFast",
-                // The only platform that KaTTY runs on, whatever the machine that builds it. No xcframework either: it needs xcodebuild.
-                "-Dtarget=aarch64-macos",
-                "-Demit-xcframework=false",
-                "--prefix", output.absolutePath,
-                "--cache-dir", cacheDirectory.get().dir("local").asFile.absolutePath,
-                "--global-cache-dir", cacheDirectory.get().dir("global").asFile.absolutePath,
+                listOf("build") + options.get() + listOf(
+                    "--prefix", output.absolutePath,
+                    "--cache-dir", cacheDirectory.get().dir("local").asFile.absolutePath,
+                    "--global-cache-dir", cacheDirectory.get().dir("global").asFile.absolutePath,
+                ),
             )
         }
     }
 }
 
+// What identifies the library that is built, written next to it: the commit of Ghostty, the Zig that built it and what it was built with.
+// NativeLibrary hashes it into the fingerprint that the snapshots of the terminals are stamped with. The bytes of the library cannot be that
+// fingerprint: two builds of the same commit are not identical (about 300 bytes of the tail change), and a snapshot is good for any of them.
+abstract class StampLibGhosttyVt @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
+    @get:Input
+    abstract val commit: Property<String>
+
+    @get:Input
+    abstract val options: ListProperty<String>
+
+    /** Where komple installed Zig, which says its own version. */
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val zigDirectory: DirectoryProperty
+
+    @get:OutputFile
+    abstract val stamp: RegularFileProperty
+
+    @TaskAction
+    fun write() {
+        val version = ByteArrayOutputStream()
+        exec.exec {
+            executable = zigDirectory.get().file("zig").asFile.absolutePath
+            args("version")
+            standardOutput = version
+        }
+        stamp.get().asFile.writeText("ghostty=${commit.get()}\nzig=${version.toString().trim()}\noptions=${options.get().joinToString(" ")}\n")
+    }
+}
+
 val ghosttySubmodule = rootProject.layout.projectDirectory.dir("ghostty")
+
+// The only platform that KaTTY runs on, whatever the machine that builds it. No xcframework either: it needs xcodebuild.
+val libGhosttyVtOptions = listOf("-Demit-lib-vt", "-Doptimize=ReleaseFast", "-Dtarget=aarch64-macos", "-Demit-xcframework=false")
 
 val buildLibGhosttyVt = tasks.register<BuildLibGhosttyVt>("buildLibGhosttyVt") {
     group = "build"
@@ -68,7 +102,17 @@ val buildLibGhosttyVt = tasks.register<BuildLibGhosttyVt>("buildLibGhosttyVt") {
         listOf("build.zig", "build.zig.zon", "src", "pkg", "vendor", "include").map { ghosttySubmodule.asFile.resolve(it) },
     )
     cacheDirectory = layout.buildDirectory.dir("zig-cache")
+    options = libGhosttyVtOptions
     outputDirectory = layout.buildDirectory.dir("libghostty-vt")
+}
+
+val stampLibGhosttyVt = tasks.register<StampLibGhosttyVt>("stampLibGhosttyVt") {
+    group = "build"
+    description = "Writes what identifies the libghostty-vt that is built: the commit of Ghostty, the Zig and the options."
+    commit = providers.exec { commandLine("git", "-C", ghosttySubmodule.asFile.absolutePath, "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
+    options = libGhosttyVtOptions
+    zigDirectory = komple.tools.zig.installDirectory
+    stamp = layout.buildDirectory.file("libghostty-vt-stamp/libghostty-vt.stamp")
 }
 
 // Packs the dylib into the jar, as app/katty/ghostty/native/<os>-<arch>/, which is where NativeLibrary looks for it.
@@ -78,6 +122,7 @@ val prepareNativeLibraries = tasks.register<Sync>("prepareNativeLibraries") {
     description = "Packs the libghostty-vt dylib into the resources, where NativeLibrary looks for it."
     // Only the versioned file (libghostty-vt.0.1.0.dylib), not the links to it nor the static library.
     from(buildLibGhosttyVt.flatMap { it.outputDirectory.dir("lib") }) { include("libghostty-vt.*.*.*.dylib") }
+    from(stampLibGhosttyVt.flatMap { it.stamp })
     into(nativeLibraries.map { it.dir("app/katty/ghostty/native/macos-aarch64") })
     // The file name carries the library version (libghostty-vt.0.1.0.dylib), but NativeLibrary asks
     // for a fixed name, so that updating the library does not mean updating the code.
