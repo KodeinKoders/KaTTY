@@ -112,6 +112,22 @@ val stampLibGhosttyVt = tasks.register<StampLibGhosttyVt>("stampLibGhosttyVt") {
     stamp = layout.buildDirectory.file("libghostty-vt-stamp/libghostty-vt.stamp")
 }
 
+// Makes the Java bindings of libghostty-vt, and the key enums, from the headers of the submodule, with the jextract that komple installs (see the root
+// build script): run it after moving the submodule, and commit the result. It has no outputs of its own, since they are sources that are checked in, and
+// a task that writes what the compilation reads would be run before it.
+val generateBindings = tasks.register<Exec>("generateBindings") {
+    group = "build"
+    description = "Regenerates the Java bindings of libghostty-vt and the key enums from the headers of the ghostty submodule."
+    dependsOn(komple.tools.jextract.installTaskProvider)
+    val jextract = komple.tools.jextract.installDirectory.map { it.file("bin/jextract").asFile.absolutePath }
+    inputs.dir(ghosttySubmodule.dir("include"))
+    outputs.upToDateWhen { false }
+    workingDir = rootProject.projectDir
+    commandLine("bash", "ghostty-vt/jextract.sh")
+    // Where it is is known once it is installed.
+    doFirst { environment("JEXTRACT", jextract.get()) }
+}
+
 // Packs the dylib into the jar, as app/katty/ghostty/native/<os>-<arch>/, which is where NativeLibrary looks for it.
 val nativeLibraries = layout.buildDirectory.dir("generated/native")
 val prepareNativeLibraries = tasks.register<Sync>("prepareNativeLibraries") {

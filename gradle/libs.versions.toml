@@ -2,6 +2,7 @@
 buildConfig = "6.1.2"               # https://github.com/gmazzo/gradle-buildconfig-plugin/releases
 composeMultiplatform = "1.12.1"     # https://github.com/JetBrains/compose-multiplatform/releases
 coroutines = "1.11.0"               # https://github.com/Kotlin/kotlinx.coroutines/releases
+jextract = "2-4"                    # https://jdk.java.net/jextract/ (the build of jextract for JDK 25: 2 is the release, 4 its build)
 jewel = "0.41.0-262.10968.63"       # https://github.com/JetBrains/intellij-community/releases (Jewel is in the platform/jewel directory; its Maven versions are on https://central.sonatype.com/artifact/org.jetbrains.jewel/jewel-int-ui-standalone)
 komple = "0.0.10"                   # https://github.com/manriif/komple/releases
 kotlin = "2.4.21"                   # https://kotlinlang.org/docs/releases.html#release-history
@@ -14,6 +15,7 @@ xmlutil = "1.0.2"                   # https://github.com/pdvrieze/xmlutil/releas
 buildconfig = { id = "com.github.gmazzo.buildconfig", version.ref = "buildConfig" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 komple = { id = "io.github.manriif.komple", version.ref = "komple" }
+komple-tool-jextract = { id = "io.github.manriif.komple-tool-jextract", version.ref = "komple" }
 komple-tool-zig = { id = "io.github.manriif.komple-tool-zig", version.ref = "komple" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-plugin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

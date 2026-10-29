@@ -3,10 +3,10 @@
 # Regenerates the Java FFM bindings of libghostty-vt from its C headers, and the Kotlin key enums
 # (GhosttyKey, and the terminal module's TerminalKey) from the key list in the headers.
 #
-# Run it after every update of the ghostty submodule (see AGENTS.md), and commit the result. It reads the headers of the submodule itself:
-# nothing has to be built.
+# Run it after every update of the ghostty submodule (see AGENTS.md), and commit the result: `./gradlew :ghostty-vt:generateBindings` does, with
+# the jextract that Gradle downloads. It reads the headers of the submodule itself: nothing has to be built.
 #
-# Needs jextract for JDK 25 (https://jdk.java.net/jextract/): either on the PATH, or give its
+# Run by hand, it needs jextract for JDK 25 (https://jdk.java.net/jextract/): either on the PATH, or give its
 # location with the JEXTRACT environment variable.
 set -euo pipefail
 
