@@ -252,4 +252,32 @@ class MainMenuRenderTest {
             assertTrue(rendered.count(if (dark) 0x2B2D30 else 0xFFFFFF) > 20_000)
         }
     }
+
+    // A window that is shorter than the menu, as the pointer scrolls it: the scrollbar of the menu is drawn, which the image shows.
+    @Test
+    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+    fun drawsTheScrollbarOfAMenuInAShortWindow() {
+        val scene = androidx.compose.ui.ImageComposeScene(width = 640, height = 700, density = androidx.compose.ui.unit.Density(2f)) {
+            app.katty.ui.KattyTheme(false) {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().padding(8.dp)) {
+                    MainMenu(settings = Settings(), onChange = {}, colorScheme = null, fontFamilies = emptyList(), onPickColorScheme = {}, onDismiss = {})
+                }
+            }
+        }
+        try {
+            scene.render(0)
+            val inside = androidx.compose.ui.geometry.Offset(300f, 400f)
+            scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, inside)
+            scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Scroll, inside, scrollDelta = androidx.compose.ui.geometry.Offset(0f, 2f))
+            scene.render(100_000_000)
+            val image = scene.render(200_000_000)
+            java.io.File("build/renders").apply { mkdirs() }.resolve("main-menu-scrolled.png")
+                .writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+            // The thumb, a gray bar on the right of the white panel, a little below its top.
+            val thumb = org.jetbrains.skia.Bitmap.makeFromImage(image).getColor(600, 230) and 0xFFFFFF
+            assertTrue(thumb != 0xFFFFFF && thumb < 0xF0F0F0, "The scrollbar is drawn: ${thumb.toString(16)}")
+        } finally {
+            scene.close()
+        }
+    }
 }
