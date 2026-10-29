@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.geometry.Size
@@ -129,6 +130,18 @@ class MainMenuTest {
         assertEquals(CursorShape.BAR, settings.cursorShape)
         onNodeWithText("Blinking").performClick()
         assertFalse(settings.cursorBlink)
+    }
+
+    // A window that is smaller than the menu: the menu is as tall as the window lets it be, and what is below is scrolled to.
+    @Test
+    fun theMenuScrollsWhenTheWindowIsSmall() = runSkikoComposeUiTest(size = Size(1024f, 400f)) {
+        show()
+
+        assertTrue(onNodeWithContentDescription("Settings").fetchSemanticsNode().size.height <= 400, "The menu fits in the window")
+
+        onNodeWithText("Font ligatures").performScrollTo().performClick()
+
+        assertFalse(settings.ligatures)
     }
 
     @Test

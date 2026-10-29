@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -54,6 +58,12 @@ import org.jetbrains.jewel.ui.component.Text
 /** The width of the main menu. */
 private val MAIN_MENU_WIDTH = 264.dp
 
+/** What the main menu leaves of the window's height: the title bar that it opens under, and a margin below it. */
+private val MAIN_MENU_MARGIN = 72.dp
+
+/** The least that the main menu is tall, however small the window is. */
+private val MAIN_MENU_MIN_HEIGHT = 160.dp
+
 /** The name of the font that is bundled, which is what the font family is when the user has not chosen one. */
 const val BUNDLED_FONT_NAME = "JetBrains Mono"
 
@@ -77,84 +87,89 @@ fun MainMenu(
 ) {
     val colors = Katty.colors
     Popup(popupPositionProvider = BelowEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        // Never taller than what is left of the window under the title bar: what does not fit is scrolled, as it is when the window is small.
+        val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
         Column(
-            Modifier.width(MAIN_MENU_WIDTH * uiScaleFactor()).shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
+            Modifier.width(MAIN_MENU_WIDTH * uiScaleFactor()).heightIn(max = (windowHeight - MAIN_MENU_MARGIN).coerceAtLeast(MAIN_MENU_MIN_HEIGHT))
+                .shadow(16.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(colors.panel)
                 .border(1.dp, colors.line, RoundedCornerShape(8.dp)).padding(6.dp).semantics { contentDescription = "Settings" },
         ) {
-            Section("LAYOUT") {
-                Choice(
-                    listOf(ChoiceOption(LayoutMode.AUTO, "Auto"), ChoiceOption(LayoutMode.HORIZONTAL, "Horizontal"), ChoiceOption(LayoutMode.VERTICAL, "Vertical")),
-                    settings.layout, { value -> onChange { it.copy(layout = value) } },
-                    Modifier.padding(horizontal = 4.dp),
-                )
-                Caption("Auto uses Vertical when the window is taller than it is wide.")
-            }
-            Separator()
-            Section("THEME") {
-                Choice(
-                    listOf(ChoiceOption(ThemeMode.LIGHT, "Light"), ChoiceOption(ThemeMode.DARK, "Dark"), ChoiceOption(ThemeMode.SYSTEM, "System")),
-                    settings.theme, { value -> onChange { it.copy(theme = value) } },
-                    Modifier.padding(horizontal = 4.dp),
-                )
-            }
-            Separator()
-            Section("INTERFACE TEXT SIZE") {
-                UiScaleStepper(settings) { scale -> onChange { it.copy(uiScale = scale) } }
-                Caption("The text of the application, not of the terminals: their font size is below.")
-            }
-            Separator()
-            Section("TERMINAL COLOR SCHEME") {
-                Field(settings.colorScheme, "Terminal color scheme: ${settings.colorScheme}", onPickColorScheme) {
-                    if (colorScheme != null) Swatches(colorScheme)
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Section("LAYOUT") {
+                    Choice(
+                        listOf(ChoiceOption(LayoutMode.AUTO, "Auto"), ChoiceOption(LayoutMode.HORIZONTAL, "Horizontal"), ChoiceOption(LayoutMode.VERTICAL, "Vertical")),
+                        settings.layout, { value -> onChange { it.copy(layout = value) } },
+                        Modifier.padding(horizontal = 4.dp),
+                    )
+                    Caption("Auto uses Vertical when the window is taller than it is wide.")
                 }
+                Separator()
+                Section("THEME") {
+                    Choice(
+                        listOf(ChoiceOption(ThemeMode.LIGHT, "Light"), ChoiceOption(ThemeMode.DARK, "Dark"), ChoiceOption(ThemeMode.SYSTEM, "System")),
+                        settings.theme, { value -> onChange { it.copy(theme = value) } },
+                        Modifier.padding(horizontal = 4.dp),
+                    )
+                }
+                Separator()
+                Section("INTERFACE TEXT SIZE") {
+                    UiScaleStepper(settings) { scale -> onChange { it.copy(uiScale = scale) } }
+                    Caption("The text of the application, not of the terminals: their font size is below.")
+                }
+                Separator()
+                Section("TERMINAL COLOR SCHEME") {
+                    Field(settings.colorScheme, "Terminal color scheme: ${settings.colorScheme}", onPickColorScheme) {
+                        if (colorScheme != null) Swatches(colorScheme)
+                    }
+                }
+                Separator()
+                Section("CURSOR") {
+                    Choice(
+                        listOf(ChoiceOption(CursorShape.BLOCK, "Block"), ChoiceOption(CursorShape.BAR, "Bar")),
+                        settings.cursorShape, { value -> onChange { it.copy(cursorShape = value) } },
+                        Modifier.padding(horizontal = 4.dp),
+                    )
+                    CheckSetting("Blinking", settings.cursorBlink, { value -> onChange { it.copy(cursorBlink = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                    Caption("The cursor at the prompt and until a program changes it. The shell puts it back at each prompt.")
+                }
+                Separator()
+                Section("KEYBOARD") {
+                    Field("Keyboard shortcuts…", "Edit the keyboard shortcuts", onEditShortcuts)
+                }
+                Separator()
+                Section("SECURE KEYBOARD ENTRY") {
+                    Choice(
+                        listOf(
+                            ChoiceOption(SecureInput.NEVER, "Never"),
+                            ChoiceOption(SecureInput.PASSWORD_PROMPTS, "Passwords"),
+                            ChoiceOption(SecureInput.ALWAYS, "Always"),
+                        ),
+                        settings.secureInput, { value -> onChange { it.copy(secureInput = value) } },
+                        Modifier.padding(horizontal = 4.dp),
+                    )
+                    Caption("Keeps what is typed in a terminal from the other applications. Text expanders and global shortcuts stop working meanwhile.")
+                }
+                Separator()
+                Section("AGENT USAGE") {
+                    CheckSetting("Show agent usage", settings.showUsage, { value -> onChange { it.copy(showUsage = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                    Choice(
+                        listOf(ChoiceOption(false, "Panel"), ChoiceOption(true, "Window")),
+                        settings.usageInWindow, { value -> onChange { it.copy(usageInWindow = value) } },
+                        Modifier.padding(horizontal = 4.dp),
+                        enabled = settings.showUsage,
+                    )
+                    Caption("The window is for another screen. Closing it puts the usage back in the panel.")
+                }
+                Separator()
+                Section("FONT FAMILY") {
+                    FontField(settings.fontFamily, fontFamilies) { family -> onChange { it.copy(fontFamily = family) } }
+                    FontSizeStepper(settings.fontSize) { size -> onChange { it.copy(fontSize = size) } }
+                    CheckSetting("Font ligatures", settings.ligatures, { value -> onChange { it.copy(ligatures = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                    Caption("Shows sequences like => and != as single glyphs.")
+                }
+                Separator()
+                Field("About KaTTY", "About KaTTY", onAbout, chevron = false)
             }
-            Separator()
-            Section("CURSOR") {
-                Choice(
-                    listOf(ChoiceOption(CursorShape.BLOCK, "Block"), ChoiceOption(CursorShape.BAR, "Bar")),
-                    settings.cursorShape, { value -> onChange { it.copy(cursorShape = value) } },
-                    Modifier.padding(horizontal = 4.dp),
-                )
-                CheckSetting("Blinking", settings.cursorBlink, { value -> onChange { it.copy(cursorBlink = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-                Caption("The cursor at the prompt and until a program changes it. The shell puts it back at each prompt.")
-            }
-            Separator()
-            Section("KEYBOARD") {
-                Field("Keyboard shortcuts…", "Edit the keyboard shortcuts", onEditShortcuts)
-            }
-            Separator()
-            Section("SECURE KEYBOARD ENTRY") {
-                Choice(
-                    listOf(
-                        ChoiceOption(SecureInput.NEVER, "Never"),
-                        ChoiceOption(SecureInput.PASSWORD_PROMPTS, "Passwords"),
-                        ChoiceOption(SecureInput.ALWAYS, "Always"),
-                    ),
-                    settings.secureInput, { value -> onChange { it.copy(secureInput = value) } },
-                    Modifier.padding(horizontal = 4.dp),
-                )
-                Caption("Keeps what is typed in a terminal from the other applications. Text expanders and global shortcuts stop working meanwhile.")
-            }
-            Separator()
-            Section("AGENT USAGE") {
-                CheckSetting("Show agent usage", settings.showUsage, { value -> onChange { it.copy(showUsage = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-                Choice(
-                    listOf(ChoiceOption(false, "Panel"), ChoiceOption(true, "Window")),
-                    settings.usageInWindow, { value -> onChange { it.copy(usageInWindow = value) } },
-                    Modifier.padding(horizontal = 4.dp),
-                    enabled = settings.showUsage,
-                )
-                Caption("The window is for another screen. Closing it puts the usage back in the panel.")
-            }
-            Separator()
-            Section("FONT FAMILY") {
-                FontField(settings.fontFamily, fontFamilies) { family -> onChange { it.copy(fontFamily = family) } }
-                FontSizeStepper(settings.fontSize) { size -> onChange { it.copy(fontSize = size) } }
-                CheckSetting("Font ligatures", settings.ligatures, { value -> onChange { it.copy(ligatures = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-                Caption("Shows sequences like => and != as single glyphs.")
-            }
-            Separator()
-            Field("About KaTTY", "About KaTTY", onAbout, chevron = false)
         }
     }
 }
