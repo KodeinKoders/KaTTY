@@ -71,7 +71,11 @@ It costs no turn, and no credential is ever read.
 * A program that only shows something or waits for you starts by itself: editors, pagers, monitors, terminal multiplexers, the agents, a REPL and `ssh` to a host.
 Any other command, such as `make deploy` or `rm`, is only typed at the prompt and waits for you to press Return.
 A command that starts with `sudo`, `doas` or `su` is never started again.
-* The scrollback is not kept, and neither is what a program held in memory, such as an unsent prompt or the unsaved buffers of an editor.
+* What each terminal showed comes back too: its screen and its scrollback, with a dim "Restored session" line between that and the new shell.
+It is saved every 30 seconds for the terminals that changed, and when you quit, so a crash loses at most that.
+The files are in `~/Library/Application Support/KaTTY/snapshots`, compressed and readable only by you: a terminal's history may hold anything that was printed in it.
+"Restore terminal contents" in the settings turns it off, and deletes them.
+* What a program held in memory is not kept, such as an unsent prompt or the unsaved buffers of an editor.
 
 === A terminal you will enjoy
 

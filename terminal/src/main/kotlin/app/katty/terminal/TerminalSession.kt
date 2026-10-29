@@ -317,6 +317,7 @@ public class TerminalSession private constructor(
     private inline fun <T> mutate(closedValue: T, block: () -> T): T {
         val result = lock.withLock {
             if (closed.get()) return closedValue
+            contentChanges.incrementAndGet()
             block()
         }
         producer.request()
@@ -324,6 +325,9 @@ public class TerminalSession private constructor(
     }
 
     private inline fun mutate(block: () -> Unit) = mutate(Unit, block)
+
+    // How many times what the terminal holds may have changed: the output of the program, a resize, what the host does to it. See [contentVersion].
+    private val contentChanges = java.util.concurrent.atomic.AtomicLong()
 
     /** Runs [block] under the lock unless the session is closed, when it gives [closedValue]: what reads the terminal and changes nothing that is shown. */
     private inline fun <T> whileOpen(closedValue: T, block: () -> T): T = lock.withLock {
@@ -777,6 +781,13 @@ public class TerminalSession private constructor(
         }
     }
 
+    /**
+     * A token that changes when what the terminal holds may have (the output of the program, a resize, what the host does to it, which
+     * includes scrolling): a host that saves [snapshot] saves it again when this is not what it was. Only equality means anything, and it may
+     * change without the content having.
+     */
+    public fun contentVersion(): Long = contentChanges.get()
+
     /** How many rows there are in the history and the screen. */
     public fun rowCount(): Long = whileOpen(0L) { terminal.totalRows }
 
@@ -929,6 +940,7 @@ public class TerminalSession private constructor(
         lock.withLock {
             if (closed.get()) return
             terminal.resize(cols, rows, cellWidthPx, cellHeightPx)
+            contentChanges.incrementAndGet()
             this.cellWidthPx = cellWidthPx
             this.cellHeightPx = cellHeightPx
         }
@@ -1063,6 +1075,7 @@ public class TerminalSession private constructor(
                         false
                     } else {
                         terminal.vtWrite(buffer, 0, read)
+                        contentChanges.incrementAndGet()
                         publishAfterWrite()
                         true
                     }
@@ -1220,6 +1233,8 @@ public class TerminalSession private constructor(
          * [setScrollbackLimit] changes it.
          * @param imageStorageLimitBytes How much memory the images of the Kitty graphics protocol may take, 320 MB by default
          * (Ghostty's own). `0` turns the images off. [setImageStorageLimit] changes it.
+         * @param restoredNote A line of text that a terminal restored from [snapshot] shows, dim, between the old content and the new program
+         * (`Restored session: …`): it is written to the terminal only, and the program never sees it. Ignored without a snapshot.
          * @param imageMediums Whether a program may give the Kitty graphics protocol an image by the path of a file (`t=f`), by a temporary
          * file of the temporary directory (`t=t`) or by shared memory (`t=s`), and not only in the escape sequence: it is what `kitten icat`
          * does on a terminal that is on the same machine, and a program is told `unsupported medium` when it is off. The terminal then reads
@@ -1265,6 +1280,7 @@ public class TerminalSession private constructor(
             clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
             shellIntegration: Boolean = true,
             snapshot: TerminalSnapshot? = null,
+            restoredNote: String? = null,
             boldIsBright: Boolean = false,
             typeAtPrompt: TypedCommand? = null,
             shellIntegrationDirectory: Path? = null,
@@ -1340,6 +1356,8 @@ public class TerminalSession private constructor(
                         terminal.vtWrite("\u001b[?6l\u001b[${row + 1};${column + 1}H")
                     }
                     terminal.vtWrite(RESTORE_RESET)
+                    // A line of the host's own: what is in it that is not text is not written, since it would be taken for a sequence.
+                    if (restoredNote != null) terminal.vtWrite("\u001b[2m${restoredNote.filter { !it.isISOControl() }}\u001b[0m\r\n")
                 }
                 val renderState = GhosttyRenderState().also {
                     it.boldIsBright = boldIsBright

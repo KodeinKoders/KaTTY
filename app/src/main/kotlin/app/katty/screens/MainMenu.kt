@@ -177,6 +177,11 @@ fun MainMenu(
                         Caption("The cursor at the prompt and until a program changes it. The shell puts it back at each prompt.")
                     }
                     Separator()
+                    Section("TERMINAL CONTENTS") {
+                        CheckSetting("Restore terminal contents", settings.restoreContents, { value -> onChange { it.copy(restoreContents = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                        Caption("What a terminal showed comes back when KaTTY starts again, not its programs. It is kept in files that only you can read; turning this off deletes them.")
+                    }
+                    Separator()
                     Section("KEYBOARD") {
                         Field("Keyboard shortcuts…", "Edit the keyboard shortcuts", onEditShortcuts)
                     }

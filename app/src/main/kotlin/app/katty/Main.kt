@@ -19,6 +19,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import app.katty.core.KattyDirectories
 import app.katty.core.KattyStore
+import app.katty.core.TerminalSnapshotStore
 import app.katty.core.StateFile
 import app.katty.core.StatePersistence
 import app.katty.core.WindowFile
@@ -64,7 +65,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val writer = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     val persistence = remember { StatePersistence(store, file, writer) }
     // One shell for each terminal of the store, which goes on running when its workspace is not the one that is shown.
-    val registry = remember { SessionRegistry(store, writer, shellIntegration = directories.shellIntegration) }
+    val registry = remember { SessionRegistry(store, writer, shellIntegration = directories.shellIntegration, snapshots = TerminalSnapshotStore(directories.snapshots)) }
     // What each of them says it is doing.
     val tracker = remember { AgentTracker(writer) }
     // What the session of the agent in each of them has used, read from the agent's own files.

@@ -21,7 +21,7 @@ public class TerminalSnapshotException(message: String, cause: Throwable? = null
  * **It is good for the build that made it.** libghostty's format has no promise of compatibility, so a snapshot knows which library made it
  * and is refused by another ([isRestorable]): the host starts a new session. It is not an archive.
  *
- * It does not have the images of the Kitty protocol, the selection, nor the scrolling of the viewport. It is as big as the history is, and not
+ * It has the images of the Kitty protocol with their placements (since Ghostty's #14801), but not the selection nor the scrolling of the viewport. It is as big as the history is, and not
  * compressed: a host that keeps many should compress [toByteArray] itself.
  *
  * @param cols How wide the terminal was.

@@ -60,6 +60,8 @@ public enum class MainView {
  * @param uiScale How big the text of the application is, as a multiple of its usual size (not the terminals': they have [fontSize]); one of
  * [UI_SCALES].
  * @param secureInput When what is typed in the terminals is kept from the other programs.
+ * @param restoreContents Whether what a terminal showed comes back when the application starts again (its screen and history, in files that only
+ * the user can read: see [TerminalSnapshotStore]). The programs of the terminals do not.
  * @param cursorShape The cursor of the terminals, at the prompt and until a program sets its own.
  * @param cursorBlink Whether that cursor blinks.
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
@@ -82,6 +84,7 @@ public data class Settings(
     val secureInput: SecureInput = SecureInput.NEVER,
     val cursorShape: CursorShape = CursorShape.BLOCK,
     val cursorBlink: Boolean = true,
+    val restoreContents: Boolean = true,
     val usageShown: Set<String> = setOf("claude", "codex", "antigravity", "opencode", "kilocode", "omp"),
     val usageHidden: Set<String> = emptySet(),
     val compactUsage: Boolean = false,

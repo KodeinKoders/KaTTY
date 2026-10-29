@@ -22,8 +22,8 @@ class TerminalSnapshotTest {
 
     private fun sh(script: String) = listOf("/bin/sh", "-c", script)
 
-    private fun start(script: String, rows: Int = 6, cols: Int = 80, snapshot: TerminalSnapshot? = null, directory: String? = null): TerminalSession =
-        TerminalSession.start(cols, rows, command = sh(script), snapshot = snapshot, directory = directory, shellIntegration = false).also { sessions += it }
+    private fun start(script: String, rows: Int = 6, cols: Int = 80, snapshot: TerminalSnapshot? = null, directory: String? = null, note: String? = null): TerminalSession =
+        TerminalSession.start(cols, rows, command = sh(script), snapshot = snapshot, directory = directory, shellIntegration = false, restoredNote = note).also { sessions += it }
 
     private fun TerminalFrame.text(row: Int): String = rows[row].cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd()
 
@@ -67,6 +67,35 @@ class TerminalSnapshotTest {
         assertEquals((1..200).map { it.toString() }, lines.take(200), "The history is there")
         val position = lines.indexOf("new")
         assertTrue(position > 200, "And the new program writes below it, on a row of its own: at $position")
+    }
+
+    @Test
+    fun aRestoredSessionShowsTheNoteOfTheHostBetweenTheOldContentAndTheNewProgram() {
+        val snapshot = oldSession().snapshot()
+
+        val restored = start("""echo new; sleep 30""", snapshot = snapshot, note = "Restored session: today\u001b[31m")
+        restored.awaitFrame { "new" in it.text() }
+
+        val lines = restored.readText().lines()
+        // Without its escape, which would have made the rest a color: it is text.
+        val note = "Restored session: today[31m"
+        assertEquals(201, lines.indexOf(note), "After the history and the row that the restore moves to")
+        assertTrue(lines.indexOf("new") > lines.indexOf(note))
+        // Dim: the note is not drawn as the text is.
+        val row = restored.frames.value.rows.first { row -> row.cells.joinToString("") { it.text }.startsWith("Restored session") }
+        assertTrue(row.cells.first().style.faint, "It is dim")
+    }
+
+    @Test
+    fun theContentVersionChangesWhenTheTerminalDoes() {
+        val session = start("""stty raw -echo; echo ready; head -c1 >/dev/null; echo more; sleep 30""")
+        session.awaitFrame { "ready" in it.text() }
+        val before = session.contentVersion()
+
+        session.paste("x")
+        session.awaitFrame { "more" in it.text() }
+
+        assertNotEquals(before, session.contentVersion())
     }
 
     @Test

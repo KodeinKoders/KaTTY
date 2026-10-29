@@ -11,6 +11,7 @@ import app.katty.core.RestorePolicy
 import app.katty.core.SessionLookups
 import app.katty.core.Settings
 import app.katty.core.TerminalId
+import app.katty.core.TerminalSnapshotStore
 import app.katty.core.TerminalSpec
 import app.katty.core.apartFromOthers
 import app.katty.core.sessionOf
@@ -19,6 +20,8 @@ import app.katty.core.toRunning
 import app.katty.core.toTyped
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.TerminalSnapshot
+import app.katty.terminal.TerminalSnapshotException
 import app.katty.terminal.TerminalTheme
 import app.katty.terminal.themes.ITermColorSchemes
 import kotlinx.coroutines.CoroutineDispatcher
@@ -46,6 +49,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 private val logger = LoggerFactory.getLogger("app.katty.terminals.SessionRegistry")
 
@@ -92,6 +99,10 @@ class TerminalHandle(
  * @param start Starts the shell of a terminal. Tests give their own program.
  * @param loadTheme The colors of a color scheme, `null` when it cannot be read. Each one is read once.
  * @param shellIntegration Where the scripts of the shell integration are kept (see [TerminalSession.start]).
+ * @param snapshots Where what the terminals showed is kept (while `Settings.restoreContents` is on): a terminal that starts with one has its screen
+ * and history back, under a line that says it is restored, and its shell below. They are saved every [autosaveMillis] for the terminals that changed,
+ * and when the registry is closed. The snapshot of a terminal that is gone, or that is started again by the user, is deleted.
+ * @param startRestored Starts the shell of a terminal that has a snapshot, which [start] starts without.
  * @param starter Where the shells are started and the color schemes read. Tests give one that does it at once, on the caller's thread.
  */
 class SessionRegistry(
@@ -101,8 +112,25 @@ class SessionRegistry(
     shellIntegration: Path? = null,
     private val starter: CoroutineDispatcher = Dispatchers.IO,
     private val start: (TerminalSpec, TerminalTheme?) -> TerminalSession = { spec, theme -> startShell(spec, theme, shellIntegration, store.state.value.settings) },
+    private val snapshots: TerminalSnapshotStore? = null,
+    private val startRestored: (TerminalSpec, TerminalTheme?, TerminalSnapshot) -> TerminalSession = { spec, theme, snapshot ->
+        startShell(spec, theme, shellIntegration, store.state.value.settings, snapshot)
+    },
+    private val autosaveMillis: Long = AUTOSAVE_MS,
 ) {
     private val mutableHandles = MutableStateFlow<Map<TerminalId, TerminalHandle>>(emptyMap())
+
+    init {
+        // What the terminals show is kept as it changes, so that a crash restores it as well as a quit does.
+        if (snapshots != null) {
+            scope.launch {
+                while (isActive) {
+                    delay(autosaveMillis)
+                    autosave()
+                }
+            }
+        }
+    }
 
     /** Every terminal that is running, by its id. */
     val handles: StateFlow<Map<TerminalId, TerminalHandle>> get() = mutableHandles
@@ -136,6 +164,13 @@ class SessionRegistry(
     private var generations = HashMap<TerminalId, Int>()
     private var closed = false
 
+    // The terminals that are in the store, as the snapshots last saw them, and whether what they showed is kept (`Settings.restoreContents`).
+    private var snapshotsWanted: Set<TerminalId>? = null
+    private var contentsKept: Boolean? = null
+
+    // What each terminal's content was when its snapshot was last saved: a terminal that has not changed is not saved again. Under the monitor.
+    private val savedVersions = HashMap<TerminalId, Long>()
+
     // The cursor that the sessions have been given: a change of the settings is given to the ones that are running.
     private var cursor: Pair<TerminalCursorShape, Boolean>? = null
 
@@ -151,6 +186,8 @@ class SessionRegistry(
         val wanted = terminals.map { it.terminal.id }.toSet()
         val current = mutableHandles.value
         var next = current
+
+        syncSnapshots(wanted, state.settings.restoreContents)
 
         val settingsCursor = state.settings.cursorShape.toTerminal() to state.settings.cursorBlink
         if (settingsCursor != cursor) {
@@ -181,6 +218,52 @@ class SessionRegistry(
         applyVisibility()
     }
 
+    // What the snapshots follow of the store: the ones of the terminals that are gone are deleted, and all of them when the setting is turned off.
+    // Under the monitor; the files are touched on [starter].
+    private fun syncSnapshots(wanted: Set<TerminalId>, keep: Boolean) {
+        val store = snapshots ?: return
+        if (keep != contentsKept) {
+            contentsKept = keep
+            if (!keep) {
+                savedVersions.clear()
+                scope.launch(starter) { store.clear() }
+            }
+        }
+        if (keep && wanted != snapshotsWanted) {
+            snapshotsWanted = wanted
+            scope.launch(starter) { store.keepOnly(wanted) }
+        }
+    }
+
+    // Saves the snapshot of each terminal whose content is not what it was when it was last saved: the terminals do not wait for it.
+    private suspend fun autosave() {
+        val store = snapshots ?: return
+        if (contentsKept != true) return
+        val due = synchronized(this) {
+            mutableHandles.value.mapNotNull { (id, handle) ->
+                val session = handle.session ?: return@mapNotNull null
+                val version = session.contentVersion()
+                if (savedVersions[id] == version) null else Triple(id, session, version)
+            }
+        }
+        for ((id, session, version) in due) {
+            val saved = withContext(Dispatchers.IO) { saveSnapshot(store, id, session) }
+            if (saved) synchronized(this) { if (mutableHandles.value[id]?.session === session && contentsKept == true) savedVersions[id] = version }
+        }
+    }
+
+    // The snapshot of [session], saved. `false` when it could not be made (a program in the middle of a long sequence) or written.
+    private fun saveSnapshot(store: TerminalSnapshotStore, id: TerminalId, session: TerminalSession): Boolean = try {
+        store.save(id, session.snapshot())
+    } catch (e: TerminalSnapshotException) {
+        logger.info("No snapshot of {}: {}", id.value, e.message)
+        false
+    }
+
+    // The snapshot that a terminal that starts is made from, if it has one and what the terminals showed is kept.
+    private fun snapshotOf(id: TerminalId): TerminalSnapshot? =
+        if (store.state.value.settings.restoreContents) snapshots?.load(id) else null
+
     /** The color scheme that the terminal [id] is given. */
     @Synchronized
     internal fun schemeOf(id: TerminalId): String? = schemes[id]
@@ -208,6 +291,8 @@ class SessionRegistry(
         val spec = startingPlace(location.terminal.copy(directory = directory), location.project.directory).copy(running = null)
         val old = mutableHandles.value[id] ?: return
         stop(old)
+        // And a plain one has none of what the old one showed, which must be gone before the new one starts (stop deletes it on another thread).
+        snapshots?.delete(id)
         // A new shell is a plain one: what ran over the old is not started again. After the old one's poll can write no more.
         store.setRunning(id, null)
         mutableHandles.value = mutableHandles.value - id
@@ -233,6 +318,8 @@ class SessionRegistry(
             mutableHandles.value.also { mutableHandles.value = emptyMap() }
         }
         val sessions = all.values.mapNotNull { it.session }
+        // What the terminals show now, before their shells are ended, for the next launch.
+        snapshots?.takeIf { contentsKept == true }?.let { store -> saveAll(store, all) }
         val closed = CountDownLatch(sessions.size)
         for (session in sessions) {
             thread(name = "katty-close-session", isDaemon = true) {
@@ -252,7 +339,7 @@ class SessionRegistry(
         starting[spec.id] = generation
         scope.launch(starter) {
             val started = try {
-                Result.success(start(spec, theme(scheme)))
+                Result.success(startWithContents(spec, theme(scheme)))
             } catch (e: Exception) {
                 logger.error("Could not start the shell of {}", spec.id.value, e)
                 Result.failure(e)
@@ -276,6 +363,19 @@ class SessionRegistry(
                 }
             }
             if (!wanted) session?.close()
+        }
+    }
+
+    // Starts the shell of [spec], with what the terminal showed when there is a snapshot of it. A snapshot that cannot be restored is deleted, and the shell
+    // starts without it: a terminal never fails to start for its history.
+    private fun startWithContents(spec: TerminalSpec, theme: TerminalTheme?): TerminalSession {
+        val snapshot = snapshotOf(spec.id) ?: return start(spec, theme)
+        return try {
+            startRestored(spec, theme, snapshot)
+        } catch (e: TerminalSnapshotException) {
+            logger.warn("The snapshot of {} could not be restored: its shell starts without it", spec.id.value, e)
+            snapshots?.delete(spec.id)
+            start(spec, theme)
         }
     }
 
@@ -369,13 +469,35 @@ class SessionRegistry(
         return handle
     }
 
+    // Saves the snapshot of every terminal together, on threads of their own, waiting [CLOSE_ALL_TIMEOUT_MS] at most: the application is quitting.
+    private fun saveAll(store: TerminalSnapshotStore, handles: Map<TerminalId, TerminalHandle>) {
+        val withSessions = handles.mapNotNull { (id, handle) -> handle.session?.let { id to it } }
+        val done = CountDownLatch(withSessions.size)
+        for ((id, session) in withSessions) {
+            thread(name = "katty-save-snapshot", isDaemon = true) {
+                try {
+                    saveSnapshot(store, id, session)
+                } finally {
+                    done.countDown()
+                }
+            }
+        }
+        if (!done.await(CLOSE_ALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)) logger.warn("Some snapshots were not saved within {}ms", CLOSE_ALL_TIMEOUT_MS)
+    }
+
     private fun stop(handle: TerminalHandle) {
         alive.remove(handle.id)?.let { flag -> synchronized(flag) { flag.set(false) } }
         followers.remove(handle.id)?.cancel()
         mutableProcessNames.update { it - handle.id }
         mutableGitInfos.update { it - handle.id }
         schemes.remove(handle.id)
-        val session = handle.session ?: return
+        val session = handle.session ?: run {
+            snapshots?.let { store -> scope.launch(Dispatchers.IO) { store.delete(handle.id) } }
+            return
+        }
+        // The terminal is gone, or its shell is started again: what it showed is not for the next launch.
+        savedVersions.remove(handle.id)
+        snapshots?.let { store -> scope.launch(Dispatchers.IO) { store.delete(handle.id) } }
         // Closing waits for the shell to end: not on the thread that draws.
         scope.launch(Dispatchers.IO) { session.close() }
     }
@@ -384,6 +506,12 @@ class SessionRegistry(
 // What the shell is called, as its program is: the one that the user's login shell is.
 /** How long quitting waits for the sessions to close, all together. */
 private const val CLOSE_ALL_TIMEOUT_MS = 3_000L
+
+// How a restored terminal says when what it shows was saved.
+private val RESTORED_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+
+// How often what the terminals show is saved, for the ones that changed: a crash loses what came after.
+private const val AUTOSAVE_MS = 30_000L
 
 /** How often the program that has a terminal is asked for. */
 private const val PROCESS_POLL_MS = 500L
@@ -415,15 +543,17 @@ private fun CursorShape.toTerminal(): TerminalCursorShape = when (this) {
     CursorShape.BAR -> TerminalCursorShape.BAR
 }
 
-private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegration: Path?, settings: Settings): TerminalSession {
+private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegration: Path?, settings: Settings, snapshot: TerminalSnapshot? = null): TerminalSession {
     // A folder that is gone is not a reason for the terminal to have no shell: it starts in the user's home.
     // The program that ran over the shell is typed in the new one, in the folder it was in, which is the folder that the shell goes back to when
     // it ends.
     val running = spec.running
     val directory = (running?.directory ?: spec.directory).takeIf { File(it).isDirectory } ?: spec.directory.takeIf { File(it).isDirectory }
     return TerminalSession.start(
-        cols = 80, rows = 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY),
+        // At the size that the old terminal had, so that its content is reflowed once, when the pane gives the real size, and not twice.
+        cols = snapshot?.cols ?: 80, rows = snapshot?.rows ?: 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY),
         cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
+        snapshot = snapshot, restoredNote = snapshot?.let { "Restored session: ${RESTORED_FORMAT.format(Instant.ofEpochMilli(it.createdAt).atZone(ZoneId.systemDefault()))}" },
         shellIntegrationDirectory = shellIntegration,
     )
 }

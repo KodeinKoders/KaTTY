@@ -430,6 +430,16 @@ class CommandPaletteTest {
     }
 
     @Test
+    fun restoringTheContentsHasACommandThatSaysWhatItDoesNext() {
+        store.addProject("/dev/api-gateway")
+        assertTrue("Turn restoring terminal contents off" in labels())
+
+        store.updateSettings { it.copy(restoreContents = false) }
+
+        assertTrue("Turn restoring terminal contents on" in labels())
+    }
+
+    @Test
     fun theCursorHasCommands() {
         store.addProject("/dev/api-gateway")
         assertTrue("Cursor: block" in labels())

@@ -488,6 +488,7 @@ internal class WindowController(
         setSecureInput = { secure -> store.updateSettings { it.copy(secureInput = secure) } },
         setCursorShape = { shape -> store.updateSettings { it.copy(cursorShape = shape) } },
         toggleCursorBlink = { store.updateSettings { it.copy(cursorBlink = !it.cursorBlink) } },
+        toggleRestoreContents = { store.updateSettings { it.copy(restoreContents = !it.restoreContents) } },
         jumpToWaiting = ::jumpToWaiting,
         markAllSeen = markAllSeen,
         openBoardWindow = platform::openBoardWindow,

@@ -145,6 +145,17 @@ class MainMenuTest {
     }
 
     @Test
+    fun restoringTheContentsOfTheTerminalsIsTurnedOffAndOn() = runSkikoComposeUiTest(size = Size(1024f, 1600f)) {
+        show()
+        assertTrue(settings.restoreContents, "On by default")
+
+        onNodeWithText("Restore terminal contents").performClick()
+        assertFalse(settings.restoreContents)
+        onNodeWithText("Restore terminal contents").performClick()
+        assertTrue(settings.restoreContents)
+    }
+
+    @Test
     fun theColorSchemeFieldOpensThePicker() = runComposeUiTest {
         show()
 
@@ -196,7 +207,8 @@ class MainMenuTest {
         }
 
         onNodeWithText("KEYBOARD").assertExists()
-        onNodeWithContentDescription("Edit the keyboard shortcuts").performClick()
+        // The menu is taller than the window, and scrolls.
+        onNodeWithContentDescription("Edit the keyboard shortcuts").performScrollTo().performClick()
 
         assertEquals(listOf("shortcuts"), opened)
     }

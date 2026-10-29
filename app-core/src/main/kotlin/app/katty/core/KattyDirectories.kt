@@ -36,6 +36,9 @@ public class KattyDirectories(public val support: Path) {
      */
     public val shellIntegration: Path get() = support.resolve("shell-integration")
 
+    /** What the terminals showed, one file for each, for the next launch (see [TerminalSnapshotStore]). */
+    public val snapshots: Path get() = support.resolve("snapshots")
+
     public companion object {
         /** The system property that changes the directory, for tests and for running a second copy of the application. */
         public const val PROPERTY: String = "katty.support"

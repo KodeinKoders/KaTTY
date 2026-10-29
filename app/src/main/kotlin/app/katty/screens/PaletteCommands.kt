@@ -49,6 +49,8 @@ class PaletteHandlers(
     val setCursorShape: (CursorShape) -> Unit = {},
     /** Whether that cursor blinks. */
     val toggleCursorBlink: () -> Unit = {},
+    /** Whether what a terminal showed comes back when the application starts again. */
+    val toggleRestoreContents: () -> Unit = {},
     val jumpToWaiting: () -> Unit,
     val markAllSeen: () -> Unit,
     /** Opens the board in a window of its own, or brings that window to the front when it is open. */
@@ -287,6 +289,11 @@ fun paletteCommands(
     command("cursor-block", "Cursor: block") { handlers.setCursorShape(CursorShape.BLOCK) }
     command("cursor-bar", "Cursor: bar") { handlers.setCursorShape(CursorShape.BAR) }
     command("cursor-blink", if (state.settings.cursorBlink) "Turn cursor blinking off" else "Turn cursor blinking on", action = handlers.toggleCursorBlink)
+    command(
+        "restore-contents",
+        if (state.settings.restoreContents) "Turn restoring terminal contents off" else "Turn restoring terminal contents on",
+        action = handlers.toggleRestoreContents,
+    )
     command("secure-never", "Secure keyboard entry: never") { handlers.setSecureInput(SecureInput.NEVER) }
     command("secure-passwords", "Secure keyboard entry: at password prompts") { handlers.setSecureInput(SecureInput.PASSWORD_PROMPTS) }
     command("secure-always", "Secure keyboard entry: always") { handlers.setSecureInput(SecureInput.ALWAYS) }
