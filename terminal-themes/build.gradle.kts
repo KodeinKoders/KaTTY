@@ -12,6 +12,8 @@ kotlin {
 // names: a jar's directory cannot be listed reliably, and the names are what the user chooses from.
 val colorSchemes = layout.buildDirectory.dir("generated/schemes")
 val prepareColorSchemes = tasks.register<Sync>("prepareColorSchemes") {
+    group = "build"
+    description = "Packs the iTerm2 color schemes, with their index and the data that the picker shows, into the resources."
     val schemes = rootProject.layout.projectDirectory.dir("iterm2-color-schemes")
     from(schemes.dir("schemes"))
     from(schemes.file("LICENSE")) { rename { "LICENSE-iterm2-color-schemes" } }

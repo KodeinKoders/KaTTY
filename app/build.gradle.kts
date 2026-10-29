@@ -56,7 +56,7 @@ dependencies {
     runtimeOnly(libs.slf4j.simple)
 
     testImplementation(libs.kotlin.test.junit)
-    testImplementation(compose.desktop.uiTestJUnit4)
+    testImplementation(libs.compose.ui.test.junit4)
 }
 
 // The logo of the repository is the icon of the windows, and of the Dock while the application runs: it is a resource of the application.
@@ -67,6 +67,8 @@ tasks.processResources {
 // The icon of the application that is packaged (the bundle and its disk image) is made from the same logo, with the tools of macOS: the only platform
 // that the application is packaged for.
 val macIcon = tasks.register<Exec>("macIcon") {
+    group = "build"
+    description = "Makes the macOS icon (KaTTY.icns) of the packaged application from the logo."
     val logo = rootProject.file("logo.png")
     val icns = layout.buildDirectory.file("icons/KaTTY.icns")
     inputs.file(logo)

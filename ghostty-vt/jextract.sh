@@ -3,7 +3,8 @@
 # Regenerates the Java FFM bindings of libghostty-vt from its C headers, and the Kotlin key enums
 # (GhosttyKey, and the terminal module's TerminalKey) from the key list in the headers.
 #
-# Run it after every libghostty-vt update (see libghostty-vt/README.adoc), and commit the result.
+# Run it after every update of the ghostty submodule (see AGENTS.md), and commit the result. It reads the headers of the submodule itself:
+# nothing has to be built.
 #
 # Needs jextract for JDK 25 (https://jdk.java.net/jextract/): either on the PATH, or give its
 # location with the JEXTRACT environment variable.
@@ -12,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 JEXTRACT="${JEXTRACT:-jextract}"
-INCLUDE=libghostty-vt/include
+INCLUDE=ghostty/include
 JAVA_OUT=ghostty-vt/src/main/java
 KOTLIN_OUT=ghostty-vt/src/main/kotlin/app/katty/ghostty
 TERMINAL_KEY_OUT=terminal/src/main/kotlin/app/katty/terminal/TerminalKey.kt

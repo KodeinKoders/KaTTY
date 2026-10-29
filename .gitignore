@@ -16,6 +16,9 @@ out/
 ### Kotlin ###
 .kotlin
 
+### Tools that komple downloads (Zig, for libghostty-vt) ###
+.komple/
+
 ### VS Code ###
 .vscode/
 

@@ -3,6 +3,7 @@ buildConfig = "6.1.2"               # https://github.com/gmazzo/gradle-buildconf
 composeMultiplatform = "1.12.1"     # https://github.com/JetBrains/compose-multiplatform/releases
 coroutines = "1.11.0"               # https://github.com/Kotlin/kotlinx.coroutines/releases
 jewel = "0.41.0-262.10968.63"       # https://github.com/JetBrains/intellij-community/releases (Jewel is in the platform/jewel directory; its Maven versions are on https://central.sonatype.com/artifact/org.jetbrains.jewel/jewel-int-ui-standalone)
+komple = "0.0.10"                   # https://github.com/manriif/komple/releases
 kotlin = "2.4.21"                   # https://kotlinlang.org/docs/releases.html#release-history
 kotlinxSerialization = "1.11.0"     # https://github.com/Kotlin/kotlinx.serialization/releases
 pty4j = "0.14.0"                    # https://github.com/JetBrains/pty4j/releases
@@ -12,6 +13,8 @@ xmlutil = "1.0.2"                   # https://github.com/pdvrieze/xmlutil/releas
 [plugins]
 buildconfig = { id = "com.github.gmazzo.buildconfig", version.ref = "buildConfig" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+komple = { id = "io.github.manriif.komple", version.ref = "komple" }
+komple-tool-zig = { id = "io.github.manriif.komple-tool-zig", version.ref = "komple" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-plugin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
@@ -20,6 +23,7 @@ kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization"
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
+compose-ui-test-junit4 = { module = "org.jetbrains.compose.ui:ui-test-junit4", version.ref = "composeMultiplatform" }
 
 jewel-decorated-window = { module = "org.jetbrains.jewel:jewel-int-ui-decorated-window", version.ref = "jewel" }
 jewel-int-ui = { module = "org.jetbrains.jewel:jewel-int-ui-standalone", version.ref = "jewel" }

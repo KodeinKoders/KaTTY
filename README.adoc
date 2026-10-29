@@ -385,6 +385,12 @@ There is no download yet: KaTTY is built from its sources.
 KaTTY is built for macOS 13, and has not been tried on it.
 * JDK 25.
 Gradle downloads it, and the JetBrains Runtime that the window needs, when they are missing.
+* The Xcode command line tools (`xcode-select --install`), and a network connection for the first build: it builds libghostty-vt from the `ghostty` submodule, with the Zig that Ghostty asks for, which Gradle downloads, and Zig fetches Ghostty's own dependencies.
+
+[source,bash]
+----
+git clone --recurse-submodules https://github.com/KodeinKoders/KaTTY.git   # or `git submodule update --init` in a checkout
+----
 
 [source,bash]
 ----
