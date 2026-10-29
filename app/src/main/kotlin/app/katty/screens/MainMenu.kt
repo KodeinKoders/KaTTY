@@ -33,6 +33,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import app.katty.core.LayoutMode
 import app.katty.core.Settings
+import app.katty.core.CursorShape
 import app.katty.core.SecureInput
 import app.katty.core.ThemeMode
 import app.katty.terminal.themes.ITermColorSchemeInfo
@@ -106,6 +107,16 @@ fun MainMenu(
                 Field(settings.colorScheme, "Terminal color scheme: ${settings.colorScheme}", onPickColorScheme) {
                     if (colorScheme != null) Swatches(colorScheme)
                 }
+            }
+            Separator()
+            Section("CURSOR") {
+                Choice(
+                    listOf(ChoiceOption(CursorShape.BLOCK, "Block"), ChoiceOption(CursorShape.BAR, "Bar")),
+                    settings.cursorShape, { value -> onChange { it.copy(cursorShape = value) } },
+                    Modifier.padding(horizontal = 4.dp),
+                )
+                CheckSetting("Blinking", settings.cursorBlink, { value -> onChange { it.copy(cursorBlink = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                Caption("The cursor at the prompt and until a program changes it. The shell puts it back at each prompt.")
             }
             Separator()
             Section("KEYBOARD") {

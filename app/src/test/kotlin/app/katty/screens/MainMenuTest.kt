@@ -16,6 +16,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
+import app.katty.core.CursorShape
 import app.katty.core.LayoutMode
 import app.katty.core.Settings
 import app.katty.core.ThemeMode
@@ -61,7 +62,7 @@ class MainMenuTest {
     }
 
     @Test
-    fun theUsageIsShownOrHiddenAndPutInThePanelOrInAWindowButNotWhileHidden() = runComposeUiTest {
+    fun theUsageIsShownOrHiddenAndPutInThePanelOrInAWindowButNotWhileHidden() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
         show()
         onNodeWithText("AGENT USAGE").assertExists()
 
@@ -95,7 +96,7 @@ class MainMenuTest {
     }
 
     @Test
-    fun theFontSizeGoesUpAndDownByHalfAPixel() = runComposeUiTest {
+    fun theFontSizeGoesUpAndDownByHalfAPixel() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
         show()
 
         onNodeWithContentDescription("Increase font size").performClick()
@@ -119,6 +120,18 @@ class MainMenuTest {
     }
 
     @Test
+    fun theCursorIsAShapeAndBlinkingOrNot() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
+        show()
+        assertEquals(CursorShape.BLOCK, settings.cursorShape)
+        assertTrue(settings.cursorBlink)
+
+        onNodeWithText("Bar").performClick()
+        assertEquals(CursorShape.BAR, settings.cursorShape)
+        onNodeWithText("Blinking").performClick()
+        assertFalse(settings.cursorBlink)
+    }
+
+    @Test
     fun theColorSchemeFieldOpensThePicker() = runComposeUiTest {
         show()
 
@@ -128,7 +141,7 @@ class MainMenuTest {
     }
 
     @Test
-    fun theFontIsChosenAmongTheFamiliesOfTheSystemOrTheBundledOne() = runComposeUiTest {
+    fun theFontIsChosenAmongTheFamiliesOfTheSystemOrTheBundledOne() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
         show()
 
         onNodeWithContentDescription("Font family: JetBrains Mono").performClick()

@@ -643,15 +643,16 @@ class TerminalTest {
     }
 
     @Test
-    fun drawsASixelImageOnTheCellsThatItTakes() {
+    fun drawsAKittyImageOnTheCellsThatItTakes() {
         // 16 by 12 pixels of green, at the top left: two cells wide and one high.
-        val session = session("""printf '\033P0;1;0q"1;1;16;12#1;2;0;255;0!16~-!16~\033\\'; printf 'X'; sleep 30""", cols = 40, rows = 5)
+        val pixels = java.util.Base64.getEncoder().encodeToString(ByteArray(16 * 12 * 4) { if (it % 4 == 1 || it % 4 == 3) 0xFF.toByte() else 0 })
+        val session = session("""printf '\033_Ga=T,c=2,r=1,f=32,s=16,v=12,q=2;$pixels\033\\'; printf 'X'; sleep 30""", cols = 40, rows = 5)
         val scene = show(session)
         scene.renderUntil("the terminal to fit the scene and show the image") { session.frames.value.cols != 40 && session.frames.value.images.isNotEmpty() }
         scene.settle()
 
         val image = scene.render(clock)
-        File("build/renders").apply { mkdirs() }.resolve("sixel.png").writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
+        File("build/renders").apply { mkdirs() }.resolve("kitty.png").writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
         val bitmap = Bitmap.makeFromImage(image)
         val typography = typography!!
         val inside = bitmap.getColor((typography.cellWidth * 0.5f).toInt(), (typography.cellHeight * 0.5f).toInt())

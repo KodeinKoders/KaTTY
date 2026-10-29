@@ -35,6 +35,13 @@ public enum class SecureInput {
     ALWAYS,
 }
 
+/** The shape of the cursor of the terminals. */
+@Serializable
+public enum class CursorShape {
+    BLOCK,
+    BAR,
+}
+
 /** What the window shows: the terminals of the workspace, or the board of the agents of the projects. */
 @Serializable
 public enum class MainView {
@@ -53,6 +60,8 @@ public enum class MainView {
  * @param uiScale How big the text of the application is, as a multiple of its usual size (not the terminals': they have [fontSize]); one of
  * [UI_SCALES].
  * @param secureInput When what is typed in the terminals is kept from the other programs.
+ * @param cursorShape The cursor of the terminals, at the prompt and until a program sets its own.
+ * @param cursorBlink Whether that cursor blinks.
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
  * @param showUsage Whether the usage of the agents is shown at all.
  * @param usageInWindow Whether it is shown in a window of its own instead of the panel. It only counts while [showUsage] is on, and goes back to
@@ -71,6 +80,8 @@ public data class Settings(
     val shortcuts: Map<String, String> = emptyMap(),
     val ligatures: Boolean = true,
     val secureInput: SecureInput = SecureInput.NEVER,
+    val cursorShape: CursorShape = CursorShape.BLOCK,
+    val cursorBlink: Boolean = true,
     val usageShown: Set<String> = setOf("claude", "codex", "antigravity", "opencode", "kilocode", "omp"),
     val usageHidden: Set<String> = emptySet(),
     val compactUsage: Boolean = false,

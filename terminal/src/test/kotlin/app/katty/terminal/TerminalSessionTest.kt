@@ -1042,20 +1042,16 @@ class TerminalSessionTest {
 
     @Test
     fun aReaderThatFailsEndsTheProgramAndSaysThatItEnded() {
-        val previous = TerminalSession.makeTranslator
+        val previous = TerminalSession.beforeWrite
         // A failure that is not the pty's: a bug, or the memory that ran out.
-        TerminalSession.makeTranslator = { geometry ->
-            object : OutputTranslator(geometry = geometry) {
-                override fun filter(buffer: ByteArray, length: Int): Int = throw IllegalStateException("A translator that fails")
-            }
-        }
+        TerminalSession.beforeWrite = { throw IllegalStateException("A reader that fails") }
         try {
             val session = start("echo hello; sleep 30")
 
             // The terminal says that its program ended, rather than freezing with nothing to say why.
             assertNotEquals(0, session.awaitExit())
         } finally {
-            TerminalSession.makeTranslator = previous
+            TerminalSession.beforeWrite = previous
         }
     }
 
@@ -1248,19 +1244,6 @@ class TerminalSessionTest {
         )
     }
 
-    @Test
-    fun publishesAndAnswersTheNotificationsOfTheKittyProtocol() {
-        // The query is answered on the program's input, which `read` takes: its answer is what the program printed back.
-        val session = startThatWaits(
-            """printf '\033]99;i=1:d=0;Done\033\\\033]99;i=1:p=body;All green\033\\\033]99;i=q:p=?;\033\\'; read -r -d '\\' answer; printf 'got:%s' "${'$'}{answer#*;}"; sleep 30""",
-        )
-        val events = session.collectEvents()
-
-        session.paste("x")
-
-        await("the notification") { events.contains(TerminalEvent.Notification("Done", "All green")) }
-        await("the answer to the query") { session.frames.value.rows.any { row -> row.cells.joinToString("") { it.text }.contains("got:") } }
-    }
 
     @Test
     fun publishesTheProgress() {
@@ -1641,36 +1624,28 @@ class TerminalSessionTest {
         return frames.value
     }
 
-    @Test
-    fun aProgramCannotStopTheCursorFromBlinkingWithMode12() {
-        // What Emacs does when it exits: cnorm, which is mode 12 reset and the cursor shown.
-        val session = startThatWaits("""printf '\033[?12l\033[?25h\033]2;done\007'; sleep 30""")
-        assertEquals(true, session.frames.value.cursor.blinking)
 
-        session.paste("x")
 
-        assertEquals(true, session.awaitMarker("done").cursor.blinking, "It still blinks")
-    }
 
     @Test
-    fun aProgramCannotMakeTheCursorBlinkWithMode12EitherWhenTheHostSaidItDoesNot() {
-        val session = startThatWaits("""printf '\033[?12h\033[?12;25h\033]2;done\007'; sleep 30""", cursorBlink = false)
-        assertEquals(false, session.frames.value.cursor.blinking)
+    fun theDefaultCursorChangesAtOnceAndIsWhatAResetGoesBackTo() {
+        val session = startThatWaits(
+            """printf '\033[4 q\033]2;underline\007'; head -c1 >/dev/null; printf '\033[0 q\033]2;reset\007'; sleep 30""",
+        )
+        session.setDefaultCursor(TerminalCursorShape.BAR, blink = false)
 
+        // The program sets its own (an underline), so the default is not shown yet.
         session.paste("x")
-
-        assertEquals(false, session.awaitMarker("done").cursor.blinking)
-    }
-
-    @Test
-    fun theOtherModesOfAListThatHasMode12AreStillSet() {
-        val session = startThatWaits("""printf '\033[?12;25l\033]2;done\007'; sleep 30""")
-
+        assertEquals(TerminalCursorShape.UNDERLINE, session.awaitMarker("underline").cursor.shape)
         session.paste("x")
+        val reset = session.awaitMarker("reset")
 
-        val frame = session.awaitMarker("done")
-        assertEquals(false, frame.cursor.visible, "The cursor is hidden")
-        assertEquals(true, frame.cursor.blinking, "and still blinks")
+        assertEquals(TerminalCursorShape.BAR, reset.cursor.shape, "A reset goes back to the default that was set")
+        assertEquals(false, reset.cursor.blinking)
+
+        session.setDefaultCursor(TerminalCursorShape.BLOCK, blink = true)
+        val changed = session.awaitFrame { it.cursor.shape == TerminalCursorShape.BLOCK }
+        assertEquals(true, changed.cursor.blinking, "A cursor that no program set follows the change at once")
     }
 
     @Test
@@ -1688,25 +1663,7 @@ class TerminalSessionTest {
         assertEquals(true, session.awaitMarker("default").cursor.blinking, "The default is the host's")
     }
 
-    @Test
-    fun aSequenceOfModeTwelveThatIsWrittenInTwoPiecesIsIgnoredToo() {
-        val session = startThatWaits("""printf '\033[?1'; sleep 0.3; printf '2l\033]2;done\007'; sleep 30""")
 
-        session.paste("x")
-
-        assertEquals(true, session.awaitMarker("done").cursor.blinking)
-    }
-
-    @Test
-    fun theTerminalStillAnswersAQueryOfMode12() {
-        // DECRQM: ESC [ ? 12 $ p, answered ESC [ ? 12 ; Ps $ y, where Ps is 1 for a mode that is set and 2 for one that is reset.
-        val session = startThatWaits("""printf '\033[?12l\033[?12${'$'}p'; head -c9 | tr -d '\033' | od -An -c""")
-
-        session.paste("x")
-
-        // The reset was ignored, so the mode is what the host set: the cursor blinks.
-        session.awaitFrame { "[?12;1\$y" in it.text().replace(Regex("\\s+"), "") }
-    }
 
     @Test
     fun readsTheWholeHistoryAndTheRowsOfARange() {

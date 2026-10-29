@@ -2,12 +2,14 @@ package app.katty.terminals
 
 import androidx.compose.ui.focus.FocusRequester
 import app.katty.core.Agent
+import app.katty.core.CursorShape
 import app.katty.core.GitInfo
 import app.katty.core.GitReader
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
 import app.katty.core.RestorePolicy
 import app.katty.core.SessionLookups
+import app.katty.core.Settings
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
 import app.katty.core.apartFromOthers
@@ -15,6 +17,7 @@ import app.katty.core.sessionOf
 import app.katty.core.restartDirectory
 import app.katty.core.toRunning
 import app.katty.core.toTyped
+import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalSession
 import app.katty.terminal.TerminalTheme
 import app.katty.terminal.themes.ITermColorSchemes
@@ -97,7 +100,7 @@ class SessionRegistry(
     private val loadTheme: (String) -> TerminalTheme? = ::loadColorScheme,
     shellIntegration: Path? = null,
     private val starter: CoroutineDispatcher = Dispatchers.IO,
-    private val start: (TerminalSpec, TerminalTheme?) -> TerminalSession = { spec, theme -> startShell(spec, theme, shellIntegration) },
+    private val start: (TerminalSpec, TerminalTheme?) -> TerminalSession = { spec, theme -> startShell(spec, theme, shellIntegration, store.state.value.settings) },
 ) {
     private val mutableHandles = MutableStateFlow<Map<TerminalId, TerminalHandle>>(emptyMap())
 
@@ -133,6 +136,9 @@ class SessionRegistry(
     private var generations = HashMap<TerminalId, Int>()
     private var closed = false
 
+    // The cursor that the sessions have been given: a change of the settings is given to the ones that are running.
+    private var cursor: Pair<TerminalCursorShape, Boolean>? = null
+
     // The color schemes that were read, by name: a change of the default one is given to every terminal.
     private val themes = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<TerminalTheme>>()
 
@@ -145,6 +151,12 @@ class SessionRegistry(
         val wanted = terminals.map { it.terminal.id }.toSet()
         val current = mutableHandles.value
         var next = current
+
+        val settingsCursor = state.settings.cursorShape.toTerminal() to state.settings.cursorBlink
+        if (settingsCursor != cursor) {
+            cursor = settingsCursor
+            for (handle in current.values) handle.session?.setDefaultCursor(settingsCursor.first, settingsCursor.second)
+        }
 
         for (id in current.keys - wanted) {
             next = next - id
@@ -254,6 +266,8 @@ class SessionRegistry(
                     starting.remove(spec.id)
                     val handle = session?.let { follow(spec, it, generation) }
                         ?: TerminalHandle(spec.id, null, started.exceptionOrNull()?.let { it.message ?: it.toString() }, generation)
+                    // A cursor that was chosen while it started.
+                    cursor?.let { (shape, blink) -> session?.setDefaultCursor(shape, blink) }
                     // A scheme that was chosen while it started.
                     schemes[spec.id]?.takeIf { it != scheme }?.let { latest -> session?.let { s -> scope.launch(starter) { theme(latest)?.let(s::setTheme) } } }
                     mutableHandles.update { it + (spec.id to handle) }
@@ -396,7 +410,12 @@ private fun loadColorScheme(name: String): TerminalTheme? =
         null
     }
 
-private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegration: Path?): TerminalSession {
+private fun CursorShape.toTerminal(): TerminalCursorShape = when (this) {
+    CursorShape.BLOCK -> TerminalCursorShape.BLOCK
+    CursorShape.BAR -> TerminalCursorShape.BAR
+}
+
+private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegration: Path?, settings: Settings): TerminalSession {
     // A folder that is gone is not a reason for the terminal to have no shell: it starts in the user's home.
     // The program that ran over the shell is typed in the new one, in the folder it was in, which is the folder that the shell goes back to when
     // it ends.
@@ -404,6 +423,7 @@ private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegrati
     val directory = (running?.directory ?: spec.directory).takeIf { File(it).isDirectory } ?: spec.directory.takeIf { File(it).isDirectory }
     return TerminalSession.start(
         cols = 80, rows = 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY),
+        cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
         shellIntegrationDirectory = shellIntegration,
     )
 }

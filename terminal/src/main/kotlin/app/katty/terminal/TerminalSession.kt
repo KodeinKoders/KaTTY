@@ -101,10 +101,6 @@ public class TerminalSession private constructor(
     // terminal, which tells a program that turns the mode on nothing until the focus changes. Under the lock.
     private var lastFocused = false
 
-    // How big a cell is and how many there are, for what the stream of the program says in cells or percent: read by the reader.
-    @Volatile
-    private var geometry = CellGeometry(INITIAL_CELL_WIDTH_PX, INITIAL_CELL_HEIGHT_PX, 80, 24)
-
     // Where the output of the last command starts, as the shell reported it: it follows its row as the terminal scrolls and prunes.
     // Under the lock.
     private var outputStart: GhosttyTrackedRef? = null
@@ -263,7 +259,6 @@ public class TerminalSession private constructor(
         installEffects()
         // A terminal that was restored has them, and says nothing of it: nothing was listening.
         lock.withLock {
-            geometry = CellGeometry(cellWidthPx, cellHeightPx, terminal.cols, terminal.rows)
             titleState.value = terminal.title
             workingDirectoryState.value = decodeWorkingDirectory(terminal.pwd)
         }
@@ -936,7 +931,6 @@ public class TerminalSession private constructor(
             terminal.resize(cols, rows, cellWidthPx, cellHeightPx)
             this.cellWidthPx = cellWidthPx
             this.cellHeightPx = cellHeightPx
-            geometry = CellGeometry(cellWidthPx, cellHeightPx, cols, rows)
         }
         // pty4j only passes the size in cells to the program, not the one in pixels: the session sets the whole size,
         // and leaves pty4j's way for what is not a Unix pty or what the ioctl refused.
@@ -978,6 +972,20 @@ public class TerminalSession private constructor(
         }
         if (report != null) send(report)
         // The terminal flags every row as changed, so the rows are read again, with their new colors.
+        producer.request()
+    }
+
+    /**
+     * Changes the cursor that a program has until it sets one of its own (DECSCUSR), and that it goes back to when it resets it (`CSI 0 q`,
+     * which the shell integration sends at each prompt and before each command). A cursor that nothing has set changes at once.
+     */
+    public fun setDefaultCursor(shape: TerminalCursorShape, blink: Boolean) {
+        require(shape != TerminalCursorShape.BLOCK_HOLLOW) { "The hollow block is not a shape that a program sets" }
+        lock.withLock {
+            if (closed.get()) return
+            terminal.setDefaultCursorStyle(shape.toGhostty())
+            terminal.setDefaultCursorBlink(blink)
+        }
         producer.request()
     }
 
@@ -1044,23 +1052,17 @@ public class TerminalSession private constructor(
 
     private fun readOutput() {
         val buffer = ByteArray(READ_BUFFER_SIZE)
-        // Only this thread uses it.
-        val translator = makeTranslator { geometry }
-        // libghostty parses OSC 99 and gives it to nobody: the translator does what it asks.
-        translator.onNotification = { title, body -> eventFlow.tryEmit(TerminalEvent.Notification(title, body)) }
-        translator.reply = { send(it.encodeToByteArray()) }
         try {
             val input = process.inputStream
             while (true) {
                 val read = input.read(buffer)
                 if (read < 0) break
-                // What the program says about the blinking of the cursor is not for the terminal: see OutputTranslator.
-                val length = translator.filter(buffer, read)
+                beforeWrite(read)
                 val fed = lock.withLock {
                     if (closed.get()) {
                         false
                     } else {
-                        if (length > 0) terminal.vtWrite(translator.output, 0, length)
+                        terminal.vtWrite(buffer, 0, read)
                         publishAfterWrite()
                         true
                     }
@@ -1183,9 +1185,9 @@ public class TerminalSession private constructor(
         private const val INITIAL_CELL_HEIGHT_PX = 16
 
         private const val READ_BUFFER_SIZE = 64 * 1024
-        // What makes the translator of each session's output: a test of a reader that fails gives one that fails.
+        // Called with what the reader has just read, before it is written to the terminal: a test of a reader that fails makes it throw.
         @Volatile
-        internal var makeTranslator: (() -> CellGeometry) -> OutputTranslator = { geometry -> OutputTranslator(geometry = geometry) }
+        internal var beforeWrite: (Int) -> Unit = {}
 
         // How long a program has to end after the hang-up of [close], and how long a killed one, and the threads, have after that.
         private const val HANGUP_GRACE_MS = 300L
@@ -1234,8 +1236,6 @@ public class TerminalSession private constructor(
          * title and the directory, and [command] runs below them: a **new** program, since a process cannot be saved. The size is [cols] by
          * [rows], to which the old content is reflowed, and the old program's modes are taken off, so that a snapshot of an editor gives a
          * shell with a plain mouse. Not restored: the images of the Kitty protocol, the selection, the viewport.
-         * @param advertiseSixel Whether the answer to a device attributes query says that the terminal draws Sixel images, which is how
-         * programs that probe (chafa, img2sixel) choose it by themselves.
          * @param boldIsBright Whether bold text in one of the 8 normal colors of the palette is drawn in the bright one, as terminals did when
          * they had no bold font. [setBoldIsBright] changes it.
          * @param typeAtPrompt A command to type in the shell when it first waits for one, as the user would (see [TypedCommand]). The shell has
@@ -1265,7 +1265,6 @@ public class TerminalSession private constructor(
             clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
             shellIntegration: Boolean = true,
             snapshot: TerminalSnapshot? = null,
-            advertiseSixel: Boolean = true,
             boldIsBright: Boolean = false,
             typeAtPrompt: TypedCommand? = null,
             shellIntegrationDirectory: Path? = null,
@@ -1320,7 +1319,6 @@ public class TerminalSession private constructor(
                         throw TerminalSnapshotException("Could not restore the snapshot: ${e.message}", e)
                     }
                 }.also {
-                    it.advertiseSixel = advertiseSixel
                     if (imageMediums) it.setKittyImageMediums(file = true, temporaryDirectory = temporaryDirectory(), sharedMemory = true)
                     toClose.addFirst(it)
                 }

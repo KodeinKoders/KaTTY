@@ -29,16 +29,6 @@ class GhosttyDeviceAttributesTest {
     }
 
     @Test
-    fun saysThatItDrawsSixelWhenItDoes() {
-        terminal.advertiseSixel = true
-
-        assertEquals("ESC[?62;4;22c", ask("\u001b[c"))
-
-        terminal.advertiseSixel = false
-        assertEquals("ESC[?62;22c", ask("\u001b[c"))
-    }
-
-    @Test
     fun answersTheSecondaryAndTheTertiaryQueries() {
         assertEquals("ESC[>1;10;0c", ask("\u001b[>c"))
         assertEquals("ESCP!|00000000ESC\\", ask("\u001b[=c"))

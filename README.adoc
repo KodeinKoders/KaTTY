@@ -77,12 +77,13 @@ A command that starts with `sudo`, `doas` or `su` is never started again.
 
 * 811 color schemes, with a picker that has a search, a light and dark filter and a live preview, and a scheme of its own for any terminal.
 * The bundled JetBrains Mono, or any monospaced font of your system, from 8 to 32 points, with ligatures on or off.
+* A block or a bar cursor, blinking or steady, that the shell puts back at each prompt.
 * Select with the mouse by word, by line or by block, or with Shift and the arrow keys.
 Copy and paste are safe: what you paste cannot run commands behind your back.
 A middle click pastes the last selection.
 * Find in the terminal (⌘F), and jump from prompt to prompt (⌘↑ and ⌘↓) with zsh and bash.
 * ⌘-click opens the links that programs print, and the addresses written in the text.
-* Images appear in the terminal: the Kitty graphics protocol, Sixel and the inline images of iTerm2.
+* Images appear in the terminal: the Kitty graphics protocol.
 * The history has a scrollbar that hides when you do not use it.
 * The macOS line-editing keys work in the shell: ⌥← and ⌥→ move by word, ⌘← and ⌘→ go to the start and the end of the line, ⌘⌫ deletes to the start.
 * Dead keys and accents work, and programs that use the mouse or the Kitty keyboard protocol get them.

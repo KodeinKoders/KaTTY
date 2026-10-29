@@ -15,6 +15,7 @@ import app.katty.core.PaletteGroup
 import app.katty.core.ProjectId
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
+import app.katty.core.CursorShape
 import app.katty.core.SecureInput
 import app.katty.core.ThemeMode
 import app.katty.core.WorkspaceId
@@ -44,6 +45,10 @@ class PaletteHandlers(
     val setTheme: (ThemeMode) -> Unit,
     /** When what is typed in the terminals is kept from the other applications. */
     val setSecureInput: (SecureInput) -> Unit = {},
+    /** The shape of the cursor of the terminals. */
+    val setCursorShape: (CursorShape) -> Unit = {},
+    /** Whether that cursor blinks. */
+    val toggleCursorBlink: () -> Unit = {},
     val jumpToWaiting: () -> Unit,
     val markAllSeen: () -> Unit,
     /** Opens the board in a window of its own, or brings that window to the front when it is open. */
@@ -279,6 +284,9 @@ fun paletteCommands(
     command("theme-light", "Theme: light") { handlers.setTheme(ThemeMode.LIGHT) }
     command("theme-dark", "Theme: dark") { handlers.setTheme(ThemeMode.DARK) }
     command("theme-system", "Theme: system") { handlers.setTheme(ThemeMode.SYSTEM) }
+    command("cursor-block", "Cursor: block") { handlers.setCursorShape(CursorShape.BLOCK) }
+    command("cursor-bar", "Cursor: bar") { handlers.setCursorShape(CursorShape.BAR) }
+    command("cursor-blink", if (state.settings.cursorBlink) "Turn cursor blinking off" else "Turn cursor blinking on", action = handlers.toggleCursorBlink)
     command("secure-never", "Secure keyboard entry: never") { handlers.setSecureInput(SecureInput.NEVER) }
     command("secure-passwords", "Secure keyboard entry: at password prompts") { handlers.setSecureInput(SecureInput.PASSWORD_PROMPTS) }
     command("secure-always", "Secure keyboard entry: always") { handlers.setSecureInput(SecureInput.ALWAYS) }

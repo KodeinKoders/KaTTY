@@ -81,8 +81,8 @@ internal fun removeLeftoverExtractions(parent: Path) {
 internal object NativeLibrary {
     private const val LIBRARY_NAME = "libghostty-vt"
 
-    // The most pixels that a PNG of the Kitty protocol may have, as for the images that KaTTY decodes itself (Sixel, iTerm2): 4096 × 4096,
-    // 64 MB once decoded. A program that shows a bigger picture scales it to the window first (`kitten icat` does).
+    // The most pixels that a PNG of the Kitty protocol may have: 4096 × 4096, 64 MB once decoded. A program that shows a bigger picture
+    // scales it to the window first (`kitten icat` does).
     private const val MAX_PNG_PIXELS = 16L * 1024 * 1024
 
     init {

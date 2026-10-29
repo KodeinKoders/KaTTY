@@ -217,13 +217,6 @@ public class GhosttyTerminal private constructor(
     @Volatile
     public var xtVersion: String? = null
 
-    /**
-     * Whether the answer to a device attributes query (DA1) says that the terminal draws Sixel images (feature 4). Programs that probe
-     * pick their image format by it. Read when the query is answered.
-     */
-    @Volatile
-    public var advertiseSixel: Boolean = false
-
     // Not installed until a reader is set: without one, a read is refused. Having one also turns on the Kitty paste events (mode 5522), but
     // only for what is pasted with `ghostty_terminal_paste`, which is not bound: a paste here is `ghostty_paste_encode`, which sends the text.
     private var clipboardReader: ((GhosttyClipboardLocation) -> String?)? = null
@@ -292,14 +285,7 @@ public class GhosttyTerminal private constructor(
 
             installEffects()
 
-            Arena.ofConfined().use { arena ->
-                val blink = arena.allocate(ValueLayout.JAVA_BOOLEAN)
-                blink.set(ValueLayout.JAVA_BOOLEAN, 0, defaultCursorBlink)
-                checkResult(
-                    GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK(), blink),
-                    "ghostty_terminal_set(DEFAULT_CURSOR_BLINK)",
-                )
-            }
+            setDefaultCursorBlink(defaultCursorBlink)
 
             if (scrollbackMaxBytes != null) setLimit(GhosttyVt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES(), scrollbackMaxBytes, "SCROLLBACK_MAX_BYTES")
             if (imageStorageLimitBytes != null) {
@@ -308,24 +294,7 @@ public class GhosttyTerminal private constructor(
             // So that a snapshot can be taken in the middle of an escape sequence: what is unfinished is kept, up to this much, and past it the
             // terminal goes on as it did and only a snapshot is refused, until the sequence ends.
             setContinuationMaxBytes(CONTINUATION_MAX_BYTES)
-            if (defaultCursorStyle != null) {
-                require(defaultCursorStyle != GhosttyCursorStyle.BLOCK_HOLLOW) { "A program does not set the hollow block" }
-                Arena.ofConfined().use { arena ->
-                    val style = arena.allocate(ValueLayout.JAVA_INT)
-                    style.set(
-                        ValueLayout.JAVA_INT, 0,
-                        when (defaultCursorStyle) {
-                            GhosttyCursorStyle.BAR -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_BAR()
-                            GhosttyCursorStyle.UNDERLINE -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_UNDERLINE()
-                            else -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK()
-                        },
-                    )
-                    checkResult(
-                        GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE(), style),
-                        "ghostty_terminal_set(DEFAULT_CURSOR_STYLE)",
-                    )
-                }
-            }
+            if (defaultCursorStyle != null) setDefaultCursorStyle(defaultCursorStyle)
 
             if (terminfoName != null) {
                 Arena.ofConfined().use { arena ->
@@ -924,6 +893,41 @@ public class GhosttyTerminal private constructor(
         }
     }
 
+    /**
+     * Whether the cursor blinks until a program says otherwise (DECSCUSR), and when it goes back to the default (`CSI 0 q`). A cursor that no
+     * program has set follows it as soon as it changes.
+     */
+    public fun setDefaultCursorBlink(blink: Boolean) {
+        Arena.ofConfined().use { arena ->
+            val flag = arena.allocate(ValueLayout.JAVA_BOOLEAN)
+            flag.set(ValueLayout.JAVA_BOOLEAN, 0, blink)
+            checkResult(
+                GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK(), flag),
+                "ghostty_terminal_set(DEFAULT_CURSOR_BLINK)",
+            )
+        }
+    }
+
+    /** The shape of the cursor until a program sets one (DECSCUSR), and when it goes back to the default (`CSI 0 q`). Not the hollow block. */
+    public fun setDefaultCursorStyle(style: GhosttyCursorStyle) {
+        require(style != GhosttyCursorStyle.BLOCK_HOLLOW) { "A program does not set the hollow block" }
+        Arena.ofConfined().use { arena ->
+            val value = arena.allocate(ValueLayout.JAVA_INT)
+            value.set(
+                ValueLayout.JAVA_INT, 0,
+                when (style) {
+                    GhosttyCursorStyle.BAR -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_BAR()
+                    GhosttyCursorStyle.UNDERLINE -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_UNDERLINE()
+                    else -> GhosttyVt.GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK()
+                },
+            )
+            checkResult(
+                GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE(), value),
+                "ghostty_terminal_set(DEFAULT_CURSOR_STYLE)",
+            )
+        }
+    }
+
     private fun setLimit(option: Int, bytes: Long, name: String) {
         Arena.ofConfined().use { arena ->
             val limit = arena.allocate(ValueLayout.JAVA_LONG)
@@ -1230,12 +1234,12 @@ public class GhosttyTerminal private constructor(
         return versionStruct!!
     }
 
-    // What the terminal says that it is, to the programs that ask (CSI c, CSI > c, CSI = c): a VT220 that has ANSI color, and Sixel if
-    // it draws it, the way Ghostty answers.
+    // What the terminal says that it is, to the programs that ask (CSI c, CSI > c, CSI = c): a VT220 that has ANSI color. Not Sixel: it
+    // is not drawn.
     private fun fillDeviceAttributes(out: MemorySegment) {
         val primary = GhosttyDeviceAttributes.primary(out)
         GhosttyDeviceAttributesPrimary.conformance_level(primary, 62)
-        val features = if (advertiseSixel) shortArrayOf(4, 22) else shortArrayOf(22)
+        val features = shortArrayOf(22)
         for ((i, feature) in features.withIndex()) {
             primary.set(ValueLayout.JAVA_SHORT, GhosttyDeviceAttributesPrimary.`features$offset`() + i * 2L, feature)
         }

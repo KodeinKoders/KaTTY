@@ -49,10 +49,14 @@ function __katty_setup --on-event fish_prompt -d "Set up KaTTY's shell integrati
         end
         set --global __katty_prompt_state prompt-start
         printf '\e]133;A\a'
+        # The cursor that the user chose, as Ghostty's integration does (not with fish's vi mode, which sets its own).
+        functions -q fish_vi_cursor_handle; or printf '\e[0 q'
+        printf '\e[?25h'
     end
 
     function __katty_mark_output_start --on-event fish_preexec
         set --global __katty_prompt_state pre-exec
+        functions -q fish_vi_cursor_handle; or printf '\e[0 q'
         printf '\e]133;C\a'
     end
 

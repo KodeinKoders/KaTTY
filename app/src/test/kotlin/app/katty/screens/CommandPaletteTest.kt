@@ -430,6 +430,18 @@ class CommandPaletteTest {
     }
 
     @Test
+    fun theCursorHasCommands() {
+        store.addProject("/dev/api-gateway")
+        assertTrue("Cursor: block" in labels())
+        assertTrue("Cursor: bar" in labels())
+        assertTrue("Turn cursor blinking off" in labels())
+
+        store.updateSettings { it.copy(cursorBlink = false) }
+
+        assertTrue("Turn cursor blinking on" in labels())
+    }
+
+    @Test
     fun theSettingsAndTheUsageHaveCommandsThatSayWhatTheyDoNext() {
         store.addProject("/dev/api-gateway")
         assertTrue("Turn font ligatures off" in labels())

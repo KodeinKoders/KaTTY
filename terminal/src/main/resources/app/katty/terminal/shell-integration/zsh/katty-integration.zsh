@@ -36,6 +36,8 @@ _katty_precmd() {
         _katty_command_running=""
     fi
     builtin printf '\e]133;A\a'
+    # The cursor that the user chose, as Ghostty's integration does, and shown: a program that ended badly may have left its own, or none.
+    builtin printf '\e[0 q\e[?25h'
     _katty_report_pwd
 
     # The end of the prompt is marked in the prompt itself, so that it is where the cursor is when the user can type. A theme
@@ -48,7 +50,8 @@ _katty_precmd() {
 
 _katty_preexec() {
     _katty_command_running=1
-    builtin printf '\e]133;C\a'
+    # The program starts from the user's cursor, not from what the shell's line editor had set.
+    builtin printf '\e[0 q\e]133;C\a'
 }
 
 add-zsh-hook precmd _katty_precmd

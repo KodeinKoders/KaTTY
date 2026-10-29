@@ -210,23 +210,21 @@ class ShellIntegrationTest {
     @Test
     fun bashGivesTheOutputOfTheLastCommand() = givesTheOutputOfTheLastCommand("/bin/bash")
 
+    // The shell puts the user's cursor back at the next prompt: a program that ended badly left its own (a bar, or none).
     private fun theCursorIsBackAtThePromptAfterACommandThatChangedIt(shell: String) {
         val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
         val session = start(shell, emptyHome(), directory)
         await("the first prompt") { session.workingDirectory.value != null }
         val events = session.collectEvents()
 
-        // A program that leaves a bar and no cursor, as one that crashes does.
         session.sendText("printf '\\033[5 q\\033[?25l'\r")
         await("the end of the command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
 
-        // The cursor of the prompt, which is what it was before the command.
-        val frame = session.frames.value
+        // The cursor of the prompt, which is the default one that the terminal has, a block.
         await("the cursor to be back") {
             val cursor = session.frames.value.cursor
             cursor.visible && cursor.shape == TerminalCursorShape.BLOCK
         }
-        assertTrue(frame.rows.isNotEmpty())
     }
 
     @Test

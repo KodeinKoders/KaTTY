@@ -1,7 +1,9 @@
 package app.katty.terminals
 
+import app.katty.core.CursorShape
 import app.katty.core.KattyStore
 import app.katty.core.SplitDirection
+import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +46,21 @@ class SessionRegistryTest {
     }
 
     private fun sync() = registry.sync(store.state.value)
+
+    @Test
+    fun aChangeOfTheCursorIsGivenToTheRunningSessions() {
+        store.addProject("/tmp")
+        sync()
+        val session = registry.handles.value.values.single().session!!
+
+        store.updateSettings { it.copy(cursorShape = CursorShape.BAR, cursorBlink = false) }
+        sync()
+
+        val cursor = kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeout(15_000) { session.frames.first { it.cursor.shape == TerminalCursorShape.BAR }.cursor }
+        }
+        assertEquals(false, cursor.blinking)
+    }
 
     @Test
     fun startsOneSessionForEachTerminalOfEveryWorkspace() {
