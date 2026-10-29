@@ -329,4 +329,44 @@ class GhosttyKittyGraphicsTest {
         assertEquals(emptyList(), placements())
         assertEquals(0, terminal.kittyGeneration)
     }
+
+    private fun path(file: java.io.File) = Base64.getEncoder().encodeToString(file.canonicalPath.toByteArray())
+
+    private fun repliesOf(block: () -> Unit): String {
+        val replies = StringBuilder()
+        terminal.onWritePty = { replies.append(String(it)) }
+        block()
+        return replies.toString()
+    }
+
+    @Test
+    fun aFileIsNotAMediumUntilTheHostAllowsIt() {
+        val file = java.io.File.createTempFile("medium", ".rgba").apply { deleteOnExit(); writeBytes(rgba) }
+        val request = "\u001b_Ga=T,t=f,f=32,s=2,v=2,i=1;${path(file)}\u001b\\"
+
+        val refused = repliesOf { terminal.vtWrite(request) }
+        assertTrue("unsupported medium" in refused, refused)
+        assertTrue(placements().isEmpty())
+
+        terminal.setKittyImageMediums(file = true, temporaryDirectory = null, sharedMemory = false)
+        terminal.vtWrite(request)
+
+        assertEquals(1, placements().single().imageId)
+        assertContentEquals(rgba, terminal.kittyImage(1)!!.toRgba())
+    }
+
+    @Test
+    fun aTemporaryFileMustBeInTheDirectoryTheHostGave() {
+        val directory = java.nio.file.Files.createTempDirectory("tty-medium").toRealPath().toFile().apply { deleteOnExit() }
+        val inside = java.io.File(directory, "tty-graphics-protocol-1.rgba").apply { writeBytes(rgba) }
+        val outside = java.io.File.createTempFile("tty-graphics-protocol-2", ".rgba").apply { deleteOnExit(); writeBytes(rgba) }
+        terminal.setKittyImageMediums(file = false, temporaryDirectory = directory.path, sharedMemory = false)
+
+        terminal.vtWrite("\u001b_Ga=T,t=t,f=32,s=2,v=2,i=2;${path(outside)}\u001b\\")
+        assertNull(terminal.kittyImage(2), "A file outside the directory")
+
+        terminal.vtWrite("\u001b_Ga=T,t=t,f=32,s=2,v=2,i=1;${path(inside)}\u001b\\")
+        assertNotNull(terminal.kittyImage(1))
+        assertFalse(inside.exists(), "The terminal deletes a temporary file once it has read it")
+    }
 }

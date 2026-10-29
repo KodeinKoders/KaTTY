@@ -1249,6 +1249,20 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun publishesAndAnswersTheNotificationsOfTheKittyProtocol() {
+        // The query is answered on the program's input, which `read` takes: its answer is what the program printed back.
+        val session = startThatWaits(
+            """printf '\033]99;i=1:d=0;Done\033\\\033]99;i=1:p=body;All green\033\\\033]99;i=q:p=?;\033\\'; read -r -d '\\' answer; printf 'got:%s' "${'$'}{answer#*;}"; sleep 30""",
+        )
+        val events = session.collectEvents()
+
+        session.paste("x")
+
+        await("the notification") { events.contains(TerminalEvent.Notification("Done", "All green")) }
+        await("the answer to the query") { session.frames.value.rows.any { row -> row.cells.joinToString("") { it.text }.contains("got:") } }
+    }
+
+    @Test
     fun publishesTheProgress() {
         val session = startThatWaits("""printf '\033]9;4;1;50\007'; head -c1 >/dev/null; printf '\033]9;4;0\007'; sleep 30""")
 

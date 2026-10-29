@@ -1046,6 +1046,9 @@ public class TerminalSession private constructor(
         val buffer = ByteArray(READ_BUFFER_SIZE)
         // Only this thread uses it.
         val translator = makeTranslator { geometry }
+        // libghostty parses OSC 99 and gives it to nobody: the translator does what it asks.
+        translator.onNotification = { title, body -> eventFlow.tryEmit(TerminalEvent.Notification(title, body)) }
+        translator.reply = { send(it.encodeToByteArray()) }
         try {
             val input = process.inputStream
             while (true) {
@@ -1190,6 +1193,13 @@ public class TerminalSession private constructor(
 
         private val STOP = ByteArray(0)
 
+        // Where a program may leave a temporary image: the real path, since libghostty compares it with the one of the file.
+        private fun temporaryDirectory(): String? = try {
+            java.nio.file.Path.of(System.getProperty("java.io.tmpdir")).toRealPath().toString()
+        } catch (e: java.io.IOException) {
+            null
+        }
+
         /**
          * Starts [command] in a pseudo-terminal of [cols] by [rows] cells.
          *
@@ -1208,6 +1218,11 @@ public class TerminalSession private constructor(
          * [setScrollbackLimit] changes it.
          * @param imageStorageLimitBytes How much memory the images of the Kitty graphics protocol may take, 320 MB by default
          * (Ghostty's own). `0` turns the images off. [setImageStorageLimit] changes it.
+         * @param imageMediums Whether a program may give the Kitty graphics protocol an image by the path of a file (`t=f`), by a temporary
+         * file of the temporary directory (`t=t`) or by shared memory (`t=s`), and not only in the escape sequence: it is what `kitten icat`
+         * does on a terminal that is on the same machine, and a program is told `unsupported medium` when it is off. The terminal then reads
+         * what the program names, so a program that runs in it can show any file the user can read as an image, but no more than that:
+         * it never sees the bytes. `true` by default.
          * @param theme The colors, libghostty's own by default. [setTheme] changes them.
          * @param shellIntegration Whether to make zsh, bash and fish report their prompts (OSC 133) and their directory (OSC 7), which they
          * do not on their own: the [workingDirectory] and the [TerminalEvent.PromptStarted], [TerminalEvent.CommandStarted] and
@@ -1244,6 +1259,7 @@ public class TerminalSession private constructor(
             cursorShape: TerminalCursorShape = TerminalCursorShape.BLOCK,
             scrollbackMaxBytes: Long = SCROLLBACK_MAX_BYTES,
             imageStorageLimitBytes: Long = IMAGE_STORAGE_LIMIT_BYTES,
+            imageMediums: Boolean = true,
             theme: TerminalTheme? = null,
             clipboardWrite: Boolean = true,
             clipboardReader: ((TerminalClipboardLocation) -> String?)? = null,
@@ -1305,6 +1321,7 @@ public class TerminalSession private constructor(
                     }
                 }.also {
                     it.advertiseSixel = advertiseSixel
+                    if (imageMediums) it.setKittyImageMediums(file = true, temporaryDirectory = temporaryDirectory(), sharedMemory = true)
                     toClose.addFirst(it)
                 }
                 // Before the session, so that the first frame already has the colors.

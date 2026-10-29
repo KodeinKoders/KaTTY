@@ -887,6 +887,43 @@ public class GhosttyTerminal private constructor(
         setLimit(GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT(), bytes, "KITTY_IMAGE_STORAGE_LIMIT")
     }
 
+    /**
+     * Which ways a program may give the Kitty graphics protocol an image other than in the escape sequence (`t=f`, `t=t`, `t=s`): they are
+     * all off in libghostty, which answers `EINVAL: unsupported medium`, and a program that sends them is told so.
+     *
+     * Each one lets a program that runs in the terminal make the terminal read something of the user's machine and draw it, so they are the
+     * host's to allow.
+     *
+     * @param file A path to any file the user can read (`t=f`).
+     * @param temporaryDirectory The directory that a temporary file (`t=t`, which the terminal deletes once it has read it) must be in, or
+     * `null` for none. libghostty also wants the name to hold `tty-graphics-protocol`.
+     * @param sharedMemory A POSIX shared memory object by name (`t=s`).
+     */
+    public fun setKittyImageMediums(file: Boolean, temporaryDirectory: String?, sharedMemory: Boolean) {
+        Arena.ofConfined().use { arena ->
+            for ((option, enabled, name) in listOf(
+                Triple(GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE(), file, "KITTY_IMAGE_MEDIUM_FILE"),
+                Triple(GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM(), sharedMemory, "KITTY_IMAGE_MEDIUM_SHARED_MEM"),
+            )) {
+                val flag = arena.allocate(ValueLayout.JAVA_BOOLEAN)
+                flag.set(ValueLayout.JAVA_BOOLEAN, 0, enabled)
+                checkResult(GhosttyVt.ghostty_terminal_set(handle, option, flag), "ghostty_terminal_set($name)")
+            }
+            // A null pointer turns the temporary file medium off; the string is copied by the terminal.
+            var value = MemorySegment.NULL
+            if (temporaryDirectory != null) {
+                val bytes = arena.allocateFrom(temporaryDirectory)
+                value = arena.allocate(GhosttyString.layout())
+                GhosttyString.ptr(value, bytes)
+                GhosttyString.len(value, bytes.byteSize() - 1)
+            }
+            checkResult(
+                GhosttyVt.ghostty_terminal_set(handle, GhosttyVt.GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE(), value),
+                "ghostty_terminal_set(KITTY_IMAGE_MEDIUM_TEMP_FILE)",
+            )
+        }
+    }
+
     private fun setLimit(option: Int, bytes: Long, name: String) {
         Arena.ofConfined().use { arena ->
             val limit = arena.allocate(ValueLayout.JAVA_LONG)

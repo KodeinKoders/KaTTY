@@ -74,6 +74,20 @@ internal open class OutputTranslator(
     private val payload = GrowableBytes(0)
     private var dropping = false
 
+    // What the string that is kept is: an iTerm2 image or a notification (a Sixel image is a DCS).
+    private var holding = OscKind.ITERM_FILE
+
+    private val kittyNotifications = KittyNotifications()
+
+    /**
+     * Called with a notification that a program made with OSC 99 (the Kitty protocol), which libghostty does not give to its host. It runs
+     * on the reader's thread: it must only enqueue. Without it the notification is dropped.
+     */
+    var onNotification: ((title: String, body: String) -> Unit)? = null
+
+    /** Called with what the terminal says to the program in answer to an OSC 99 query, for the program's input. */
+    var reply: ((String) -> Unit)? = null
+
     /** How many bytes of a string that is translated are held: for the tests of its limit. */
     internal val heldBytes: Int get() = payload.size
 
@@ -414,7 +428,8 @@ internal open class OutputTranslator(
                 emitHeld()
                 state = State.OSC_PASS
             }
-            OscKind.ITERM_FILE -> {
+            OscKind.ITERM_FILE, OscKind.KITTY_NOTIFICATION -> {
+                holding = oscKind(head)
                 payload.clear()
                 payload.add(held.bytes, 0, held.size)
                 held.clear()
@@ -424,11 +439,11 @@ internal open class OutputTranslator(
         }
     }
 
-    private enum class OscKind { MORE, OTHER, MARK, ITERM_FILE }
+    private enum class OscKind { MORE, OTHER, MARK, ITERM_FILE, KITTY_NOTIFICATION }
 
-    // What the start of an OSC (held[2, 2 + head)) says: "133;" and a letter is a mark of the shell, "1337;File=" is an image.
+    // What the start of an OSC (held[2, 2 + head)) says: "133;" and a letter is a mark of the shell, "1337;File=" is an image, "99;" a notification.
     private fun oscKind(head: Int): OscKind {
-        val prefixes = listOf("133;", "1337;File=")
+        val prefixes = listOf("133;", "1337;File=", "99;")
         var possible = false
         for (prefix in prefixes) {
             val common = minOf(head, prefix.length)
@@ -437,6 +452,7 @@ internal open class OutputTranslator(
             if (!matches) continue
             possible = true
             if (prefix == "1337;File=" && head >= prefix.length) return OscKind.ITERM_FILE
+            if (prefix == "99;" && head >= prefix.length) return OscKind.KITTY_NOTIFICATION
             if (prefix == "133;" && head == prefix.length + 1) return OscKind.MARK
         }
         return if (possible) OscKind.MORE else OscKind.OTHER
@@ -506,9 +522,9 @@ internal open class OutputTranslator(
         modified = true
         if (!dropping) {
             try {
-                if (osc) emitIterm() else emitSixel()
+                if (!osc) emitSixel() else if (holding == OscKind.KITTY_NOTIFICATION) emitNotification() else emitIterm()
             } catch (e: Exception) {
-                logger.warn("An image could not be translated", e)
+                logger.warn("A string could not be translated", e)
             } catch (e: OutOfMemoryError) {
                 // What an image takes is bounded, but the memory may be short: the image is lost, not the reader.
                 logger.warn("An image could not be translated", e)
@@ -544,6 +560,20 @@ internal open class OutputTranslator(
             return
         }
         KittyImageEncoder.encode(picture.image, picture.columns, picture.rows, picture.keepCursor, ::emit)
+    }
+
+    // A piece of a notification of the Kitty protocol: the terminal says what the program asked, or tells the host. payload: ESC ] 99 ; metadata ; text.
+    private fun emitNotification() {
+        val bytes = payload.bytes
+        var separator = -1
+        for (i in 5 until payload.size) if (bytes[i] == SEMICOLON) { separator = i; break }
+        val metadata = String(bytes, 5, (if (separator < 0) payload.size else separator) - 5, Charsets.US_ASCII)
+        val text = if (separator < 0) ByteArray(0) else bytes.copyOfRange(separator + 1, payload.size)
+        when (val outcome = kittyNotifications.accept(metadata, text)) {
+            is KittyNotificationOutcome.Notify -> onNotification?.invoke(outcome.title, outcome.body)
+            is KittyNotificationOutcome.Reply -> reply?.invoke(outcome.text)
+            KittyNotificationOutcome.None -> Unit
+        }
     }
 
     // ---- Output

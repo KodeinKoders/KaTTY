@@ -491,4 +491,93 @@ class OutputTranslatorTest {
         assertEquals(small.size, length)
         assertSame(small, translator.output, "A piece that is not changed is given back as it is")
     }
+
+    // What a program's OSC 99 strings come to: the notifications that the host is told of, the answers to the program, and what the terminal gets.
+    private class Notified(val text: String, val notifications: List<String>, val replies: List<String>)
+
+    private fun notified(vararg pieces: String): Notified {
+        val filter = OutputTranslator()
+        val notifications = mutableListOf<String>()
+        val replies = mutableListOf<String>()
+        filter.onNotification = { title, body -> notifications += "$title|$body" }
+        filter.reply = { replies += readable(it) }
+        val out = java.io.ByteArrayOutputStream()
+        for (piece in pieces) {
+            val bytes = piece.toByteArray(Charsets.UTF_8)
+            val length = filter.filter(bytes, bytes.size)
+            out.write(filter.output, 0, length)
+        }
+        return Notified(out.toString(Charsets.UTF_8), notifications, replies)
+    }
+
+    private fun b64(text: String) = Base64.getEncoder().encodeToString(text.toByteArray())
+
+    @Test
+    fun aKittyNotificationWithOnlyAPayloadIsATitle() {
+        val result = notified("a$esc]99;;Build done$esc\\b")
+        assertEquals(listOf("Build done|"), result.notifications)
+        assertEquals("ab", result.text, "libghostty is not given what it does not read")
+    }
+
+    @Test
+    fun theTitleAndTheBodyComeInPiecesThatShareAnIdentifier() {
+        val result = notified(
+            "$esc]99;i=1:d=0;Hello$esc\\",
+            "$esc]99;i=2:d=0:p=body;Other$esc\\",
+            "$esc]99;i=1:d=0:p=body;World$esc\\",
+            "$esc]99;i=1:p=title; again\u0007",
+        )
+        assertEquals(listOf("Hello again|World"), result.notifications, "i=2 never ended")
+    }
+
+    @Test
+    fun aPayloadThatIsBase64IsDecodedAndASplitCharacterIsWhole() {
+        val bytes = "é".toByteArray()
+        val first = Base64.getEncoder().encodeToString(bytes.copyOfRange(0, 1))
+        val second = Base64.getEncoder().encodeToString(bytes.copyOfRange(1, 2))
+        val result = notified(
+            "$esc]99;i=a:d=0:e=1;$first$esc\\",
+            "$esc]99;i=a:e=1;$second$esc\\",
+            "$esc]99;e=1:p=body:i=b:d=0;${b64("a body")}$esc\\",
+            "$esc]99;i=b:e=1;${b64("a title")}$esc\\",
+        )
+        assertEquals(listOf("é|", "a title|a body"), result.notifications)
+    }
+
+    @Test
+    fun controlCharactersAreNotShown() {
+        val result = notified("$esc]99;;Tit\u0001le$esc\\", "$esc]99;p=body;one\ntwo\u0007")
+        assertEquals(listOf("Title|"), result.notifications.take(1))
+        assertEquals("|one\ntwo", result.notifications[1])
+    }
+
+    @Test
+    fun aQueryIsAnsweredAndNothingIsShown() {
+        val result = notified("$esc]99;i=q:p=?;$esc\\")
+        assertEquals(listOf("ESC]99;i=q:p=?;p=title,body,?:o=always:u=0,1,2ESC\\"), result.replies)
+        assertTrue(result.notifications.isEmpty())
+    }
+
+    @Test
+    fun closeAndAliveAreNotNotifications() {
+        val result = notified("$esc]99;i=1:p=close;$esc\\", "$esc]99;i=1:p=alive;$esc\\", "$esc]99;i=1;$esc\\")
+        assertTrue(result.notifications.isEmpty())
+    }
+
+    @Test
+    fun aNotificationIsTheSameHoweverTheStreamIsCut() {
+        val stream = "x$esc]99;i=1:d=0;Hel${"lo"}$esc\\$esc]99;i=1:p=body;World$esc\\y"
+        for (cut in 0..stream.length) {
+            val result = notified(stream.substring(0, cut), stream.substring(cut))
+            assertEquals(listOf("Hello|World"), result.notifications, "cut at $cut")
+            assertEquals("xy", result.text, "cut at $cut")
+        }
+    }
+
+    @Test
+    fun otherOscsWithANineNineAreNotNotifications() {
+        val result = notified("$esc]990;x\u0007", "$esc]9;4;1;50\u0007")
+        assertTrue(result.notifications.isEmpty())
+        assertEquals("$esc]990;x\u0007$esc]9;4;1;50\u0007", result.text)
+    }
 }
