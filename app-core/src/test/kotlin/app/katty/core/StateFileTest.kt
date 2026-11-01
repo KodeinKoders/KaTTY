@@ -38,7 +38,7 @@ class StateFileTest {
         store.setColorScheme(second, "Nord")
         store.addWorkspace(project, "release-notes")
         store.setProjectOpen(project, false)
-        store.updateSettings { it.copy(theme = ThemeMode.DARK, layout = LayoutMode.VERTICAL, fontSize = 14f, ligatures = false, secureInput = SecureInput.PASSWORD_PROMPTS, cursorShape = CursorShape.BAR, cursorBlink = false, restoreContents = false, view = MainView.BOARD, usageHidden = setOf(usageKey(Agent.CLAUDE, "Week (Sonnet only)"))) }
+        store.updateSettings { it.copy(theme = ThemeMode.DARK, layout = LayoutMode.VERTICAL, fontSize = 14f, ligatures = false, secureInput = SecureInput.PASSWORD_PROMPTS, cursorShape = CursorShape.BAR, cursorBlink = false, restoreContents = false, optionKey = OptionKey.LEFT_IS_ALT, bell = BellMode.SOUND, copyOnSelect = true, boldIsBright = true, minimumContrast = MinimumContrast.NORMAL, scrollback = ScrollbackSize.LARGE, view = MainView.BOARD, usageHidden = setOf(usageKey(Agent.CLAUDE, "Week (Sonnet only)"))) }
         return store.state.value
     }
 

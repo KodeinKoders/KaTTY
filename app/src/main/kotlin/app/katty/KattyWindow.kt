@@ -271,7 +271,9 @@ internal fun KattyWindowContent(
     val sessionsKey = remember(state.projects, state.settings.colorScheme) {
         state.allTerminals().map { it.terminal.id to (it.terminal.colorScheme ?: state.settings.colorScheme) }
     }
-    LaunchedEffect(sessionsKey) { registry.sync(store.state.value) }
+    // And when what the sessions take of the settings changes: the cursor, bold text, the scrollback, and whether what they show is kept.
+    val sessionSettings = listOf(settings.cursorShape, settings.cursorBlink, settings.boldIsBright, settings.scrollback, settings.restoreContents)
+    LaunchedEffect(sessionsKey, sessionSettings) { registry.sync(store.state.value) }
     // No terminal is on the screen while the board is.
     val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
     LaunchedEffect(shown, handles) { controller.dropStaleFind() }

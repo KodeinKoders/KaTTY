@@ -171,8 +171,8 @@ class SessionRegistry(
     // What each terminal's content was when its snapshot was last saved: a terminal that has not changed is not saved again. Under the monitor.
     private val savedVersions = HashMap<TerminalId, Long>()
 
-    // The cursor that the sessions have been given: a change of the settings is given to the ones that are running.
-    private var cursor: Pair<TerminalCursorShape, Boolean>? = null
+    // What the sessions have been given of the settings of the terminals: a change is given to the ones that are running.
+    private var preferences: TerminalPreferences? = null
 
     // The color schemes that were read, by name: a change of the default one is given to every terminal.
     private val themes = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<TerminalTheme>>()
@@ -189,10 +189,11 @@ class SessionRegistry(
 
         syncSnapshots(wanted, state.settings.restoreContents)
 
-        val settingsCursor = state.settings.cursorShape.toTerminal() to state.settings.cursorBlink
-        if (settingsCursor != cursor) {
-            cursor = settingsCursor
-            for (handle in current.values) handle.session?.setDefaultCursor(settingsCursor.first, settingsCursor.second)
+        val settingsPreferences = state.settings.toPreferences()
+        if (settingsPreferences != preferences) {
+            val before = preferences
+            preferences = settingsPreferences
+            for (handle in current.values) handle.session?.apply(settingsPreferences, before)
         }
 
         for (id in current.keys - wanted) {
@@ -353,8 +354,8 @@ class SessionRegistry(
                     starting.remove(spec.id)
                     val handle = session?.let { follow(spec, it, generation) }
                         ?: TerminalHandle(spec.id, null, started.exceptionOrNull()?.let { it.message ?: it.toString() }, generation)
-                    // A cursor that was chosen while it started.
-                    cursor?.let { (shape, blink) -> session?.setDefaultCursor(shape, blink) }
+                    // What was chosen while it started: the settings as they are now, not as the last sync saw them.
+                    session?.apply(store.state.value.settings.toPreferences(), null)
                     // A scheme that was chosen while it started.
                     schemes[spec.id]?.takeIf { it != scheme }?.let { latest -> session?.let { s -> scope.launch(starter) { theme(latest)?.let(s::setTheme) } } }
                     mutableHandles.update { it + (spec.id to handle) }
@@ -541,6 +542,27 @@ private fun loadColorScheme(name: String): TerminalTheme? =
 private fun CursorShape.toTerminal(): TerminalCursorShape = when (this) {
     CursorShape.BLOCK -> TerminalCursorShape.BLOCK
     CursorShape.BAR -> TerminalCursorShape.BAR
+    CursorShape.UNDERLINE -> TerminalCursorShape.UNDERLINE
+}
+
+// The settings that a running session takes without being started again.
+private data class TerminalPreferences(
+    val cursorShape: TerminalCursorShape,
+    val cursorBlink: Boolean,
+    val boldIsBright: Boolean,
+    val scrollbackBytes: Long,
+)
+
+private fun Settings.toPreferences() = TerminalPreferences(cursorShape.toTerminal(), cursorBlink, boldIsBright, scrollback.bytes)
+
+// Gives a session what changed since [before] (all of it for `null`): lowering the scrollback deletes older history at once, and the others make
+// the session read what it shows again, so only what is not what it was.
+private fun TerminalSession.apply(preferences: TerminalPreferences, before: TerminalPreferences?) {
+    if (before == null || before.cursorShape != preferences.cursorShape || before.cursorBlink != preferences.cursorBlink) {
+        setDefaultCursor(preferences.cursorShape, preferences.cursorBlink)
+    }
+    if (before == null || before.boldIsBright != preferences.boldIsBright) setBoldIsBright(preferences.boldIsBright)
+    if (before == null || before.scrollbackBytes != preferences.scrollbackBytes) setScrollbackLimit(preferences.scrollbackBytes)
 }
 
 private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegration: Path?, settings: Settings, snapshot: TerminalSnapshot? = null): TerminalSession {
@@ -553,6 +575,7 @@ private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegrati
         // At the size that the old terminal had, so that its content is reflowed once, when the pane gives the real size, and not twice.
         cols = snapshot?.cols ?: 80, rows = snapshot?.rows ?: 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY),
         cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
+        boldIsBright = settings.boldIsBright, scrollbackMaxBytes = settings.scrollback.bytes,
         snapshot = snapshot, restoredNote = snapshot?.let { "Restored session: ${RESTORED_FORMAT.format(Instant.ofEpochMilli(it.createdAt).atZone(ZoneId.systemDefault()))}" },
         shellIntegrationDirectory = shellIntegration,
     )

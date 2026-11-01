@@ -81,7 +81,9 @@ The files are in `~/Library/Application Support/KaTTY/snapshots`, compressed and
 
 * 811 color schemes, with a picker that has a search, a light and dark filter and a live preview, and a scheme of its own for any terminal.
 * The bundled JetBrains Mono, or any monospaced font of your system, from 8 to 32 points, with ligatures on or off.
-* A block or a bar cursor, blinking or steady, that the shell puts back at each prompt.
+* A block, bar or underline cursor, blinking or steady, that the shell puts back at each prompt.
+* Settings for how the terminals behave: Option as Alt (left, right or both), the bell (visual, sound, both or off), copy on select, bold text in bright colors, a minimum contrast for text that is hard to read, and how much history a terminal keeps.
+The options of the settings are also commands of the palette.
 * Select with the mouse by word, by line or by block, or with Shift and the arrow keys.
 Copy and paste are safe: what you paste cannot run commands behind your back.
 A middle click pastes the last selection.
@@ -92,7 +94,7 @@ A middle click pastes the last selection.
 * The macOS line-editing keys work in the shell: ⌥← and ⌥→ move by word, ⌘← and ⌘→ go to the start and the end of the line, ⌘⌫ deletes to the start.
 * Dead keys and accents work, and programs that use the mouse or the Kitty keyboard protocol get them.
 A program can put text in your clipboard, and cannot read it.
-* When a program rings the terminal bell, a small ring pulses around the cursor, even if the program has hidden it, and nothing else on the screen changes.
+* When a program rings the terminal bell, a small ring pulses around the cursor (by default: it can also beep, or be off), even if the program has hidden it, and nothing else on the screen changes.
 
 
 == Keyboard shortcuts
@@ -415,7 +417,7 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 * macOS on Apple Silicon only, for now.
 * Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
 * Copilot CLI, Junie, Aider, Goose, Cline, Kilo Code, OpenHands and Cursor Agent do not tell KaTTY what they are doing yet.
-* The Option key is not Alt in your programs: it types the characters of your keyboard layout.
+* The Option key types the characters of your keyboard layout unless you make it Alt in the settings, which was never tried on a real keyboard.
 * The directory and the prompts of a terminal are followed for zsh and bash.
 fish is supported but was never tried, and nushell and elvish are not.
 * ⌘F2 needs the fn key on a Mac keyboard where F2 is the brightness key, unless F1, F2 and the others are standard function keys in the keyboard settings.

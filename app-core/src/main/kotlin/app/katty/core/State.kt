@@ -40,6 +40,63 @@ public enum class SecureInput {
 public enum class CursorShape {
     BLOCK,
     BAR,
+    UNDERLINE,
+}
+
+/**
+ * Which Option keys of the keyboard are the program's Alt (Option and `b` is `ESC b`, which is how the shell's line editor and Emacs move by word)
+ * and which type the characters of the layout (`∫`).
+ */
+@Serializable
+public enum class OptionKey {
+    /** Option types the characters of the layout. */
+    CHARACTERS,
+
+    /** Only the left Option key is Alt: the right one still types the characters. */
+    LEFT_IS_ALT,
+
+    /** Only the right Option key is Alt. */
+    RIGHT_IS_ALT,
+
+    /** Both are Alt. */
+    BOTH_ARE_ALT,
+}
+
+/** What a BEL character does in a terminal. */
+@Serializable
+public enum class BellMode {
+    OFF,
+
+    /** A ring pulses around the cursor. */
+    VISUAL,
+
+    /** The system beeps. */
+    SOUND,
+
+    /** Both. */
+    VISUAL_AND_SOUND,
+}
+
+/** The least WCAG contrast ratio between a text and its background: a text that is less readable is moved towards white or black until it is. */
+@Serializable
+public enum class MinimumContrast(public val ratio: Float) {
+    OFF(1f),
+    LOW(3f),
+    NORMAL(4.5f),
+    HIGH(7f),
+}
+
+/** About how much memory the history of a terminal may take, which is what makes how many lines it keeps. */
+@Serializable
+public enum class ScrollbackSize(public val megabytes: Int) {
+    SMALL(2),
+    DEFAULT(10),
+    LARGE(50),
+    HUGE(200),
+    ;
+
+    /** The limit as the terminal takes it. */
+    public val bytes: Long get() = megabytes * 1_000_000L
 }
 
 /** What the window shows: the terminals of the workspace, or the board of the agents of the projects. */
@@ -62,6 +119,12 @@ public enum class MainView {
  * @param secureInput When what is typed in the terminals is kept from the other programs.
  * @param restoreContents Whether what a terminal showed comes back when the application starts again (its screen and history, in files that only
  * the user can read: see [TerminalSnapshotStore]). The programs of the terminals do not.
+ * @param optionKey Which Option keys are the program's Alt, and which type characters.
+ * @param bell What a BEL character does.
+ * @param copyOnSelect Whether what is selected is put in the clipboard as soon as the selection is made.
+ * @param boldIsBright Whether bold text in one of the 8 normal colors is drawn in the bright one.
+ * @param minimumContrast The least contrast between a text and its background.
+ * @param scrollback How much history a terminal keeps. Lowering it deletes the older lines of the terminals that are open.
  * @param cursorShape The cursor of the terminals, at the prompt and until a program sets its own.
  * @param cursorBlink Whether that cursor blinks.
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
@@ -85,6 +148,12 @@ public data class Settings(
     val cursorShape: CursorShape = CursorShape.BLOCK,
     val cursorBlink: Boolean = true,
     val restoreContents: Boolean = true,
+    val optionKey: OptionKey = OptionKey.CHARACTERS,
+    val bell: BellMode = BellMode.VISUAL,
+    val copyOnSelect: Boolean = false,
+    val boldIsBright: Boolean = false,
+    val minimumContrast: MinimumContrast = MinimumContrast.OFF,
+    val scrollback: ScrollbackSize = ScrollbackSize.DEFAULT,
     val usageShown: Set<String> = setOf("claude", "codex", "antigravity", "opencode", "kilocode", "omp"),
     val usageHidden: Set<String> = emptySet(),
     val compactUsage: Boolean = false,

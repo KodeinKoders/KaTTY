@@ -440,6 +440,20 @@ class CommandPaletteTest {
     }
 
     @Test
+    fun theBehaviorOfTheTerminalsHasCommands() {
+        store.addProject("/dev/api-gateway")
+        for (label in listOf(
+            "Cursor: underline", "Option key: left Option is Alt", "Option key: both Option keys are Alt", "Bell: sound", "Minimum contrast: 4.5",
+            "Scrollback: 50 MB", "Turn copy on select on", "Turn bold text with bright colors on",
+        )) assertTrue(label in labels(), label)
+
+        store.updateSettings { it.copy(copyOnSelect = true, boldIsBright = true) }
+
+        assertTrue("Turn copy on select off" in labels())
+        assertTrue("Turn bold text with bright colors off" in labels())
+    }
+
+    @Test
     fun theCursorHasCommands() {
         store.addProject("/dev/api-gateway")
         assertTrue("Cursor: block" in labels())

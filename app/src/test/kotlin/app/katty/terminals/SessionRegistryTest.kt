@@ -2,6 +2,7 @@ package app.katty.terminals
 
 import app.katty.core.CursorShape
 import app.katty.core.KattyStore
+import app.katty.core.ScrollbackSize
 import app.katty.core.SplitDirection
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalSession
@@ -60,6 +61,61 @@ class SessionRegistryTest {
             kotlinx.coroutines.withTimeout(15_000) { session.frames.first { it.cursor.shape == TerminalCursorShape.BAR }.cursor }
         }
         assertEquals(false, cursor.blinking)
+    }
+
+    @Test
+    fun aChangeOfTheTextSettingsIsGivenToTheRunningSessions() {
+        script = """printf '\033[31mn\033[1mb'; sleep 30"""
+        store.addProject("/tmp")
+        sync()
+        val session = registry.handles.value.values.single().session!!
+        val normal = runBlocking {
+            withTimeout(15_000) { session.frames.first { it.rows[0].cells.take(2).joinToString("") { c -> c.text } == "nb" } }
+        }.rows[0].cells
+
+        store.updateSettings { it.copy(boldIsBright = true) }
+        sync()
+
+        val bright = runBlocking {
+            withTimeout(15_000) { session.frames.first { it.rows[0].cells[1].foreground != normal[1].foreground } }
+        }.rows[0].cells
+        assertEquals(normal[0].foreground, bright[0].foreground, "Red that is not bold stays")
+    }
+
+    @Test
+    fun loweringTheScrollbackDeletesTheOlderLinesOfTheRunningSessions() {
+        script = "seq 1 60000; echo done; sleep 30"
+        store.addProject("/tmp")
+        sync()
+        val session = registry.handles.value.values.single().session!!
+        val deadline = System.nanoTime() + 30_000_000_000L
+        while ("done" !in session.viewportText()) {
+            check(System.nanoTime() < deadline) { "Still waiting for the output" }
+            Thread.sleep(20)
+        }
+        val before = session.rowCount()
+
+        store.updateSettings { it.copy(scrollback = ScrollbackSize.SMALL) }
+        sync()
+
+        assertTrue(session.rowCount() < before, "The older lines are gone: ${session.rowCount()} rows of $before")
+    }
+
+    @Test
+    fun aShellThatIsStartedAgainHasTheSettingsAsTheyAreNow() {
+        store.addProject("/tmp")
+        sync()
+        val id = store.state.value.selection.terminal!!
+
+        // Not synced: what the registry saw last is the old settings, which must not be what the new shell gets.
+        store.updateSettings { it.copy(cursorShape = CursorShape.UNDERLINE) }
+        registry.restart(id)
+
+        val session = registry.handles.value.values.single().session!!
+        val shape = runBlocking {
+            withTimeout(15_000) { session.frames.first { it.cursor.shape == TerminalCursorShape.UNDERLINE } }.cursor.shape
+        }
+        assertEquals(TerminalCursorShape.UNDERLINE, shape)
     }
 
     @Test

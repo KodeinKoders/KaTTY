@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -17,7 +18,11 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
+import app.katty.core.BellMode
 import app.katty.core.CursorShape
+import app.katty.core.MinimumContrast
+import app.katty.core.OptionKey
+import app.katty.core.ScrollbackSize
 import app.katty.core.LayoutMode
 import app.katty.core.Settings
 import app.katty.core.ThemeMode
@@ -63,7 +68,7 @@ class MainMenuTest {
     }
 
     @Test
-    fun theUsageIsShownOrHiddenAndPutInThePanelOrInAWindowButNotWhileHidden() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
+    fun theUsageIsShownOrHiddenAndPutInThePanelOrInAWindowButNotWhileHidden() = runSkikoComposeUiTest(size = Size(1024f, 2600f)) {
         show()
         onNodeWithText("AGENT USAGE").assertExists()
 
@@ -97,7 +102,7 @@ class MainMenuTest {
     }
 
     @Test
-    fun theFontSizeGoesUpAndDownByHalfAPixel() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
+    fun theFontSizeGoesUpAndDownByHalfAPixel() = runSkikoComposeUiTest(size = Size(1024f, 2600f)) {
         show()
 
         onNodeWithContentDescription("Increase font size").performClick()
@@ -111,7 +116,7 @@ class MainMenuTest {
 
     // A taller window than the default: with the usage section the menu does not fit in 768 pixels, and what is out of the window cannot be clicked.
     @Test
-    fun ligaturesAreTurnedOffAndOn() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
+    fun ligaturesAreTurnedOffAndOn() = runSkikoComposeUiTest(size = Size(1024f, 2600f)) {
         show()
 
         onNodeWithText("Font ligatures").performClick()
@@ -121,7 +126,7 @@ class MainMenuTest {
     }
 
     @Test
-    fun theCursorIsAShapeAndBlinkingOrNot() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
+    fun theCursorIsAShapeAndBlinkingOrNot() = runSkikoComposeUiTest(size = Size(1024f, 2600f)) {
         show()
         assertEquals(CursorShape.BLOCK, settings.cursorShape)
         assertTrue(settings.cursorBlink)
@@ -145,7 +150,7 @@ class MainMenuTest {
     }
 
     @Test
-    fun restoringTheContentsOfTheTerminalsIsTurnedOffAndOn() = runSkikoComposeUiTest(size = Size(1024f, 1600f)) {
+    fun restoringTheContentsOfTheTerminalsIsTurnedOffAndOn() = runSkikoComposeUiTest(size = Size(1024f, 2600f)) {
         show()
         assertTrue(settings.restoreContents, "On by default")
 
@@ -153,6 +158,45 @@ class MainMenuTest {
         assertFalse(settings.restoreContents)
         onNodeWithText("Restore terminal contents").performClick()
         assertTrue(settings.restoreContents)
+    }
+
+    // The menu is taller than the window, and scrolls: what is below is scrolled to before it is clicked.
+    private fun androidx.compose.ui.test.ComposeUiTest.clickOn(text: String, index: Int = 0) {
+        onAllNodesWithText(text)[index].performScrollTo().performClick()
+    }
+
+    @Test
+    fun theBehaviorOfTheTerminalsIsChosenInTheMenu() = runSkikoComposeUiTest(size = Size(1024f, 900f)) {
+        show()
+        assertEquals(OptionKey.CHARACTERS, settings.optionKey, "Today's behavior is the default")
+        assertEquals(BellMode.VISUAL, settings.bell)
+        assertEquals(MinimumContrast.OFF, settings.minimumContrast)
+        assertEquals(ScrollbackSize.DEFAULT, settings.scrollback)
+        assertFalse(settings.boldIsBright)
+        assertFalse(settings.copyOnSelect)
+
+        clickOn("Underline")
+        assertEquals(CursorShape.UNDERLINE, settings.cursorShape)
+        clickOn("Left")
+        assertEquals(OptionKey.LEFT_IS_ALT, settings.optionKey)
+        // The Option keys' Both is the first, the bell's the second.
+        clickOn("Both", 0)
+        assertEquals(OptionKey.BOTH_ARE_ALT, settings.optionKey)
+        // The bell's Off is the first, the contrast's the second.
+        clickOn("Off", 0)
+        assertEquals(BellMode.OFF, settings.bell)
+        clickOn("Sound")
+        assertEquals(BellMode.SOUND, settings.bell)
+        clickOn("Both", 1)
+        assertEquals(BellMode.VISUAL_AND_SOUND, settings.bell)
+        clickOn("Bold text uses bright colors")
+        assertTrue(settings.boldIsBright)
+        clickOn("4.5")
+        assertEquals(MinimumContrast.NORMAL, settings.minimumContrast)
+        clickOn("50")
+        assertEquals(ScrollbackSize.LARGE, settings.scrollback)
+        clickOn("Copy on select")
+        assertTrue(settings.copyOnSelect)
     }
 
     @Test
@@ -165,7 +209,7 @@ class MainMenuTest {
     }
 
     @Test
-    fun theFontIsChosenAmongTheFamiliesOfTheSystemOrTheBundledOne() = runSkikoComposeUiTest(size = Size(1024f, 1400f)) {
+    fun theFontIsChosenAmongTheFamiliesOfTheSystemOrTheBundledOne() = runSkikoComposeUiTest(size = Size(1024f, 2600f)) {
         show()
 
         onNodeWithContentDescription("Font family: JetBrains Mono").performClick()

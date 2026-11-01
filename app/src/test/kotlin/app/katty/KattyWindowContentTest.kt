@@ -18,9 +18,11 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import app.katty.core.CursorShape
 import app.katty.core.KattyDirectories
 import app.katty.core.KattyStore
 import app.katty.core.terminals
+import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalSession
 import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
@@ -36,6 +38,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** The main window as it is composed, with real shells, but no window around it: its title bar is a row. */
@@ -83,6 +86,25 @@ class KattyWindowContentTest {
             }
         }
         waitForIdle()
+    }
+
+    // What the settings say of the terminals reaches the sessions that are running, from the window: nothing but a change of the settings makes it.
+    @Test
+    fun aChangeOfTheCursorSettingsReachesTheRunningTerminals() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+        val session = registry.handles.value.values.single().session!!
+        assertEquals(TerminalCursorShape.BLOCK, session.frames.value.cursor.shape)
+
+        store.updateSettings { it.copy(cursorShape = CursorShape.BAR, cursorBlink = false) }
+        waitForIdle()
+
+        val deadline = System.nanoTime() + 15_000_000_000L
+        while (session.frames.value.cursor.shape != TerminalCursorShape.BAR) {
+            check(System.nanoTime() < deadline) { "The terminal still has a ${session.frames.value.cursor.shape} cursor" }
+            Thread.sleep(20)
+        }
+        assertFalse(session.frames.value.cursor.blinking)
     }
 
     @Test

@@ -15,7 +15,11 @@ import app.katty.core.PaletteGroup
 import app.katty.core.ProjectId
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
+import app.katty.core.BellMode
 import app.katty.core.CursorShape
+import app.katty.core.MinimumContrast
+import app.katty.core.OptionKey
+import app.katty.core.ScrollbackSize
 import app.katty.core.SecureInput
 import app.katty.core.ThemeMode
 import app.katty.core.WorkspaceId
@@ -51,6 +55,18 @@ class PaletteHandlers(
     val toggleCursorBlink: () -> Unit = {},
     /** Whether what a terminal showed comes back when the application starts again. */
     val toggleRestoreContents: () -> Unit = {},
+    /** Which Option keys are the program's Alt. */
+    val setOptionKey: (OptionKey) -> Unit = {},
+    /** What a BEL character does. */
+    val setBell: (BellMode) -> Unit = {},
+    /** Whether what is selected is copied at once. */
+    val toggleCopyOnSelect: () -> Unit = {},
+    /** Whether bold text uses the bright colors. */
+    val toggleBoldIsBright: () -> Unit = {},
+    /** The least contrast between a text and its background. */
+    val setMinimumContrast: (MinimumContrast) -> Unit = {},
+    /** How much history a terminal keeps. */
+    val setScrollback: (ScrollbackSize) -> Unit = {},
     val jumpToWaiting: () -> Unit,
     val markAllSeen: () -> Unit,
     /** Opens the board in a window of its own, or brings that window to the front when it is open. */
@@ -288,7 +304,23 @@ fun paletteCommands(
     command("theme-system", "Theme: system") { handlers.setTheme(ThemeMode.SYSTEM) }
     command("cursor-block", "Cursor: block") { handlers.setCursorShape(CursorShape.BLOCK) }
     command("cursor-bar", "Cursor: bar") { handlers.setCursorShape(CursorShape.BAR) }
+    command("cursor-underline", "Cursor: underline") { handlers.setCursorShape(CursorShape.UNDERLINE) }
     command("cursor-blink", if (state.settings.cursorBlink) "Turn cursor blinking off" else "Turn cursor blinking on", action = handlers.toggleCursorBlink)
+    command("option-characters", "Option key: types characters") { handlers.setOptionKey(OptionKey.CHARACTERS) }
+    command("option-left", "Option key: left Option is Alt") { handlers.setOptionKey(OptionKey.LEFT_IS_ALT) }
+    command("option-right", "Option key: right Option is Alt") { handlers.setOptionKey(OptionKey.RIGHT_IS_ALT) }
+    command("option-both", "Option key: both Option keys are Alt") { handlers.setOptionKey(OptionKey.BOTH_ARE_ALT) }
+    command("bell-off", "Bell: off") { handlers.setBell(BellMode.OFF) }
+    command("bell-visual", "Bell: visual") { handlers.setBell(BellMode.VISUAL) }
+    command("bell-sound", "Bell: sound") { handlers.setBell(BellMode.SOUND) }
+    command("bell-both", "Bell: visual and sound") { handlers.setBell(BellMode.VISUAL_AND_SOUND) }
+    command("copy-on-select", if (state.settings.copyOnSelect) "Turn copy on select off" else "Turn copy on select on", action = handlers.toggleCopyOnSelect)
+    command("bold-is-bright", if (state.settings.boldIsBright) "Turn bold text with bright colors off" else "Turn bold text with bright colors on", action = handlers.toggleBoldIsBright)
+    command("contrast-off", "Minimum contrast: off") { handlers.setMinimumContrast(MinimumContrast.OFF) }
+    command("contrast-low", "Minimum contrast: 3") { handlers.setMinimumContrast(MinimumContrast.LOW) }
+    command("contrast-normal", "Minimum contrast: 4.5") { handlers.setMinimumContrast(MinimumContrast.NORMAL) }
+    command("contrast-high", "Minimum contrast: 7") { handlers.setMinimumContrast(MinimumContrast.HIGH) }
+    for (size in ScrollbackSize.entries) command("scrollback-${size.megabytes}", "Scrollback: ${size.megabytes} MB") { handlers.setScrollback(size) }
     command(
         "restore-contents",
         if (state.settings.restoreContents) "Turn restoring terminal contents off" else "Turn restoring terminal contents on",

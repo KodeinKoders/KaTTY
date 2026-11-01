@@ -37,7 +37,11 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import app.katty.core.LayoutMode
 import app.katty.core.Settings
+import app.katty.core.BellMode
 import app.katty.core.CursorShape
+import app.katty.core.MinimumContrast
+import app.katty.core.OptionKey
+import app.katty.core.ScrollbackSize
 import app.katty.core.SecureInput
 import app.katty.core.ThemeMode
 import app.katty.terminal.themes.ITermColorSchemeInfo
@@ -169,12 +173,68 @@ fun MainMenu(
                     Separator()
                     Section("CURSOR") {
                         Choice(
-                            listOf(ChoiceOption(CursorShape.BLOCK, "Block"), ChoiceOption(CursorShape.BAR, "Bar")),
+                            listOf(ChoiceOption(CursorShape.BLOCK, "Block"), ChoiceOption(CursorShape.BAR, "Bar"), ChoiceOption(CursorShape.UNDERLINE, "Underline")),
                             settings.cursorShape, { value -> onChange { it.copy(cursorShape = value) } },
                             Modifier.padding(horizontal = 4.dp),
                         )
                         CheckSetting("Blinking", settings.cursorBlink, { value -> onChange { it.copy(cursorBlink = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                         Caption("The cursor at the prompt and until a program changes it. The shell puts it back at each prompt.")
+                    }
+                    Separator()
+                    Section("OPTION AS ALT") {
+                        Choice(
+                            listOf(
+                                ChoiceOption(OptionKey.CHARACTERS, "None"),
+                                ChoiceOption(OptionKey.LEFT_IS_ALT, "Left"),
+                                ChoiceOption(OptionKey.RIGHT_IS_ALT, "Right"),
+                                ChoiceOption(OptionKey.BOTH_ARE_ALT, "Both"),
+                            ),
+                            settings.optionKey, { value -> onChange { it.copy(optionKey = value) } },
+                            Modifier.padding(horizontal = 4.dp),
+                        )
+                        Caption("Which Option keys are the program's Alt, which moves by word in a shell (Option+B, Option+F). The others type the characters of your layout.")
+                    }
+                    Separator()
+                    Section("BELL") {
+                        Choice(
+                            listOf(
+                                ChoiceOption(BellMode.OFF, "Off"),
+                                ChoiceOption(BellMode.VISUAL, "Visual"),
+                                ChoiceOption(BellMode.SOUND, "Sound"),
+                                ChoiceOption(BellMode.VISUAL_AND_SOUND, "Both"),
+                            ),
+                            settings.bell, { value -> onChange { it.copy(bell = value) } },
+                            Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                    Separator()
+                    Section("TEXT") {
+                        CheckSetting("Bold text uses bright colors", settings.boldIsBright, { value -> onChange { it.copy(boldIsBright = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                        Caption("Minimum contrast: text that is hard to read is moved towards white or black.")
+                        Choice(
+                            listOf(
+                                ChoiceOption(MinimumContrast.OFF, "Off"),
+                                ChoiceOption(MinimumContrast.LOW, "3"),
+                                ChoiceOption(MinimumContrast.NORMAL, "4.5"),
+                                ChoiceOption(MinimumContrast.HIGH, "7"),
+                            ),
+                            settings.minimumContrast, { value -> onChange { it.copy(minimumContrast = value) } },
+                            Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                    Separator()
+                    Section("SCROLLBACK (MB)") {
+                        Choice(
+                            ScrollbackSize.entries.map { ChoiceOption(it, "${it.megabytes}") },
+                            settings.scrollback, { value -> onChange { it.copy(scrollback = value) } },
+                            Modifier.padding(horizontal = 4.dp),
+                        )
+                        Caption("How much history a terminal keeps. Lowering it deletes the older lines of the open terminals.")
+                    }
+                    Separator()
+                    Section("SELECTION") {
+                        CheckSetting("Copy on select", settings.copyOnSelect, { value -> onChange { it.copy(copyOnSelect = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                        Caption("Puts what you select in the clipboard as soon as you release the mouse.")
                     }
                     Separator()
                     Section("TERMINAL CONTENTS") {

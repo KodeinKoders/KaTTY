@@ -82,7 +82,11 @@ import app.katty.ui.OneLine
 import androidx.compose.runtime.withFrameNanos
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import app.katty.core.BellMode
+import app.katty.core.OptionKey
 import app.katty.core.SecureInput
+import app.katty.terminal.compose.TerminalBell
+import app.katty.terminal.compose.TerminalOptionAsAlt
 import app.katty.terminal.compose.TerminalSecureInput
 
 /** The height of the header of a pane. */
@@ -216,6 +220,10 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         font = context.font,
                         ligatures = context.settings.ligatures,
                         secureInput = context.settings.secureInput.toTerminal(),
+                        optionAsAlt = context.settings.optionKey.toTerminal(),
+                        bell = context.settings.bell.toTerminal(),
+                        copyOnSelect = context.settings.copyOnSelect,
+                        minimumContrast = context.settings.minimumContrast.ratio,
                         padding = PaddingValues(TERMINAL_PADDING),
                         focusRequester = handle.focus,
                         focusOnStart = false,
@@ -341,6 +349,20 @@ internal fun PaneHeader(
 }
 
 /** What a terminal is given of the setting. */
+internal fun OptionKey.toTerminal(): TerminalOptionAsAlt = when (this) {
+    OptionKey.CHARACTERS -> TerminalOptionAsAlt.NONE
+    OptionKey.LEFT_IS_ALT -> TerminalOptionAsAlt.LEFT
+    OptionKey.RIGHT_IS_ALT -> TerminalOptionAsAlt.RIGHT
+    OptionKey.BOTH_ARE_ALT -> TerminalOptionAsAlt.BOTH
+}
+
+internal fun BellMode.toTerminal(): TerminalBell = when (this) {
+    BellMode.OFF -> TerminalBell.NONE
+    BellMode.VISUAL -> TerminalBell.VISUAL
+    BellMode.SOUND -> TerminalBell.AUDIO
+    BellMode.VISUAL_AND_SOUND -> TerminalBell.BOTH
+}
+
 internal fun SecureInput.toTerminal(): TerminalSecureInput = when (this) {
     SecureInput.NEVER -> TerminalSecureInput.NEVER
     SecureInput.PASSWORD_PROMPTS -> TerminalSecureInput.PASSWORD_PROMPTS
