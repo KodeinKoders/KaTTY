@@ -69,7 +69,7 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
         ),
     ),
     FONT_SMALLER(ShortcutGroup.LOOK, "Smaller terminal font", listOf(cmd(Awt.VK_MINUS), cmd(Awt.VK_SUBTRACT))),
-    FONT_RESET(ShortcutGroup.LOOK, "Default terminal font size", listOf(cmd(Awt.VK_0))),
+    FONT_RESET(ShortcutGroup.LOOK, "Default terminal font size", listOf(cmd(Awt.VK_0), cmd(Awt.VK_NUMPAD0))),
 
     /** Opens the main menu, and closes it. */
     MENU(ShortcutGroup.LOOK, "Open the main menu", listOf(cmd(Awt.VK_COMMA))),

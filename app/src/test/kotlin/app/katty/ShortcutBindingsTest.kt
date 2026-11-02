@@ -77,6 +77,8 @@ class ShortcutBindingsTest {
             assertEquals(AppShortcut.FONT_BIGGER, lookup(map, Awt.VK_ADD, shift = shift))
         }
         assertEquals(AppShortcut.FONT_SMALLER, lookup(map, Awt.VK_SUBTRACT))
+        assertEquals(AppShortcut.FONT_RESET, lookup(map, Awt.VK_0))
+        assertEquals(AppShortcut.FONT_RESET, lookup(map, Awt.VK_NUMPAD0))
         assertEquals("⌘=", map.label(AppShortcut.FONT_BIGGER))
     }
 
