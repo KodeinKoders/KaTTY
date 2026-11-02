@@ -143,7 +143,7 @@ Escape is never used by the window, except to close what is open in front of it 
 | ⌘⌥1 … ⌘⌥9
 | Go to the first to the ninth pane of the workspace
 
-| ⌘⌃ and an arrow
+| ⌘⌥ and an arrow
 | Move the nearest divider in that direction
 
 | ⌘⇧↩

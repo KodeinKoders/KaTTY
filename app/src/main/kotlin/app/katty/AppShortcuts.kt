@@ -53,10 +53,10 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     MAXIMIZE(ShortcutGroup.PANES, "Maximize the pane, or put it back", listOf(cmd(Awt.VK_ENTER, shift = true))),
 
     /** Move the nearest divider of the pane's splits that is along the arrow. */
-    RESIZE_LEFT(ShortcutGroup.PANES, "Move the divider to the left", listOf(cmd(Awt.VK_LEFT, ctrl = true))),
-    RESIZE_RIGHT(ShortcutGroup.PANES, "Move the divider to the right", listOf(cmd(Awt.VK_RIGHT, ctrl = true))),
-    RESIZE_UP(ShortcutGroup.PANES, "Move the divider up", listOf(cmd(Awt.VK_UP, ctrl = true))),
-    RESIZE_DOWN(ShortcutGroup.PANES, "Move the divider down", listOf(cmd(Awt.VK_DOWN, ctrl = true))),
+    RESIZE_LEFT(ShortcutGroup.PANES, "Move the divider to the left", listOf(cmd(Awt.VK_LEFT, alt = true))),
+    RESIZE_RIGHT(ShortcutGroup.PANES, "Move the divider to the right", listOf(cmd(Awt.VK_RIGHT, alt = true))),
+    RESIZE_UP(ShortcutGroup.PANES, "Move the divider up", listOf(cmd(Awt.VK_UP, alt = true))),
+    RESIZE_DOWN(ShortcutGroup.PANES, "Move the divider down", listOf(cmd(Awt.VK_DOWN, alt = true))),
 
     /** The next and the previous match of the search that is open. */
     FIND_NEXT(ShortcutGroup.TERMINAL, "Next match of the search", listOf(cmd(Awt.VK_G))),

@@ -62,11 +62,11 @@ class AppShortcutsTest {
     }
 
     @Test
-    fun commandAndOptionAndAnArrowIsTheNeighbouringPane() {
-        assertEquals(AppShortcut.FOCUS_LEFT, down(Key.DirectionLeft, alt = true).appShortcut())
-        assertEquals(AppShortcut.FOCUS_RIGHT, down(Key.DirectionRight, alt = true).appShortcut())
-        assertEquals(AppShortcut.FOCUS_UP, down(Key.DirectionUp, alt = true).appShortcut())
-        assertEquals(AppShortcut.FOCUS_DOWN, down(Key.DirectionDown, alt = true).appShortcut())
+    fun commandAndShiftAndAnArrowIsTheNeighbouringPane() {
+        assertEquals(AppShortcut.FOCUS_LEFT, down(Key.DirectionLeft, shift = true).appShortcut())
+        assertEquals(AppShortcut.FOCUS_RIGHT, down(Key.DirectionRight, shift = true).appShortcut())
+        assertEquals(AppShortcut.FOCUS_UP, down(Key.DirectionUp, shift = true).appShortcut())
+        assertEquals(AppShortcut.FOCUS_DOWN, down(Key.DirectionDown, shift = true).appShortcut())
         assertNull(down(Key.D, alt = true).appShortcut(), "Option makes a character: it is not a shortcut")
     }
 
@@ -108,14 +108,14 @@ class AppShortcutsTest {
     }
 
     @Test
-    fun commandControlAndAnArrowResizesAndNothingElseWithControlIsTheWindows() {
-        assertEquals(AppShortcut.RESIZE_LEFT, down(Key.DirectionLeft, ctrl = true).appShortcut())
-        assertEquals(AppShortcut.RESIZE_RIGHT, down(Key.DirectionRight, ctrl = true).appShortcut())
-        assertEquals(AppShortcut.RESIZE_UP, down(Key.DirectionUp, ctrl = true).appShortcut())
-        assertEquals(AppShortcut.RESIZE_DOWN, down(Key.DirectionDown, ctrl = true).appShortcut())
+    fun commandOptionAndAnArrowResizesAndNothingWithControlIsTheWindows() {
+        assertEquals(AppShortcut.RESIZE_LEFT, down(Key.DirectionLeft, alt = true).appShortcut())
+        assertEquals(AppShortcut.RESIZE_RIGHT, down(Key.DirectionRight, alt = true).appShortcut())
+        assertEquals(AppShortcut.RESIZE_UP, down(Key.DirectionUp, alt = true).appShortcut())
+        assertEquals(AppShortcut.RESIZE_DOWN, down(Key.DirectionDown, alt = true).appShortcut())
         assertNull(down(Key.F, ctrl = true).appShortcut(), "Command, Control and F is the full screen of the system")
         assertNull(down(Key.D, ctrl = true).appShortcut())
-        assertNull(down(Key.DirectionLeft, ctrl = true, shift = true).appShortcut())
+        assertNull(down(Key.DirectionLeft, alt = true, shift = true).appShortcut())
     }
 
     @Test

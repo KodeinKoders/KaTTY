@@ -27,7 +27,7 @@ class ShortcutBindingsTest {
             AppShortcut.ADD_PROJECT to "⌘O", AppShortcut.OPEN_RECENT to "⌘⇧O", AppShortcut.NEW_WORKSPACE to "⌘N", AppShortcut.CLOSE_WORKSPACE to "⌘⇧W", AppShortcut.SPLIT_MAIN to "⌘D",
             AppShortcut.SPLIT_OTHER to "⌘⇧D", AppShortcut.CLOSE_TERMINAL to "⌘W", AppShortcut.RESTART_TERMINAL to "⌘R", AppShortcut.JUMP_TO_WAITING to "⌘⇧J",
             AppShortcut.ATTENTION to "⌘J", AppShortcut.BOARD to "⌘⇧B", AppShortcut.SIDEBAR to "⌘B", AppShortcut.MAXIMIZE to "⌘⇧↩",
-            AppShortcut.RESIZE_LEFT to "⌘⌃←", AppShortcut.RESIZE_RIGHT to "⌘⌃→", AppShortcut.RESIZE_UP to "⌘⌃↑", AppShortcut.RESIZE_DOWN to "⌘⌃↓",
+            AppShortcut.RESIZE_LEFT to "⌘⌥←", AppShortcut.RESIZE_RIGHT to "⌘⌥→", AppShortcut.RESIZE_UP to "⌘⌥↑", AppShortcut.RESIZE_DOWN to "⌘⌥↓",
             AppShortcut.FIND_NEXT to "⌘G", AppShortcut.FIND_PREVIOUS to "⌘⇧G", AppShortcut.FONT_BIGGER to "⌘=", AppShortcut.FONT_SMALLER to "⌘-",
             AppShortcut.FONT_RESET to "⌘0", AppShortcut.MENU to "⌘,", AppShortcut.PALETTE to "⌘K", AppShortcut.FOCUS_LEFT to "⌘⇧←",
             AppShortcut.FOCUS_RIGHT to "⌘⇧→", AppShortcut.FOCUS_UP to "⌘⇧↑", AppShortcut.FOCUS_DOWN to "⌘⇧↓", AppShortcut.CLEAR_SCREEN to "⌘L",
