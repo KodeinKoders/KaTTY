@@ -109,7 +109,8 @@ internal fun TerminalView(
         if (preedit.isNotEmpty()) {
             // The cursor would be in the way of what is being composed.
             drawPreedit(frame, typography, preedit)
-        } else if (cursorShown.value) {
+        } else if (cursorShown.value || frame.cursor.passwordInput) {
+            // The padlock does not blink: it says why the cursor does not move.
             drawCursor(frame, typography, focused, rows, textShown.value)
         }
         // On top of the cursor, and whether it is shown or not: a program that hides its cursor rings the bell too.
