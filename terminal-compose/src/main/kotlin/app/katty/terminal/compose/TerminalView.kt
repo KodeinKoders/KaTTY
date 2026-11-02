@@ -33,6 +33,7 @@ import app.katty.terminal.TerminalScrollbar
 import app.katty.terminal.TerminalUnderline
 import kotlinx.coroutines.delay
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.round
 
 private const val CURSOR_BLINK_MS = 530L
@@ -456,6 +457,12 @@ private fun DrawScope.drawCursor(frame: TerminalFrame, typography: TerminalTypog
     val width = round((col + cols) * typography.cellWidth) - left
     val thickness = max(1f, round(typography.cellHeight / 8f))
 
+    // While a program reads a password the cursor does not move, so it is a padlock, which says why, as Ghostty's is.
+    if (cursor.passwordInput) {
+        drawPadlock(color, left, top, width, typography.cellHeight)
+        return
+    }
+
     // A block that does not have the focus is an outline: it is not where the keys go.
     val shape = if (cursor.shape == TerminalCursorShape.BLOCK && !focused) TerminalCursorShape.BLOCK_HOLLOW else cursor.shape
     when (shape) {
@@ -487,4 +494,25 @@ private fun DrawScope.drawCursor(frame: TerminalFrame, typography: TerminalTypog
             Size(width, thickness),
         )
     }
+}
+
+/** A closed padlock in a cell: a body in the lower part and a shackle over it, centered, in the cell's own pixels. */
+private fun DrawScope.drawPadlock(color: Color, left: Float, top: Float, width: Float, height: Float) {
+    val stroke = max(1f, round(height / 14f))
+    val bodyWidth = min(width * 0.8f, height * 0.5f)
+    val bodyHeight = height * 0.4f
+    val bodyLeft = left + (width - bodyWidth) / 2
+    val bodyTop = top + height * 0.5f
+    drawRoundRect(color, Offset(bodyLeft, bodyTop), Size(bodyWidth, bodyHeight), cornerRadius = CornerRadius(stroke))
+    // The shackle: an arch whose feet are in the body.
+    val shackleWidth = bodyWidth * 0.6f
+    val shackleLeft = left + (width - shackleWidth) / 2
+    val shackleTop = top + height * 0.18f
+    val path = Path().apply {
+        moveTo(shackleLeft, bodyTop + stroke)
+        lineTo(shackleLeft, shackleTop + shackleWidth / 2)
+        arcTo(androidx.compose.ui.geometry.Rect(shackleLeft, shackleTop, shackleLeft + shackleWidth, shackleTop + shackleWidth), 180f, 180f, false)
+        lineTo(shackleLeft + shackleWidth, bodyTop + stroke)
+    }
+    drawPath(path, color, style = Stroke(width = stroke))
 }
