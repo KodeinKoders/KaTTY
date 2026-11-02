@@ -43,12 +43,16 @@ private val POWERLINE_RANGE = 0xE0B0..0xE0B3
 
 /**
  * The shape of [codepoint] in a cell of [width] by [height] pixels, `null` for a character that is not drawn this way.
+ *
+ * @param thickness The thickness of a light line. The cells' widths are whole pixels of a width that is not (the advance of the font), so they
+ * differ by one from a column to the next: a thickness taken from each would be 1 pixel in one column and 2 in the next, and a line that goes
+ * through them would step. The caller gives the same one to every cell, taken from the width that they share.
  */
-internal fun sprite(codepoint: Int, width: Int, height: Int): Sprite? = when (codepoint) {
-    in BOX_RANGE -> boxSprite(codepoint, width.toFloat(), height.toFloat())
+internal fun sprite(codepoint: Int, width: Int, height: Int, thickness: Float = lightThickness(width.toFloat(), height.toFloat())): Sprite? = when (codepoint) {
+    in BOX_RANGE -> boxSprite(codepoint, width.toFloat(), height.toFloat(), thickness)
     in BLOCK_RANGE -> blockSprite(codepoint, width.toFloat(), height.toFloat())
     in BRAILLE_RANGE -> brailleSprite(codepoint, width.toFloat(), height.toFloat())
-    in POWERLINE_RANGE -> powerlineSprite(codepoint, width.toFloat(), height.toFloat())
+    in POWERLINE_RANGE -> powerlineSprite(codepoint, width.toFloat(), height.toFloat(), thickness)
     else -> null
 }
 
@@ -119,8 +123,7 @@ private fun brailleSprite(codepoint: Int, w: Float, h: Float): Sprite {
 
 // ---- Powerline ----
 
-private fun powerlineSprite(codepoint: Int, w: Float, h: Float): Sprite {
-    val thickness = lightThickness(w, h)
+private fun powerlineSprite(codepoint: Int, w: Float, h: Float, thickness: Float): Sprite {
     return when (codepoint) {
         // The triangle that points right, and the one that points left.
         0xE0B0 -> Sprite(polygons = listOf(listOf(0f to 0f, w to h / 2, 0f to h)))
@@ -194,8 +197,7 @@ private fun dashes(codepoint: Int): Dashes? = when (codepoint) {
     else -> null
 }
 
-private fun boxSprite(codepoint: Int, w: Float, h: Float): Sprite? {
-    val t = lightThickness(w, h)
+private fun boxSprite(codepoint: Int, w: Float, h: Float, t: Float): Sprite? {
     ARMS[codepoint]?.let { arms -> return Sprite(rects = armRects(IntArray(4) { arms[it] - '0' }, w, h, t)) }
     dashes(codepoint)?.let { return dashedSprite(it, w, h, t) }
     return when (codepoint) {

@@ -83,6 +83,6 @@ internal class RowLayouts(
             val left = kotlin.math.round(cell.col * typography.cellWidth)
             val right = kotlin.math.round((cell.col + 1) * typography.cellWidth)
             val width = (right - left).toInt()
-            sprite(cell.codepoint, width, typography.cellHeight.toInt())?.let { PreparedSprite(left, right - left, it, cell.foreground, cell.blink) }
+            sprite(cell.codepoint, width, typography.cellHeight.toInt(), lightThickness(typography.cellWidth, typography.cellHeight))?.let { PreparedSprite(left, right - left, it, cell.foreground, cell.blink) }
         }
 }

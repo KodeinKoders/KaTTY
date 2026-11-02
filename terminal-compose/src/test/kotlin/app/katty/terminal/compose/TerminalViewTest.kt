@@ -228,6 +228,22 @@ class TerminalViewTest {
     }
 
     @Test
+    fun aLineIsAsThickInEveryColumnWhateverTheSize() {
+        // The width of a cell is a whole number of pixels of an advance that is not one, so it is one more in some columns: at these sizes the
+        // thickness taken from it was 1 pixel in a column and 2 in the next, and the lines that go through them stepped.
+        for (size in listOf(9.5f, 14f, 16f, 16.5f, 23f)) {
+            val rendered = render("box-thickness-$size", frame(30, (0 until 3).map { row(30, *text("│".repeat(30))) }), fontSize = size)
+            val y = rendered.typography.cellHeight.toInt() / 2
+            val thicknesses = (0 until 30).map { col ->
+                val left = kotlin.math.round(col * rendered.typography.cellWidth).toInt()
+                val right = kotlin.math.round((col + 1) * rendered.typography.cellWidth).toInt()
+                (left until right).count { rendered.pixel(it, y) == FOREGROUND.rgb }
+            }
+            assertEquals(1, thicknesses.toSet().size, "The vertical line has the thicknesses $thicknesses at $size")
+        }
+    }
+
+    @Test
     fun aWideCharacterIsKeptInItsTwoCells() {
         // A CJK character and an emoji, each in two cells, then nothing: what is drawn must not go over the cells after them.
         val wide = { character: String -> arrayOf(cell(character, width = TerminalCellWidth.WIDE), cell(width = TerminalCellWidth.SPACER_TAIL)) }
