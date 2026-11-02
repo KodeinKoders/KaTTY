@@ -137,7 +137,7 @@ Escape is never used by the window, except to close what is open in front of it 
 | ⌘⇧D
 | Split the other way
 
-| ⌘⌥ and an arrow
+| ⌘⇧ and an arrow
 | Move to the neighbouring pane
 
 | ⌘⌥1 … ⌘⌥9
