@@ -53,7 +53,7 @@ private fun realPath(path: Path): Path = try {
 
 /**
  * Reads where a folder is in a git repository from the files of git, without starting it: it is read for every pane, again whenever its
- * shell changes directory and when a command ends.
+ * shell changes directory, when a command ends, and when the `HEAD` in [headDirectory] changes.
  *
  * A linked working tree is told by its `.git` being a file that points into `worktrees/` of the repository's own; a submodule's is a file
  * too, and is a plain checkout here.
@@ -68,13 +68,22 @@ public object GitReader {
             if (Files.isDirectory(dotGit)) {
                 head(dotGit, linked = false)
             } else {
-                val pointer = Files.readString(dotGit).lineSequence().firstOrNull { it.startsWith("gitdir:") }?.removePrefix("gitdir:")?.trim() ?: return null
-                val gitDir = dotGit.parent.resolve(pointer).normalize()
+                val gitDir = linkedGitDir(dotGit) ?: return null
                 head(gitDir, linked = gitDir.parent?.fileName?.toString() == "worktrees")
             }
         } catch (e: IOException) {
             null
         }
+    }
+
+    /**
+     * The folder that holds the `HEAD` that [read] reads for [directory] (the repository's `.git`, or `.git/worktrees/<name>` for a linked working
+     * tree), which is what changes when its branch does; `null` when [directory] is not in a repository.
+     */
+    public fun headDirectory(directory: Path): Path? = try {
+        findDotGit(directory)?.let { dotGit -> if (Files.isDirectory(dotGit)) dotGit else linkedGitDir(dotGit) }
+    } catch (e: IOException) {
+        null
     }
 
     /**

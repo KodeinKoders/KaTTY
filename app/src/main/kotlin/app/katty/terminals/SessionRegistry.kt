@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
@@ -80,7 +82,10 @@ class TerminalHandle(
     /** The program that has the terminal now (`emacs`, or the shell's own name at its prompt), `null` when it is not known. */
     val processName: StateFlow<String?> get() = processState
 
-    /** The branch, worktree or commit that the shell is in, `null` when it is not in a repository. */
+    /**
+     * The branch, worktree or commit that the terminal is in: the one of the directory of the program that runs, else of the shell's. `null` when it
+     * is not in a repository.
+     */
     val git: StateFlow<GitInfo?> get() = gitState
 }
 
@@ -144,6 +149,9 @@ class SessionRegistry(
     val processNames: StateFlow<Map<TerminalId, String?>> get() = mutableProcessNames
 
     private val mutableGitInfos = MutableStateFlow<Map<TerminalId, GitInfo?>>(emptyMap())
+
+    // What tells the terminals that the branch of their repository changed.
+    private val gitHeads = GitHeadWatcher()
 
     /**
      * Where each terminal is in git (`null` for one that is not in a repository), which is what each handle's [TerminalHandle.git] says, all in one
@@ -316,6 +324,7 @@ class SessionRegistry(
             alive.clear()
             followers.values.forEach { it.cancel() }
             followers.clear()
+            gitHeads.close()
             mutableHandles.value.also { mutableHandles.value = emptyMap() }
         }
         val sessions = all.values.mapNotNull { it.session }
@@ -383,10 +392,12 @@ class SessionRegistry(
     // The handle of the shell that started, with what follows it. Under the monitor.
     private fun follow(spec: TerminalSpec, session: TerminalSession, generation: Int): TerminalHandle {
         val handle = TerminalHandle(spec.id, session, generation = generation, shellName = shellName())
-        // Where the shell goes is where it starts the next time, and what repository it is in is read again then, and when a command ends.
+        // Where the shell goes is where it starts the next time.
         val flag = AtomicBoolean(true).also { alive[spec.id] = it }
         // What the followers write, only while the session is followed.
         val whileFollowed = { write: () -> Unit -> synchronized(flag) { if (flag.get()) write() } }
+        // The directory of the program that has the terminal, which may not be the shell's (an agent that works in another folder); `null` at the prompt.
+        val programDirectory = MutableStateFlow<String?>(null)
         followers[spec.id] = scope.launch {
             // The session that an OpenCode in this terminal last reported working or waiting: it reports a record for each of those, with the
             // session's id as its id, and takes it off when the session rests, so it is kept here. It is the terminal's own session, which a
@@ -421,6 +432,7 @@ class SessionRegistry(
                     // started with (OpenCode 1) has one that the system cuts: its command line says which agent it is.
                     val name = Agent.executableOf(systemName, command?.argv)
                     handle.processState.value = name
+                    programDirectory.value = command?.directory
                     if (name == null || name == handle.shellName) reportedSession.set(null)
                     if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) whileFollowed { mutableProcessNames.update { it + (spec.id to name) } }
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
@@ -460,11 +472,29 @@ class SessionRegistry(
                 session.exited.filterNotNull().first()
                 session.writeToScreen("\r\n[Process completed]\r\n")
             }
-            merge(session.workingDirectory.map { }, session.events.filterIsInstance<TerminalEvent.CommandFinished>().map { }).conflate().collect {
-                val directory = session.workingDirectory.value ?: spec.directory
-                val info = withContext(Dispatchers.IO) { GitReader.read(Path.of(directory)) }
-                handle.gitState.value = info
-                whileFollowed { mutableGitInfos.update { it + (spec.id to info) } }
+            // Where the terminal is in git: the directory of the program that runs, else the shell's, read again when it changes, when a command ends,
+            // and when the HEAD of its repository does, which is what a branch that is checked out while a program runs (an agent) changes, or in
+            // an IDE: the shell says nothing then.
+            val headChanged = Channel<Unit>(Channel.CONFLATED)
+            var watched: Path? = null
+            var watch: AutoCloseable? = null
+            try {
+                merge(
+                    session.workingDirectory.map { }, programDirectory.map { }, session.events.filterIsInstance<TerminalEvent.CommandFinished>().map { },
+                    headChanged.receiveAsFlow(),
+                ).conflate().collect {
+                    val directory = Path.of(programDirectory.value ?: session.workingDirectory.value ?: spec.directory)
+                    val (info, head) = withContext(Dispatchers.IO) { GitReader.read(directory) to GitReader.headDirectory(directory) }
+                    if (head != watched) {
+                        watch?.close()
+                        watched = head
+                        watch = head?.let { withContext(Dispatchers.IO) { gitHeads.watch(it) { headChanged.trySend(Unit) } } }
+                    }
+                    handle.gitState.value = info
+                    whileFollowed { mutableGitInfos.update { it + (spec.id to info) } }
+                }
+            } finally {
+                watch?.close()
             }
         }
         return handle

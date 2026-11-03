@@ -69,6 +69,18 @@ class GitReaderTest {
     }
 
     @Test
+    fun theHeadOfAFolderIsInTheGitDirectoryOfItsTree() {
+        val repo = repository()
+        val worktree = root.resolve("rate-limit-key")
+        git(repo, "worktree", "add", "-b", "rate-limit-key", worktree.toString())
+
+        assertEquals(repo.resolve(".git"), GitReader.headDirectory(repo.resolve("src").createDirectories()))
+        // A linked tree has a HEAD of its own, in the repository's git directory.
+        assertEquals(repo.resolve(".git/worktrees/rate-limit-key").toRealPath(), GitReader.headDirectory(worktree)?.toRealPath())
+        assertNull(GitReader.headDirectory(root.resolve("plain").createDirectories()))
+    }
+
+    @Test
     fun aDetachedHeadIsTheStartOfTheCommit() {
         val repo = repository()
         git(repo, "checkout", "--detach")

@@ -373,6 +373,49 @@ class SessionRegistryTest {
     }
 
     @Test
+    fun aBranchThatIsCheckedOutWhileAProgramRunsIsSeen() {
+        val repo = kotlin.io.path.createTempDirectory("katty-registry").toRealPath().toFile()
+        try {
+            git(repo, "init")
+            store.addProject(repo.path)
+            val id = store.state.value.selection.terminal!!
+            sync()
+            await("the branch is read") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("main", app.katty.core.GitKind.BRANCH) }
+
+            // What an agent does: the program still runs, and the shell says nothing.
+            git(repo, "checkout", "-b", "feature")
+
+            await("the new branch is seen") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("feature", app.katty.core.GitKind.BRANCH) }
+            assertEquals(app.katty.core.GitInfo("feature", app.katty.core.GitKind.BRANCH), registry.gitInfos.value[id])
+        } finally {
+            repo.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun theBranchIsTheOneOfTheDirectoryOfTheProgramThatRunsThenTheShells() {
+        val repo = kotlin.io.path.createTempDirectory("katty-registry").toRealPath().toFile()
+        val other = kotlin.io.path.createTempDirectory("katty-registry-other").toRealPath().toFile()
+        try {
+            git(repo, "init")
+            git(other, "init")
+            git(other, "checkout", "-b", "elsewhere")
+            // A program that works in another repository than the shell's (job control on, so that it has the terminal), and the shell's own after it.
+            script = "set -m; (cd '${other.path}' && exec sleep 3); sleep 30"
+            store.addProject(repo.path)
+            val id = store.state.value.selection.terminal!!
+
+            sync()
+
+            await("the branch of the program's directory") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("elsewhere", app.katty.core.GitKind.BRANCH) }
+            await("the branch of the shell's once it ended") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("main", app.katty.core.GitKind.BRANCH) }
+        } finally {
+            repo.deleteRecursively()
+            other.deleteRecursively()
+        }
+    }
+
+    @Test
     fun aTerminalOutsideARepositoryHasNoBranchAndOneThatGoesThereLosesIt() {
         val repo = kotlin.io.path.createTempDirectory("katty-registry").toRealPath().toFile()
         val plain = kotlin.io.path.createTempDirectory("katty-registry-plain").toRealPath().toFile()
