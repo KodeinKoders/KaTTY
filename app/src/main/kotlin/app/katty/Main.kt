@@ -40,10 +40,16 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.window.DecoratedWindow
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("app.katty.Main")
 
 fun main() {
     // Before anything uses AWT: the menu bar of macOS is named by what this says when it starts.
     nameApplication()
+    // What runs it is not always the JetBrains Runtime that the build asks for (an IDE's run configuration, a `java -jar`), and some of what KaTTY
+    // does depends on it: watching the repositories is the system's on the JetBrains Runtime, and polls elsewhere.
+    logger.info("KaTTY {} ({}) runs on {}", BuildConfig.VERSION, BuildConfig.GIT_COMMIT, runtimeDescription())
     // Before the first key is typed.
     disablePressAndHold()
     // The logo is the icon of the Dock and of the application switcher, instead of the one of Java.
@@ -57,6 +63,16 @@ fun main() {
     val windowFile = WindowFile(directories.windowFile)
     val geometry = windowFile.load().sanitized(screens())
     application { Katty(store, file, directories, windowFile, geometry) }
+}
+
+/**
+ * The Java runtime that the application runs on, for the log: its vendor and the vendor's version when it has one (`JetBrains s.r.o.
+ * JBR-25.0.3+9-329.124-jcef`), the runtime and its version, the virtual machine, and the folder it is in.
+ */
+internal fun runtimeDescription(property: (String) -> String? = System::getProperty): String {
+    val vendorVersion = property("java.vendor.version")?.takeIf { it.isNotBlank() }?.let { " $it" } ?: ""
+    return "${property("java.vendor")}$vendorVersion (${property("java.runtime.name")} ${property("java.runtime.version")}, ${property("java.vm.name")}) " +
+        "in ${property("java.home")}"
 }
 
 @Composable
