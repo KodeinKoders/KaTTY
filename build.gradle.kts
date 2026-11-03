@@ -10,9 +10,17 @@ plugins {
     alias(libs.plugins.kotlin.plugin.serialization) apply false
 }
 
+// The patch number of the version is the number of commits that the current one comes after in the history: each commit of a branch has its own,
+// greater than the one before, and it stays a number, which the version of a macOS bundle must be. It is 0 outside a git checkout, and a shallow
+// clone counts only what it fetched: a build that is distributed needs the whole history (`fetch-depth: 0` for GitHub's checkout).
+val commitsBefore = providers.exec {
+    commandLine("git", "rev-list", "--count", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { (it.trim().toIntOrNull() ?: 1) - 1 }
+
 allprojects {
     group = "app.katty"
-    version = "1.0.0"
+    version = "1.0.${commitsBefore.get()}"
 }
 
 komple {

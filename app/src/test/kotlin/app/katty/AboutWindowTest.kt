@@ -36,13 +36,22 @@ class AboutWindowTest {
         assertEquals("Version 1.2.3", versionText("1.2.3", ""))
     }
 
+    // The checkout that the test runs in, which the build was made from.
+    private val root = generateSequence(File("").absoluteFile) { it.parentFile }.first { File(it, "settings.gradle.kts").exists() }
+
+    private fun git(vararg arguments: String): String {
+        val process = ProcessBuilder(listOf("git") + arguments).directory(root).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        return process.inputStream.readBytes().decodeToString().trim().also { process.waitFor() }
+    }
+
     @Test
     fun theBuildKnowsTheProjectVersionAndTheCommit() {
-        assertTrue(Regex("""\d+\.\d+\.\d+""").matches(BuildConfig.VERSION), BuildConfig.VERSION)
+        val (major, minor, patch) = Regex("""(\d+)\.(\d+)\.(\d+)""").matchEntire(BuildConfig.VERSION)?.destructured ?: error("Not a version: ${BuildConfig.VERSION}")
         // The build script and the test cannot share a value, so the root script is read: the two cannot drift.
-        val root = generateSequence(File("").absoluteFile) { it.parentFile }.first { File(it, "settings.gradle.kts").exists() }
-        val declared = Regex("""version = "([^"]+)"""").find(File(root, "build.gradle.kts").readText())?.groupValues?.get(1)
-        assertEquals(declared, BuildConfig.VERSION)
+        val declared = Regex("""version = "(\d+\.\d+)\.""").find(File(root, "build.gradle.kts").readText())?.groupValues?.get(1)
+        assertEquals(declared, "$major.$minor")
+        // The patch is the number of commits that the one it was built from comes after.
+        assertEquals((git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1) - 1, patch.toInt())
         assertTrue(Regex("""[0-9a-f]{7,40}|unknown""").matches(BuildConfig.GIT_COMMIT), BuildConfig.GIT_COMMIT)
         // The day it was built, which is not after today.
         assertFalse(LocalDate.parse(BuildConfig.BUILD_DATE).isAfter(LocalDate.now()), BuildConfig.BUILD_DATE)
