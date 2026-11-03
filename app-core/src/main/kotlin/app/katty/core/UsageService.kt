@@ -164,7 +164,7 @@ public class CodexUsageSource(private val command: List<String>, private val dir
                         put("jsonrpc", "2.0")
                         put("id", 1)
                         put("method", "initialize")
-                        put("params", buildJsonObject { put("clientInfo", buildJsonObject { put("name", "katty"); put("version", "0.1.0") }) })
+                        put("params", buildJsonObject { put("clientInfo", buildJsonObject { put("name", "katty"); put("version", "1.0.0") }) })
                     },
                 )
                 var sent = false

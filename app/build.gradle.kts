@@ -11,8 +11,7 @@ plugins {
 
 buildConfig {
     packageName("app.katty")
-    // The version of the project, declared once in the root build script: the About panel says it. It is not the bundle's `packageVersion`
-    // below, which macOS wants to start with 1 or more.
+    // The version of the project, declared once in the root build script: the About panel says it, and it is the bundle's `packageVersion`.
     buildConfigField("VERSION", project.version.toString())
     // The short hash of the commit it is built from, which tells two builds of the same version apart; "unknown" outside a git checkout.
     val commit = providers.exec {
@@ -104,8 +103,8 @@ compose {
             // The disk image is for macOS on Apple Silicon, the only platform libghostty-vt is built for.
             targetFormats(TargetFormat.Dmg)
             packageName = "KaTTY"
-            // macOS does not accept a version whose first number is 0.
-            packageVersion = "1.0.0"
+            // The project's: macOS does not accept a version whose first number is 0.
+            packageVersion = project.version.toString()
             description = "A terminal manager for coding agents"
             vendor = "Kodein Koders"
             // The FFM calls of ghostty-vt and the JNA calls of pty4j are restricted.
