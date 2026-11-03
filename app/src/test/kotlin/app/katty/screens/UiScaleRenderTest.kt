@@ -8,6 +8,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.katty.AboutContent
+import app.katty.aboutContentSize
 import app.katty.core.KattyStore
 import app.katty.core.LayoutMode
 import app.katty.core.PaletteEntry
@@ -16,6 +18,7 @@ import app.katty.core.Settings
 import app.katty.core.terminals
 import app.katty.ui.UiScale
 import app.katty.ui.render
+import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -61,6 +64,19 @@ class UiScaleRenderTest {
 
     @Test
     fun drawsThePalette() = draws("palette", 1000, 700) { CommandPalette(entries, onRun = {}, onDismiss = {}) }
+
+    // A build of a branch has one line more, and the window grows with the text.
+    @Test
+    fun drawsTheAboutWindow() {
+        for ((suffix, scale) in listOf("100" to 1f, "175" to 1.75f)) {
+            val size = aboutContentSize(scale)
+            // `render` draws at a density of 2.
+            val rendered = render("ui-about-$suffix", (size.width.value * 2).roundToInt(), (size.height.value * 2).roundToInt()) {
+                UiScale(scale) { AboutContent(branch = "feature/rate-limit") }
+            }
+            assertTrue(rendered.count(0xFFFFFF) + rendered.count(0xF2F3F5) > 100, "about at $suffix is drawn")
+        }
+    }
 
     @Test
     fun drawsTheMainMenu() = draws("menu", 700, 1300) {

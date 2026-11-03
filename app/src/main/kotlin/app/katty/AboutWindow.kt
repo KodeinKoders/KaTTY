@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import org.jetbrains.jewel.ui.component.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,7 +29,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.WindowPosition
@@ -40,11 +43,10 @@ import org.jetbrains.jewel.window.TitleBar
 import org.slf4j.LoggerFactory
 import java.awt.Desktop
 import java.awt.EventQueue
-import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import java.time.format.FormatStyle
-import java.util.Locale
 
 private val logger = LoggerFactory.getLogger("app.katty.AboutWindow")
 
@@ -56,14 +58,23 @@ internal fun versionText(version: String = BuildConfig.VERSION, commit: String =
     if (commit.isEmpty() || commit == "unknown") "Version $version" else "Version $version ($commit)"
 
 /**
- * What the About window says of the day it was built (see `buildConfig` in `app/build.gradle.kts`), written as the user writes dates
- * (`Built on November 3, 2026`); `null` when the date cannot be read, and it is not shown.
+ * What the About window says of the branch it was built on (see `buildConfig` in `app/build.gradle.kts`): `Branch feature/x`, and `null` for main,
+ * which is what is distributed, and for a build of no branch, which is not shown.
  */
-internal fun buildDateText(date: String = BuildConfig.BUILD_DATE, locale: Locale = Locale.getDefault()): String? = try {
-    "Built on " + DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(locale).format(LocalDate.parse(date))
+internal fun branchText(branch: String = BuildConfig.GIT_BRANCH): String? =
+    if (branch.isEmpty() || branch == "main") null else "Branch $branch"
+
+/**
+ * What the About window says of when the commit it was built from was made (see `buildConfig` in `app/build.gradle.kts`), in the user's time zone,
+ * written the same in every language (`Committed: 2026-11-03 19:43`); `null` when the date cannot be read, and it is not shown.
+ */
+internal fun commitDateText(date: String = BuildConfig.GIT_COMMIT_DATE, zone: ZoneId = ZoneId.systemDefault()): String? = try {
+    "Committed: " + COMMIT_DATE_FORMAT.format(OffsetDateTime.parse(date).atZoneSameInstant(zone))
 } catch (e: DateTimeParseException) {
     null
 }
+
+private val COMMIT_DATE_FORMAT = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm")
 
 /**
  * Makes the About item of the application menu of macOS call [onAbout], so that it shows [AboutWindow] and not the system's panel, which for a
@@ -113,7 +124,11 @@ internal fun takeQuitItem(onQuitRequest: (answer: (Boolean) -> Unit) -> Unit) {
  */
 @Composable
 internal fun AboutWindow(uiScale: Float, onClose: () -> Unit) {
-    val state = rememberWindowState(position = WindowPosition(Alignment.Center), width = 360.dp, height = 380.dp)
+    val content = aboutContentSize(uiScale)
+    val size = DpSize(content.width, content.height + TITLE_BAR_HEIGHT)
+    val state = rememberWindowState(position = WindowPosition(Alignment.Center), size = size)
+    // The text of the application made bigger or smaller while the window is open.
+    LaunchedEffect(size) { state.size = size }
     DecoratedWindow(
         onCloseRequest = onClose,
         title = "About $APP_NAME",
@@ -134,9 +149,18 @@ internal fun AboutWindow(uiScale: Float, onClose: () -> Unit) {
     }
 }
 
-/** What the About window shows, apart from the window. */
+/**
+ * The size of what the About window shows under its title bar, which grows with the text of the application ([uiScale]): at a fixed size the
+ * lines wrap, and the last ones are cut.
+ */
+internal fun aboutContentSize(uiScale: Float): DpSize = DpSize(360.dp * uiScale, 340.dp * uiScale)
+
+// The height of Jewel's title bar, which does not follow the text of the application.
+private val TITLE_BAR_HEIGHT = 40.dp
+
+/** What the About window shows, apart from the window; [branch] is the one it was built on. */
 @Composable
-internal fun AboutContent(modifier: Modifier = Modifier) {
+internal fun AboutContent(modifier: Modifier = Modifier, branch: String = BuildConfig.GIT_BRANCH) {
     val colors = Katty.colors
     val logo = remember { AppIcon.painter() }
     Column(
@@ -149,9 +173,14 @@ internal fun AboutContent(modifier: Modifier = Modifier) {
         Text(APP_NAME, color = colors.text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(4.dp))
         Text(versionText(), color = colors.muted, fontSize = 13.sp, textAlign = TextAlign.Center)
-        buildDateText()?.let { built ->
+        branchText(branch)?.let { text ->
             Spacer(Modifier.height(2.dp))
-            Text(built, color = colors.muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+            // A branch can have a name of any length: it does not push what follows out of the window.
+            Text(text, color = colors.muted, fontSize = 13.sp, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        commitDateText()?.let { committed ->
+            Spacer(Modifier.height(2.dp))
+            Text(committed, color = colors.muted, fontSize = 13.sp, textAlign = TextAlign.Center)
         }
         Spacer(Modifier.height(20.dp))
         Text(

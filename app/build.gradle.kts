@@ -1,4 +1,3 @@
-import java.time.LocalDate
 import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
@@ -20,15 +19,19 @@ buildConfig {
         isIgnoreExitValue = true
     }.standardOutput.asText.map { it.trim().ifEmpty { "unknown" } }.orElse("unknown")
     buildConfigField("GIT_COMMIT", commit)
-    // The day it is built, which the About panel says.
-    buildConfigField("BUILD_DATE", providers.of(BuildDate::class) {})
-}
-
-// The day of the build on the machine that builds, as `2026-11-03`. A value source, because the configuration cache keeps what the build script
-// computed: Gradle asks a value source again at each build, and configures again when its value changed, so the date is not the one of the day the
-// cache was made. A day and not an instant: the build config, and the code that uses it, would otherwise be compiled again at every build.
-abstract class BuildDate : ValueSource<String, ValueSourceParameters.None> {
-    override fun obtain(): String = LocalDate.now().toString()
+    // The branch it is built on, which the About panel says when it is not main; empty for a detached HEAD and outside a git checkout.
+    val branch = providers.exec {
+        commandLine("git", "branch", "--show-current")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.trim() }.orElse("")
+    buildConfigField("GIT_BRANCH", branch)
+    // When the commit it is built from was made, which the About panel says: the committer's date, with its offset (`2026-11-03T19:43:42+01:00`),
+    // the same for every build of the commit; empty outside a git checkout.
+    val commitDate = providers.exec {
+        commandLine("git", "log", "-1", "--format=%cI", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.trim() }.orElse("")
+    buildConfigField("GIT_COMMIT_DATE", commitDate)
 }
 
 val jvmToolchainVersion = findProperty("jvm.toolchain")!!.toString().toInt()
