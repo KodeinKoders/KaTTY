@@ -64,7 +64,6 @@ class RunningCommandsTest {
             listOf("kilo", "upgrade") to "kilocode",
             listOf("cursor-agent", "logout") to "cursor",
             listOf("goose", "update") to "goose",
-            listOf("openhands", "logout") to "openhands",
         )) {
             val typed = RunningCommand(argv, "/work", agent).toTyped()
             assertEquals(argv, typed.argv)
@@ -77,7 +76,6 @@ class RunningCommandsTest {
         assertEquals(true, RunningCommand(listOf("kilo"), "/work", "kilocode", "ses_abc").toTyped().run)
         assertEquals(true, RunningCommand(listOf("goose", "session"), "/work", "goose").toTyped().run)
         assertEquals(true, RunningCommand(listOf("cursor-agent", "resume"), "/work", "cursor").toTyped().run)
-        assertEquals(true, RunningCommand(listOf("openhands", "--always-approve"), "/work", "openhands").toTyped().run)
     }
 
     @Test
@@ -183,14 +181,12 @@ class RunningCommandsTest {
     }
 
     @Test
-    fun anOpenHandsComesBackOnItsConversationWithHowItWasRunAndNotWhatSeededOrResumedIt() {
-        val running = command("openhands", "--always-approve", "-t", "fix it", "--resume", "11111111-2222-3333-4444-555555555555", "--last")
-            .toRunning { _, _, _ -> "22a2ff2b-1255-419b-9636-5045c8977380" }!!
+    fun anAgentThatIsNoLongerKnownComesBackAsTheCommandItWasAndIsOnlyTyped() {
+        // A state written when OpenHands was an agent: its id is no longer one, so it is a command like any other, and not one that runs by itself.
+        val typed = RunningCommand(listOf("openhands", "--always-approve", "-t", "fix it"), "/work", "openhands", "22a2ff2b-1255-419b-9636-5045c8977380").toTyped()
 
-        assertEquals("openhands", running.agent)
-        // The task is not given again, and the id it was resumed with is the one it is in now.
-        assertEquals(listOf("openhands", "--always-approve", "--resume", "22a2ff2b-1255-419b-9636-5045c8977380"), running.toTyped().argv)
-        assertEquals(true, running.toTyped().run)
+        assertEquals(listOf("openhands", "--always-approve", "-t", "fix it"), typed.argv)
+        assertEquals(false, typed.run)
     }
 
     private fun running(agent: String, directory: String?, session: String? = "ses_1") = RunningCommand(listOf(agent), directory, agent, session)
@@ -221,7 +217,7 @@ class RunningCommandsTest {
 
     @Test
     fun theAgentsThatAreGuessedByTheirDirectoryAreTheOnesThatHaveNothingElseToGoBy() {
-        assertEquals(setOf(Agent.CRUSH, Agent.GOOSE, Agent.AIDER, Agent.OPENHANDS, Agent.CURSOR), Agent.entries.filter { it.byDirectory }.toSet())
+        assertEquals(setOf(Agent.CRUSH, Agent.GOOSE, Agent.AIDER, Agent.CURSOR), Agent.entries.filter { it.byDirectory }.toSet())
     }
 
     @Test

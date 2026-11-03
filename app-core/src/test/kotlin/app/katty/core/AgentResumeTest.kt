@@ -479,32 +479,6 @@ class AgentResumeTest {
     }
 
     @Test
-    fun openHandsAsksForItsConversationWithItsDirectoryStartAndCommandLine() {
-        var asked: List<Any>? = null
-        val argv = listOf("openhands", "--resume", "22a2ff2b-1255-419b-9636-5045c8977380")
-
-        val found = AgentResume.sessionId(
-            Agent.OPENHANDS, 7, 9_000L, home.toFile(), cwd = "/work", argv = argv,
-            openHandsSession = { cwd, at, arguments -> asked = listOf(cwd, at, arguments); "22a2ff2b-1255-419b-9636-5045c8977380" },
-        )
-
-        assertEquals("22a2ff2b-1255-419b-9636-5045c8977380", found)
-        assertEquals(listOf("/work", 9_000L, argv), asked)
-        assertNull(AgentResume.sessionId(Agent.OPENHANDS, 7, 0, home.toFile(), cwd = null, openHandsSession = { _, _, _ -> error("No directory, no question") }))
-        assertNull(AgentResume.sessionId(Agent.OPENHANDS, 7, 0, home.toFile(), cwd = "/work", openHandsSession = { _, _, _ -> "1; rm -rf ~" }), "The id goes into a command line")
-    }
-
-    @Test
-    fun resumesOpenHandsOnItsConversationAndOtherCommandsAreNotOne() {
-        assertEquals(
-            listOf("openhands", "--llm-approve", "--resume", "22a2ff2b-1255-419b-9636-5045c8977380"),
-            AgentResume.argv(Agent.OPENHANDS, listOf("openhands", "--llm-approve", "-t", "go", "--resume", "--last", "--headless"), "22a2ff2b-1255-419b-9636-5045c8977380"),
-        )
-        assertEquals(listOf("openhands"), AgentResume.argv(Agent.OPENHANDS, listOf("openhands", "-t", "go"), null))
-        assertEquals(listOf("openhands", "web"), AgentResume.argv(Agent.OPENHANDS, listOf("openhands", "web", "--port", "12000"), "22a2ff2b-1255-419b-9636-5045c8977380"))
-    }
-
-    @Test
     fun cursorAsksForItsChatWithItsDirectoryStartAndCommandLine() {
         var asked: List<Any>? = null
         val argv = listOf("/Users/me/.local/bin/cursor-agent", "--resume", "11a1677b-658c-48c7-9c10-d0bfa8ee6fb2")

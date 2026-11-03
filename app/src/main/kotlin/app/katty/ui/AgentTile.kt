@@ -32,7 +32,6 @@ enum class AgentGlyph(val icon: KattyIcon, val tint: Color) {
     KILO(AgentLogos.Kilo, Color(0xFFD4B300)),
     PI(AgentLogos.Pi, Color(0xFF38BDF8)),
     OMP(AgentLogos.Omp, Color(0xFFF97316)),
-    OPENHANDS(AgentLogos.OpenHands, Color(0xFF9B8AFB)),
     CURSOR(AgentLogos.Cursor, Color(0xFFEF4444)),
 
     /** A shell, and a program that is not one of the agents. */
@@ -72,7 +71,6 @@ fun Agent?.glyph(): AgentGlyph = when (this) {
     Agent.KILO -> AgentGlyph.KILO
     Agent.PI -> AgentGlyph.PI
     Agent.OMP -> AgentGlyph.OMP
-    Agent.OPENHANDS -> AgentGlyph.OPENHANDS
     Agent.CURSOR -> AgentGlyph.CURSOR
     null -> AgentGlyph.SHELL
 }

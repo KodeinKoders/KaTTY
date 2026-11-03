@@ -43,7 +43,6 @@ public enum class Agent(
     KILO("kilocode", "Kilo Code", "kilo", interpreted = true, aliases = listOf("kilocode")),
     PI("pi", "Pi", "pi"),
     OMP("omp", "Oh My Pi", "omp"),
-    OPENHANDS("openhands", "OpenHands", "openhands", byDirectory = true),
     CURSOR("cursor", "Cursor Agent", "cursor-agent", interpreted = true, byDirectory = true, scriptContains = "/cursor-agent/"),
     ;
 
@@ -72,7 +71,6 @@ public enum class Agent(
                 // Only the whole name: `pi` is in a name like `copilot`.
                 name == "pi" -> PI
                 name == "omp" -> OMP
-                "openhands" in name -> OPENHANDS
                 "cursoragent" in name -> CURSOR
                 else -> null
             }

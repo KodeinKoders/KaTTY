@@ -48,8 +48,6 @@ class AgentsTest {
         assertEquals(Agent.OMP, Agent.fromApp("omp"))
         assertEquals(Agent.OMP, Agent.fromProcess("omp"))
         assertNull(Agent.fromApp("compass"))
-        assertEquals(Agent.OPENHANDS, Agent.fromApp("openhands"))
-        assertEquals(Agent.OPENHANDS, Agent.fromProcess("openhands"))
         assertEquals(Agent.CURSOR, Agent.fromProcess("cursor-agent"))
         assertEquals(Agent.CURSOR, Agent.fromApp("cursor-agent"))
         assertNull(Agent.fromProcess("agent"))
@@ -118,7 +116,7 @@ class AgentsTest {
 
     @Test
     fun theIdsAreWhatTheSettingsKeep() {
-        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode", "pi", "omp", "openhands", "cursor"), Agent.entries.map { it.id })
+        assertEquals(listOf("claude", "codex", "antigravity", "copilot", "junie", "opencode", "crush", "aider", "goose", "cline", "kilocode", "pi", "omp", "cursor"), Agent.entries.map { it.id })
         assertEquals(Agent.CODEX, Agent.byId("codex"))
         assertNull(Agent.byId("nothing"))
     }

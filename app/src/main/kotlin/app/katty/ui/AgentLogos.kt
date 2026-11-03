@@ -114,13 +114,6 @@ object AgentLogos {
         grid = 24f, fillType = PathFillType.EvenOdd,
     )
 
-    /** Drawn for KaTTY, not OpenHands' logo (none is published as an icon set): the letter H, for hands. */
-    val OpenHands = KattyIcon(
-        strokes = emptyList(),
-        fills = listOf("M5 4h3.200v6.300h7.600V4H19v16h-3.200v-6.700H8.200V20H5z"),
-        grid = 24f,
-    )
-
     /** Drawn for KaTTY, not Cursor's logo (none is published as an icon set): the arrow of a pointer. */
     val Cursor = KattyIcon(
         strokes = emptyList(),
