@@ -1,3 +1,4 @@
+import java.time.LocalDate
 import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
@@ -19,6 +20,15 @@ buildConfig {
         isIgnoreExitValue = true
     }.standardOutput.asText.map { it.trim().ifEmpty { "unknown" } }.orElse("unknown")
     buildConfigField("GIT_COMMIT", commit)
+    // The day it is built, which the About panel says.
+    buildConfigField("BUILD_DATE", providers.of(BuildDate::class) {})
+}
+
+// The day of the build on the machine that builds, as `2026-11-03`. A value source, because the configuration cache keeps what the build script
+// computed: Gradle asks a value source again at each build, and configures again when its value changed, so the date is not the one of the day the
+// cache was made. A day and not an instant: the build config, and the code that uses it, would otherwise be compiled again at every build.
+abstract class BuildDate : ValueSource<String, ValueSourceParameters.None> {
+    override fun obtain(): String = LocalDate.now().toString()
 }
 
 val jvmToolchainVersion = findProperty("jvm.toolchain")!!.toString().toInt()

@@ -40,6 +40,11 @@ import org.jetbrains.jewel.window.TitleBar
 import org.slf4j.LoggerFactory
 import java.awt.Desktop
 import java.awt.EventQueue
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.time.format.FormatStyle
+import java.util.Locale
 
 private val logger = LoggerFactory.getLogger("app.katty.AboutWindow")
 
@@ -49,6 +54,16 @@ internal const val KODEIN_KODERS_URL = "https://kodein-koders.com"
 /** What the About window says of the version: the project's, and the commit it was built from (see `buildConfig` in `app/build.gradle.kts`). */
 internal fun versionText(version: String = BuildConfig.VERSION, commit: String = BuildConfig.GIT_COMMIT): String =
     if (commit.isEmpty() || commit == "unknown") "Version $version" else "Version $version ($commit)"
+
+/**
+ * What the About window says of the day it was built (see `buildConfig` in `app/build.gradle.kts`), written as the user writes dates
+ * (`Built on November 3, 2026`); `null` when the date cannot be read, and it is not shown.
+ */
+internal fun buildDateText(date: String = BuildConfig.BUILD_DATE, locale: Locale = Locale.getDefault()): String? = try {
+    "Built on " + DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(locale).format(LocalDate.parse(date))
+} catch (e: DateTimeParseException) {
+    null
+}
 
 /**
  * Makes the About item of the application menu of macOS call [onAbout], so that it shows [AboutWindow] and not the system's panel, which for a
@@ -134,6 +149,10 @@ internal fun AboutContent(modifier: Modifier = Modifier) {
         Text(APP_NAME, color = colors.text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(4.dp))
         Text(versionText(), color = colors.muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+        buildDateText()?.let { built ->
+            Spacer(Modifier.height(2.dp))
+            Text(built, color = colors.muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+        }
         Spacer(Modifier.height(20.dp))
         Text(
             buildAnnotatedString {
