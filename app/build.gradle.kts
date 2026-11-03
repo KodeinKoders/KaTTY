@@ -45,6 +45,20 @@ kotlin {
     }
 }
 
+// Jewel's icons depend on IntelliJ's fork of kotlinx-coroutines, which has the same classes under another group: Gradle kept both jars, and which
+// one is loaded depends on their order. The packaged application has them in alphabetical order, the fork first, and the code compiled against
+// kotlinx-coroutines failed in it (the fork's Job has no `cancel$default`). The icons only use the API of kotlinx-coroutines itself (checked on
+// Jewel 0.41), which replaces the fork.
+val coroutinesFork = libs.kotlinx.coroutines.intellij.get().module.toString()
+val coroutines = libs.kotlinx.coroutines.asProvider().get().let { "${it.module}:${it.versionConstraint.requiredVersion}" }
+configurations.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute(module(coroutinesFork))
+            .using(module(coroutines))
+            .because("IntelliJ's fork has the classes of kotlinx-coroutines, and code compiled against kotlinx-coroutines fails with it")
+    }
+}
+
 dependencies {
     implementation(projects.appCore)
     implementation(projects.terminal)
