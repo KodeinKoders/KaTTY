@@ -241,7 +241,7 @@ KaTTY knows these agents by name: it recognizes them, shows their logo, and find
 What more it can do depends on what each agent offers.
 
 Where a cell gives a version, it is the *minimum version*: the first one that tells KaTTY what it is doing, by reporting its state (OSC 7501).
-Older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie, Aider, Goose, Cline, Kilo Code, OpenHands and Cursor Agent, which do not report yet.
+Older versions look like plain shells in the sidebar, and so do Copilot CLI, Junie, Aider, Cline, Kilo Code, OpenHands and Cursor Agent, which do not report yet.
 
 [cols="2h,3,3,2,4"]
 |===
@@ -297,7 +297,7 @@ Older versions look like plain shells in the sidebar, and so do Copilot CLI, Jun
 
 | Goose
 | Yes
-| No
+| 1.56.0
 | No
 | 1.13.0 (one per dir)
 
@@ -350,9 +350,8 @@ A terminal that KaTTY itself started on a conversation of its own (`--resume`, `
 WARNING: *Yes (undocumented)* means that resuming relies on files that the agent does not document (where it writes the identifier of its conversation), and may therefore break when the agent changes them: it then starts a new conversation.
 
 * *Live state* comes from the agent itself: KaTTY does not install hooks or read the screen.
-An agent that does not report, such as Copilot CLI, Junie, Aider, Goose, Cline, OpenHands, Cursor Agent or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
+An agent that does not report, such as Copilot CLI, Junie, Aider, Cline, OpenHands, Cursor Agent or an older version of the others, looks like a plain shell in the sidebar and never calls for you.
 Copilot CLI will be compatible once https://github.com/github/copilot-cli/issues/5112[this issue] is resolved, and Junie once https://youtrack.jetbrains.com/issue/JUNIE-5904/Support-OSC-7501-Program-Status-escape-sequences-in-Junie-CLI[this one] is.
-Goose reports its state since https://github.com/aaif-goose/goose/pull/12928[this change], which is merged but not in a release yet (1.55.0 does not have it): it will be compatible with the next one.
 Kilo Code does not report its state yet: https://github.com/Kilo-Org/kilocode/issues/14973[this request] to emit it is open.
 * The *agent board* is not a list of known agents: any program that reports its state (OSC 7501) gets a card, whatever it is.
 The agents above only add their logo and their name, and a program that does not report has no card.
@@ -416,7 +415,7 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 
 * macOS on Apple Silicon only, for now.
 * Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
-* Copilot CLI, Junie, Aider, Goose, Cline, Kilo Code, OpenHands and Cursor Agent do not tell KaTTY what they are doing yet.
+* Copilot CLI, Junie, Aider, Cline, Kilo Code, OpenHands and Cursor Agent do not tell KaTTY what they are doing yet.
 * The Option key types the characters of your keyboard layout unless you make it Alt in the settings, which was never tried on a real keyboard.
 * The directory and the prompts of a terminal are followed for zsh and bash.
 fish is supported but was never tried, and nushell and elvish are not.
