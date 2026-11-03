@@ -155,7 +155,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
         val process = handle?.processName?.collectAsState()?.value
         val identity = terminalIdentity(spec.name, report, process, handle?.shellName ?: "zsh")
         val title = identity.title
-        // The menu of the terminal: from the button of its header, or from a right click anywhere on the header.
+        // The menu of the terminal: from the button of its header, from a right click anywhere on the header, and after the items of the
+        // terminal's own right-click menu.
         var paneMenu by remember { mutableStateOf(false) }
         var headerMenuAt by remember { mutableStateOf<IntOffset?>(null) }
         val menuEntries = {
@@ -242,12 +243,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                                 selectAll = session::selectAll,
                                 find = { context.actions.onFind(spec.id) },
                                 clearScreen = session::clearScreen,
-                                splitRight = { context.store.splitVisually(spec.id, right = true, flipped = context.flipped) },
-                                splitDown = { context.store.splitVisually(spec.id, right = false, flipped = context.flipped) },
-                                restart = { context.actions.onReopen(spec.id) },
-                                close = { context.actions.onClose(spec.id) },
                             ),
-                            vertical = context.flipped,
+                            paneMenu = menuEntries(),
                         ),
                         onDismiss = { contextAt = null },
                         offset = at,

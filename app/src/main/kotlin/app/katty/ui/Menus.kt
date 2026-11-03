@@ -66,6 +66,11 @@ class MenuBuilder {
         entries += MenuSubmenu(label, menu(build), hint)
     }
 
+    /** Adds the entries of another menu, as they are: its lines follow the same rule as [divider]'s. */
+    fun include(other: List<MenuEntry>) {
+        for (entry in other) if (entry == MenuDivider) divider() else entries += entry
+    }
+
     fun build(): List<MenuEntry> = entries.toList().dropLastWhile { it == MenuDivider }
 }
 

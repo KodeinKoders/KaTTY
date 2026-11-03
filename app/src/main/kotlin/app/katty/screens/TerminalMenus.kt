@@ -62,25 +62,21 @@ fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, a
     action("Close terminal", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.close)
 }
 
-/** What the menu of right click in a terminal does. */
+/** What the menu of right click in a terminal does, before what the menu of its pane does. */
 class ContextMenuActions(
     val copy: () -> Unit,
     val paste: () -> Unit,
     val selectAll: () -> Unit,
     val find: () -> Unit,
     val clearScreen: () -> Unit,
-    val splitRight: () -> Unit,
-    val splitDown: () -> Unit,
-    /** Starts the terminal's shell again, which asks first while a program runs in it, as the shortcut does. */
-    val restart: () -> Unit,
-    val close: () -> Unit,
 )
 
 /**
- * The menu of a right click in a terminal. Copy is for what is selected, so it is there only to be disabled when nothing is.
+ * The menu of a right click in a terminal: what is done with its text, then every item of the menu of its pane ([paneMenu], made by
+ * [terminalMenu]), so that a right click offers all that the button of the header does. Copy is for what is selected, so it is there only to
+ * be disabled when nothing is.
  */
-fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, vertical: Boolean = false): List<MenuEntry> = menu {
-    val split = SplitLabels.of(vertical)
+fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, paneMenu: List<MenuEntry>): List<MenuEntry> = menu {
     action("Copy", TerminalKeys.COPY, enabled = hasSelection, onClick = actions.copy)
     action("Paste", TerminalKeys.PASTE, onClick = actions.paste)
     action("Select all", TerminalKeys.SELECT_ALL, onClick = actions.selectAll)
@@ -88,9 +84,5 @@ fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, vert
     action("Find…", AppShortcut.FIND.label, onClick = actions.find)
     action("Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, onClick = actions.clearScreen)
     divider()
-    action("Split right", split.rightShortcut, onClick = actions.splitRight)
-    action("Split down", split.downShortcut, onClick = actions.splitDown)
-    divider()
-    action("Restart terminal", AppShortcut.RESTART_TERMINAL.label, onClick = actions.restart)
-    action("Close terminal", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.close)
+    include(paneMenu)
 }

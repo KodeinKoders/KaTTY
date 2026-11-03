@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.onNodeWithTag
@@ -250,6 +251,29 @@ class WorkspaceAreaTest {
         onNodeWithText("Split right").assertExists()
         onNodeWithText("Close terminal").assertExists()
         assertEquals(first, store.state.value.selection.terminal)
+    }
+
+    @Test
+    fun aRightClickInTheTerminalOffersItsTextAndEveryItemOfTheMenuOfThePane() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+        waitUntil(timeoutMillis = 5_000) { registry.handles.value[terminal]?.session != null }
+        waitForIdle()
+
+        // In the middle of the only pane: its terminal, whose shell did not ask for the mouse.
+        onRoot().performMouseInput { rightClick(center) }
+        waitForIdle()
+
+        // Nothing is selected: Copy is there, and cannot be chosen.
+        onNodeWithText("Copy").assertExists().assertIsNotEnabled()
+        onNodeWithText("Paste").assertExists()
+        listOf("Rename terminal", "Split right", "Split down", "Color scheme", "Copy working directory", "Restart terminal", "Close terminal").forEach {
+            onNodeWithText(it).assertExists()
+        }
+        onNodeWithText("Rename terminal").performClick()
+        waitForIdle()
+        assertEquals(terminal, renaming)
     }
 
     @Test
