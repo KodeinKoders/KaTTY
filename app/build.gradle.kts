@@ -71,22 +71,42 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
 }
 
-// The logo of the repository is the icon of the windows, and of the Dock while the application runs: it is a resource of the application.
-tasks.processResources {
-    from(rootProject.file("logo.png")) { into("app/katty") }
+// The icon of the application is the logo of the repository on a rounded square of this colour, the shape that macOS wants: since macOS 26 it puts
+// the icon of another shape on a grey one. The colour is the one that the logo was cut out of.
+val iconBackground = "#FDDDD6"
+val appIconFile = layout.buildDirectory.file("icons/icon.png")
+val appIcon = tasks.register<Exec>("appIcon") {
+    group = "build"
+    description = "Draws the icon of the application (icon.png): the logo on a rounded square."
+    val logo = rootProject.file("logo.png")
+    inputs.file(logo)
+    inputs.file("make-icon.java")
+    inputs.property("background", iconBackground)
+    outputs.file(appIconFile)
+    // In a Java process of its own, without a screen: AWT in the process of Gradle would give it an icon in the Dock.
+    val java = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(jvmToolchainVersion)
+        vendor = JvmVendorSpec.JETBRAINS
+    }.get().executablePath.asFile.absolutePath
+    commandLine(java, "-Djava.awt.headless=true", "make-icon.java", logo.absolutePath, iconBackground, appIconFile.get().asFile.absolutePath)
 }
 
-// The icon of the application that is packaged (the bundle and its disk image) is made from the same logo, with the tools of macOS: the only platform
-// that the application is packaged for.
+// The logo is the icon of the windows, and the icon of the application the one of the Dock while the application runs: they are resources of it.
+tasks.processResources {
+    from(rootProject.file("logo.png")) { into("app/katty") }
+    from(appIcon) { into("app/katty") }
+}
+
+// The icon of the application that is packaged (the bundle and its disk image) is made from the same icon, with the tools of macOS: the only
+// platform that the application is packaged for.
 val macIcon = tasks.register<Exec>("macIcon") {
     group = "build"
-    description = "Makes the macOS icon (KaTTY.icns) of the packaged application from the logo."
-    val logo = rootProject.file("logo.png")
+    description = "Makes the macOS icon (KaTTY.icns) of the packaged application from the icon of the application."
     val icns = layout.buildDirectory.file("icons/KaTTY.icns")
-    inputs.file(logo)
+    inputs.files(appIcon)
     inputs.file("make-icns.sh")
     outputs.file(icns)
-    commandLine("sh", "make-icns.sh", logo.absolutePath, icns.get().asFile.absolutePath)
+    commandLine("sh", "make-icns.sh", appIconFile.get().asFile.absolutePath, icns.get().asFile.absolutePath)
 }
 
 tasks.withType<AbstractJPackageTask>().configureEach {
