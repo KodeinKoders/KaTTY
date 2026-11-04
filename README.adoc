@@ -433,3 +433,11 @@ The color schemes come from the https://github.com/mbadolato/iTerm2-Color-Scheme
 MIT, see `LICENSE`.
 The color schemes are under the MIT license of their collection, and each one belongs to its author: see `iterm2-color-schemes`.
 The bundled font, JetBrains Mono, is under the SIL Open Font License: its text is next to the font files, in `terminal-compose/src/main/resources/app/katty/terminal/compose/fonts`.
+
+== Developed by
+
+image::https://kodein-koders.com/app/uploads/2026/11/colored-invert.svg[Kodein Koders logo,link=https://kodein-koders.com]
+
+== Supported by
+
+image::https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg[JetBrains logo,link=https://jb.gg/OpenSourceSupport]
