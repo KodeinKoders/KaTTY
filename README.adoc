@@ -403,6 +403,16 @@ git clone --recurse-submodules https://github.com/KodeinKoders/KaTTY.git   # or 
 
 The application bundle and the disk image are not signed, so macOS will ask you to confirm that you want to open them.
 
+To launch KaTTY from Spotlight or Raycast, build it and install it in `~/Applications`:
+
+[source,bash]
+----
+scripts/install.sh                      # or `--dest /Applications`
+----
+
+It replaces the application that is there, and refuses to while that one is running.
+A bundle that you built yourself is not quarantined, so macOS does not ask anything when it opens.
+
 Each terminal starts your login shell (`$SHELL -l`).
 Your projects, workspaces and settings are kept in `~/Library/Application Support/KaTTY`.
 To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`.

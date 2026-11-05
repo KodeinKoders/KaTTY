@@ -35,7 +35,10 @@ The generated Java is never part of an API: no `MemorySegment` or generated type
 ./gradlew :app:run         # opens the window
 ./gradlew :app:hotRun      # opens it with Compose Hot Reload, which the MCP server needs
 ./gradlew :terminal:test   # one module
+scripts/install.sh         # builds the bundle (`:app:createDistributable`) and installs it in ~/Applications for Spotlight and Raycast
 ```
+
+`scripts/install.sh [--dest <folder>]` (or `$KATTY_INSTALL_DIR`) copies the bundle next to its destination and moves it in place, so a failed copy keeps the installed application, then checks the signature and tells Spotlight and Launch Services. **It refuses to run while a KaTTY runs from the destination, and never stops one**: the user may be working in it, as in **Running the app**. It does not initialize the submodule and does not sign: the bundle is jpackage's, ad-hoc signed, and not quarantined since it was built here.
 
 `./gradlew :ghostty-vt:generateBindings` regenerates the bindings and the key enums (`GhosttyKey`, and `TerminalKey` of `terminal`) from the headers of the submodule (`ghostty/include`): it runs `ghostty-vt/jextract.sh` with the jextract that komple downloads and checks (the build for JDK 25 that `jextract` of `gradle/libs.versions.toml` names, with the SHA-256 that jdk.java.net publishes for each platform, in the root build script). The script alone still works, with jextract on the `PATH` or in `$JEXTRACT`. The task has no outputs of its own, since the generated files are sources that are checked in.
 
