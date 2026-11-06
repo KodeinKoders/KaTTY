@@ -257,6 +257,28 @@ class ShellIntegrationTest {
         assertEquals(prompt + 2, mark.bottom, "To the last line of the output")
     }
 
+    // What Ctrl-Z does to an editor: it is stopped, the shell takes the terminal back and says the exit code 128 and the signal (146).
+    private fun aStoppedCommandIsStoppedAndNotFailed(shell: String) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+        val events = session.collectEvents()
+
+        session.sendText("sh -c 'kill -TSTP \$\$'\r")
+        await("the prompt back") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
+
+        await("the mark") { session.frames.value.commandMarks.lastOrNull()?.finishedAt != null }
+        val mark = session.frames.value.commandMarks.last()
+        assertEquals(146, mark.exitCode)
+        assertEquals(TerminalCommandOutcome.STOPPED, mark.outcome)
+    }
+
+    @Test
+    fun zshMarksAStoppedCommandAsStopped() = aStoppedCommandIsStoppedAndNotFailed("/bin/zsh")
+
+    @Test
+    fun bashMarksAStoppedCommandAsStopped() = aStoppedCommandIsStoppedAndNotFailed("/bin/bash")
+
     @Test
     fun zshMarksTheCommandFromItsPromptToItsOutput() = aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/zsh", null)
 

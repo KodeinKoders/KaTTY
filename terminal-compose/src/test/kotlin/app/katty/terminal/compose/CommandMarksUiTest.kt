@@ -102,6 +102,14 @@ class CommandMarksUiTest {
     }
 
     @Test
+    fun theTooltipOfACommandThatWasStoppedSaysSoAndHowLongItRan() {
+        assertEquals(
+            listOf("Stopped, in the background", "Started 2026-11-04 14:22:05", "Ran for 1 min 12 s"),
+            commandMarkLines(mark(1, 0, exitCode = 146), now = start + Duration.ofMinutes(10), zone = paris),
+        )
+    }
+
+    @Test
     fun theTooltipOfACommandThatRunsSaysForHowLong() {
         assertEquals(
             listOf("Running", "Started 2026-11-04 14:22:05", "Running for 12 s"),

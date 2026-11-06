@@ -109,6 +109,26 @@ class CommandMarksTest {
     }
 
     @Test
+    fun aCommandThatTheShellStoppedIsStoppedAndNotFailed() {
+        // Ctrl-Z in an editor: the shell takes the terminal back and says the signal that stopped it, SIGTSTP (18), as the exit code 146.
+        for (code in listOf(145, 146, 149, 150)) {
+            val session = shell(printf(command("emacs", "", code = code), "$a$ $b"))
+
+            val mark = session.settled(1).single()
+
+            assertEquals(TerminalCommandOutcome.STOPPED, mark.outcome, "Exit code $code")
+            assertEquals(code, mark.exitCode)
+        }
+    }
+
+    @Test
+    fun anotherExitCodeThatIsBigIsAFailure() {
+        val session = shell(printf(command("x", "", code = 139), "$a$ $b"))
+
+        assertEquals(TerminalCommandOutcome.FAILED, session.settled(1).single().outcome)
+    }
+
+    @Test
     fun aCommandThatEndsWithNoCodeHasEnded() {
         val session = shell(printf(command("x", "", code = null), "$a$ $b"))
 

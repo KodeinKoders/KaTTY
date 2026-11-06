@@ -59,6 +59,7 @@ internal fun DrawScope.drawCommandMarks(frame: TerminalFrame, typography: Termin
         val color = when (mark.outcome) {
             TerminalCommandOutcome.SUCCEEDED -> frame.successColor.rgb.toColor().copy(alpha = if (strong) 1f else 0.7f)
             TerminalCommandOutcome.FAILED -> frame.failureColor.rgb.toColor().copy(alpha = if (strong) 1f else 0.8f)
+            TerminalCommandOutcome.STOPPED -> frame.stoppedColor.rgb.toColor().copy(alpha = if (strong) 1f else 0.8f)
             else -> frame.foreground.rgb.toColor().copy(alpha = if (strong) 0.7f else 0.3f)
         }
         val top = mark.top * typography.cellHeight + if (mark.startsAbove) 0f else gap
@@ -143,10 +144,15 @@ internal fun commandMarkLines(mark: TerminalCommandMark, now: Instant, zone: Zon
         TerminalCommandOutcome.RUNNING -> "Running"
         TerminalCommandOutcome.SUCCEEDED -> "Succeeded"
         TerminalCommandOutcome.FAILED -> "Failed: exit code ${mark.exitCode}"
+        TerminalCommandOutcome.STOPPED -> "Stopped, in the background"
         TerminalCommandOutcome.ENDED -> "Ended"
     }
     val end = mark.finishedAt
-    val took = if (end == null) "Running for " + formatCommandDuration(Duration.between(mark.startedAt, now)) else "Took " + formatCommandDuration(Duration.between(mark.startedAt, end))
+    val took = when {
+        end == null -> "Running for " + formatCommandDuration(Duration.between(mark.startedAt, now))
+        mark.outcome == TerminalCommandOutcome.STOPPED -> "Ran for " + formatCommandDuration(Duration.between(mark.startedAt, end))
+        else -> "Took " + formatCommandDuration(Duration.between(mark.startedAt, end))
+    }
     return listOf(how, "Started " + COMMAND_TIME_FORMAT.format(mark.startedAt.atZone(zone)), took)
 }
 

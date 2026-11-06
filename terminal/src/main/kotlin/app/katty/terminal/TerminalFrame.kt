@@ -189,11 +189,14 @@ public data class TerminalFrame(
     public val successColor: TerminalColor = DEFAULT_SUCCESS,
     /** The color of the mark of a command that failed: the scheme's red. */
     public val failureColor: TerminalColor = DEFAULT_FAILURE,
+    /** The color of the mark of a command that was stopped (Ctrl-Z): the scheme's yellow. */
+    public val stoppedColor: TerminalColor = DEFAULT_STOPPED,
 ) {
     internal companion object {
         // For a terminal that has no color scheme of its own.
         val DEFAULT_SUCCESS = TerminalColor(0x2EA043)
         val DEFAULT_FAILURE = TerminalColor(0xF85149)
+        val DEFAULT_STOPPED = TerminalColor(0xD29922)
     }
 }
 
@@ -207,6 +210,12 @@ public enum class TerminalCommandOutcome {
 
     /** It ended with another exit code. */
     FAILED,
+
+    /**
+     * The shell took the terminal back because the command was stopped (Ctrl-Z), not because it ended: it waits in the background, and `fg` brings it
+     * back. The shell reports it as an exit code, 128 and the number of the signal.
+     */
+    STOPPED,
 
     /** It ended, and the shell did not say how. */
     ENDED,
@@ -240,9 +249,14 @@ public data class TerminalCommandMark(
             finishedAt == null -> TerminalCommandOutcome.RUNNING
             exitCode == null -> TerminalCommandOutcome.ENDED
             exitCode == 0 -> TerminalCommandOutcome.SUCCEEDED
+            exitCode in STOPPED_EXIT_CODES -> TerminalCommandOutcome.STOPPED
             else -> TerminalCommandOutcome.FAILED
         }
 }
+
+// What a shell says of a job that was stopped: 128 and the signal (SIGSTOP 17, SIGTSTP 18, SIGTTIN 21, SIGTTOU 22: the numbers of macOS, the only
+// platform of the terminal). A program that exits with one of these codes itself is taken for one that was stopped.
+private val STOPPED_EXIT_CODES = setOf(128 + 17, 128 + 18, 128 + 21, 128 + 22)
 
 /**
  * Where the viewport is in what can be scrolled, in rows: what a scrollbar draws.

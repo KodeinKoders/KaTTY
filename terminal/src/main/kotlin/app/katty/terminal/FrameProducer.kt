@@ -415,6 +415,7 @@ internal class FrameProducer(
             ),
             successColor = theme?.ansi?.get(2) ?: TerminalFrame.DEFAULT_SUCCESS,
             failureColor = theme?.ansi?.get(1) ?: TerminalFrame.DEFAULT_FAILURE,
+            stoppedColor = theme?.ansi?.get(3) ?: TerminalFrame.DEFAULT_STOPPED,
         )
         renderState.clean()
         return frame

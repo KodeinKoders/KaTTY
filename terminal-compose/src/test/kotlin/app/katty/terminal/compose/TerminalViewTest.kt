@@ -917,6 +917,17 @@ class TerminalViewTest {
     }
 
     @Test
+    fun aCommandThatWasStoppedIsYellowAndNotRed() {
+        val frame = frame(30, List(4) { row(30) }).copy(commandMarks = listOf(mark(1, 0, 1, 146)), stoppedColor = TerminalColor(0xC0C000))
+
+        val rendered = render("command-marks-stopped", frame, commandMarkGutter = 5.dp)
+        val stopped = rendered.bar(0)
+
+        assertTrue(stopped.red() > 0x80 && stopped.green() > 0x80, "Yellow: ${"%06x".format(stopped)}")
+        assertTrue(rendered.barAlpha(0) > 0)
+    }
+
+    @Test
     fun theBarIsAsWideAsTheGutterAndTheGridStartsAfterIt() {
         val rendered = render("command-marks-width", marked, commandMarkGutter = 5.dp)
         val y = (0.5f * rendered.typography.cellHeight).toInt()
