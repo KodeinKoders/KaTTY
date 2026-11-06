@@ -2,6 +2,9 @@
 
 package app.katty.screens
 
+import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.captureToImage
@@ -126,9 +129,14 @@ class WorkspaceAreaTest {
         waitUntil { runCatching { onNodeWithTag("other").assertIsNotFocused() }.isSuccess }
     }
 
-    @Test
-    fun aTerminalIsNotAgainstTheBorderOfItsPane() = runComposeUiTest {
+    // How far the grid of the terminal starts from the edge of the pane, in pixels.
+    private fun ComposeUiTest.gridOffsetFromTheEdge(commandMarks: Boolean, reporting: Boolean = false): Int {
         store.addProject("/tmp")
+        if (reporting) {
+            val terminal = store.state.value.selection.terminal!!
+            infos = mapOf(terminal to app.katty.core.AgentInfo(app.katty.core.AgentReport(app.katty.core.AgentState.WORKING, "claude-code"), 0))
+        }
+        store.updateSettings { it.copy(commandMarks = commandMarks) }
         show()
         val session = registry.handles.value.values.single().session!!
         // A line of full blocks, which fill their cells to the edge: the first of them is where the grid starts.
@@ -137,7 +145,8 @@ class WorkspaceAreaTest {
         waitForIdle()
 
         val image = onRoot().captureToImage().toPixelMap()
-        val headerBottom = (onNodeWithContentDescription("Terminal zsh").getBoundsInRoot().bottom.value * density.density).toInt()
+        // The header says what runs in the terminal: the shell, or the agent that reports.
+        val headerBottom = (onAllNodes(hasContentDescription("Terminal ", substring = true)).onFirst().getBoundsInRoot().bottom.value * density.density).toInt()
         fun rgb(x: Int, y: Int) = image[x, y].let { (it.red * 255 + .5f).toInt() shl 16 or ((it.green * 255 + .5f).toInt() shl 8) or (it.blue * 255 + .5f).toInt() }
         val foreground = session.frames.value.foreground.rgb
         val accent = (app.katty.ui.KattyColors.Light.accent.let { (it.red * 255 + .5f).toInt() shl 16 or ((it.green * 255 + .5f).toInt() shl 8) or (it.blue * 255 + .5f).toInt() })
@@ -146,8 +155,24 @@ class WorkspaceAreaTest {
         val block = rows.mapNotNull { y -> (0 until image.width).firstOrNull { rgb(it, y) == foreground } }.minOrNull() ?: error("No block was drawn")
         val border = rows.mapNotNull { y -> (0 until image.width).firstOrNull { rgb(it, y) == accent } }.minOrNull() ?: error("No border was drawn")
 
+        return block - border
+    }
+
+    @Test
+    fun aTerminalIsNotAgainstTheBorderOfItsPane() = runComposeUiTest {
         // The border is 2 dp, over the edge of the pane: the grid starts the padding after the edge, and not the border's width.
-        assertEquals((TERMINAL_PADDING.value * density.density).toInt(), block - border, "The grid starts 4 dp from the edge of the pane")
+        assertEquals((TERMINAL_PADDING.value * density.density).toInt(), gridOffsetFromTheEdge(commandMarks = false), "The grid starts 4 dp from the edge of the pane")
+    }
+
+    @Test
+    fun theGutterOfTheCommandMarksIsAtTheLeftOfThePaddingAndPushesTheGridByFiveDp() = runComposeUiTest {
+        assertEquals(((TERMINAL_PADDING.value + 5) * density.density).toInt(), gridOffsetFromTheEdge(commandMarks = true), "The grid starts 5 dp further")
+    }
+
+    @Test
+    fun aProgramThatReportsItsStateHasTheOrdinaryMarginAndNoGutter() = runComposeUiTest {
+        // An agent fills the terminal: its room is the ordinary margin, with the marks on.
+        assertEquals((TERMINAL_PADDING.value * density.density).toInt(), gridOffsetFromTheEdge(commandMarks = true, reporting = true), "The grid starts 4 dp from the edge")
     }
 
     @Test

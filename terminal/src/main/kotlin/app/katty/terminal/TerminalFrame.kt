@@ -1,5 +1,7 @@
 package app.katty.terminal
 
+import java.time.Instant
+
 /**
  * An RGB color.
  */
@@ -178,7 +180,69 @@ public data class TerminalFrame(
      * like the selection, so that searching does not change them.
      */
     public val searchMatches: List<TerminalSearchMatch> = emptyList(),
-)
+    /**
+     * The commands that the shell ran whose prompt is in view, by row, when it marks them (OSC 133: see `shellIntegration` of
+     * [TerminalSession.start]): empty without the marks and on the alternate screen. It is not in the rows, like the selection.
+     */
+    public val commandMarks: List<TerminalCommandMark> = emptyList(),
+    /** The color of the mark of a command that succeeded: the scheme's green. */
+    public val successColor: TerminalColor = DEFAULT_SUCCESS,
+    /** The color of the mark of a command that failed: the scheme's red. */
+    public val failureColor: TerminalColor = DEFAULT_FAILURE,
+) {
+    internal companion object {
+        // For a terminal that has no color scheme of its own.
+        val DEFAULT_SUCCESS = TerminalColor(0x2EA043)
+        val DEFAULT_FAILURE = TerminalColor(0xF85149)
+    }
+}
+
+/** How a command that the shell ran went. */
+public enum class TerminalCommandOutcome {
+    /** It has not ended. */
+    RUNNING,
+
+    /** It ended with the exit code 0. */
+    SUCCEEDED,
+
+    /** It ended with another exit code. */
+    FAILED,
+
+    /** It ended, and the shell did not say how. */
+    ENDED,
+}
+
+/**
+ * A command that the shell ran, as it is in the viewport: the rows from its prompt to the end of its output.
+ *
+ * @param id What [TerminalSession.selectCommandOutput] takes. It is the same for as long as the command is remembered.
+ * @param top The first row of the viewport that it is on, 0 being the top one: the first row of its prompt that has text, or the top of the viewport
+ * when it started above it.
+ * @param bottom The last row of the viewport that it is on, both ends included.
+ * @param exitCode The exit code that the shell gave when it ended, or `null` while it runs and when it did not say.
+ * @param startedAt When it started to run: when its output started.
+ * @param finishedAt When it ended, or `null` while it runs.
+ * @param startsAbove Whether it started above the viewport: [top] is then the top row, and it is not where the command starts.
+ * @param endsBelow Whether it goes on below the viewport: [bottom] is then the last row, and it is not where the command ends.
+ */
+public data class TerminalCommandMark(
+    public val id: Long,
+    public val top: Int,
+    public val bottom: Int,
+    public val exitCode: Int?,
+    public val startedAt: Instant,
+    public val finishedAt: Instant?,
+    public val startsAbove: Boolean = false,
+    public val endsBelow: Boolean = false,
+) {
+    public val outcome: TerminalCommandOutcome
+        get() = when {
+            finishedAt == null -> TerminalCommandOutcome.RUNNING
+            exitCode == null -> TerminalCommandOutcome.ENDED
+            exitCode == 0 -> TerminalCommandOutcome.SUCCEEDED
+            else -> TerminalCommandOutcome.FAILED
+        }
+}
 
 /**
  * Where the viewport is in what can be scrolled, in rows: what a scrollbar draws.

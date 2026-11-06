@@ -52,6 +52,11 @@ internal fun TerminalView(
     scrollbarAlpha: Float = 0f,
     scrollbarEmphasized: Boolean = false,
     hoveredLink: TerminalLink? = null,
+    /** Where the marks of the commands are drawn, in pixels from the left edge of the grid (negative: they are in the padding), and how wide: 0 for none. */
+    commandMarkLeft: Float = 0f,
+    commandMarkWidth: Float = 0f,
+    /** The id of the mark that the pointer is over. */
+    hoveredCommandMark: Long? = null,
     minimumContrast: Float = 1f,
     builtinGlyphs: Boolean = true,
     /**
@@ -105,6 +110,7 @@ internal fun TerminalView(
         if (frame.selection.isNotEmpty()) drawSelection(frame, rows, typography)
 
         frame.scrollbar?.takeIf { scrollbarAlpha > 0f }?.let { drawScrollbar(it, frame, scrollbarAlpha, scrollbarEmphasized) }
+        if (commandMarkWidth > 0f && frame.commandMarks.isNotEmpty()) drawCommandMarks(frame, typography, commandMarkLeft, commandMarkWidth, hoveredCommandMark)
 
         if (preedit.isNotEmpty()) {
             // The cursor would be in the way of what is being composed.

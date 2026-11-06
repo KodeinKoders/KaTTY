@@ -174,6 +174,7 @@ class MainMenuTest {
         assertEquals(ScrollbackSize.DEFAULT, settings.scrollback)
         assertFalse(settings.boldIsBright)
         assertFalse(settings.copyOnSelect)
+        assertTrue(settings.commandMarks, "The marks are on by default")
 
         clickOn("Underline")
         assertEquals(CursorShape.UNDERLINE, settings.cursorShape)
@@ -197,6 +198,8 @@ class MainMenuTest {
         assertEquals(ScrollbackSize.LARGE, settings.scrollback)
         clickOn("Copy on select")
         assertTrue(settings.copyOnSelect)
+        clickOn("Command marks")
+        assertFalse(settings.commandMarks)
     }
 
     @Test

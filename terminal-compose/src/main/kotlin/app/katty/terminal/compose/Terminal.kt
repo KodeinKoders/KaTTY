@@ -43,12 +43,14 @@ import androidx.compose.ui.input.pointer.isTertiaryPressed
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
@@ -70,6 +72,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent as AwtKeyEvent
+import java.time.Instant
 import kotlin.math.roundToInt
 
 /**
@@ -131,6 +134,11 @@ import kotlin.math.roundToInt
  * @param optionClickMovesCursor Whether Option and a click on the command line that the shell is reading moves its cursor there, with
  * the arrow keys, as Ghostty does. It needs the shell to mark its input (see `shellIntegration` of [TerminalSession.start]), and
  * it is only the row of the cursor. A click anywhere else is a selection, as it is without it.
+ * @param commandMarks Whether a bar is drawn at the left of each command that the shell ran, from the first row of its prompt to the last of its
+ * output (see [TerminalFrame.commandMarks]): the scheme's green when it succeeded, its red when it failed. It is in a gutter of its own, 5 dp wide, that
+ * is added to the left of [padding], **and only while the primary screen is shown**: a program on the alternate screen has the room that it had without
+ * the marks. The host says `false` for a program that fills the terminal without it. The pointer over it shows how the command went, when it started
+ * and how long it took, and a click on it selects the command's output. It needs the shell's marks.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -157,6 +165,7 @@ public fun Terminal(
     copyOnSelect: Boolean = false,
     copyRichText: Boolean = false,
     optionClickMovesCursor: Boolean = true,
+    commandMarks: Boolean = false,
 ) {
     require(minimumContrast in 1f..21f) { "The minimum contrast is from 1 (none) to 21, not $minimumContrast" }
     require(backgroundOpacity in 0f..1f) { "The opacity is from 0 to 1, not $backgroundOpacity" }
@@ -220,6 +229,24 @@ public fun Terminal(
     val latestOptionClick = rememberUpdatedState(optionClickMovesCursor)
     val primary = primarySelection
     val links = remember(session) { LinkInteraction() }
+    // The marks are in the padding, which the terminal's own pointer handler does not see: another one, on the whole terminal, has them.
+    val markInteraction = remember(session) { CommandMarkInteraction() }
+    val layoutDirection = LocalLayoutDirection.current
+    val markDensity = LocalDensity.current
+    // The marks have a gutter of their own at the left of the padding that the host gives: the text is where it was, a gutter's width further.
+    // Only a shell has them: a program that fills the terminal (vim, emacs, OpenCode: the alternate screen) has no commands to mark, and the room
+    // is its own. (The host also says so for one that fills it without the alternate screen: see `commandMarks`.)
+    val marksShown = commandMarks && !frame.alternateScreen
+    val markGutter = if (marksShown) with(markDensity) { COMMAND_MARK_WIDTH.toPx() } else 0f
+    val markTop = with(markDensity) { padding.calculateTopPadding().toPx() }
+    // How far the grid is from the left edge of the terminal, where the gutter starts.
+    val gridLeft = with(markDensity) { padding.calculateLeftPadding(layoutDirection).toPx() } + markGutter
+    val gutterPadding = PaddingValues(
+        start = padding.calculateLeftPadding(layoutDirection) + if (marksShown) COMMAND_MARK_WIDTH else 0.dp,
+        top = padding.calculateTopPadding(),
+        end = padding.calculateRightPadding(layoutDirection),
+        bottom = padding.calculateBottomPadding(),
+    )
     val contextMenu = remember(session) { ContextMenuGesture() }
     val latestContextMenu = rememberUpdatedState(onContextMenu)
     val openLink = rememberUpdatedState(onOpenLink)
@@ -319,6 +346,11 @@ public fun Terminal(
         }
     }
 
+    // The same for the mark of a command.
+    LaunchedEffect(frame) {
+        if (markGutter > 0f) markInteraction.refresh(frame.commandMarks, markGutter, markTop, typography.cellHeight)
+    }
+
     // The screen moves under a pointer that does not: what it is over may be another link, or none.
     LaunchedEffect(frame) {
         if (links.hovered != null) links.refresh(true, typography.cellWidth, typography.cellHeight) { column, row -> session.linkAt(column, row) }
@@ -354,6 +386,9 @@ public fun Terminal(
         scrollbarAlpha = scrollbarAlpha,
         scrollbarEmphasized = scrollbarInteraction.hovered || scrollbarInteraction.dragging,
         hoveredLink = links.hovered,
+        commandMarkLeft = -gridLeft,
+        commandMarkWidth = markGutter,
+        hoveredCommandMark = markInteraction.hovered,
         minimumContrast = minimumContrast,
         builtinGlyphs = builtinGlyphs,
         bellPulse = { bellPulse.value },
@@ -361,7 +396,38 @@ public fun Terminal(
         defaultBackgroundAlpha = 0f,
         modifier = modifier
             .background(frame.background.rgb.toColor().copy(alpha = backgroundOpacity))
-            .padding(padding)
+            .then(
+                if (markGutter <= 0f) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(session, markGutter, markTop, primary) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.type == PointerEventType.Exit) {
+                                    markInteraction.exit()
+                                    continue
+                                }
+                                val change = event.changes.firstOrNull() ?: continue
+                                val press = event.type == PointerEventType.Press && event.button == PointerButton.Primary
+                                val mark = markInteraction.handle(
+                                    change.position.x, change.position.y, press, latestFrame.value.commandMarks, markGutter, markTop,
+                                    latestTypography.value.cellHeight,
+                                ) ?: continue
+                                focusRequester.requestFocus()
+                                if (session.selectCommandOutput(mark.id)) {
+                                    session.selectedText()?.let {
+                                        primary.text = it
+                                        if (latestCopyOnSelect.value) copySelected()
+                                    }
+                                }
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+                },
+            )
+            .padding(gutterPadding)
             .onSizeChanged { size = it }
             .onGloballyPositioned { coordinates = it }
             .focusRequester(focusRequester)
@@ -562,7 +628,28 @@ public fun Terminal(
             .terminalTextInput(textInput, enabled = focused, caretRectInRoot = caretRect)
             .focusable(),
     )
+
+    // What the mark under the pointer says. A popup takes no room: it is in a layer of its own.
+    val hoveredMark = frame.commandMarks.firstOrNull { it.id == markInteraction.hovered }
+    if (markGutter > 0f && hoveredMark != null) {
+        // A command that runs says how long for: the time moves on while the pointer stays.
+        var now by remember(hoveredMark.id) { mutableStateOf(Instant.now()) }
+        LaunchedEffect(hoveredMark.id, hoveredMark.finishedAt == null) {
+            while (hoveredMark.finishedAt == null) {
+                now = Instant.now()
+                delay(COMMAND_TIME_TICK_MS)
+            }
+        }
+        coordinates?.takeIf { it.isAttached }?.let { grid ->
+            CommandMarkTooltip(
+                commandMarkLines(hoveredMark, now), frame, markInteraction.hoveredRow, typography.cellHeight, grid.positionInWindow(), fontSize * 0.9f,
+            )
+        }
+    }
 }
+
+// How often the time of a command that runs is read again in its tooltip.
+private const val COMMAND_TIME_TICK_MS = 1000L
 
 // The cell of the cursor in the window, in pixels.
 private fun caretRectInRoot(frame: TerminalFrame, typography: TerminalTypography, coordinates: LayoutCoordinates?): Rect? {

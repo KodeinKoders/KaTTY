@@ -32,6 +32,9 @@ public sealed interface GhosttyScrollViewport {
  */
 public data class GhosttyScrollbar(val total: Long, val offset: Long, val len: Long)
 
+/** A place in the rows of the whole screen: the column, and the row counted from the top of the history. */
+public data class GhosttyScreenPoint(val x: Int, val y: Long)
+
 public enum class GhosttyScreen {
     PRIMARY,
     ALTERNATE,

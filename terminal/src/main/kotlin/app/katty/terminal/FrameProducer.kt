@@ -81,6 +81,9 @@ internal class FrameProducer(
         /** The colors that a frame has besides the ones libghostty resolves. */
         val theme: TerminalTheme?
 
+        /** Where the commands of the primary screen are. Called under the lock. */
+        fun commandSpans(): List<CommandSpan>
+
         /** Takes the selection off, since the program wrote over it. Called under the lock. */
         fun unselect()
 
@@ -316,6 +319,7 @@ internal class FrameProducer(
         val cellWidth: Int
         val cellHeight: Int
         val searchLook: SessionSearch.Look
+        val commandSpans: List<CommandSpan>
         lock.withLock {
             renderState.update(terminal)
             // As of this moment, with the rows that are read for it: what is found is where it is on this frame.
@@ -324,6 +328,8 @@ internal class FrameProducer(
             alternate = terminal.activeScreen == GhosttyScreen.ALTERNATE
             shape = terminal.mouseShape
             position = terminal.scrollbar
+            // The commands' references belong to the primary screen: the alternate one has none to show.
+            commandSpans = if (alternate) emptyList() else session.commandSpans()
             cellWidth = session.cellWidthPx
             cellHeight = session.cellHeightPx
 
@@ -404,6 +410,11 @@ internal class FrameProducer(
             images = images,
             alternateScreen = alternate,
             searchMatches = search.matches(searchLook, terminalRows, position, renderState.cols),
+            commandMarks = commandMarks(
+                commandSpans, position.offset, terminalRows, renderState.cursor.let { cursor -> cursor.x?.let { x -> cursor.y?.let { y -> x to y } } },
+            ),
+            successColor = theme?.ansi?.get(2) ?: TerminalFrame.DEFAULT_SUCCESS,
+            failureColor = theme?.ansi?.get(1) ?: TerminalFrame.DEFAULT_FAILURE,
         )
         renderState.clean()
         return frame

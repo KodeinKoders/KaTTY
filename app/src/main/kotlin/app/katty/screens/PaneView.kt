@@ -224,6 +224,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         optionAsAlt = context.settings.optionKey.toTerminal(),
                         bell = context.settings.bell.toTerminal(),
                         copyOnSelect = context.settings.copyOnSelect,
+                        // Not for a program that reports its state (OSC 7501: an agent, which fills the terminal): it has the room of an ordinary margin.
+                        commandMarks = context.settings.commandMarks && report?.reporting != true,
                         minimumContrast = context.settings.minimumContrast.ratio,
                         padding = PaddingValues(TERMINAL_PADDING),
                         focusRequester = handle.focus,

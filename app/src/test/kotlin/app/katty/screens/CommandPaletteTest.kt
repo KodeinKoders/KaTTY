@@ -444,12 +444,13 @@ class CommandPaletteTest {
         store.addProject("/dev/api-gateway")
         for (label in listOf(
             "Cursor: underline", "Option key: left Option is Alt", "Option key: both Option keys are Alt", "Bell: sound", "Minimum contrast: 4.5",
-            "Scrollback: 50 MB", "Turn copy on select on", "Turn bold text with bright colors on",
+            "Scrollback: 50 MB", "Turn copy on select on", "Turn bold text with bright colors on", "Hide command marks",
         )) assertTrue(label in labels(), label)
 
-        store.updateSettings { it.copy(copyOnSelect = true, boldIsBright = true) }
+        store.updateSettings { it.copy(copyOnSelect = true, boldIsBright = true, commandMarks = false) }
 
         assertTrue("Turn copy on select off" in labels())
+        assertTrue("Show command marks" in labels())
         assertTrue("Turn bold text with bright colors off" in labels())
     }
 

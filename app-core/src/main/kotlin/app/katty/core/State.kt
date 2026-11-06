@@ -122,6 +122,7 @@ public enum class MainView {
  * @param optionKey Which Option keys are the program's Alt, and which type characters.
  * @param bell What a BEL character does.
  * @param copyOnSelect Whether what is selected is put in the clipboard as soon as the selection is made.
+ * @param commandMarks Whether a mark is shown beside each command that a shell ran, green when it succeeded and red when it failed.
  * @param boldIsBright Whether bold text in one of the 8 normal colors is drawn in the bright one.
  * @param minimumContrast The least contrast between a text and its background.
  * @param scrollback How much history a terminal keeps. Lowering it deletes the older lines of the terminals that are open.
@@ -151,6 +152,7 @@ public data class Settings(
     val optionKey: OptionKey = OptionKey.CHARACTERS,
     val bell: BellMode = BellMode.VISUAL,
     val copyOnSelect: Boolean = false,
+    val commandMarks: Boolean = true,
     val boldIsBright: Boolean = false,
     val minimumContrast: MinimumContrast = MinimumContrast.OFF,
     val scrollback: ScrollbackSize = ScrollbackSize.DEFAULT,

@@ -105,6 +105,9 @@ public class TerminalSession private constructor(
     // Under the lock.
     private var outputStart: GhosttyTrackedRef? = null
 
+    // What it said of each command: see [CommandMarks]. Under the lock.
+    private val commandMarks = CommandMarks(terminal)
+
     // The colors that a frame has besides the ones libghostty resolves. Written under the lock, with the
     // colors of the terminal, and read by the producer.
     @Volatile
@@ -119,6 +122,7 @@ public class TerminalSession private constructor(
         override val cellWidthPx: Int get() = this@TerminalSession.cellWidthPx
         override val cellHeightPx: Int get() = this@TerminalSession.cellHeightPx
         override val theme: TerminalTheme? get() = this@TerminalSession.theme
+        override fun commandSpans(): List<CommandSpan> = this@TerminalSession.commandMarks.spans()
         override fun unselect() = this@TerminalSession.unselect()
         override fun readingPassword(): Boolean = withPty(false) { fd -> isPtyReadingPassword(fd) }
     })
@@ -446,6 +450,7 @@ public class TerminalSession private constructor(
                     inputActive = false
                     // What was being worked on is over: the shell is asking for the next thing.
                     programStatusStore.promptStarted()
+                    if (terminal.activeScreen != GhosttyScreen.ALTERNATE) commandMarks.promptStarted()
                     eventFlow.tryEmit(TerminalEvent.PromptStarted)
                     if (pendingAtPromptStart) typePending()
                 }
@@ -454,15 +459,18 @@ public class TerminalSession private constructor(
                     // Here, where the screen is up to date: it is where the output starts, which it would not be after the write.
                     outputStart?.close()
                     outputStart = terminal.trackCursor()
+                    if (terminal.activeScreen != GhosttyScreen.ALTERNATE) commandMarks.commandStarted()
                     eventFlow.tryEmit(TerminalEvent.CommandStarted(step.command.ifEmpty { null }))
                 }
                 GhosttyPromptEventKind.COMMAND_END -> {
                     inputActive = false
+                    commandMarks.commandFinished(step.exitCode)
                     eventFlow.tryEmit(TerminalEvent.CommandFinished(step.exitCode))
                 }
                 // What follows is what the user types, until the command runs: nothing for the host, but a click may move the cursor in it.
                 GhosttyPromptEventKind.INPUT_START -> {
                     inputActive = true
+                    if (terminal.activeScreen != GhosttyScreen.ALTERNATE) commandMarks.inputStarted()
                     typePending()
                 }
             }
@@ -895,6 +903,22 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * Selects the output of the command that [id] is the id of in a [TerminalCommandMark], as [selectLastCommandOutput] does for the last
+     * one. Nothing is selected, and the answer is `false`, when the command is forgotten (its prompt left the history, or the screen was
+     * cleared) and on the alternate screen.
+     */
+    public fun selectCommandOutput(id: Long): Boolean {
+        val selected = lock.withLock {
+            if (closed.get() || terminal.activeScreen == GhosttyScreen.ALTERNATE) return false
+            val start = commandMarks.outputStart(id) ?: return false
+            selectionGesture.reset()
+            terminal.selectCommandOutput(start).also { if (it) hasSelection = true }
+        }
+        if (selected) producer.request()
+        return selected
+    }
+
+    /**
      * The name of the program that has the terminal now: `emacs` while the user runs it, and the shell's own (`zsh`) at its prompt. It is what
      * the shell is waiting for, read from the pty, so it needs a shell with job control, which every interactive one has. `null` when it cannot
      * be known, and once the program has ended. It costs two system calls: ask as often as a name on the screen needs.
@@ -1042,6 +1066,7 @@ public class TerminalSession private constructor(
         lock.withLock {
             outputStart?.close()
             outputStart = null
+            commandMarks.close()
             sessionSearch.close()
             selectionGesture.close()
             keyEncoder.close()

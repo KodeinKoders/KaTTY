@@ -23,6 +23,13 @@ class ShellIntegrationTest {
     }
 
     // A home with nothing in it but an empty .zshrc, which spares zsh its first-run questions: the user's own files are not read.
+    // A home whose shells have a prompt that starts with an empty line, as some themes' do (the shells do not take PS1 from the environment).
+    private fun homeWithAPromptThatStartsWithAnEmptyLine(): Path = Files.createTempDirectory("katty-home").also {
+        Files.writeString(it.resolve(".zshrc"), "PROMPT=$'\\n$ '\n")
+        Files.writeString(it.resolve(".bash_profile"), "PS1=$'\\n$ '\n")
+        it.toFile().deleteOnExit()
+    }
+
     private fun emptyHome(): Path = Files.createTempDirectory("katty-home").also {
         Files.createFile(it.resolve(".zshrc"))
         it.toFile().deleteOnExit()
@@ -197,6 +204,86 @@ class ShellIntegrationTest {
 
     @Test
     fun bashMovesTheCursorOfTheCommandLineToAClick() = movesTheCursorOfTheCommandLine("/bin/bash")
+
+    private fun marksTheCommandsWithTheirExitCodes(shell: String) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, emptyHome(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+        val events = session.collectEvents()
+
+        session.sendText("true\r")
+        await("the end of the first command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
+        session.sendText("false\r")
+        await("the end of the second command") { events.count { it is TerminalEvent.PromptStarted } >= 2 }
+
+        await("the marks") { session.frames.value.commandMarks.map { it.exitCode } == listOf(0, 1) }
+        val marks = session.frames.value.commandMarks
+        assertEquals(listOf(TerminalCommandOutcome.SUCCEEDED, TerminalCommandOutcome.FAILED), marks.map { it.outcome })
+        assertTrue(marks[0].bottom < marks[1].top, "Two bars, one under the other: ${marks.map { it.top to it.bottom }}")
+    }
+
+    private fun TerminalFrame.rowText(row: Int) = rows[row].cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd()
+
+    // The prompt starts with an empty line, as some themes' do, and the command prints two lines.
+    private fun aMarkCoversThePromptAndTheOutputOfTheCommand(shell: String, clear: ((TerminalSession) -> Unit)?) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, homeWithAPromptThatStartsWithAnEmptyLine(), directory)
+        await("the first prompt") { session.workingDirectory.value != null }
+        val events = session.collectEvents()
+        var ended = 0
+
+        if (clear != null) {
+            // The screen is cleared at the first prompt, which the shell draws again at the top (it does not say that it starts: it only
+            // says that what is typed starts): the command is run at that prompt.
+            session.sendText("printf 'x\\n'\r")
+            await("the end of a command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
+            ended = 1
+            clear(session)
+            try {
+                await("the prompt to be drawn again at the top") { session.frames.value.let { it.rowText(0) == "" && it.rowText(1) == "$" } }
+            } catch (e: IllegalStateException) {
+                throw IllegalStateException("${e.message}. The screen:\n${session.screen()}", e)
+            }
+        }
+        session.sendText("printf 'a\\nb\\n'\r")
+        await("the end of the command") { events.count { it is TerminalEvent.PromptStarted } >= ended + 1 }
+
+        var frame = session.frames.value
+        await("the mark") { frame = session.frames.value; frame.commandMarks.lastOrNull()?.finishedAt != null }
+        val mark = frame.commandMarks.last()
+        val screen = frame.rows.indices.joinToString("\n") { frame.rowText(it) } + "\n" + frame.commandMarks
+        val prompt = frame.rows.indices.firstOrNull { frame.rowText(it).contains("printf 'a") } ?: throw AssertionError("The command is not on the screen:\n$screen")
+        assertEquals(prompt, mark.top, "On the prompt, not on the empty line before it, nor on the output:\n$screen")
+        assertEquals(prompt + 2, mark.bottom, "To the last line of the output")
+    }
+
+    @Test
+    fun zshMarksTheCommandFromItsPromptToItsOutput() = aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/zsh", null)
+
+    @Test
+    fun bashMarksTheCommandFromItsPromptToItsOutput() = aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/bash", null)
+
+    @Test
+    fun zshMarksTheCommandOfAPromptDrawnAgainByCtrlL() =
+        aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/zsh") { it.sendText("\u000c") }
+
+    @Test
+    fun zshMarksTheCommandOfAPromptDrawnAgainByCommandL() =
+        aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/zsh") { it.clearScreen() }
+
+    @Test
+    fun bashMarksTheCommandOfAPromptDrawnAgainByCtrlL() =
+        aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/bash") { it.sendText("\u000c") }
+
+    @Test
+    fun bashMarksTheCommandOfAPromptDrawnAgainByCommandL() =
+        aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/bash") { it.clearScreen() }
+
+    @Test
+    fun zshMarksTheCommandsWithTheirExitCodes() = marksTheCommandsWithTheirExitCodes("/bin/zsh")
+
+    @Test
+    fun bashMarksTheCommandsWithTheirExitCodes() = marksTheCommandsWithTheirExitCodes("/bin/bash")
 
     @Test
     fun zshSelectsTheOutputOfTheLastCommand() = selectsTheOutputOfTheLastCommand("/bin/zsh")

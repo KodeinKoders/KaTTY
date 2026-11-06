@@ -1274,6 +1274,89 @@ class TerminalTest {
         PointerEventType.Release, position, button = primary, buttons = androidx.compose.ui.input.pointer.PointerButtons(),
     )
 
+    // Two commands that a shell with the integration would have run, and the prompt that waits for the next.
+    private fun markedScene(commandMarks: Boolean = true): Pair<ImageComposeScene, TerminalSession> {
+        val session = session(
+            """printf '\033]133;A\007$ ls\r\n\033]133;B\007\033]133;C\007one\r\n\033]133;D;0\007""" +
+                """\033]133;A\007$ false\r\n\033]133;B\007\033]133;C\007two\r\n\033]133;D;1\007\033]133;A\007$ '; sleep 30""",
+        )
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            Terminal(
+                session, Modifier.fillMaxSize(), padding = androidx.compose.foundation.layout.PaddingValues(start = 12.dp, top = 6.dp),
+                commandMarks = commandMarks,
+            )
+        }.also { scenes += it }
+        scene.renderUntil("the commands") { session.frames.value.cols != 10 && session.frames.value.commandMarks.count { it.finishedAt != null } == 2 }
+        return scene to session
+    }
+
+    // The middle of the gutter (5 dp wide, at the left), on the row of the cell.
+    private fun marginAt(row: Int) = Offset(3f, 6f + (row + 0.5f) * typography!!.cellHeight)
+
+    @Test
+    fun aClickAnywhereOnTheBarOfACommandSelectsItsOutput() {
+        // Rows: "$ ls", "one", "$ false", "two", and the next prompt. The bars are rows 0 and 1, and 2 and 3.
+        val (scene, session) = markedScene()
+
+        // The first event is the one that enters the terminal.
+        scene.move(marginAt(1) + Offset(0f, 1f), held = false)
+        scene.move(marginAt(1), held = false)
+        scene.renderFor(100)
+        // On the row of the output, not on the prompt's.
+        scene.click(marginAt(1))
+        scene.renderUntil("the output of the first command to be selected") { session.selectedText() == "one" }
+
+        scene.click(marginAt(2))
+        scene.renderUntil("the output of the second command to be selected") { session.selectedText() == "two" }
+    }
+
+    @Test
+    fun aClickInTheGutterOnARowWithNoBarDoesNothing() {
+        val (scene, session) = markedScene()
+
+        // The row of the prompt that waits for a command.
+        scene.move(marginAt(4) + Offset(0f, 1f), held = false)
+        scene.click(marginAt(4))
+        scene.renderFor(100)
+
+        assertEquals(null, session.selectedText())
+    }
+
+    @Test
+    fun aProgramOnTheAlternateScreenHasTheRoomThatItHadWithoutTheMarks() {
+        val session = session("printf '\\033[?1049hvim'; sleep 30")
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            Terminal(session, Modifier.fillMaxSize(), padding = androidx.compose.foundation.layout.PaddingValues(start = 12.dp, top = 6.dp), commandMarks = true)
+        }.also { scenes += it }
+        scene.renderUntil("the alternate screen") { session.frames.value.alternateScreen && session.frames.value.cols != 10 }
+
+        val typography = typography!!
+        // The grid starts where the host's padding says, with no gutter: its columns are those of the width that is left of 12 dp.
+        assertEquals(((WIDTH - 12) / typography.cellWidth).toInt(), session.frames.value.cols)
+    }
+
+    @Test
+    fun theGutterOfTheMarksPushesTheGridRightByItsWidthAndNotTheOtherWay() {
+        val (_, session) = markedScene()
+        val (_, without) = markedScene(commandMarks = false)
+
+        // 5 dp at 1 pixel to the dp: the grid has as many columns, or one less when the width takes a part of a column.
+        assertTrue(session.frames.value.cols in (without.frames.value.cols - 1)..without.frames.value.cols)
+    }
+
+    @Test
+    fun theMarksAreNotThereUnlessTheHostAsksForThem() {
+        val (scene, session) = markedScene(commandMarks = false)
+
+        scene.move(marginAt(0) + Offset(0f, 1f), held = false)
+        scene.click(marginAt(0))
+        scene.renderFor(100)
+
+        assertEquals(null, session.selectedText())
+    }
+
     @Test
     fun draggingTheThumbOfTheScrollbarScrollsTheHistory() {
         val (scene, session) = historyScene()

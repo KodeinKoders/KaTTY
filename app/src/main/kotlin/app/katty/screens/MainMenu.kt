@@ -235,6 +235,8 @@ fun MainMenu(
                     Section("SELECTION") {
                         CheckSetting("Copy on select", settings.copyOnSelect, { value -> onChange { it.copy(copyOnSelect = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                         Caption("Puts what you select in the clipboard as soon as you release the mouse.")
+                        CheckSetting("Command marks", settings.commandMarks, { value -> onChange { it.copy(commandMarks = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                        Caption("A mark beside each command: green when it succeeded, red when it failed. Click it to select its output.")
                     }
                     Separator()
                     Section("TERMINAL CONTENTS") {

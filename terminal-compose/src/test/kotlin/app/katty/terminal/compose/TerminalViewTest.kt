@@ -5,10 +5,14 @@ package app.katty.terminal.compose
 import androidx.compose.ui.graphics.asSkiaBitmap
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.terminal.TerminalCell
 import app.katty.terminal.TerminalCellWidth
@@ -86,6 +90,9 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 
     fun pixel(x: Int, y: Int): Int = bitmap.getColor(x, y) and 0xFFFFFF
 
+    /** How opaque the pixel is, from 0 to 255: the padding has no background of its own here, so what is drawn in it shows as alpha. */
+    fun alpha(x: Int, y: Int): Int = bitmap.getColor(x, y) ushr 24
+
     /** Whether anything in the cell is not gray: the text and the background of these tests are. */
     fun hasColor(col: Int, row: Int): Boolean {
         val left = (col * typography.cellWidth).toInt()
@@ -126,11 +133,17 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true, fontFeatures: String = "", builtinGlyphs: Boolean = true, bellPulse: Float = 0f): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true, fontFeatures: String = "", builtinGlyphs: Boolean = true, bellPulse: Float = 0f, hoveredCommandMark: Long? = null, commandMarkGutter: Dp = 0.dp): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
         typography = rememberTerminalTypography(fontSize.sp, font ?: TerminalFont.bundled(), ligatures, fontFeatures)
-        TerminalView(frame, typography, focused, Modifier.fillMaxSize(), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink, builtinGlyphs = builtinGlyphs, bellPulse = { bellPulse })
+        // The marks of the commands are drawn in the gutter at the left of the canvas.
+        val gutter = with(LocalDensity.current) { commandMarkGutter.toPx() }
+        TerminalView(
+            frame, typography, focused, Modifier.fillMaxSize().padding(start = commandMarkGutter), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink,
+            commandMarkLeft = -gutter, commandMarkWidth = gutter, hoveredCommandMark = hoveredCommandMark,
+            builtinGlyphs = builtinGlyphs, bellPulse = { bellPulse },
+        )
     }
     scene.useScene {
         val image = scene.render()
@@ -864,6 +877,86 @@ class TerminalViewTest {
         val rendered = render("scrollbar-faded", frame, scrollbarAlpha = 0f)
 
         assertEquals(BACKGROUND.rgb, rendered.pixel(640 - 12, 10))
+    }
+
+    private fun mark(id: Long, top: Int, bottom: Int, exitCode: Int?, finished: Boolean = true, startsAbove: Boolean = false, endsBelow: Boolean = false) =
+        app.katty.terminal.TerminalCommandMark(
+            id, top, bottom, exitCode, java.time.Instant.EPOCH, if (finished) java.time.Instant.EPOCH else null, startsAbove, endsBelow,
+        )
+
+    // Three bars that follow each other: rows 0 to 2 succeeded, rows 3 and 4 failed, row 6 runs.
+    private val marked = frame(30, List(8) { row(30) }).copy(
+        commandMarks = listOf(mark(1, 0, 2, 0), mark(2, 3, 4, 2), mark(3, 6, 6, null, finished = false)),
+        successColor = TerminalColor(0x00C000),
+        failureColor = TerminalColor(0xE00000),
+    )
+
+    // The gutter is 5 dp, at 2 pixels to the dp: 10 pixels. The pixel in the middle of it, at the middle of a row.
+    private val gutterX = 5
+    private fun Rendered.bar(row: Int) = pixel(gutterX, ((row + 0.5f) * typography.cellHeight).toInt())
+    private fun Rendered.barAlpha(row: Int) = alpha(gutterX, ((row + 0.5f) * typography.cellHeight).toInt())
+
+    private fun Int.red() = this shr 16 and 0xFF
+    private fun Int.green() = this shr 8 and 0xFF
+
+    @Test
+    fun aCommandHasABarAlongAllItsRowsGreenWhenItSucceededAndRedWhenItFailed() {
+        val rendered = render("command-marks", marked, commandMarkGutter = 5.dp)
+
+        // The whole bar, the rows of the output as well as the first.
+        for (row in 0..2) assertTrue(rendered.bar(row).green() > rendered.bar(row).red() + 40, "Green on row $row: ${"%06x".format(rendered.bar(row))}")
+        for (row in 3..4) assertTrue(rendered.bar(row).red() > rendered.bar(row).green() + 40, "Red on row $row: ${"%06x".format(rendered.bar(row))}")
+        // A command that has not ended is the color of the text, faint.
+        for (row in 6..6) {
+            assertTrue(rendered.barAlpha(row) > 0, "Drawn on row $row")
+            assertTrue(kotlin.math.abs(rendered.bar(row).red() - rendered.bar(row).green()) < 8, "Gray: ${"%06x".format(rendered.bar(row))}")
+            assertTrue(rendered.barAlpha(row) < rendered.barAlpha(0), "Fainter than the bar of a command that succeeded: ${rendered.barAlpha(row)} on row $row, ${rendered.barAlpha(0)} on row 0")
+        }
+        // And a row that no command is on has none.
+        assertEquals(0, rendered.barAlpha(5))
+    }
+
+    @Test
+    fun theBarIsAsWideAsTheGutterAndTheGridStartsAfterIt() {
+        val rendered = render("command-marks-width", marked, commandMarkGutter = 5.dp)
+        val y = (0.5f * rendered.typography.cellHeight).toInt()
+
+        assertTrue(rendered.alpha(1, y) > 0 && rendered.alpha(8, y) > 0, "Drawn from one side of the gutter to the other")
+        assertEquals(BACKGROUND.rgb, rendered.pixel(12, y), "The grid is after the gutter")
+    }
+
+    @Test
+    fun twoBarsThatTouchAreSeparatedByAGap() {
+        val rendered = render("command-marks-gap", marked, commandMarkGutter = 5.dp)
+        val boundary = (3 * rendered.typography.cellHeight).toInt()
+
+        assertEquals(0, rendered.alpha(gutterX, boundary), "Nothing where the first command ends and the second starts")
+        assertTrue(rendered.alpha(gutterX, boundary - 4) > 0 && rendered.alpha(gutterX, boundary + 4) > 0, "A bar on each side")
+    }
+
+    @Test
+    fun aBarThatGoesOnPastTheViewportIsCutSquareAtTheEdgeAndHasNoGapThere() {
+        val frame = frame(30, List(4) { row(30) }).copy(commandMarks = listOf(mark(1, 0, 3, 0, startsAbove = true, endsBelow = true)))
+
+        val rendered = render("command-marks-cut", frame, commandMarkGutter = 5.dp)
+
+        assertTrue(rendered.alpha(1, 0) > 0, "Drawn at the very top, in its corner")
+        assertTrue(rendered.alpha(1, (4 * rendered.typography.cellHeight).toInt() - 1) > 0, "And at the very bottom")
+    }
+
+    @Test
+    fun theBarThatThePointerIsOverIsStronger() {
+        val faint = render("command-mark-faint", marked, commandMarkGutter = 5.dp).barAlpha(1)
+        val strong = render("command-mark-strong", marked, hoveredCommandMark = 1, commandMarkGutter = 5.dp).barAlpha(1)
+
+        assertTrue(strong > faint, "$strong is not stronger than $faint")
+    }
+
+    @Test
+    fun noBarIsDrawnWhereThereIsNoGutter() {
+        val rendered = render("command-marks-no-gutter", marked)
+
+        assertEquals(BACKGROUND.rgb, rendered.pixel(gutterX, (0.5f * rendered.typography.cellHeight).toInt()))
     }
 
     // An image of 2 by 1 pixels, red and green, which is what the images of these tests are, and a placement of it.

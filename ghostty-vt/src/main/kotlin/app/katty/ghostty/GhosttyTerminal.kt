@@ -707,6 +707,23 @@ public class GhosttyTerminal private constructor(
     }
 
     /**
+     * Where [ref] is, in the rows of the whole screen: [GhosttyScreenPoint.y] is 0 at the top of the history, which is what
+     * [GhosttyScrollbar.offset] counts from, so the row of the viewport is `y - offset`, and a row above or below it is known as such. `null`
+     * when it is gone, or on the other screen than the one that is shown.
+     */
+    public fun screenPoint(ref: GhosttyTrackedRef): GhosttyScreenPoint? {
+        requireOpen()
+        if (!ref.hasValue) return null
+        return Arena.ofConfined().use { arena ->
+            val out = arena.allocate(GhosttyPointCoordinate.layout())
+            val result = GhosttyVt.ghostty_tracked_grid_ref_point(ref.handle, GhosttyVt.GHOSTTY_POINT_TAG_SCREEN(), out)
+            if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return@use null
+            checkResult(result, "ghostty_tracked_grid_ref_point")
+            GhosttyScreenPoint(GhosttyPointCoordinate.x(out).toInt() and 0xFFFF, GhosttyPointCoordinate.y(out).toLong() and 0xFFFFFFFFL)
+        }
+    }
+
+    /**
      * The output of the command that [ref] is in, as the shell marked it (OSC 133), or `null` when [ref] is not in the output of a
      * command, or is gone.
      */

@@ -60,6 +60,7 @@ class PaletteHandlers(
     /** What a BEL character does. */
     val setBell: (BellMode) -> Unit = {},
     /** Whether what is selected is copied at once. */
+    val toggleCommandMarks: () -> Unit = {},
     val toggleCopyOnSelect: () -> Unit = {},
     /** Whether bold text uses the bright colors. */
     val toggleBoldIsBright: () -> Unit = {},
@@ -314,6 +315,7 @@ fun paletteCommands(
     command("bell-visual", "Bell: visual") { handlers.setBell(BellMode.VISUAL) }
     command("bell-sound", "Bell: sound") { handlers.setBell(BellMode.SOUND) }
     command("bell-both", "Bell: visual and sound") { handlers.setBell(BellMode.VISUAL_AND_SOUND) }
+    command("command-marks", if (state.settings.commandMarks) "Hide command marks" else "Show command marks", action = handlers.toggleCommandMarks)
     command("copy-on-select", if (state.settings.copyOnSelect) "Turn copy on select off" else "Turn copy on select on", action = handlers.toggleCopyOnSelect)
     command("bold-is-bright", if (state.settings.boldIsBright) "Turn bold text with bright colors off" else "Turn bold text with bright colors on", action = handlers.toggleBoldIsBright)
     command("contrast-off", "Minimum contrast: off") { handlers.setMinimumContrast(MinimumContrast.OFF) }

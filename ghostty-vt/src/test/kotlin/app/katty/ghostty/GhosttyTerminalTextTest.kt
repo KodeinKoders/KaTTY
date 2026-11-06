@@ -121,6 +121,37 @@ class GhosttyTerminalTextTest {
         }
     }
 
+    @Test
+    fun aTrackedRefSaysWhereItIsInTheRowsOfTheScreenAndFollowsScrolling() {
+        // The terminal has 5 rows: the cursor is on the third.
+        terminal.vtWrite("a\r\nb\r\nxy")
+        terminal.trackCursor().use { ref ->
+            assertEquals(GhosttyScreenPoint(2, 2), terminal.screenPoint(ref))
+
+            terminal.vtWrite("\r\nd\r\ne\r\nf\r\n")
+            // Two rows went into the history: the row is the same one of the text, and counts from the top of the history.
+            val point = terminal.screenPoint(ref)!!
+            assertEquals(2L, point.y)
+            assertEquals(2L, terminal.scrollbar.offset, "The viewport follows the cursor")
+            assertEquals(0L, point.y - terminal.scrollbar.offset, "It is on the first row of the viewport")
+
+            lines(30)
+            assertEquals(2L, terminal.screenPoint(ref)!!.y)
+            assertTrue(terminal.screenPoint(ref)!!.y < terminal.scrollbar.offset, "It is above the viewport")
+        }
+    }
+
+    @Test
+    fun aTrackedRefHasNoScreenPointOncePruned() {
+        GhosttyTerminal(cols = 20, rows = 5, scrollbackMaxBytes = 1_000_000).use { small ->
+            small.trackCursor().use { ref ->
+                repeat(200_000) { small.vtWrite("line $it\r\n") }
+
+                assertNull(small.screenPoint(ref))
+            }
+        }
+    }
+
     // A shell: the prompt, the command that was typed, the start of its output, the output, its end and the next prompt.
     private fun command(typed: String, output: String): GhosttyTrackedRef {
         terminal.vtWrite("$esc]133;A$bel$ $esc]133;B$bel$typed\r\n$esc]133;C$bel")
