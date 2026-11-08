@@ -129,6 +129,54 @@ class CommandMarksTest {
     }
 
     @Test
+    fun aMarkHasTheLineThatTheCommandWasTypedOnWithoutThePrompt() {
+        val session = shell(printf(command("ls -la", "one\\r\\n"), "$a$ $b"))
+
+        assertEquals("ls -la", session.settled(1).single().command)
+    }
+
+    @Test
+    fun theLineOfACommandIsReadAfterAPromptThatStartsWithAnEmptyLine() {
+        val session = shell(printf(command("ls", "one\\r\\n", prompt = "\\r\\n$ "), "$a\\r\\n$ $b"))
+
+        assertEquals("ls", session.settled(1).single().command)
+    }
+
+    @Test
+    fun aLineThatWrapsIsOneLine() {
+        val typed = "echo " + "x".repeat(70)
+        val session = shell(printf(command(typed, ""), "$a$ $b"))
+
+        assertEquals(typed, session.settled(1).single().command)
+    }
+
+    @Test
+    fun aPromptOnTheRightIsNotPartOfTheLine() {
+        // zsh's RPROMPT: the time is at the right of the line, far from the command.
+        val session = shell(printf(command("ls" + " ".repeat(20) + "12:34", ""), "$a$ $b"))
+
+        assertEquals("ls", session.settled(1).single().command)
+    }
+
+    @Test
+    fun theLineOfACommandIsReadAfterThePromptWasDrawnAgain() {
+        val session = shell(printf("$a$ $b$ctrlL", "$ $b", "ls\\r\\n$c", "one\\r\\n${d(0)}", "$a$ $b"))
+
+        val mark = session.settled(1).single()
+
+        assertEquals("ls", mark.command)
+        assertEquals(1L, mark.startRow, "The old screen went into the history (one row): the prompt that was drawn again is the next one")
+    }
+
+    @Test
+    fun aCommandWithNoMarkBHasNoLine() {
+        // A shell that does not send the end of the prompt (fish): where the line starts is not known.
+        val session = shell(printf("$a$ ls\\r\\n$c", "one\\r\\n${d(0)}", "$a$ "))
+
+        assertEquals(null, session.settled(1).single().command)
+    }
+
+    @Test
     fun aCommandThatEndsWithNoCodeHasEnded() {
         val session = shell(printf(command("x", "", code = null), "$a$ $b"))
 
@@ -313,6 +361,16 @@ class CommandMarksTest {
         val below = commandMarks(listOf(running), 0, rows("$ x", "out", "more"), cursor = null).single()
         assertEquals(2, below.bottom)
         assertTrue(below.endsBelow)
+    }
+
+    @Test
+    fun theMarksCarryTheLineAndTheRowWhereTheCommandStarts() {
+        val marks = commandMarks(
+            listOf(CommandSpan(1, 7, GhosttyScreenPoint(3, 12), 0, Instant.EPOCH, Instant.EPOCH, "make test")), offset = 10, rows("a", "b", "c"), cursor = null,
+        )
+
+        assertEquals("make test", marks.single().command)
+        assertEquals(7L, marks.single().startRow, "In the rows of the whole screen, though the command starts above the viewport")
     }
 
     private companion object {

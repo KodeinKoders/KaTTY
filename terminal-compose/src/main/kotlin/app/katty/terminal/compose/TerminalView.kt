@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import app.katty.terminal.TerminalCellWidth
 import app.katty.terminal.TerminalCursor
 import app.katty.terminal.TerminalCursorShape
+import app.katty.terminal.TerminalCommandMark
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalLink
 import app.katty.terminal.TerminalImageLayer
@@ -57,6 +58,8 @@ internal fun TerminalView(
     commandMarkWidth: Float = 0f,
     /** The id of the mark that the pointer is over. */
     hoveredCommandMark: Long? = null,
+    /** The command whose line is shown over the first row (see [stickyCommand]), `null` for none. */
+    stickyCommand: TerminalCommandMark? = null,
     minimumContrast: Float = 1f,
     builtinGlyphs: Boolean = true,
     /**
@@ -75,6 +78,9 @@ internal fun TerminalView(
     val textShown = rememberTextBlink(frame)
 
     val bitmaps = remember { ImageBitmapCache() }
+    val stickyLayout = remember(stickyCommand?.command, typography, frame.cols) {
+        stickyCommand?.command?.let { typography.layout(stickyText(it, frame.cols), bold = false, italic = false) }
+    }
 
     Canvas(modifier) {
         if (defaultBackgroundAlpha > 0f) drawRect(frame.background.rgb.toColor().copy(alpha = defaultBackgroundAlpha))
@@ -111,6 +117,7 @@ internal fun TerminalView(
 
         frame.scrollbar?.takeIf { scrollbarAlpha > 0f }?.let { drawScrollbar(it, frame, scrollbarAlpha, scrollbarEmphasized) }
         if (commandMarkWidth > 0f && frame.commandMarks.isNotEmpty()) drawCommandMarks(frame, typography, commandMarkLeft, commandMarkWidth, hoveredCommandMark)
+        stickyLayout?.let { drawStickyCommand(frame, typography, it) }
 
         if (preedit.isNotEmpty()) {
             // The cursor would be in the way of what is being composed.

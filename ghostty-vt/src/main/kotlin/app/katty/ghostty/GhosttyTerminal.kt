@@ -602,17 +602,19 @@ public class GhosttyTerminal private constructor(
      *
      * Finding a row walks the pages of the history, which is slow for a very large one: read it in pieces.
      *
+     * @param firstColumn The column of [first] that the text starts at: what is before it on that row is left out.
      * @throws IllegalArgumentException If the rows are not in the history and the screen.
      */
-    public fun readRows(first: Long, last: Long, unwrap: Boolean = true): String {
+    public fun readRows(first: Long, last: Long, unwrap: Boolean = true, firstColumn: Int = 0): String {
         requireOpen()
         val total = totalRows
         require(first in 0..last && last < total) { "The rows $first to $last are not in the $total rows of the terminal" }
+        require(firstColumn in 0 until cols) { "The column $firstColumn is not in the $cols columns of the terminal" }
         return Arena.ofConfined().use { arena ->
             val selection = arena.allocate(GhosttySelection.layout())
             GhosttySelection.size(selection, GhosttySelection.layout().byteSize())
             GhosttySelection.rectangle(selection, false)
-            val start = pointRef(arena, GhosttyVt.GHOSTTY_POINT_TAG_SCREEN(), 0, first)
+            val start = pointRef(arena, GhosttyVt.GHOSTTY_POINT_TAG_SCREEN(), firstColumn, first)
             val end = pointRef(arena, GhosttyVt.GHOSTTY_POINT_TAG_SCREEN(), cols - 1, last)
             MemorySegment.copy(start, 0, GhosttySelection.start(selection), 0, GhosttyGridRef.layout().byteSize())
             MemorySegment.copy(end, 0, GhosttySelection.end(selection), 0, GhosttyGridRef.layout().byteSize())

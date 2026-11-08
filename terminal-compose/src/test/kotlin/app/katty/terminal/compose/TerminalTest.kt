@@ -1311,6 +1311,47 @@ class TerminalTest {
         scene.renderUntil("the output of the second command to be selected") { session.selectedText() == "two" }
     }
 
+    // A command whose output is 60 rows long: its prompt is above the viewport when the end is shown, and again in view at the top of the history.
+    private fun longCommandScene(): Pair<ImageComposeScene, TerminalSession> {
+        val session = session(
+            """printf '\033]133;A\007$ \033]133;B\007make test\r\n\033]133;C\007'; seq 1 60; printf '\033]133;D;0\007\033]133;A\007$ \033]133;B\007'; sleep 30""",
+            cols = 80, rows = 24,
+        )
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            CompositionLocalProvider(LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true }) {
+                Terminal(session, Modifier.fillMaxSize(), commandMarks = true)
+            }
+        }.also { scenes += it }
+        scene.renderUntil("the end of the output") {
+            val frame = session.frames.value
+            frame.cols != 80 && frame.scrollbar != null && frame.rows.indices.any { frame.text(it) == "60" }
+        }
+        scene.settle()
+        return scene to session
+    }
+
+    @Test
+    fun aClickOnTheLineOfTheCommandGoesBackToWhereItStarts() {
+        val (scene, session) = longCommandScene()
+        scene.wheel(-3f)
+        scene.renderUntil("the history to be scrolled back") { session.frames.value.let { it.scrollbar?.atBottom == false && it.commandMarks.any { mark -> mark.startsAbove && mark.top == 0 } } }
+        // The scene draws the frame that the session has made.
+        scene.settle()
+        val before = session.frames.value
+        assertTrue("make test" !in before.text(0), "The prompt is above: ${before.text(0)}")
+        val startRow = before.commandMarks.first { it.startsAbove }.startRow
+        assertTrue(stickyCommand(before) != null, "The line is known: ${before.commandMarks}, ${before.scrollbar}")
+
+        // The first row of the grid, which is after the gutter.
+        scene.move(Offset(40f, 3f), held = false)
+        scene.move(Offset(41f, 4f), held = false)
+        scene.click(Offset(41f, 4f))
+
+        scene.renderUntil("the history to be at the start of the command") { session.frames.value.scrollbar?.offset == startRow }
+        assertTrue("make test" in session.frames.value.text(0), "The prompt is at the top: ${session.frames.value.text(0)}")
+    }
+
     @Test
     fun aClickInTheGutterOnARowWithNoBarDoesNothing() {
         val (scene, session) = markedScene()

@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -70,6 +71,35 @@ internal fun DrawScope.drawCommandMarks(frame: TerminalFrame, typography: Termin
         if (mark.startsAbove) drawRect(color, Offset(left, top), Size(width, min(radius, bottom - top)))
         if (mark.endsBelow) drawRect(color, Offset(left, max(top, bottom - radius)), Size(width, min(radius, bottom - top)))
     }
+}
+
+/**
+ * The command whose line is shown at the top of the terminal while its output is scrolled through: the command that the first row of the viewport
+ * belongs to, when it started above the viewport and the viewport is in the history (not at the bottom, where what is shown is what the program writes
+ * now). `null` when there is none, or when its line is not known.
+ */
+internal fun stickyCommand(frame: TerminalFrame): TerminalCommandMark? {
+    // No scrollbar: nothing to scroll. At the bottom: the screen as it is, which the line would only cover.
+    if (frame.scrollbar?.atBottom != false) return null
+    return frame.commandMarks.firstOrNull { it.startsAbove && it.top == 0 && !it.command.isNullOrBlank() }
+}
+
+/** What is written of a command line at the top of the terminal: as many characters as the row has room for, the end cut with an ellipsis. */
+internal fun stickyText(command: String, columns: Int): String {
+    val room = (columns - 2).coerceAtLeast(1)
+    return if (command.length <= room) command else command.take((room - 1).coerceAtLeast(0)) + "…"
+}
+
+/**
+ * The line of a command over the first row of the viewport: the colors of the terminal, with a little of the text's over the background, and a line
+ * under it. The bar of the command is still in the gutter, beside it.
+ */
+internal fun DrawScope.drawStickyCommand(frame: TerminalFrame, typography: TerminalTypography, layout: androidx.compose.ui.text.TextLayoutResult) {
+    val foreground = frame.foreground.rgb.toColor()
+    val background = frame.background.rgb.toColor()
+    drawRect(androidx.compose.ui.graphics.lerp(background, foreground, 0.14f), Offset.Zero, Size(size.width, typography.cellHeight))
+    drawRect(foreground.copy(alpha = 0.25f), Offset(0f, typography.cellHeight - 1f), Size(size.width, 1f))
+    drawText(layout, color = foreground, topLeft = Offset(typography.cellWidth, 0f))
 }
 
 /**

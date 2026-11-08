@@ -91,6 +91,8 @@ The options of the settings are also commands of the palette.
 * A bar at the left of each command your shell ran, from its prompt to the end of its output: green when it succeeded, red when it failed.
 Hover it to see how it went, when it started and how long it took, and click it to select the command's output.
 It needs a shell that KaTTY's integration covers, and "Command marks" in the settings turns it off.
+* While you scroll back through a long output, the line of the command that wrote it stays over the first row of the terminal.
+Click it to go back to where the command starts.
 * Select with the mouse by word, by line or by block, or with Shift and the arrow keys.
 Copy and paste are safe: what you paste cannot run commands behind your back.
 A middle click pastes the last selection.

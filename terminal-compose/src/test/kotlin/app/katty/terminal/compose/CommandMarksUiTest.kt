@@ -91,6 +91,50 @@ class CommandMarksUiTest {
         assertNull(interaction.hovered, "A pointer that left is not over the mark that comes where it was")
     }
 
+    private fun frameWith(marks: List<TerminalCommandMark>, scrollbar: app.katty.terminal.TerminalScrollbar?) = app.katty.terminal.TerminalFrame(
+        cols = 40,
+        rows = emptyList(),
+        background = app.katty.terminal.TerminalColor(0x000000),
+        foreground = app.katty.terminal.TerminalColor(0xFFFFFF),
+        cursorColor = null,
+        cursor = app.katty.terminal.TerminalCursor(x = null, y = null, visible = false, blinking = false, shape = app.katty.terminal.TerminalCursorShape.BLOCK),
+        scrollbar = scrollbar,
+        commandMarks = marks,
+    )
+
+    private fun sticky(top: Int = 0, startsAbove: Boolean = true, command: String? = "make test") =
+        TerminalCommandMark(7, top, 9, 0, start, start, startsAbove = startsAbove, command = command, startRow = 3)
+
+    // 100 rows, 24 of them in view.
+    private fun scrolledBack() = app.katty.terminal.TerminalScrollbar(total = 100, offset = 20, len = 24)
+    private fun atTheBottom() = app.katty.terminal.TerminalScrollbar(total = 100, offset = 76, len = 24)
+
+    @Test
+    fun theLineOfTheCommandThatTheTopRowBelongsToIsShownWhileTheHistoryIsScrolledThrough() {
+        assertEquals(7L, stickyCommand(frameWith(listOf(sticky()), scrolledBack()))?.id)
+    }
+
+    @Test
+    fun noLineIsShownAtTheBottomWithoutHistoryOrForACommandThatDoesNotStartAbove() {
+        assertNull(stickyCommand(frameWith(listOf(sticky()), atTheBottom())), "At the bottom: the screen as the program writes it")
+        assertNull(stickyCommand(frameWith(listOf(sticky()), null)), "Nothing to scroll")
+        assertNull(stickyCommand(frameWith(listOf(sticky(startsAbove = false)), scrolledBack())), "Its prompt is in view")
+        assertNull(stickyCommand(frameWith(listOf(sticky(top = 3)), scrolledBack())), "The top row is not its")
+    }
+
+    @Test
+    fun noLineIsShownForACommandWhoseLineIsNotKnown() {
+        assertNull(stickyCommand(frameWith(listOf(sticky(command = null)), scrolledBack())))
+        assertNull(stickyCommand(frameWith(listOf(sticky(command = "  ")), scrolledBack())))
+    }
+
+    @Test
+    fun aLineThatIsTooLongForTheRowIsCutWithAnEllipsis() {
+        assertEquals("make test", stickyText("make test", 40))
+        assertEquals("abcdefg…", stickyText("abcdefghijklmnop", 10), "Two columns are left: one at each side")
+        assertEquals("…", stickyText("abcdef", 1))
+    }
+
     @Test
     fun theTooltipSaysHowTheCommandWentWhenItStartedAndHowLongItTook() {
         assertEquals(

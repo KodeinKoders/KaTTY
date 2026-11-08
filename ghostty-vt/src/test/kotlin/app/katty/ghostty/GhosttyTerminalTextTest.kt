@@ -142,6 +142,15 @@ class GhosttyTerminalTextTest {
     }
 
     @Test
+    fun readsARowFromAColumn() {
+        terminal.vtWrite("$ ls -la\r\nnext")
+
+        assertEquals("ls -la", terminal.readRows(0, 0, firstColumn = 2))
+        assertEquals("$ ls -la", terminal.readRows(0, 0))
+        assertFailsWith<IllegalArgumentException> { terminal.readRows(0, 0, firstColumn = 20) }
+    }
+
+    @Test
     fun aTrackedRefHasNoScreenPointOncePruned() {
         GhosttyTerminal(cols = 20, rows = 5, scrollbackMaxBytes = 1_000_000).use { small ->
             small.trackCursor().use { ref ->

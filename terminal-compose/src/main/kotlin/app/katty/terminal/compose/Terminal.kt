@@ -237,6 +237,10 @@ public fun Terminal(
     // Only a shell has them: a program that fills the terminal (vim, emacs, OpenCode: the alternate screen) has no commands to mark, and the room
     // is its own. (The host also says so for one that fills it without the alternate screen: see `commandMarks`.)
     val marksShown = commandMarks && !frame.alternateScreen
+    // The line of the command whose output is being scrolled through, over the first row.
+    val sticky = if (marksShown) stickyCommand(frame) else null
+    val latestSticky = rememberUpdatedState(sticky)
+    var overSticky by remember { mutableStateOf(false) }
     val markGutter = if (marksShown) with(markDensity) { COMMAND_MARK_WIDTH.toPx() } else 0f
     val markTop = with(markDensity) { padding.calculateTopPadding().toPx() }
     // How far the grid is from the left edge of the terminal, where the gutter starts.
@@ -386,6 +390,7 @@ public fun Terminal(
         scrollbarAlpha = scrollbarAlpha,
         scrollbarEmphasized = scrollbarInteraction.hovered || scrollbarInteraction.dragging,
         hoveredLink = links.hovered,
+        stickyCommand = sticky,
         commandMarkLeft = -gridLeft,
         commandMarkWidth = markGutter,
         hoveredCommandMark = markInteraction.hovered,
@@ -437,7 +442,7 @@ public fun Terminal(
                     frame.pointerShape, frame.mouseTracking, selectionModifiers,
                     // Only while there is a scrollbar: what was hovered is stale when it is gone.
                     overScrollbar = frame.scrollbar != null && (scrollbarInteraction.hovered || scrollbarInteraction.dragging),
-                    overLink = links.hovered != null,
+                    overLink = links.hovered != null || overSticky,
                 ),
             )
             .pointerInput(session, focusRequester, primary) {
@@ -450,6 +455,7 @@ public fun Terminal(
                         if (event.type == PointerEventType.Exit) {
                             scrollbarInteraction.exit()
                             links.exit()
+                            overSticky = false
                         }
                         val info = event.toPointerInfo(wheelX, wheelY) ?: continue
                         selectionModifiers = SelectionModifiers(info.shift, info.alt, info.meta)
@@ -472,6 +478,17 @@ public fun Terminal(
                                 event.changes.forEach { it.consume() }
                                 continue
                             }
+                        }
+
+                        // The line of the command over the first row: a click on it goes back to where the command starts. It covers what is under it.
+                        val stickyNow = latestSticky.value
+                        val onSticky = stickyNow != null && !selection.selecting && info.x >= 0f && info.y >= 0f && info.y < typography.cellHeight
+                        if (overSticky != onSticky) overSticky = onSticky
+                        if (onSticky && info.kind == PointerInfo.Kind.PRESS && info.button == TerminalMouseButton.LEFT) {
+                            scrolledAt++
+                            session.scrollToRow(stickyNow!!.startRow)
+                            event.changes.forEach { it.consume() }
+                            continue
                         }
 
                         // A click on a link, with the modifier that opens them, is the link's: not the program's, and not a selection.

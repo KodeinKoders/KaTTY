@@ -133,7 +133,7 @@ private class Rendered(val image: Image, val typography: TerminalTypography) {
 }
 
 /** Renders a frame, and keeps the image in the build directory, to look at. */
-private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true, fontFeatures: String = "", builtinGlyphs: Boolean = true, bellPulse: Float = 0f, hoveredCommandMark: Long? = null, commandMarkGutter: Dp = 0.dp): Rendered {
+private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, fontSize: Float = 14f, preedit: String = "", font: TerminalFont? = null, scrollbarAlpha: Float = 0f, scrollbarEmphasized: Boolean = false, hoveredLink: TerminalLink? = null, ligatures: Boolean = true, fontFeatures: String = "", builtinGlyphs: Boolean = true, bellPulse: Float = 0f, hoveredCommandMark: Long? = null, commandMarkGutter: Dp = 0.dp, stickyCommand: app.katty.terminal.TerminalCommandMark? = null): Rendered {
     var typography: TerminalTypography? = null
     val scene = ImageComposeScene(width = 640, height = 260, density = Density(2f)) {
         typography = rememberTerminalTypography(fontSize.sp, font ?: TerminalFont.bundled(), ligatures, fontFeatures)
@@ -141,7 +141,7 @@ private fun render(name: String, frame: TerminalFrame, focused: Boolean = true, 
         val gutter = with(LocalDensity.current) { commandMarkGutter.toPx() }
         TerminalView(
             frame, typography, focused, Modifier.fillMaxSize().padding(start = commandMarkGutter), preedit, scrollbarAlpha, scrollbarEmphasized, hoveredLink,
-            commandMarkLeft = -gutter, commandMarkWidth = gutter, hoveredCommandMark = hoveredCommandMark,
+            commandMarkLeft = -gutter, commandMarkWidth = gutter, hoveredCommandMark = hoveredCommandMark, stickyCommand = stickyCommand,
             builtinGlyphs = builtinGlyphs, bellPulse = { bellPulse },
         )
     }
@@ -953,6 +953,25 @@ class TerminalViewTest {
 
         assertTrue(rendered.alpha(1, 0) > 0, "Drawn at the very top, in its corner")
         assertTrue(rendered.alpha(1, (4 * rendered.typography.cellHeight).toInt() - 1) > 0, "And at the very bottom")
+    }
+
+    @Test
+    fun theLineOfTheCommandIsDrawnOverTheFirstRowAndNotTheOthers() {
+        val rows = List(4) { row(30, *text("output $it")) }
+        val mark = mark(1, 0, 3, 0, startsAbove = true).copy(command = "make test")
+        val frame = frame(30, rows)
+
+        val plain = render("command-sticky-off", frame)
+        val rendered = render("command-sticky", frame, stickyCommand = mark)
+
+        val cellHeight = rendered.typography.cellHeight
+        val strip = rendered.pixel(600, (cellHeight / 2).toInt())
+        assertNotEquals(BACKGROUND.rgb, strip, "The first row has a background of its own, to the right edge")
+        assertEquals(BACKGROUND.rgb, rendered.pixel(600, (cellHeight * 1.5f).toInt()), "And the second has not")
+        // The text of the command is there: some pixels of the row are not the strip's, and what was under it is covered.
+        assertTrue((1..9).any { col -> rendered.hasInk(col, 0, TerminalColor(strip)) }, "The command is written")
+        assertEquals(strip, rendered.center(12, 0), "Nothing else on the row, after the line")
+        assertTrue(plain.hasInk(1, 0), "Without it, the output is on the row")
     }
 
     @Test

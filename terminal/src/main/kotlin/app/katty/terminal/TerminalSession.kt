@@ -496,6 +496,8 @@ public class TerminalSession private constructor(
                 logIgnoredDirectory(pwd)
             }
         }
+        // The line that a command was typed on, which is read once the write is over, not in the callback of the mark.
+        commandMarks.readCommandLines()
     }
 
     /**

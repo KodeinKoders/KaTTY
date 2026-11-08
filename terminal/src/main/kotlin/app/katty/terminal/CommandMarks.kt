@@ -31,6 +31,9 @@ internal class CommandMarks(
         val startUp: Int,
         val output: GhosttyTrackedRef,
         val startedAt: Instant,
+        // Whether `start` is where what is typed starts (mark B), which is where the command line is read from, once, after the write.
+        var lineToRead: Boolean,
+        var line: String? = null,
         var end: GhosttyTrackedRef? = null,
         var exitCode: Int? = null,
         var finishedAt: Instant? = null,
@@ -91,8 +94,36 @@ internal class CommandMarks(
         inputStart = null
         promptStart = null
         promptHeight = null
-        commands.addLast(Command(++lastId, start, up, terminal.trackCursor(), clock()))
+        commands.addLast(Command(++lastId, start, up, terminal.trackCursor(), clock(), lineToRead = start === input))
         while (commands.size > MAX_COMMANDS) commands.removeFirst().close()
+    }
+
+    /**
+     * Reads the line that each command that started was typed on: the text from where the prompt ended to the end of the row, and of the rows
+     * it wraps onto, as far as the row above the one where the output started. Not in the callback of the mark, where libghostty has not finished
+     * with the screen. A line that cannot be read is none.
+     */
+    fun readCommandLines() {
+        for (command in commands) {
+            if (!command.lineToRead) continue
+            command.lineToRead = false
+            command.line = readLine(command)
+        }
+    }
+
+    private fun readLine(command: Command): String? {
+        val from = terminal.screenPoint(command.start) ?: return null
+        val to = terminal.screenPoint(command.output) ?: return null
+        val last = if (to.x == 0 && to.y > from.y) to.y - 1 else to.y
+        if (last < from.y) return null
+        val text = try {
+            terminal.readRows(from.y, last, unwrap = true, firstColumn = from.x)
+        } catch (e: IllegalArgumentException) {
+            return null
+        }
+        // The first line of it. A prompt on the right of the line (zsh's RPROMPT) is far from the command: after a run of blanks that no command has.
+        val line = text.lineSequence().firstOrNull().orEmpty().split(RIGHT_PROMPT_GAP).first().trim()
+        return line.take(MAX_LINE_CHARS).ifEmpty { null }
     }
 
     /** The command that ran ends, with the exit code that the shell gave, or none. */
@@ -114,7 +145,7 @@ internal class CommandMarks(
         return commands.mapNotNull { command ->
             val start = terminal.screenPoint(command.start) ?: return@mapNotNull null
             val end = command.end?.let(terminal::screenPoint)
-            CommandSpan(command.id, (start.y - command.startUp).coerceAtLeast(0), end, command.exitCode, command.startedAt, command.finishedAt)
+            CommandSpan(command.id, (start.y - command.startUp).coerceAtLeast(0), end, command.exitCode, command.startedAt, command.finishedAt, command.line)
         }
     }
 
@@ -132,6 +163,8 @@ internal class CommandMarks(
 
     companion object {
         const val MAX_COMMANDS = 500
+        const val MAX_LINE_CHARS = 256
+        private val RIGHT_PROMPT_GAP = Regex(" {4,}")
     }
 }
 
@@ -140,6 +173,7 @@ internal class CommandMarks(
  *
  * @param startRow Its first row: the first of its prompt, which may be blank.
  * @param end Where the cursor was when it ended, or `null` while it runs.
+ * @param command The line that it was typed on, `null` when it is not known (yet).
  */
 internal class CommandSpan(
     val id: Long,
@@ -148,6 +182,7 @@ internal class CommandSpan(
     val exitCode: Int?,
     val startedAt: Instant,
     val finishedAt: Instant?,
+    val command: String? = null,
 )
 
 /**
@@ -176,7 +211,7 @@ internal fun commandMarks(spans: List<CommandSpan>, offset: Long, rows: List<Ter
         val bottom = if (endsBelow) height - 1 else last.toInt()
         // The prompt may start with an empty line (a theme's), which is not the command's.
         if (!startsAbove) while (top < bottom && rows[top].isBlank()) top++
-        TerminalCommandMark(span.id, top, bottom, span.exitCode, span.startedAt, span.finishedAt, startsAbove, endsBelow)
+        TerminalCommandMark(span.id, top, bottom, span.exitCode, span.startedAt, span.finishedAt, startsAbove, endsBelow, span.command, span.startRow)
     }
 }
 

@@ -233,6 +233,8 @@ public enum class TerminalCommandOutcome {
  * @param finishedAt When it ended, or `null` while it runs.
  * @param startsAbove Whether it started above the viewport: [top] is then the top row, and it is not where the command starts.
  * @param endsBelow Whether it goes on below the viewport: [bottom] is then the last row, and it is not where the command ends.
+ * @param command The line that it was typed on (its first line, without the prompt), `null` when it is not known.
+ * @param startRow The row where it starts, in the rows of the whole screen ([TerminalSession.scrollToRow] takes it), whether or not it is in the viewport.
  */
 public data class TerminalCommandMark(
     public val id: Long,
@@ -243,6 +245,8 @@ public data class TerminalCommandMark(
     public val finishedAt: Instant?,
     public val startsAbove: Boolean = false,
     public val endsBelow: Boolean = false,
+    public val command: String? = null,
+    public val startRow: Long = 0,
 ) {
     public val outcome: TerminalCommandOutcome
         get() = when {
