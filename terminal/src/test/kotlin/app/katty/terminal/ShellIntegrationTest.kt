@@ -237,10 +237,14 @@ class ShellIntegrationTest {
             // says that what is typed starts): the command is run at that prompt.
             session.sendText("printf 'x\\n'\r")
             await("the end of a command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
+            // The frame that shows its output: the one from before the command has a prompt at the top too, which the wait below would take.
+            await("the output of the command") { session.frames.value.let { frame -> frame.rows.indices.any { frame.rowText(it) == "x" } } }
             ended = 1
             clear(session)
             try {
-                await("the prompt to be drawn again at the top") { session.frames.value.let { it.rowText(0) == "" && it.rowText(1) == "$" } }
+                await("the prompt to be drawn again at the top") {
+                    session.frames.value.let { frame -> frame.rowText(0) == "" && frame.rowText(1) == "$" && frame.rows.indices.none { frame.rowText(it) == "x" } }
+                }
             } catch (e: IllegalStateException) {
                 throw IllegalStateException("${e.message}. The screen:\n${session.screen()}", e)
             }
@@ -249,7 +253,12 @@ class ShellIntegrationTest {
         await("the end of the command") { events.count { it is TerminalEvent.PromptStarted } >= ended + 1 }
 
         var frame = session.frames.value
-        await("the mark") { frame = session.frames.value; frame.commandMarks.lastOrNull()?.finishedAt != null }
+        // A frame that has caught up with the end of the command (its output, and the prompt after it), whose mark has ended.
+        await("the mark") {
+            frame = session.frames.value
+            val output = frame.rows.indices.firstOrNull { frame.rowText(it) == "b" }
+            output != null && frame.rows.indices.any { it > output && frame.rowText(it) == "$" } && frame.commandMarks.lastOrNull()?.finishedAt != null
+        }
         val mark = frame.commandMarks.last()
         val screen = frame.rows.indices.joinToString("\n") { frame.rowText(it) } + "\n" + frame.commandMarks
         val prompt = frame.rows.indices.firstOrNull { frame.rowText(it).contains("printf 'a") } ?: throw AssertionError("The command is not on the screen:\n$screen")
