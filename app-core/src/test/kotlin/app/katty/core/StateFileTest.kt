@@ -93,6 +93,23 @@ class StateFileTest {
     }
 
     @Test
+    fun theIdeOfAWorkspaceSurvivesBeingWrittenAndReadAndOneThatIsNotKnownIsNone() {
+        var n = 0
+        val store = KattyStore(newId = { "id${n++}" })
+        store.addProject("/dev/api")
+        store.setWorkspaceIde(store.state.value.selection.workspace!!, Ide.INTELLIJ_IDEA)
+
+        file.save(store.state.value)
+
+        assertEquals(Ide.INTELLIJ_IDEA, Ide.named(file.load().selectedWorkspace!!.ide))
+        // An IDE that a later version knows, and this one does not: the file is read, and the workspace asks.
+        path.writeText(path.readText().replace("\"INTELLIJ_IDEA\"", "\"ZED\""))
+        val loaded = file.load().selectedWorkspace!!
+        assertEquals("ZED", loaded.ide)
+        assertEquals(null, Ide.named(loaded.ide))
+    }
+
+    @Test
     fun theShortcutsThatWereChangedSurviveBeingWrittenAndReadAndAnOldFileHasNone() {
         var n = 0
         val store = KattyStore(newId = { "id${n++}" })

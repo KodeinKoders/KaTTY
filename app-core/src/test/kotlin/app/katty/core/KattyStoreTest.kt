@@ -35,6 +35,20 @@ class KattyStoreTest {
     }
 
     @Test
+    fun aWorkspaceIsGivenAnIdeAndHasItTakenOff() {
+        addProject()
+        val other = store.addWorkspace(state.projects.single().id, "other")!!
+        val first = state.projects.single().workspaces.first().id
+
+        store.setWorkspaceIde(first, Ide.XCODE)
+
+        assertEquals("XCODE", state.projects.single().workspaces.first().ide)
+        assertNull(state.projects.single().workspaces.first { it.id == other }.ide, "The other workspace has none")
+        store.setWorkspaceIde(first, null)
+        assertNull(state.projects.single().workspaces.first().ide)
+    }
+
+    @Test
     fun aFolderThatIsAlreadyAProjectIsSelectedInsteadOfAddedAgain() {
         val first = addProject("/a")
         addProject("/b")

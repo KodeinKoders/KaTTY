@@ -51,6 +51,7 @@ import app.katty.core.attention
 import app.katty.core.terminalIdentity
 import app.katty.core.board
 import app.katty.core.Ide
+import app.katty.core.WorkspaceId
 import app.katty.core.terminals
 import app.katty.screens.AgentBoard
 import app.katty.screens.AgentToast
@@ -75,7 +76,9 @@ import app.katty.screens.ColorSchemePicker
 import app.katty.screens.MainMenu
 import app.katty.screens.CloseWorkspaceDialog
 import app.katty.screens.RestartTerminalDialog
+import app.katty.screens.OpenFileDialog
 import app.katty.screens.PasteDialog
+import app.katty.screens.WorkspaceIdeDialog
 import app.katty.screens.QuitDialog
 import app.katty.screens.PaneActions
 import app.katty.screens.ProjectTabs
@@ -171,6 +174,10 @@ internal fun KattyWindowContent(
             override fun readClipboard() = app.katty.readClipboard()
             override fun reveal(directory: String) = revealInFileManager(directory)
             override fun openIn(bundleId: String, directory: String) = openInApplication(bundleId, directory)
+            // LaunchServices is asked where the IDE is.
+            override fun openFile(ide: Ide, bundleId: String, file: app.katty.terminal.TerminalFilePosition) {
+                windowScope.launch(Dispatchers.IO) { openFileInApplication(ide, bundleId, file) }
+            }
             override fun openBoardWindow() = openBoardWindow()
             override fun openAbout() = openAbout()
         }
@@ -224,7 +231,9 @@ internal fun KattyWindowContent(
     // The editors that are installed: LaunchServices knows, and is asked again when the window gets the focus, with the agents.
     val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { installedIdes() } }
     SideEffect { controller.installedIdes = installedIdes }
+    // What opens the files and folders that are clicked (the Finder too), and what a project's folder is offered to.
     val ides = installedIdes.keys.toList()
+    val projectIdes = ides.filter { it.forProjects }
     val usageScope = rememberCoroutineScope()
     val sources = remember(detected) { usageSources(detected, directories.usageDirectory) }
     // Only the agents that KaTTY can read a usage from are offered by the usage panel.
@@ -288,6 +297,8 @@ internal fun KattyWindowContent(
     val openTerminal = controller::openTerminal
     val jumpToWaiting = controller::jumpToWaiting
     val openProjectIn = controller::openProjectIn
+    // The menu of a workspace chooses its IDE while there is one to choose.
+    val workspaceIde: ((WorkspaceId) -> Unit)? = if (ides.isEmpty()) null else { id -> controller.editingWorkspaceIde = id }
     val running = controller::running
     val pasteInto = controller::pasteInto
     val confirmPaste: suspend (String) -> Boolean = controller::confirmPaste
@@ -427,6 +438,7 @@ internal fun KattyWindowContent(
                             onColorScheme = { picking = SchemeTarget.Terminal(it) },
                             confirmPaste = confirmPaste,
                             onPaste = pasteInto,
+                            onOpenFile = if (ides.isEmpty()) null else controller::openFile,
                         ),
                         maximized = state.selection.maximized,
                         font = font,
@@ -475,7 +487,7 @@ internal fun KattyWindowContent(
                         onOpenRecent = openRecent,
                         onRemoveProject = { removing = it },
                         onReveal = reveal,
-                        ides = ides,
+                        ides = projectIdes,
                         onOpenIn = openProjectIn,
                         renamingProject = renamingProject,
                         onRenamingProject = { renamingProject = it },
@@ -493,6 +505,7 @@ internal fun KattyWindowContent(
                         onNewWorkspace = newWorkspace,
                         states = agentStates,
                         gits = gits,
+                        onWorkspaceIde = workspaceIde,
                     )
                     area(Modifier.weight(1f).fillMaxWidth(), false)
                     usageBar()
@@ -518,8 +531,9 @@ internal fun KattyWindowContent(
                             onRemoveProject = { removing = it },
                             onCloseWorkspace = closeWorkspace,
                             onReveal = reveal,
-                            ides = ides,
+                            ides = projectIdes,
                             onOpenIn = openProjectIn,
+                            onWorkspaceIde = workspaceIde,
                             renamingProject = renamingProject,
                             onRenamingProject = { renamingProject = it },
                             renamingWorkspace = renamingWorkspace,
@@ -633,6 +647,21 @@ internal fun KattyWindowContent(
         }
         pasting?.let { request ->
             PasteDialog(request.text, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
+        }
+        controller.choosingIde?.let { request ->
+            val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == request.workspace }
+            if (workspace != null) {
+                OpenFileDialog(request.file, workspace.name, ides, onOpen = controller::answerIde, onCancel = { controller.choosingIde = null })
+            }
+        }
+        controller.editingWorkspaceIde?.let { id ->
+            val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == id }
+            if (workspace != null) {
+                WorkspaceIdeDialog(
+                    workspace.name, ides, Ide.named(workspace.ide),
+                    onChoose = { ide -> controller.setWorkspaceIde(id, ide) }, onCancel = { controller.editingWorkspaceIde = null },
+                )
+            }
         }
         controller.quitting?.let { request ->
             val stopped = controller.stoppedByQuitting().map { location ->

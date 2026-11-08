@@ -232,6 +232,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         focusOnStart = false,
                         onContextMenu = { at -> contextAt = IntOffset(at.x.toInt(), at.y.toInt()) },
                         confirmPaste = context.actions.confirmPaste,
+                        onOpenFile = context.actions.onOpenFile?.let { open -> { file -> open(spec.id, file) } },
                     )
                     }
                 }

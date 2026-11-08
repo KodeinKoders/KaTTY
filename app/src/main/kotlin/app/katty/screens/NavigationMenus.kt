@@ -32,9 +32,14 @@ fun projectMenu(
     action("Remove project…", danger = true, onClick = onRemove)
 }
 
-/** The menu of a workspace. It has no split: splitting acts on a terminal, so it is in the menus of the terminals and in the header. */
-fun workspaceMenu(onRename: () -> Unit, onClose: () -> Unit): List<MenuEntry> = menu {
+/**
+ * The menu of a workspace. It has no split: splitting acts on a terminal, so it is in the menus of the terminals and in the header.
+ *
+ * @param onDefaultIde Chooses the IDE that opens the files whose paths are clicked in its terminals; `null` when no IDE is installed.
+ */
+fun workspaceMenu(onRename: () -> Unit, onClose: () -> Unit, onDefaultIde: (() -> Unit)? = null): List<MenuEntry> = menu {
     action("Rename workspace", "F2", onClick = onRename)
+    if (onDefaultIde != null) action("Default IDE…", onClick = onDefaultIde)
     divider()
     action("Close workspace", AppShortcut.CLOSE_WORKSPACE.label, danger = true, onClick = onClose)
 }

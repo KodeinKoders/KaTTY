@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -111,13 +113,21 @@ fun Surface(modifier: Modifier = Modifier, radius: Dp = 8.dp, content: @Composab
 /**
  * A dialog over the scrim that covers [modifier]'s area with 30 % of dark: its content is in the frame of 12 px radius, with the soft
  * shadow of menus and dialogs, centered.
+ *
+ * @param onDismiss What a click on the scrim, outside the frame, does: a question that costs nothing to dismiss closes then. Without it the click
+ * does nothing, which is what a question about something that cannot be undone wants.
  */
 @Composable
-fun DialogScrim(modifier: Modifier = Modifier, width: Dp = 560.dp, content: @Composable () -> Unit) {
+fun DialogScrim(modifier: Modifier = Modifier, width: Dp = 560.dp, onDismiss: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val colors = Katty.colors
-    Box(modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f)), contentAlignment = Alignment.Center) {
-        Box(Modifier.widthIn(max = width).fillMaxWidth().shadow(24.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(colors.panel)
-            .border(1.dp, colors.line, RoundedCornerShape(12.dp))) {
+    val dismiss = if (onDismiss == null) Modifier else Modifier.pointerInput(onDismiss) { detectTapGestures { onDismiss() } }
+    Box(modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f)).then(dismiss), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.widthIn(max = width).fillMaxWidth().shadow(24.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(colors.panel)
+                .border(1.dp, colors.line, RoundedCornerShape(12.dp))
+                // A click in the frame, where nothing takes it, is not one on the scrim.
+                .then(if (onDismiss == null) Modifier else Modifier.pointerInput(Unit) { detectTapGestures { } }),
+        ) {
             content()
         }
     }

@@ -193,6 +193,7 @@ fun WorkspaceTabs(
     modifier: Modifier = Modifier,
     states: AgentStates = NoAgentStates,
     gits: Map<TerminalId, GitInfo?> = emptyMap(),
+    onWorkspaceIde: ((WorkspaceId) -> Unit)? = null,
 ) {
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.panel).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
@@ -209,6 +210,7 @@ fun WorkspaceTabs(
                         if (!name.isNullOrBlank()) store.renameWorkspace(workspace.id, name)
                     },
                     onClose = { onCloseWorkspace(workspace.id) },
+                    onDefaultIde = onWorkspaceIde?.let { choose -> { choose(workspace.id) } },
                 )
             }
         }
@@ -234,6 +236,7 @@ private fun WorkspaceTab(
     onRename: () -> Unit,
     onRenamed: (String?) -> Unit,
     onClose: () -> Unit,
+    onDefaultIde: (() -> Unit)?,
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
@@ -276,6 +279,6 @@ private fun WorkspaceTab(
                 if (git != null) GitLabel(git, Modifier.widthIn(max = 160.dp * uiScaleFactor()), fontSize = 11.sp)
             }
         }
-        menuAt?.let { at -> KattyMenu(workspaceMenu(onRename, onClose), onDismiss = { menuAt = null }, offset = at) }
+        menuAt?.let { at -> KattyMenu(workspaceMenu(onRename, onClose, onDefaultIde), onDismiss = { menuAt = null }, offset = at) }
     }
 }

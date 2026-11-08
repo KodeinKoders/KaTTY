@@ -25,6 +25,7 @@ class WindowControllerTest {
     private val store = KattyStore(newId = { "id${counter++}" })
     private val restarted = mutableListOf<TerminalId>()
     private val opened = mutableListOf<Pair<String, String>>()
+    private val openedFiles = mutableListOf<Pair<app.katty.core.Ide, app.katty.terminal.TerminalFilePosition>>()
     private val platform = object : WindowPlatform {
         override fun chooseFolder(title: String, initial: String?): String? = null
         override fun copy(text: String) = Unit
@@ -32,6 +33,9 @@ class WindowControllerTest {
         override fun reveal(directory: String) = Unit
         override fun openIn(bundleId: String, directory: String) {
             opened += bundleId to directory
+        }
+        override fun openFile(ide: app.katty.core.Ide, bundleId: String, file: app.katty.terminal.TerminalFilePosition) {
+            openedFiles += ide to file
         }
         override fun openBoardWindow() = Unit
         override fun openAbout() = Unit
@@ -237,6 +241,117 @@ class WindowControllerTest {
             .directory(directory.toFile()).redirectErrorStream(true).start()
         val output = process.inputStream.readBytes().decodeToString()
         check(process.waitFor() == 0) { "git ${arguments.joinToString(" ")} failed: $output" }
+    }
+
+    private val file = app.katty.terminal.TerminalFilePosition("/tmp/project/src/Foo.kt", 42, 5)
+    private val idea = app.katty.core.Ide.INTELLIJ_IDEA
+    private val xcode = app.katty.core.Ide.XCODE
+
+    @Test
+    fun theIdeOfAFileIsAskedForInAWorkspaceThatHasNone() {
+        controller.installedIdes = mapOf(idea to "com.jetbrains.intellij", xcode to "com.apple.dt.Xcode")
+
+        controller.openFile(terminal, file)
+
+        assertEquals(IdeRequest(state.selection.workspace!!, file), controller.choosingIde)
+        assertTrue(controller.blockingDialog, "The question has the keys")
+        assertEquals(emptyList(), openedFiles, "Nothing is opened before the answer")
+    }
+
+    @Test
+    fun anIdeThatTheUserSaysToRememberOpensTheNextFilesOfTheWorkspaceAtOnce() {
+        controller.installedIdes = mapOf(idea to "com.jetbrains.intellij", xcode to "com.apple.dt.Xcode")
+        controller.openFile(terminal, file)
+
+        controller.answerIde(xcode, remember = true)
+
+        assertNull(controller.choosingIde)
+        assertEquals("XCODE", state.selectedWorkspace!!.ide)
+        val next = file.copy(line = 7)
+        controller.openFile(terminal, next)
+        assertNull(controller.choosingIde, "Not asked again")
+        assertEquals(listOf(xcode to file, xcode to next), openedFiles)
+    }
+
+    @Test
+    fun anIdeThatIsNotRememberedIsAskedForAgain() {
+        controller.installedIdes = mapOf(idea to "com.jetbrains.intellij")
+        controller.openFile(terminal, file)
+
+        controller.answerIde(idea, remember = false)
+        controller.openFile(terminal, file)
+
+        assertNull(state.selectedWorkspace!!.ide)
+        assertEquals(listOf(idea to file), openedFiles)
+        assertEquals(IdeRequest(state.selection.workspace!!, file), controller.choosingIde)
+    }
+
+    @Test
+    fun aRememberedIdeThatIsNotInstalledAnyMoreIsAskedForAgain() {
+        store.setWorkspaceIde(state.selection.workspace!!, xcode)
+        controller.installedIdes = mapOf(idea to "com.jetbrains.intellij")
+
+        controller.openFile(terminal, file)
+
+        assertEquals(emptyList(), openedFiles)
+        assertEquals(IdeRequest(state.selection.workspace!!, file), controller.choosingIde)
+    }
+
+    @Test
+    fun theIdeOfAWorkspaceIsChosenAndTakenOffFromItsMenu() {
+        controller.installedIdes = mapOf(idea to "com.jetbrains.intellij")
+        val workspace = state.selection.workspace!!
+
+        controller.editingWorkspaceIde = workspace
+        assertTrue(controller.blockingDialog)
+        controller.setWorkspaceIde(workspace, idea)
+        assertNull(controller.editingWorkspaceIde)
+        assertEquals("INTELLIJ_IDEA", state.selectedWorkspace!!.ide)
+        controller.openFile(terminal, file)
+        assertEquals(listOf(idea to file), openedFiles)
+
+        controller.setWorkspaceIde(workspace, null)
+        controller.openFile(terminal, file)
+        assertEquals(IdeRequest(workspace, file), controller.choosingIde, "Asked at each file again")
+    }
+
+    @Test
+    fun theQuestionOfAWorkspaceThatIsClosedGoes() {
+        controller.installedIdes = mapOf(idea to "com.jetbrains.intellij")
+        val project = state.selection.project!!
+        val other = store.addWorkspace(project, "other")!!
+        store.selectWorkspace(other)
+        controller.openFile(terminal, file)
+        controller.editingWorkspaceIde = other
+
+        store.closeWorkspace(other)
+        controller.dropStaleRenames()
+
+        assertNull(controller.choosingIde)
+        assertNull(controller.editingWorkspaceIde)
+    }
+
+    @Test
+    fun theFinderOpensWhatIsClickedAndIsNotOfferedTheProject() {
+        controller.installedIdes = mapOf(idea to "com.jetbrains.intellij", app.katty.core.Ide.FINDER to "com.apple.finder")
+        controller.openFile(terminal, file)
+        controller.answerIde(app.katty.core.Ide.FINDER, remember = true)
+
+        assertEquals(listOf(app.katty.core.Ide.FINDER to file), openedFiles)
+        assertEquals("FINDER", state.selectedWorkspace!!.ide)
+        assertEquals(listOf(idea), controller.paletteHandlers().ides, "A project's folder is already revealed by its own command")
+    }
+
+    @Test
+    fun thePaletteChoosesTheIdeOfTheSelectedWorkspaceWhenOneIsInstalled() {
+        val commands = { paletteCommands(state, emptyMap(), titleOf = { it.id.value }, handlers = controller.paletteHandlers()) }
+        assertTrue(commands().entries.none { it.id == "command:workspace-ide" }, "No IDE to choose")
+
+        controller.installedIdes = mapOf(idea to "com.jetbrains.intellij")
+        val palette = commands()
+        palette.run(palette.entries.single { it.id == "command:workspace-ide" })
+
+        assertEquals(state.selection.workspace, controller.editingWorkspaceIde)
     }
 
     @Test

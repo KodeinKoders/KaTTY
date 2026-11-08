@@ -53,13 +53,14 @@ internal class LinkInteraction {
      * Follows a pointer event, and says whether it is the link's: it is then consumed, and what it does is not done.
      *
      * @param linkAt The link at a cell, `null` for none.
+     * @param open Opens the link that was clicked.
      */
     fun handle(
         event: PointerInfo,
         cellWidth: Float,
         cellHeight: Float,
         linkAt: (column: Int, row: Int) -> TerminalLink?,
-        open: (String) -> Unit,
+        open: (TerminalLink) -> Unit,
         mac: Boolean = isMac,
     ): Boolean {
         if (event.kind == PointerInfo.Kind.SCROLL) return false
@@ -84,7 +85,7 @@ internal class LinkInteraction {
                 if (event.button == TerminalMouseButton.LEFT && link != null) {
                     pressed = null
                     refresh(cellWidth, cellHeight, linkAt)
-                    if (held && hovered?.url == link.url) open(link.url)
+                    if (held && hovered?.url == link.url) open(link)
                     return true
                 }
             }

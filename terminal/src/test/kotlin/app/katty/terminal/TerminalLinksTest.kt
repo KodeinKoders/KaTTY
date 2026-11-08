@@ -60,6 +60,67 @@ class TerminalLinksTest {
         assertNull(findUrl("http:/", 0))
     }
 
+    // The path that the character at the start of [around] is part of, with its line and column.
+    private fun path(text: String, around: String): Triple<String, Int?, Int?>? {
+        val index = text.indexOf(around).takeIf { it >= 0 } ?: error("$around is not in $text")
+        return findPath(text, index)?.let { Triple(it.path, it.line, it.column) }
+    }
+
+    // What the link covers.
+    private fun pathText(text: String, around: String): String? {
+        val index = text.indexOf(around)
+        return findPath(text, index)?.range?.let { text.substring(it.first, it.last + 1) }
+    }
+
+    @Test
+    fun findsThePathOfAFileWithItsLineAndColumn() {
+        assertEquals(Triple("src/Foo.kt", 42, null), path("src/Foo.kt:42", "Foo"))
+        assertEquals(Triple("src/main.rs", 42, 5), path("  --> src/main.rs:42:5", "main"))
+        assertEquals(Triple("/Users/me/a/B.java", 7, null), path("/Users/me/a/B.java:7: error: ';' expected", "B.java"))
+        assertEquals(Triple("~/notes.md", 3, null), path("see ~/notes.md:3", "notes"))
+        assertEquals(Triple("./build.sh", null, null), path("run ./build.sh now", "build"))
+    }
+
+    @Test
+    fun aPathIsFoundFromAnyOfItsCharactersAndItsLine() {
+        val text = "e: src/Foo.kt:42:5 Unresolved reference"
+        assertEquals("src/Foo.kt:42:5", pathText(text, "src"))
+        assertEquals("src/Foo.kt:42:5", pathText(text, "42"))
+        assertEquals("src/Foo.kt:42:5", pathText(text, ":5"))
+        assertEquals("Unresolved", pathText(text, "Unresolved"), "What follows it is a word of its own")
+        assertNull(findPath(text, text.indexOf(" Unresolved")), "Nor is the space between them")
+    }
+
+    @Test
+    fun whatIsAroundAPathIsNotPartOfIt() {
+        assertEquals(Triple("Foo.kt", 42, null), path("at app.Foo.bar(Foo.kt:42)", "Foo.kt"))
+        assertEquals(Triple("x/y.py", null, null), path("File \"x/y.py\", line 3", "x/y"))
+        assertEquals(Triple("src/Foo.kt", null, null), path("see src/Foo.kt.", "src"), "The end of a sentence")
+        assertEquals(Triple("src/Foo.kt", 12, null), path("in src/Foo.kt:12.", "src"))
+        assertEquals("src/Foo.kt:12", pathText("in src/Foo.kt:12:", "src"), "A colon after the line")
+        assertEquals(Triple("README.adoc", null, null), path("\tmodified:   README.adoc", "README"))
+    }
+
+    @Test
+    fun aBareNameMayBeAPathWhichTheDiskDecides() {
+        // `ls` prints folders and files with neither a slash nor an extension: only the ones that are there are links.
+        assertEquals(Triple("src", null, null), path("build  docs  src", "src"))
+        assertEquals(Triple("Makefile", 3, null), path("an error: Makefile:3", "Makefile"))
+        assertEquals(Triple("localhost", 8080, null), path("listening on localhost:8080", "localhost"))
+    }
+
+    @Test
+    fun aWordWithoutALetterIsNoPath() {
+        assertNull(path("at 12:34:56", "12"))
+        assertNull(path("version 1.2.3", "1.2"))
+        assertNull(path("cd ..", ".."))
+    }
+
+    @Test
+    fun aLineOfZeroIsNone() {
+        assertEquals(Triple("a/b.kt", null, null), path("a/b.kt:0:4", "a/b"))
+    }
+
     @Test
     fun decodesTheWorkingDirectoryTheShellReported() {
         assertEquals("/Users/me/code", decodeWorkingDirectory("file://localhost/Users/me/code"))

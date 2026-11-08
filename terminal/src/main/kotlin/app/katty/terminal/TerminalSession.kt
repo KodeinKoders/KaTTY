@@ -506,12 +506,17 @@ public class TerminalSession private constructor(
      * which its line was too long for, is found whole, on its [TerminalLink.segments], up to 16 rows from the one that was
      * asked. A marked link is the cells around the one that have the same address, since libghostty does not say which link is which
      * (its `id=` is not readable): two links of the same address that touch are one.
+     *
+     * The path of a file or a folder written in the text (`src/Foo.kt:42:5`, `README.adoc`, `src`) is a link when it is there: absolute, from the
+     * home, or relative to the directory of the program that has the terminal, else to the one the shell reported (OSC 7). Its [TerminalLink.file]
+     * says which and at what line, as it does for a `file://` address. It is looked for on the disk, outside the lock: a few system calls.
      */
     public fun linkAt(column: Int, row: Int): TerminalLink? {
         val rows = producer.frames.value.rows
         val cells = rows.getOrNull(row)?.cells ?: return null
         if (column !in cells.indices) return null
-        return whileOpen(null) { markedLink(rows, column, row, terminal::hyperlinkAt) ?: writtenLink(rows, column, row) }
+        val link = whileOpen(null) { markedLink(rows, column, row, terminal::hyperlinkAt) ?: writtenLink(rows, column, row) } ?: return null
+        return fileLink(link) { listOfNotNull(foregroundCommand()?.directory, workingDirectory.value).distinct() }
     }
 
     private fun scroll(to: GhosttyScrollViewport): Unit = mutate { terminal.scroll(to) }

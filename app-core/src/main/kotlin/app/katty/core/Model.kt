@@ -42,6 +42,9 @@ public data class Project(
  * @param layout The tree of the splits. The vertical mode draws it with every split turned.
  * @param focused The terminal that had the focus last, which has it again when the workspace is selected; `null` until one had, and when it is
  * not there any more the first terminal does.
+ * @param ide The [Ide] that opens the files whose paths are clicked in its terminals, by its name (read with [Ide.named]: a name that this
+ * version does not know is none), `null` when the user is asked each time. A name and not the [Ide] itself, so that a state written by another
+ * version with an IDE that this one does not have is still read.
  */
 @Serializable
 public data class Workspace(
@@ -49,6 +52,7 @@ public data class Workspace(
     val name: String,
     val layout: PaneNode,
     val focused: TerminalId? = null,
+    val ide: String? = null,
 )
 
 /** How a split puts its two sides, in the horizontal layout. */

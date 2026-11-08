@@ -62,8 +62,10 @@ public data class TerminalProgress(val state: TerminalProgressState, val percent
  *
  * @param segments Where it is: one for each row of the viewport that it is on, from the top (a link that goes on onto the next row,
  * which its line was too long for, has several). They are never empty.
+ * @param file The file or the folder of this machine that it is, with the line that was written after a file: a path written in the text
+ * (`src/Foo.kt:42`, `src`), or a `file://` address. `null` for anything else. Its [url] is then the `file://` address, without the line.
  */
-public data class TerminalLink(val url: String, val segments: List<TerminalLinkSegment>) {
+public data class TerminalLink(val url: String, val segments: List<TerminalLinkSegment>, val file: TerminalFilePosition? = null) {
     /** A link that is on one row. */
     public constructor(url: String, row: Int, columns: IntRange) : this(url, listOf(TerminalLinkSegment(row, columns)))
 
@@ -77,6 +79,16 @@ public data class TerminalLink(val url: String, val segments: List<TerminalLinkS
  * @param columns The cells it covers on that row, both ends included.
  */
 public data class TerminalLinkSegment(val row: Int, val columns: IntRange)
+
+/**
+ * A place in a file, or a folder, that a link names: what an editor is asked to open.
+ *
+ * @param path Its absolute path. It was there when the link was found.
+ * @param line The line of a file, from 1, `null` when none was written, and always for a folder.
+ * @param column Its column on that line, from 1, `null` when none was written.
+ * @param directory Whether it is a folder (an application's bundle is one), and not a regular file.
+ */
+public data class TerminalFilePosition(val path: String, val line: Int? = null, val column: Int? = null, val directory: Boolean = false)
 
 /**
  * The directory that the shell reported (OSC 7), as a path: a `file://host/path` URI of this machine is turned into its path, with the

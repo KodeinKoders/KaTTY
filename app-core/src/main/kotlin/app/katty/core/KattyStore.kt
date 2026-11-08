@@ -141,6 +141,11 @@ public class KattyStore(
         edit { state -> state.mapWorkspaces { if (it.id == id) it.copy(name = name.trim()) else it } }
     }
 
+    /** Sets the IDE that opens the files whose paths are clicked in the terminals of a workspace, or takes it off with `null`. */
+    public fun setWorkspaceIde(id: WorkspaceId, ide: Ide?) {
+        edit { state -> state.mapWorkspaces { if (it.id == id) it.copy(ide = ide?.name) else it } }
+    }
+
     /** Closes a workspace, with its terminals. */
     public fun closeWorkspace(id: WorkspaceId) {
         edit { state -> state.closingWorkspace(id) }

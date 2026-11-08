@@ -60,6 +60,7 @@ import app.katty.terminal.KeyInput
 import app.katty.terminal.TerminalKey
 import app.katty.terminal.TerminalClipboardLocation
 import app.katty.terminal.TerminalEvent
+import app.katty.terminal.TerminalFilePosition
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalMouseButton
 import app.katty.terminal.TerminalSelectionAdjust
@@ -139,6 +140,9 @@ import kotlin.math.roundToInt
  * is added to the left of [padding], **and only while the primary screen is shown**: a program on the alternate screen has the room that it had without
  * the marks. The host says `false` for a program that fills the terminal without it. The pointer over it shows how the command went, when it started
  * and how long it took, and a click on it selects the command's output. It needs the shell's marks.
+ * @param onOpenFile Opens the file of a link that names one ([TerminalLink.file]: a path written in the text, such as `src/Foo.kt:42` in what a
+ * compiler printed, or a `file://` address), at its line, in an editor. Without it such a link goes to [onOpenLink] as its `file://` address,
+ * which the default shows in the Finder.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -166,6 +170,7 @@ public fun Terminal(
     copyRichText: Boolean = false,
     optionClickMovesCursor: Boolean = true,
     commandMarks: Boolean = false,
+    onOpenFile: ((TerminalFilePosition) -> Unit)? = null,
 ) {
     require(minimumContrast in 1f..21f) { "The minimum contrast is from 1 (none) to 21, not $minimumContrast" }
     require(backgroundOpacity in 0f..1f) { "The opacity is from 0 to 1, not $backgroundOpacity" }
@@ -254,6 +259,7 @@ public fun Terminal(
     val contextMenu = remember(session) { ContextMenuGesture() }
     val latestContextMenu = rememberUpdatedState(onContextMenu)
     val openLink = rememberUpdatedState(onOpenLink)
+    val openFile = rememberUpdatedState(onOpenFile)
     val wheel = remember(session) { WheelScroller() }
     val wheelX = remember(session) { WheelNormalizer() }
     val wheelY = remember(session) { WheelNormalizer() }
@@ -496,7 +502,11 @@ public fun Terminal(
                             val ofLink = links.handle(
                                 info, typography.cellWidth, typography.cellHeight,
                                 linkAt = { column, row -> session.linkAt(column, row) },
-                                open = { openLink.value(it) },
+                                open = { link ->
+                                    val file = link.file
+                                    val fileOpener = openFile.value
+                                    if (file != null && fileOpener != null) fileOpener(file) else openLink.value(link.url)
+                                },
                             )
                             if (ofLink) {
                                 event.changes.forEach { it.consume() }

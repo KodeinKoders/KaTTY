@@ -93,6 +93,7 @@ val SIDEBAR_WIDTH = 272.dp
  * @param gits Where each terminal is in git: a workspace whose terminals are all in the same branch says which.
  * @param usage What is at the bottom of the sidebar.
  * @param ides The editors that are installed: a project's menu opens its folder in them, through [onOpenIn].
+ * @param onWorkspaceIde Chooses the IDE of a workspace (see [workspaceMenu]); `null` when none is installed.
  */
 @Composable
 fun Sidebar(
@@ -104,6 +105,7 @@ fun Sidebar(
     onCloseWorkspace: (WorkspaceId) -> Unit,
     onReveal: (ProjectId) -> Unit,
     renamingProject: ProjectId?,
+    onWorkspaceIde: ((WorkspaceId) -> Unit)? = null,
     onRenamingProject: (ProjectId?) -> Unit,
     renamingWorkspace: WorkspaceId?,
     onRenamingWorkspace: (WorkspaceId?) -> Unit,
@@ -185,6 +187,7 @@ fun Sidebar(
                                     if (!name.isNullOrBlank()) store.renameWorkspace(workspace.id, name)
                                 },
                                 onClose = { onCloseWorkspace(workspace.id) },
+                                onDefaultIde = onWorkspaceIde?.let { choose -> { choose(workspace.id) } },
                             )
                         }
                         Row(
@@ -282,6 +285,7 @@ private fun WorkspaceRow(
     onRename: () -> Unit,
     onRenamed: (String?) -> Unit,
     onClose: () -> Unit,
+    onDefaultIde: (() -> Unit)?,
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
@@ -320,7 +324,7 @@ private fun WorkspaceRow(
             }
         }
         menuAt?.let { at ->
-            KattyMenu(workspaceMenu(onRename, onClose), onDismiss = { menuAt = null }, offset = at)
+            KattyMenu(workspaceMenu(onRename, onClose, onDefaultIde), onDismiss = { menuAt = null }, offset = at)
         }
     }
 }

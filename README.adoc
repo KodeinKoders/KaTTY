@@ -98,6 +98,8 @@ Copy and paste are safe: what you paste cannot run commands behind your back.
 A middle click pastes the last selection.
 * Find in the terminal (⌘F), and jump from prompt to prompt (⌘↑ and ⌘↓) with zsh and bash.
 * ⌘-click opens the links that programs print, and the addresses written in the text.
+* ⌘-click on the path of a file or a folder (`src/Foo.kt:42:5` in what a compiler printed, `README.adoc` in `git status`, `src` in `ls`) opens it in your IDE, a file at its line.
+KaTTY asks which IDE, or the Finder, and can keep the answer for the workspace; the workspace's menu changes it.
 * Images appear in the terminal: the Kitty graphics protocol.
 * The history has a scrollbar that hides when you do not use it.
 * The macOS line-editing keys work in the shell: ⌥← and ⌥→ move by word, ⌘← and ⌘→ go to the start and the end of the line, ⌘⌫ deletes to the start.

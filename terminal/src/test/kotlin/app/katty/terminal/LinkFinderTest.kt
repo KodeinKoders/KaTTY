@@ -21,7 +21,24 @@ class LinkFinderTest {
 
         assertEquals(link, writtenLink(rows, 5, 0))
         assertEquals(link, writtenLink(rows, 2, 1))
-        assertNull(writtenLink(rows, 8, 1), "The word after it is not a link")
+        // The word after it is not part of it: it is a word of its own, which the session looks for on the disk.
+        assertEquals(TerminalLink("end", 1, 7..9).copy(file = TerminalFilePosition("end")), writtenLink(rows, 8, 1))
+    }
+
+    @Test
+    fun aPathThatWrapsIsFoundWholeWithItsLine() {
+        val rows = listOf(row("at src/Foo", wrapped = true), row(".kt:12 x"))
+        val link = TerminalLink("src/Foo.kt:12", listOf(TerminalLinkSegment(0, 3..9), TerminalLinkSegment(1, 0..5)), TerminalFilePosition("src/Foo.kt", 12))
+
+        assertEquals(link, writtenLink(rows, 4, 0))
+        assertEquals(link, writtenLink(rows, 5, 1))
+        assertEquals(TerminalFilePosition("x"), writtenLink(rows, 7, 1)?.file, "The word after it is a word of its own")
+        assertNull(writtenLink(rows, 6, 1), "Nor is the space between them")
+    }
+
+    @Test
+    fun anAddressIsNotAPath() {
+        assertEquals(null, writtenLink(listOf(row("http://a.b")), 3, 0)?.file)
     }
 
     @Test

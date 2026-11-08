@@ -215,6 +215,11 @@ class PaneActions(
     val confirmPaste: (suspend (String) -> Boolean)? = null,
     /** Pastes into a session from the pane's menu, after the same question when it is needed. */
     val onPaste: (TerminalSession, String) -> Unit = { session, text -> session.paste(text) },
+    /**
+     * Opens the file whose path was clicked in a terminal, in an IDE. `null` when none is installed: the terminal then shows it in the Finder, as it
+     * does without a host.
+     */
+    val onOpenFile: ((TerminalId, app.katty.terminal.TerminalFilePosition) -> Unit)? = null,
 )
 
 @Composable

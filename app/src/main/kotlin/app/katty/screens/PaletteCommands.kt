@@ -88,6 +88,8 @@ class PaletteHandlers(
      * open it instead of the project, and say so. `null` otherwise.
      */
     val worktree: String? = null,
+    /** Opens the choice of the IDE of the selected workspace, which opens the files whose paths are clicked; `null` when there is nothing to choose. */
+    val workspaceIde: (() -> Unit)? = null,
     val moveProject: (Int) -> Unit = {},
     /** Moves the selected workspace one place up or down in its project: -1 or 1. */
     val moveWorkspace: (Int) -> Unit = {},
@@ -218,6 +220,7 @@ fun paletteCommands(
     }
     if (hasWorkspace) {
         command("rename-workspace", "Rename workspace", AppShortcut.RENAME_WORKSPACE.label, handlers.renameWorkspace)
+        handlers.workspaceIde?.let { command("workspace-ide", "Default IDE of this workspace…", action = it) }
         val workspaces = state.selectedProject?.workspaces.orEmpty()
         val index = workspaces.indexOfFirst { it.id == state.selection.workspace }
         if (index > 0) command("workspace-up", "Move workspace up") { handlers.moveWorkspace(-1) }

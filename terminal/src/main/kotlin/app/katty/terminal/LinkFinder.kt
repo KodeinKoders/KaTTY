@@ -56,7 +56,10 @@ internal fun markedLink(rows: List<TerminalRow>, column: Int, row: Int, hyperlin
     return TerminalLink(url, segments.toList())
 }
 
-/** A link that is written in the text at [column] and [row] of [rows]: of the row, and of the rows that it wraps onto, which are one line. */
+/**
+ * A link that is written in the text at [column] and [row] of [rows]: of the row, and of the rows that it wraps onto, which are one line. An address
+ * comes first; else a path ([findPath]), whose [TerminalLink.file] is the path as it is written, which [fileLink] then looks for.
+ */
 internal fun writtenLink(rows: List<TerminalRow>, column: Int, row: Int): TerminalLink? {
     var first = row
     while (first > 0 && first > row - LINK_ROWS && rows[first - 1].wrapped) first--
@@ -81,7 +84,11 @@ internal fun writtenLink(rows: List<TerminalRow>, column: Int, row: Int): Termin
     var index = -1
     for (i in rowOf.indices) if (rowOf[i] == row && columnOf[i] == column) { index = i; break }
     if (index < 0) return null
-    val range = findUrl(text.toString(), index) ?: return null
+    // An address, else the path of a file, which the session looks for: its file is the path as it is written until then.
+    val url = findUrl(text.toString(), index)
+    val path = if (url == null) findPath(text.toString(), index) else null
+    val range = url ?: path?.range ?: return null
+    val file = path?.let { TerminalFilePosition(it.path, it.line, it.column) }
 
     // The cells of each row that the characters of the address are on.
     val segments = ArrayList<TerminalLinkSegment>()
@@ -96,5 +103,5 @@ internal fun writtenLink(rows: List<TerminalRow>, column: Int, row: Int): Termin
         }
         segments += TerminalLinkSegment(segmentRow, startColumn..endColumn)
     }
-    return TerminalLink(text.substring(range.first, range.last + 1), segments)
+    return TerminalLink(text.substring(range.first, range.last + 1), segments, file)
 }

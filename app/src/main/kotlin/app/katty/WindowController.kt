@@ -29,6 +29,7 @@ import app.katty.core.splitToNudge
 import app.katty.core.terminals
 import app.katty.screens.PaletteHandlers
 import app.katty.screens.splitVisually
+import app.katty.terminal.TerminalFilePosition
 import app.katty.terminal.TerminalSession
 import app.katty.terminals.TerminalHandle
 import kotlinx.coroutines.CompletableDeferred
@@ -52,6 +53,9 @@ internal interface WindowPlatform {
 
     fun openIn(bundleId: String, directory: String)
 
+    /** Opens [file] at its line in [ide], installed as [bundleId]. */
+    fun openFile(ide: Ide, bundleId: String, file: TerminalFilePosition)
+
     fun openBoardWindow()
 
     fun openAbout()
@@ -61,6 +65,9 @@ internal interface WindowPlatform {
 internal class PasteRequest(val text: String) {
     val answer = CompletableDeferred<Boolean>()
 }
+
+/** The path of a [file] that was clicked in a terminal of [workspace], whose IDE the user chooses. */
+internal data class IdeRequest(val workspace: WorkspaceId, val file: TerminalFilePosition)
 
 /** A quit that waits for the user, whose [answer] is whether to quit. */
 internal class QuitRequest {
@@ -129,6 +136,10 @@ internal class WindowController(
     // A quit that would stop what runs, waiting for the user's answer.
     var quitting by mutableStateOf<QuitRequest?>(null)
 
+    // A file whose path was clicked, waiting for the IDE that opens it; and the workspace whose IDE is being chosen from its menu.
+    var choosingIde by mutableStateOf<IdeRequest?>(null)
+    var editingWorkspaceIde by mutableStateOf<WorkspaceId?>(null)
+
     /** The sessions of the terminals, as the registry has them now. */
     var handles: Map<TerminalId, TerminalHandle> = emptyMap()
 
@@ -149,7 +160,7 @@ internal class WindowController(
     /** What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons. */
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
-            quitting != null || recentOpen
+            quitting != null || recentOpen || choosingIde != null || editingWorkspaceIde != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -344,6 +355,35 @@ internal class WindowController(
     }
 
     /**
+     * Opens the file or the folder whose path was clicked in [terminal]: in the IDE of its workspace when it has one that is installed, else the user
+     * is asked which (an IDE that the workspace keeps and that is not installed any more is asked about again).
+     */
+    fun openFile(terminal: TerminalId, file: TerminalFilePosition) {
+        val workspace = state.locate(terminal)?.workspace ?: return
+        val kept = Ide.named(workspace.ide)?.takeIf { it in installedIdes }
+        if (kept != null) openFileIn(kept, file) else if (installedIdes.isNotEmpty()) choosingIde = IdeRequest(workspace.id, file)
+    }
+
+    /** The user chose [ide] for the file that waits, and whether the workspace keeps it for the next ones. */
+    fun answerIde(ide: Ide, remember: Boolean) {
+        val request = choosingIde ?: return
+        choosingIde = null
+        if (remember) store.setWorkspaceIde(request.workspace, ide)
+        openFileIn(ide, request.file)
+    }
+
+    /** The IDE of a workspace, chosen from its menu: `null` takes it off, and the user is asked again at each file. */
+    fun setWorkspaceIde(workspace: WorkspaceId, ide: Ide?) {
+        editingWorkspaceIde = null
+        store.setWorkspaceIde(workspace, ide)
+    }
+
+    private fun openFileIn(ide: Ide, file: TerminalFilePosition) {
+        val bundleId = installedIdes[ide] ?: return
+        platform.openFile(ide, bundleId, file)
+    }
+
+    /**
      * The linked working tree (`git worktree add`) of the selected project's repository that the selected terminal's shell is in (its root,
      * from any folder of it), `null` when it is in none: what the palette's editors open then. It reads a few files of git.
      */
@@ -364,6 +404,10 @@ internal class WindowController(
         if (renamingWorkspace != null && (!hostShown || current.projects.none { p -> p.workspaces.any { it.id == renamingWorkspace } })) renamingWorkspace = null
         if (renamingProject != null && (!hostShown || current.projects.none { it.id == renamingProject })) renamingProject = null
         if (renamingTerminal != null && (current.settings.view != MainView.TERMINALS || renamingTerminal?.let(current::locate) == null)) renamingTerminal = null
+        // A question about the IDE of a workspace that was closed meanwhile.
+        fun gone(id: WorkspaceId) = current.projects.none { p -> p.workspaces.any { it.id == id } }
+        choosingIde?.let { if (gone(it.workspace)) choosingIde = null }
+        editingWorkspaceIde?.let { if (gone(it)) editingWorkspaceIde = null }
     }
 
     /**
@@ -507,9 +551,10 @@ internal class WindowController(
         renameProject = { showWorkspaceHost(); renamingProject = state.selection.project },
         removeProject = { removing = state.selection.project },
         revealProject = { state.selection.project?.let(::revealProject) },
-        ides = installedIdes.keys.toList(),
+        ides = installedIdes.keys.filter { it.forProjects },
         // Read once for the palette that is opened: what it says is what it opens.
         worktree = worktree,
+        workspaceIde = if (installedIdes.isEmpty()) null else ({ state.selection.workspace?.let { editingWorkspaceIde = it } }),
         openProjectIn = { ide -> if (worktree != null) openIn(worktree, ide) else state.selection.project?.let { openProjectIn(it, ide) } },
         moveProject = { delta ->
             val projects = state.projects

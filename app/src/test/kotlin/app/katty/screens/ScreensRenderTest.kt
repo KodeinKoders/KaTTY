@@ -49,4 +49,16 @@ class ScreensRenderTest {
         assertTrue(light.count(0xF2F3F5) > 100_000)
         assertTrue(dark.count(0x1E1F22) > 100_000)
     }
+
+    @Test
+    fun drawsTheQuestionOfTheIdeOfAFileInBothThemes() {
+        val file = app.katty.terminal.TerminalFilePosition("/Users/me/dev/api-gateway/src/main/kotlin/RateLimiter.kt", 42, 5)
+        val ides = listOf(app.katty.core.Ide.VS_CODE, app.katty.core.Ide.INTELLIJ_IDEA, app.katty.core.Ide.XCODE, app.katty.core.Ide.FINDER)
+        val light = render("open-file-light", 1000, 700) { OpenFileDialog(file, "refactor-auth", ides, onOpen = { _, _ -> }, onCancel = {}) }
+        val dark = render("open-file-dark", 1000, 700, dark = true) { OpenFileDialog(file, "refactor-auth", ides, onOpen = { _, _ -> }, onCancel = {}) }
+
+        // The row that the keys are on.
+        assertTrue(light.count(0xD4E2FF) > 1000)
+        assertTrue(dark.count(0x2E436E) > 1000)
+    }
 }

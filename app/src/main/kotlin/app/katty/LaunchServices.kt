@@ -2,6 +2,8 @@ package app.katty
 
 import app.katty.core.Ide
 import app.katty.core.detectIdes
+import app.katty.core.openFileCommand
+import app.katty.terminal.TerminalFilePosition
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.lang.foreign.Arena
@@ -22,8 +24,11 @@ private val isMac = System.getProperty("os.name").startsWith("Mac")
  * would not say for the ones that JetBrains Toolbox puts in `~/Applications`. LaunchServices can remember an application that was deleted, so
  * the folder it names has to be there. Any failure says it is not installed, and nothing is installed off macOS.
  */
-internal fun applicationInstalled(bundleId: String): Boolean {
-    if (!isMac) return false
+internal fun applicationInstalled(bundleId: String): Boolean = applicationPath(bundleId) != null
+
+/** Where the application [bundleId] is installed (its bundle, `/Applications/Xcode.app`), `null` when it is not: see [applicationInstalled]. */
+internal fun applicationPath(bundleId: String): String? {
+    if (!isMac) return null
     return try {
         Arena.ofConfined().use { arena ->
             val linker = Linker.nativeLinker()
@@ -40,16 +45,16 @@ internal fun applicationInstalled(bundleId: String): Boolean {
             val urls = handle(coreServices, "LSCopyApplicationURLsForBundleIdentifier", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS))
 
             val name = createString.invoke(MemorySegment.NULL, arena.allocateFrom(bundleId), UTF8) as MemorySegment
-            if (name == MemorySegment.NULL) return@use false
+            if (name == MemorySegment.NULL) return@use null
             val array = urls.invoke(name, MemorySegment.NULL) as MemorySegment
             release.invoke(name)
-            if (array == MemorySegment.NULL) return@use false
+            if (array == MemorySegment.NULL) return@use null
             try {
                 val buffer = arena.allocate(4096)
-                (0 until (count.invoke(array) as Long)).any { index ->
+                (0 until (count.invoke(array) as Long)).firstNotNullOfOrNull { index ->
                     val url = valueAt.invoke(array, index) as MemorySegment
                     val ok = (path.invoke(url, 1.toByte(), buffer, 4096L) as Byte).toInt() != 0
-                    ok && File(buffer.getString(0)).isDirectory
+                    buffer.getString(0).takeIf { ok && File(it).isDirectory }
                 }
             } finally {
                 release.invoke(array)
@@ -57,12 +62,27 @@ internal fun applicationInstalled(bundleId: String): Boolean {
         }
     } catch (e: Throwable) {
         logger.debug("Could not ask LaunchServices for {}", bundleId, e)
-        false
+        null
     }
 }
 
 /** The IDEs that are installed on this machine, with the bundle identifier that opens each. Asks LaunchServices: not for the UI thread. */
 internal fun installedIdes(): Map<Ide, String> = detectIdes(::applicationInstalled)
+
+/**
+ * Opens [file] at its line in [ide], installed as [bundleId], with the command that [openFileCommand] makes for it: the tool of its bundle, or
+ * `open`. It asks LaunchServices where the bundle is: not for the UI thread. A failure is logged, as for [openInApplication].
+ */
+internal fun openFileInApplication(ide: Ide, bundleId: String, file: TerminalFilePosition) {
+    val command = openFileCommand(ide, bundleId, applicationPath(bundleId), file.path, file.line, file.column, file.directory)
+    try {
+        // Nobody reads what the tool says: it goes nowhere, so that a tool that writes much does not wait for a reader.
+        ProcessBuilder(command).redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+    } catch (e: Exception) {
+        logger.warn("Could not open {} in {}", file.path, bundleId, e)
+    }
+}
 
 /** Opens [directory] in the application [bundleId]: what `open -b` does. A failure is logged: there is nothing the user can do about it here. */
 internal fun openInApplication(bundleId: String, directory: String) {

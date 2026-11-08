@@ -34,7 +34,7 @@ class LinksUiTest {
         kind: PointerInfo.Kind, column: Int, row: Int, modifier: Boolean = true, button: TerminalMouseButton? = null, mac: Boolean = true,
     ) = handle(
         PointerInfo(kind, (column + 0.5f) * cellWidth, (row + 0.5f) * cellHeight, button = button, meta = modifier && mac, ctrl = modifier && !mac),
-        cellWidth, cellHeight, linkAt, { opened += it }, mac,
+        cellWidth, cellHeight, linkAt, { opened += it.url }, mac,
     )
 
     @Test
@@ -44,7 +44,7 @@ class LinksUiTest {
         val wrappedLinkAt: (Int, Int) -> TerminalLink? = { column, row -> if (wrapped.contains(column, row)) wrapped else null }
         fun event(kind: PointerInfo.Kind, column: Int, row: Int) = links.handle(
             PointerInfo(kind, (column + 0.5f) * cellWidth, (row + 0.5f) * cellHeight, button = TerminalMouseButton.LEFT.takeIf { kind != PointerInfo.Kind.MOVE }, meta = true),
-            cellWidth, cellHeight, wrappedLinkAt, { opened += it }, true,
+            cellWidth, cellHeight, wrappedLinkAt, { opened += it.url }, true,
         )
 
         event(PointerInfo.Kind.MOVE, 1, 3)

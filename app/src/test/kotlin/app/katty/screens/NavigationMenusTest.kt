@@ -23,6 +23,17 @@ class NavigationMenusTest {
     }
 
     @Test
+    fun theWorkspaceMenuChoosesItsIdeWhenOneIsInstalled() {
+        assertEquals(listOf("Rename workspace", "Close workspace"), workspaceMenu({}, {}).filterIsInstance<MenuAction>().map { it.label })
+
+        var chosen = false
+        val actions = workspaceMenu({}, {}, onDefaultIde = { chosen = true }).filterIsInstance<MenuAction>()
+        assertEquals(listOf("Rename workspace", "Default IDE…", "Close workspace"), actions.map { it.label })
+        actions[1].onClick()
+        assertEquals(true, chosen)
+    }
+
+    @Test
     fun theProjectMenuHasNoOpenInWhenNoEditorIsInstalled() {
         assertNull(menu(emptyList()).filterIsInstance<MenuSubmenu>().firstOrNull())
     }

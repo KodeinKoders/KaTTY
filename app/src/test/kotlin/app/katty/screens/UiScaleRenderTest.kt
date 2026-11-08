@@ -79,6 +79,22 @@ class UiScaleRenderTest {
     }
 
     @Test
+    fun drawsTheQuestionOfTheIdeOfAFile() = draws("open-file", 1600, 1000) {
+        OpenFileDialog(
+            app.katty.terminal.TerminalFilePosition("/Users/me/dev/api-gateway/src/main/kotlin/RateLimiter.kt", 42, 5), "refactor-auth",
+            listOf(app.katty.core.Ide.VS_CODE, app.katty.core.Ide.INTELLIJ_IDEA, app.katty.core.Ide.XCODE, app.katty.core.Ide.FINDER), onOpen = { _, _ -> }, onCancel = {},
+        )
+    }
+
+    @Test
+    fun drawsTheIdeOfAWorkspace() = draws("workspace-ide", 1600, 1000) {
+        WorkspaceIdeDialog(
+            "refactor-auth", listOf(app.katty.core.Ide.VS_CODE, app.katty.core.Ide.INTELLIJ_IDEA, app.katty.core.Ide.XCODE, app.katty.core.Ide.FINDER), app.katty.core.Ide.INTELLIJ_IDEA,
+            onChoose = {}, onCancel = {},
+        )
+    }
+
+    @Test
     fun drawsTheMainMenu() = draws("menu", 700, 1300) {
         Box(Modifier.fillMaxSize().padding(8.dp)) {
             MainMenu(Settings(layout = LayoutMode.HORIZONTAL), onChange = {}, colorScheme = null, fontFamilies = emptyList(), onPickColorScheme = {}, onDismiss = {})

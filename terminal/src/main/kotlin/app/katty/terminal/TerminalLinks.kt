@@ -21,6 +21,39 @@ internal fun findUrl(text: String, index: Int): IntRange? {
     return null
 }
 
+// A path as tools print it: the characters of a file name but a space and a colon, after what cannot be in one (or nothing), and then a line
+// and a column.
+private val PATH = Regex("""(?<![^\s(\[<{"'`=,])([A-Za-z0-9._~@%+\-/]+)(?::(\d{1,9})(?::(\d{1,9}))?)?""")
+
+/**
+ * A path that [findPath] found: its characters, [path] as it is written (absolute, from the home, or relative to a directory that is not known
+ * here), and the [line] and [column] written after it, `null` when there are none.
+ */
+internal class PathMatch(val range: IntRange, val path: String, val line: Int?, val column: Int?)
+
+/**
+ * The path of a file or a folder in [text] that has the character at [index], with the line and the column that follow it, as compilers, test
+ * runners and `grep -n` print them (`src/Foo.kt:42:5`, `Foo.java:42: error`), or a path alone (`git status`, `ls`: `src`, `Makefile`); `null`
+ * when the character is not part of one. Whether it is there is not known here: any word with a letter may be one (not `12:34:56` nor `1.2.3`),
+ * and only the ones that are on the disk are links. A space ends it (a path that has one is not found), and so does what ends a sentence, as for
+ * an address.
+ */
+internal fun findPath(text: String, index: Int): PathMatch? {
+    for (match in PATH.findAll(text)) {
+        if (match.range.first > index) return null
+        val written = match.groups[1]!!.value
+        val lineGroup = match.groups[2]
+        // A path with no line may end a sentence: `see src/Foo.kt.`. A line ends the path, so what follows it is not part of it.
+        val path = if (lineGroup == null) written.substring(0, trimmedLength(written)) else written
+        val end = lineGroup?.let { match.range.last } ?: (match.range.first + path.length - 1)
+        if (index > end || path.none { it.isLetter() }) continue
+        val line = lineGroup?.value?.toInt()?.takeIf { it > 0 }
+        val column = match.groups[3]?.value?.toInt()?.takeIf { it > 0 && line != null }
+        return PathMatch(match.range.first..end, path, line, column)
+    }
+    return null
+}
+
 private fun trimmedLength(url: String): Int {
     var end = url.length
     while (end > 0) {

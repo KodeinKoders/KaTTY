@@ -362,7 +362,10 @@ class TerminalTest {
     // clicked are in [opened].
     private val opened = java.util.concurrent.CopyOnWriteArrayList<String>()
 
-    private fun terminalScene(script: String, ready: (TerminalFrame) -> Boolean): Pair<ImageComposeScene, TerminalSession> {
+    // The files that are opened, when the scene is given an editor.
+    private val openedFiles = java.util.concurrent.CopyOnWriteArrayList<app.katty.terminal.TerminalFilePosition>()
+
+    private fun terminalScene(script: String, editor: Boolean = false, ready: (TerminalFrame) -> Boolean): Pair<ImageComposeScene, TerminalSession> {
         val session = session(script, cols = 80, rows = 24)
         val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
             typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
@@ -370,7 +373,7 @@ class TerminalTest {
                 LocalWindowInfo provides object : WindowInfo { override val isWindowFocused = true },
                 androidx.compose.ui.platform.LocalClipboard provides clipboard,
             ) {
-                Terminal(session, Modifier.fillMaxSize(), onOpenLink = { opened += it })
+                Terminal(session, Modifier.fillMaxSize(), onOpenLink = { opened += it }, onOpenFile = if (editor) ({ openedFiles += it }) else null)
             }
         }.also { scenes += it }
         scene.renderUntil("the terminal to fit the scene and show the text") { session.frames.value.cols != 80 && ready(session.frames.value) }
@@ -403,6 +406,37 @@ class TerminalTest {
 
         "xyz".forEach { scene.type(it) }
         scene.renderUntil("what the program read") { session.frames.value.rows.indices.any { session.frames.value.text(it).replace(Regex("\\s+"), " ").trim() == "x y z" } }
+    }
+
+    @Test
+    fun aClickOnThePathOfAFileOpensItAtItsLineInTheEditor() {
+        val file = kotlin.io.path.createTempFile("katty-link", ".kt").toRealPath()
+        try {
+            val (scene, _) = terminalScene("printf 'e: $file:12:5 Unresolved\r\n'; sleep 30", editor = true) { it.text(0).startsWith("e: /") }
+
+            scene.linkClick(at(4.5f, 0.5f))
+            scene.renderUntil("the file to be opened") { openedFiles.isNotEmpty() }
+
+            assertEquals(listOf(app.katty.terminal.TerminalFilePosition(file.toString(), 12, 5)), openedFiles.toList())
+            assertEquals(emptyList(), opened.toList(), "Not as an address")
+        } finally {
+            java.nio.file.Files.deleteIfExists(file)
+        }
+    }
+
+    @Test
+    fun withoutAnEditorThePathOfAFileIsOpenedAsItsAddress() {
+        val file = kotlin.io.path.createTempFile("katty-link", ".kt").toRealPath()
+        try {
+            val (scene, _) = terminalScene("printf 'e: $file:12:5 Unresolved\r\n'; sleep 30") { it.text(0).startsWith("e: /") }
+
+            scene.linkClick(at(4.5f, 0.5f))
+            scene.renderUntil("the file to be opened") { opened.isNotEmpty() }
+
+            assertEquals(listOf(file.toUri().toString()), opened.toList(), "Which the default shows in the Finder")
+        } finally {
+            java.nio.file.Files.deleteIfExists(file)
+        }
     }
 
     @Test
