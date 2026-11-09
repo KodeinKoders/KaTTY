@@ -111,6 +111,7 @@ Copy and paste are safe: what you paste cannot run commands behind your back.
 A middle click pastes the last selection.
 * Drop files from the Finder on a terminal to paste their paths, escaped for the shell: a screenshot for an agent, a file for a command.
 * Find in the terminal (⌘F), and jump from prompt to prompt (⌘↑ and ⌘↓) with zsh and bash.
+* Search in all terminals (⌘⇧F): the history of every terminal of every workspace, the last lines first, and a line opens its terminal there with the matches highlighted.
 * ⌘-click opens the links that programs print, and the addresses written in the text.
 * ⌘-click on the path of a file or a folder (`src/Foo.kt:42:5` in what a compiler printed, `README.adoc` in `git status`, `src` in `ls`) opens it in your IDE, a file at its line.
 KaTTY asks which IDE, or the Finder, and can keep the answer for the workspace; the workspace's menu changes it.
@@ -182,6 +183,9 @@ Escape is never used by the window, except to close what is open in front of it 
 
 | ⌘⇧T
 | Reopen the terminal or the workspace that was closed last
+
+| ⌘⇧F
+| Search in all terminals
 
 | ⌘F2
 | Rename the terminal

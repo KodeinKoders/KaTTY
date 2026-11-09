@@ -36,6 +36,15 @@ class FindBarTest {
     }
 
     @Test
+    fun aBarThatOpensOnATextSearchesItAtOnce() = runComposeUiTest {
+        val session = session("foo bar foo\\r\\nfoo")
+        setContent { KattyTheme(false) { FindBar(session, onClose = {}, initialQuery = "foo") } }
+
+        waitUntil(timeoutMillis = 10_000) { session.search.state.value.query == "foo" }
+        onNodeWithText("foo").assertExists()
+    }
+
+    @Test
     fun searchesWhatIsTypedAndMovesFromMatchToMatch() = runComposeUiTest {
         val session = session("foo bar foo\\r\\nfoo")
         setContent { KattyTheme(false) { FindBar(session, onClose = {}) } }

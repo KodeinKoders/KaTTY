@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -119,11 +120,14 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
     // The exit code of the shell once it has ended: `null` while it runs.
     val exitCode = handle?.session?.exited?.collectAsState()?.value
 
-    // The focused terminal has the keyboard, unless something else is being typed in. The terminal may not be composed yet.
-    LaunchedEffect(handle, focused, context.focusTerminals, context.focusTick, hollow) {
+    // The focused terminal has the keyboard, unless something else is being typed in, or its find bar when it opened on a row that the search of
+    // every terminal found: it has that text, and Enter goes to the next match. The terminal may not be composed yet.
+    val findFocus = remember { FocusRequester() }
+    LaunchedEffect(handle, focused, context.focusTerminals, context.focusTick, hollow, context.actions.findRequest) {
         if (focused && context.focusTerminals && handle != null && !hollow) {
             withFrameNanos { }
-            runCatching { handle.focus.requestFocus() }
+            val toFindBar = context.actions.finding == spec.id && context.actions.findQuery.isNotEmpty()
+            runCatching { if (toFindBar) findFocus.requestFocus() else handle.focus.requestFocus() }
         }
     }
 
@@ -254,14 +258,19 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                     )
                 }
                 if (context.actions.finding == spec.id) {
-                    FindBar(
-                        session,
-                        onClose = {
-                            context.actions.onFindClosed(spec.id)
-                            runCatching { handle.focus.requestFocus() }
-                        },
-                        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
-                    )
+                    // Made again for a text that a row of the search of every terminal brings, even when it is open.
+                    key(context.actions.findRequest) {
+                        FindBar(
+                            session,
+                            onClose = {
+                                context.actions.onFindClosed(spec.id)
+                                runCatching { handle.focus.requestFocus() }
+                            },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                            initialQuery = context.actions.findQuery,
+                            focus = findFocus,
+                        )
+                    }
                 }
             } else if (handle?.failure != null) {
                 Text("Could not start the shell: ${handle.failure}", Modifier.padding(12.dp), color = colors.err)

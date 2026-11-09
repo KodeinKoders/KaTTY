@@ -113,6 +113,14 @@ internal class WindowController(
 
     /** The list of the projects that were opened before, which works like the palette. */
     var recentOpen by mutableStateOf(false)
+
+    /** The search of every terminal's history, which works like the palette. */
+    var searchingAll by mutableStateOf(false)
+
+    // What the find bar that opens starts with, and a number that changes at each such opening, so that a bar that is open is made again with it:
+    // the text that was searched in every terminal, when one of its rows is gone to.
+    var findQuery by mutableStateOf("")
+    var findRequest by mutableIntStateOf(0)
     var editingShortcuts by mutableStateOf(false)
 
     // The terminal that is selected takes the keyboard back whenever this changes: when what had it (a palette, a menu, a rename) is gone, and when a
@@ -166,7 +174,7 @@ internal class WindowController(
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
     val overlayOpen: Boolean by derivedStateOf {
-        blockingDialog || editingShortcuts || paletteOpen || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null ||
+        blockingDialog || editingShortcuts || paletteOpen || searchingAll || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null ||
             renamingTerminal != null
     }
 
@@ -206,6 +214,36 @@ internal class WindowController(
         paletteOpen = false
         menuOpen = false
         recentOpen = true
+    }
+
+    /** Opens the search of every terminal's history, over whatever the window shows. */
+    fun searchAll() {
+        paletteOpen = false
+        menuOpen = false
+        searchingAll = true
+    }
+
+    /**
+     * Goes to a row of a terminal where the search of every terminal found [query]: the terminal is shown with the keyboard, its history scrolled so
+     * that the row is in its upper third, and its find bar open with [query], which shows every match of it there.
+     */
+    fun openSearchResult(terminal: TerminalId, row: Long, query: String) {
+        searchingAll = false
+        if (state.locate(terminal) == null) return
+        openTerminal(terminal)
+        handles[terminal]?.session?.let { session ->
+            val rows = session.frames.value.rows.size
+            session.scrollToRow((row - rows / 3).coerceAtLeast(0))
+        }
+        findQuery = query
+        findRequest++
+        findingTerminal = terminal
+    }
+
+    /** A find bar that is opened by the user starts empty. */
+    fun openFind(terminal: TerminalId?) {
+        if (findingTerminal != terminal) findQuery = ""
+        findingTerminal = terminal
     }
 
     /** Opens a project of the recent list again, and goes to it. */
@@ -341,7 +379,7 @@ internal class WindowController(
     fun stepFind(forward: Boolean) {
         val searched = findTarget(findingTerminal, shown(), handles.filterValues { it.session != null }.keys)
         if (searched == null) {
-            findingTerminal = state.selection.terminal
+            openFind(state.selection.terminal)
         } else {
             handles[searched]?.session?.search?.let { if (forward) it.next() else it.previous() }
         }
@@ -440,7 +478,7 @@ internal class WindowController(
         if (editingShortcuts) return false
         shortcut ?: return false
         if (blockingDialog || (menuOpen && shortcut != AppShortcut.MENU) || (attentionOpen && shortcut != AppShortcut.ATTENTION) ||
-            (paletteOpen && shortcut != AppShortcut.PALETTE)
+            (paletteOpen && shortcut != AppShortcut.PALETTE) || (searchingAll && shortcut != AppShortcut.SEARCH_ALL)
         ) {
             return true
         }
@@ -478,7 +516,8 @@ internal class WindowController(
             AppShortcut.FOCUS_UP -> onTerminals { focusNeighbour(Direction.UP) }
             AppShortcut.FOCUS_DOWN -> onTerminals { focusNeighbour(Direction.DOWN) }
             AppShortcut.CLEAR_SCREEN -> onTerminal { handles[it]?.session?.clearScreen() }
-            AppShortcut.FIND -> onTerminals { findingTerminal = terminal }
+            AppShortcut.FIND -> onTerminals { openFind(terminal) }
+            AppShortcut.SEARCH_ALL -> if (searchingAll) searchingAll = false else searchAll()
             AppShortcut.RENAME_TERMINAL -> renameTerminal()
             AppShortcut.RENAME_WORKSPACE -> renameWorkspace()
             AppShortcut.WORKSPACE_PREVIOUS -> stepWorkspace(-1)
@@ -536,7 +575,8 @@ internal class WindowController(
         renameTerminal = ::renameTerminal,
         closeTerminal = { onTerminal(::closeTerminal) },
         restartTerminal = { onTerminal(::restartTerminal) },
-        find = { onTerminals { findingTerminal = state.selection.terminal } },
+        find = { onTerminals { openFind(state.selection.terminal) } },
+        searchAll = ::searchAll,
         clearScreen = { onTerminal { handles[it]?.session?.clearScreen() } },
         maximize = { onTerminals { maximize() } },
         colorScheme = { state.selection.terminal?.let { picking = SchemeTarget.Terminal(it) } },

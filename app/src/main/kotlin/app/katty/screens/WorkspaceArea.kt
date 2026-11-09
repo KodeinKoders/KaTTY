@@ -205,6 +205,9 @@ class PaneActions(
     val onMove: (TerminalId, app.katty.core.WorkspaceId) -> Unit,
     /** The terminal whose find bar is open. */
     val finding: TerminalId? = null,
+    /** What the find bar starts with, and a number that changes when it is to be made again with it. */
+    val findQuery: String = "",
+    val findRequest: Int = 0,
     val onFind: (TerminalId) -> Unit = {},
     val onFindClosed: (TerminalId) -> Unit = {},
     /** Starts the shell of a terminal again, in the place of the one that ended. */

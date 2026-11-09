@@ -26,6 +26,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.milliseconds
@@ -114,6 +115,15 @@ internal class FrameProducer(
     fun outputWritten() {
         lastOutputNanos = System.nanoTime()
         request()
+    }
+
+    // How many times the host read the history: reading it decompresses what it reads, which does not change libghostty's activity token, so a
+    // hidden session compresses it again when this moves.
+    private val historyReads = AtomicLong()
+
+    /** The host read the history (its text): a hidden session compresses again what that decompressed, once it is quiet. */
+    fun historyRead() {
+        historyReads.incrementAndGet()
     }
 
     // When the program began to hold the screen (synchronized output), in System.nanoTime() terms, 0 when it does not: the producer
@@ -221,6 +231,7 @@ internal class FrameProducer(
         imageCache.clear()
 
         var seen = compressionActivity() ?: return
+        var reads = historyReads.get()
         delay(HIDDEN_IDLE)
         while (true) {
             // Something was written: it is not an idle moment, which is when compressing is for.
@@ -234,9 +245,11 @@ internal class FrameProducer(
                 GhosttyCompressionResult.UNSUPPORTED -> return
                 GhosttyCompressionResult.PENDING -> delay(COMPRESSION_STEP_PAUSE)
                 GhosttyCompressionResult.COMPLETE -> {
-                    // Nothing to do until the terminal changes: it is looked at now and then.
+                    // Nothing to do until the terminal changes, or the host reads its history (a read during the pass too), which decompresses what
+                    // it reads: it is looked at now and then. A pass that starts after it goes through the whole history again.
                     seen = compressionActivity() ?: return
-                    while (compressionActivity() == seen) delay(HIDDEN_POLL)
+                    while (compressionActivity() == seen && historyReads.get() == reads) delay(HIDDEN_POLL)
+                    reads = historyReads.get()
                     seen = compressionActivity() ?: return
                     delay(HIDDEN_IDLE)
                 }

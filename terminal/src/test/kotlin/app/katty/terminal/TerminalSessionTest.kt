@@ -1465,6 +1465,49 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun aHiddenSessionCompressesAgainWhatReadingItsHistoryDecompressed() {
+        val session = start("""yes 'some text that takes room in the history of the terminal' | head -n 150000; echo END; sleep 30""", rows = 6)
+        session.resize(80, 6, 10, 20)
+        session.awaitFrame { frame -> frame.rows.any { frame.text(frame.rows.indexOf(it)) == "END" } }
+        Thread.sleep(300)
+        val before = session.memoryUsage()
+        session.setVisible(false)
+        await("the history to be compressed") { session.memoryUsage().residentBytes < before.residentBytes / 2 }
+        // And the pass to be over: libghostty's last step of a pass compresses again what was read during it, which is not what is tested.
+        var compressed = session.memoryUsage()
+        while (true) {
+            Thread.sleep(1_500)
+            val now = session.memoryUsage()
+            if (now == compressed) break
+            compressed = now
+        }
+
+        // What a search of every terminal does: the whole history, in pieces.
+        val total = session.rowCount()
+        for (first in 0 until total step 500) session.readLines(first, minOf(first + 499, total - 1))
+        val read = session.memoryUsage()
+        assertTrue(read.residentBytes > compressed.residentBytes * 2, "Reading decompressed it: $compressed, then $read")
+
+        // Nothing is written: the activity of the terminal does not change.
+        val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000
+        while (session.memoryUsage().residentBytes >= before.residentBytes / 2) {
+            check(System.nanoTime() < deadline) { "Still not compressed again: $compressed when compressed, $read once read, ${session.memoryUsage()} now" }
+            Thread.sleep(20)
+        }
+    }
+
+    @Test
+    fun readingLinesGivesOneForEachRowBlankAndWrappedOnesToo() {
+        val session = start("""printf 'one\r\n\r\nabcdefghijklmnopqrstuvwxyz0123\r\nlast'; sleep 30""", cols = 20, rows = 6)
+        session.awaitFrame { "last" in it.text() }
+
+        assertEquals(listOf("one", "", "abcdefghijklmnopqrst", "uvwxyz0123", "last", ""), session.readLines(), "Screen: ${session.frames.value.text()}")
+        assertEquals(listOf("uvwxyz0123", "last"), session.readLines(3, 4))
+        assertEquals(listOf("", "abcdefghijklmnopqrst"), session.readLines(1, 2), "One that starts on a blank row")
+        assertEquals(listOf("last", ""), session.readLines(4, 5), "And one that ends on it")
+    }
+
+    @Test
     fun theImagesOfAHiddenSessionAreBackWhenItIsShown() {
         val image = """printf '\033_Ga=T,f=32,s=2,v=2,i=1,q=2;/////////////////////w==\033\\'"""
         val session = startThatWaits("$image; sleep 30")

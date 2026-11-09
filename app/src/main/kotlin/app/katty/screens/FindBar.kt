@@ -55,12 +55,13 @@ internal fun TerminalSearchState.summary(): String = when {
  * goes to the next, Shift and Enter to the previous, and Escape closes it. The matches are drawn by the terminal itself.
  *
  * It does not say whether the case matters: the search ignores the case of ASCII letters and has no option for it.
+ *
+ * @param initialQuery What it is searching for when it opens: what was searched in every terminal, when it opens on one of its rows.
  */
 @Composable
-fun FindBar(session: TerminalSession, onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun FindBar(session: TerminalSession, onClose: () -> Unit, modifier: Modifier = Modifier, initialQuery: String = "", focus: FocusRequester = remember { FocusRequester() }) {
     val colors = Katty.colors
-    val query = rememberTextFieldState()
-    val focus = remember { FocusRequester() }
+    val query = rememberTextFieldState(initialQuery)
     val search = session.search
     val state by search.state.collectAsState()
 

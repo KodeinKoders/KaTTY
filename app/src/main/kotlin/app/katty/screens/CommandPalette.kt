@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.core.PaletteEntry
@@ -135,45 +137,39 @@ fun CommandPalette(
     val listState = rememberLazyListState()
     val run: (PaletteMatch) -> Unit = { match -> onRun(match.entry) }
 
-    Box(modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f)).clickable(interactionSource = null, indication = null, onClick = onDismiss), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier.padding(top = 90.dp).widthIn(max = 640.dp * uiScaleFactor()).fillMaxWidth().shadow(24.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(colors.panel)
-                .border(1.dp, colors.line, RoundedCornerShape(12.dp)).clickable(interactionSource = null, indication = null) {}
-                .semantics { contentDescription = description },
-        ) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(icon, colors.muted, size = 18.dp)
-                TextField(
-                    query,
-                    Modifier.weight(1f).focusRequester(focus).onPreviewKeyEvent { event ->
-                        when (event.listKey()) {
-                            ListKey.DOWN -> { select(selected.stepped(1, matches.size)); true }
-                            ListKey.UP -> { select(selected.stepped(-1, matches.size)); true }
-                            ListKey.ENTER -> { matches.getOrNull(selected)?.let(run); true }
-                            ListKey.ESCAPE -> { onDismiss(); true }
-                            null -> false
-                        }
-                    },
-                    placeholder = { Text(placeholder) },
-                )
-                KeyCap("esc")
-            }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.line))
-            LazyColumn(Modifier.heightIn(max = 420.dp).padding(horizontal = 6.dp, vertical = 4.dp), state = listState) {
-                if (matches.isEmpty()) item { Text("No results.", Modifier.padding(12.dp), color = colors.muted) }
-                itemsIndexed(matches, key = { _, match -> match.entry.id }) { index, match ->
-                    if (index == 0 || matches[index - 1].entry.group != match.entry.group) {
-                        SectionLabel(match.entry.group.title, Modifier.padding(start = 12.dp, top = 10.dp, bottom = 4.dp))
+    PaletteFrame(description, onDismiss, modifier) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(icon, colors.muted, size = 18.dp)
+            TextField(
+                query,
+                Modifier.weight(1f).focusRequester(focus).onPreviewKeyEvent { event ->
+                    when (event.listKey()) {
+                        ListKey.DOWN -> { select(selected.stepped(1, matches.size)); true }
+                        ListKey.UP -> { select(selected.stepped(-1, matches.size)); true }
+                        ListKey.ENTER -> { matches.getOrNull(selected)?.let(run); true }
+                        ListKey.ESCAPE -> { onDismiss(); true }
+                        null -> false
                     }
-                    PaletteRow(match, selected == index) { run(match) }
+                },
+                placeholder = { Text(placeholder) },
+            )
+            KeyCap("esc")
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.line))
+        LazyColumn(Modifier.heightIn(max = 420.dp).padding(horizontal = 6.dp, vertical = 4.dp), state = listState) {
+            if (matches.isEmpty()) item { Text("No results.", Modifier.padding(12.dp), color = colors.muted) }
+            itemsIndexed(matches, key = { _, match -> match.entry.id }) { index, match ->
+                if (index == 0 || matches[index - 1].entry.group != match.entry.group) {
+                    SectionLabel(match.entry.group.title, Modifier.padding(start = 12.dp, top = 10.dp, bottom = 4.dp))
                 }
+                PaletteRow(match, selected == index) { run(match) }
             }
-            Row(Modifier.fillMaxWidth().heightIn(min = 38.dp).background(colors.side).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                FooterHint(listOf("↑", "↓"), "Navigate")
-                FooterHint(listOf("⏎"), "Open")
-                Box(Modifier.weight(1f))
-                AppShortcut.PALETTE.label.takeIf { toggleHint && it.isNotEmpty() }?.let { FooterHint(shortcutKeys(it).split(' '), "Toggle palette") }
-            }
+        }
+        Row(Modifier.fillMaxWidth().heightIn(min = 38.dp).background(colors.side).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            FooterHint(listOf("↑", "↓"), "Navigate")
+            FooterHint(listOf("⏎"), "Open")
+            Box(Modifier.weight(1f))
+            AppShortcut.PALETTE.label.takeIf { toggleHint && it.isNotEmpty() }?.let { FooterHint(shortcutKeys(it).split(' '), "Toggle palette") }
         }
     }
     // The selected row stays in view as the arrows move it.
@@ -182,11 +178,30 @@ fun CommandPalette(
     }
 }
 
+/**
+ * What the palette, and the popups that work like it, are drawn in: a veil over the window, which a click on closes it, and a card at the top that
+ * says what it is ([description]), [maxWidth] wide at most at the default size of the text, and wider as the text grows.
+ */
 @Composable
-private fun FooterHint(keys: List<String>, label: String) {
+internal fun PaletteFrame(description: String, onDismiss: () -> Unit, modifier: Modifier = Modifier, maxWidth: Dp = 640.dp, content: @Composable ColumnScope.() -> Unit) {
+    val colors = Katty.colors
+    Box(modifier.fillMaxSize().background(Color(0xFF0E0F12).copy(alpha = .3f)).clickable(interactionSource = null, indication = null, onClick = onDismiss), contentAlignment = Alignment.TopCenter) {
+        Column(
+            Modifier.padding(top = 90.dp).widthIn(max = maxWidth * uiScaleFactor()).fillMaxWidth().shadow(24.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(colors.panel)
+                .border(1.dp, colors.line, RoundedCornerShape(12.dp)).clickable(interactionSource = null, indication = null) {}
+                .semantics { contentDescription = description },
+            content = content,
+        )
+    }
+}
+
+/** A hint of the footer of the palette: the keys, and what they do. */
+@Composable
+internal fun FooterHint(keys: List<String>, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         keys.forEach { KeyCap(it) }
-        Text(label, color = Katty.colors.muted, fontSize = 12.sp)
+        // On one line: a footer that is too narrow, with a big text, cuts the last hint rather than writing it down the side.
+        OneLine(label, color = Katty.colors.muted, fontSize = 12.sp)
     }
 }
 

@@ -83,6 +83,9 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     FOCUS_DOWN(ShortcutGroup.PANES, "Focus the pane below", listOf(cmd(Awt.VK_DOWN, shift = true))),
     CLEAR_SCREEN(ShortcutGroup.TERMINAL, "Clear the screen and the scrollback", listOf(cmd(Awt.VK_L))),
     FIND(ShortcutGroup.TERMINAL, "Find in the terminal", listOf(cmd(Awt.VK_F))),
+
+    /** Opens the search of every terminal's history, and closes it. */
+    SEARCH_ALL(ShortcutGroup.TERMINAL, "Search in all terminals", listOf(cmd(Awt.VK_F, shift = true))),
     RENAME_TERMINAL(ShortcutGroup.PANES, "Rename the terminal", listOf(cmd(Awt.VK_F2))),
     RENAME_WORKSPACE(ShortcutGroup.PROJECTS, "Rename the workspace", listOf(cmd(Awt.VK_F2, shift = true))),
 

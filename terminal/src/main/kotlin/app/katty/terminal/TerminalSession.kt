@@ -809,7 +809,8 @@ public class TerminalSession private constructor(
     /**
      * The text of the rows [firstRow] to [lastRow] (the last one by default), both included, in the history and the screen: row 0 is the
      * top of the history, in the space of [TerminalScrollbar.offset] and [scrollToRow]. The viewport does not move. A line that wraps is
-     * joined when [unwrap], and the blanks that end a line are dropped.
+     * joined when [unwrap], and the blanks that end a line are dropped. It is the screen that is active: while a full-screen program has the
+     * alternate screen, it is that screen, which has no history, and not the history of the primary one.
      *
      * It is read under the lock that the program's output is written under, and finding a row walks the history: for a very large
      * one, read it in pieces rather than all at once, or the output waits.
@@ -817,17 +818,36 @@ public class TerminalSession private constructor(
      * @throws IllegalArgumentException If the rows are not there.
      */
     public fun readText(firstRow: Long = 0, lastRow: Long? = null, unwrap: Boolean = true): String = whileOpen("") {
+        producer.historyRead()
         terminal.readRows(firstRow, lastRow ?: (terminal.totalRows - 1), unwrap)
+    }
+
+    /**
+     * The text of the rows [firstRow] to [lastRow] (the last one by default), both included, **one line for each row**, blank ones too: the line
+     * at an index is the row [firstRow] plus that index, and a line that wraps is as many lines as it has rows. The blanks that end a row are
+     * dropped. As [readText], under the lock, and in pieces for a large history.
+     *
+     * @throws IllegalArgumentException If the rows are not there.
+     */
+    public fun readLines(firstRow: Long = 0, lastRow: Long? = null): List<String> = whileOpen(emptyList()) {
+        producer.historyRead()
+        val last = lastRow ?: (terminal.totalRows - 1)
+        val lines = terminal.readRows(firstRow, last, unwrap = false).split('\n')
+        // The formatter drops the blank rows that end what it reads: they are lines too.
+        val count = (last - firstRow + 1).toInt()
+        if (lines.size >= count) lines else lines + List(count - lines.size) { "" }
     }
 
     /** The text of the rows that are in view. */
     public fun viewportText(unwrap: Boolean = true): String = whileOpen("") {
+        producer.historyRead()
         val position = terminal.scrollbar
         terminal.readRows(position.offset, position.offset + position.len - 1, unwrap)
     }
 
     /** The text of the screen, where the program's cursor is, whatever part of the history is in view. */
     public fun screenText(unwrap: Boolean = true): String = whileOpen("") {
+        producer.historyRead()
         val total = terminal.totalRows
         terminal.readRows(total - terminal.rows, total - 1, unwrap)
     }

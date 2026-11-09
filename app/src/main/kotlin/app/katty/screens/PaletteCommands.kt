@@ -42,6 +42,8 @@ class PaletteHandlers(
     val closeTerminal: () -> Unit,
     val restartTerminal: () -> Unit,
     val find: () -> Unit,
+    /** Opens the search of every terminal's history. */
+    val searchAll: () -> Unit = {},
     /** Clears the screen and the history of the terminal. */
     val clearScreen: () -> Unit,
     val maximize: () -> Unit,
@@ -211,6 +213,7 @@ fun paletteCommands(
     command("add-project", "Add project folder…", AppShortcut.ADD_PROJECT.label, handlers.addProject)
     command("open-recent", "Open recent project…", AppShortcut.OPEN_RECENT.label, handlers.openRecent)
     handlers.reopenClosed?.let { command("reopen-closed", handlers.reopenLabel, AppShortcut.REOPEN_CLOSED.label, it) }
+    if (state.allTerminals().isNotEmpty()) command("search-all", "Search in all terminals…", AppShortcut.SEARCH_ALL.label, handlers.searchAll)
     if (state.selection.project != null) command("new-workspace", "New workspace", AppShortcut.NEW_WORKSPACE.label, handlers.newWorkspace)
     state.selectedProject?.let { project ->
         val index = state.projects.indexOf(project)

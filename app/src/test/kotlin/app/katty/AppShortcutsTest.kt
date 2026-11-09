@@ -34,6 +34,7 @@ class AppShortcutsTest {
         assertEquals(AppShortcut.JUMP_TO_WAITING, down(Key.J, shift = true).appShortcut())
         assertEquals(AppShortcut.CLEAR_SCREEN, down(Key.L).appShortcut())
         assertEquals(AppShortcut.FIND, down(Key.F).appShortcut())
+        assertEquals(AppShortcut.SEARCH_ALL, down(Key.F, shift = true).appShortcut())
     }
 
     @Test

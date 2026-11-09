@@ -58,6 +58,8 @@ import app.katty.screens.AgentToast
 import app.katty.core.RecentProjects
 import app.katty.core.RecentProjectsFile
 import app.katty.screens.CommandPalette
+import app.katty.screens.SearchAllPopup
+import app.katty.screens.SearchedTerminal
 import app.katty.screens.RecentProjectsPopup
 import app.katty.screens.ShortcutsDialog
 import app.katty.screens.paletteCommands
@@ -91,6 +93,9 @@ import app.katty.screens.TitleBarContent
 import app.katty.screens.Welcome
 import app.katty.screens.WorkspaceArea
 import app.katty.terminals.AgentTracker
+import app.katty.terminals.AllTerminalsSearch
+import app.katty.terminals.SearchTarget
+import app.katty.terminals.searchOrder
 import app.katty.terminals.SessionRegistry
 import app.katty.terminals.SessionUsageTracker
 import app.katty.ui.glyph
@@ -436,7 +441,9 @@ internal fun KattyWindowContent(
                             destinations = state.selection.terminal?.let { destinationsOf(state, it) }.orEmpty(),
                             onMove = { id, to -> store.moveTerminal(id, to) },
                             finding = findingTerminal,
-                            onFind = { findingTerminal = it },
+                            findQuery = controller.findQuery,
+                            findRequest = controller.findRequest,
+                            onFind = controller::openFind,
                             onFindClosed = { findingTerminal = null },
                             onReopen = restartTerminal,
                             onColorScheme = { picking = SchemeTarget.Terminal(it) },
@@ -585,6 +592,25 @@ internal fun KattyWindowContent(
                 paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical, hasSelection = hasSelection)
             }
             CommandPalette(commands.entries, onRun = { entry -> paletteOpen = false; commands.run(entry) }, onDismiss = { paletteOpen = false })
+        }
+        if (controller.searchingAll) {
+            // What was read of the terminals is kept while the popup is open, and let go of with it.
+            val engine = remember { AllTerminalsSearch() }
+            val search = remember(engine) {
+                { query: String ->
+                    val current = store.state.value
+                    val sessions = controller.handles
+                    engine.search(query, current.searchOrder().mapNotNull { id -> sessions[id]?.session?.let { SearchTarget(id, it) } })
+                }
+            }
+            SearchAllPopup(
+                search = search,
+                terminalOf = { id ->
+                    state.locate(id)?.let { location -> SearchedTerminal(describe(location.terminal).title, "${location.project.name} / ${location.workspace.name}") }
+                },
+                onOpen = controller::openSearchResult,
+                onDismiss = { controller.searchingAll = false },
+            )
         }
         if (recentOpen) {
             // The folders that can be opened are asked once, when the list opens.

@@ -65,6 +65,15 @@ class UiScaleRenderTest {
     @Test
     fun drawsThePalette() = draws("palette", 1000, 700) { CommandPalette(entries, onRun = {}, onDismiss = {}) }
 
+    @Test
+    fun drawsTheSearchOfEveryTerminal() = draws("search-all", 1000, 700) {
+        val found = app.katty.terminals.AllTerminalsResults(
+            "needle",
+            listOf(app.katty.terminals.TerminalMatches(app.katty.core.TerminalId("a"), listOf(app.katty.core.LineMatch(3, "the needle is here", listOf(4..9))), more = false)),
+        )
+        SearchAllPopup({ kotlinx.coroutines.flow.flowOf(found) }, { SearchedTerminal("zsh", "api / main") }, { _, _, _ -> }, {}, initialQuery = "needle", initialResults = found)
+    }
+
     // A build of a branch has one line more, and the window grows with the text.
     @Test
     fun drawsTheAboutWindow() {

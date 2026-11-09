@@ -345,6 +345,18 @@ Escape does not: the programs in a terminal use it.
 * There is no match-case option: libghostty's search has none.
 
 
+=== Search in all terminals
+
+* ⌘⇧F, or "Search in all terminals…" in the palette, opens a popup over the window, as the palette is, with a field that has the keyboard.
+* It searches the history and the screen of every terminal of every workspace, the ones that are not shown too, once the text has not changed for 150 ms: ASCII letters without regard for the case, no regular expression, as the find bar.
+* The rows that have the text are listed under their terminal (its name, its project and workspace, how many rows), the last rows of each terminal first, the selected terminal first and then the others in the order of the sidebar.
+* At most 100 rows of a terminal and 1 000 in all are listed, which a `+` after the count says; the header says "N results in M terminals", "Searching…" or "No results".
+* The arrows move the selection, Enter or a click goes to the row, Escape, ⌘⇧F or a click outside close it.
+* Going to a row shows its terminal (the Terminals view, from the board too), scrolls its history so that the row is in its upper third, and opens its find bar on the text, which has the keyboard: every match is highlighted, and Enter goes to the next one.
+* Only the screen that is active is searched: while a full-screen program runs, it is its screen and not the history of the shell.
+* A text that goes on onto the next row is not found.
+
+
 [#agent-state]
 == Agent state
 
@@ -678,7 +690,7 @@ In it the label is on two lines ("AGENT", "USAGE") when the items are full, with
 ** WORKSPACES: each workspace, with its project;
 ** TERMINALS: each terminal, with its workspace and state (idle, working, needs input, done);
 ** COMMANDS: with their shortcuts, the ones that need a workspace or a terminal only when there is one.
-* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next waiting agent, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
+* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Search in all terminals…, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next waiting agent, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
 * What is typed is matched with the labels: its letters, in order, without regard for the case and the spaces.
 A match whose letters are together, at the start of the text or of a word, in a short label, is better; the matched letters are bold in the accent color.
 * The groups stay in their order; in a group, the best match is first; with nothing typed, everything is in its order.
@@ -726,6 +738,9 @@ The window's shortcuts are handled before the terminal sees them.
 
 | ⌘F, ⌘A, ⌘L
 | Find, select all, clear the scrollback: in the terminal that has the keyboard.
+
+| ⌘⇧F
+| Search in all terminals.
 
 | ⌘C, ⌘V
 | Copy, paste: the terminal's own.

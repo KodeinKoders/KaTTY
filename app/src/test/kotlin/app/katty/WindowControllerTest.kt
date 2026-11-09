@@ -460,4 +460,66 @@ class WindowControllerTest {
         controller.closeWorkspace(workspace.id)
         assertEquals("Reopen closed workspace “${workspace.name}”", commands().second.single().label)
     }
+
+    @Test
+    fun theShortcutOpensAndClosesTheSearchOfEveryTerminalWhichKeepsTheOthersFromActing() {
+        controller.handle(AppShortcut.SEARCH_ALL, null)
+        assertTrue(controller.searchingAll)
+        assertTrue(controller.overlayOpen)
+
+        val before = state
+        assertTrue(controller.handle(AppShortcut.SPLIT_MAIN, null), "Swallowed")
+        assertEquals(before, state)
+
+        controller.handle(AppShortcut.SEARCH_ALL, null)
+        assertFalse(controller.searchingAll)
+    }
+
+    @Test
+    fun thePaletteOpensTheSearchOfEveryTerminalInItsPlace() {
+        controller.paletteOpen = true
+
+        controller.paletteHandlers().searchAll()
+
+        assertTrue(controller.searchingAll)
+        assertFalse(controller.paletteOpen)
+    }
+
+    @Test
+    fun goingToARowOfTheSearchShowsItsTerminalWithItsFindBarOnTheText() {
+        val other = state.selectedWorkspace!!.layout.terminals().first { it.id != terminal }.id
+        showBoard()
+        controller.searchingAll = true
+        val request = controller.findRequest
+
+        controller.openSearchResult(other, row = 40, query = "needle")
+
+        assertFalse(controller.searchingAll)
+        assertEquals(MainView.TERMINALS, state.settings.view, "From the board too")
+        assertEquals(other, terminal)
+        assertEquals(other, controller.findingTerminal)
+        assertEquals("needle", controller.findQuery)
+        assertEquals(request + 1, controller.findRequest, "A bar that is open is made again with the text")
+    }
+
+    @Test
+    fun aFindBarThatTheUserOpensStartsEmpty() {
+        controller.openSearchResult(terminal, row = 0, query = "needle")
+        controller.findingTerminal = null
+
+        controller.handle(AppShortcut.FIND, null)
+
+        assertEquals(terminal, controller.findingTerminal)
+        assertEquals("", controller.findQuery)
+    }
+
+    @Test
+    fun aRowOfATerminalThatIsGoneGoesNowhere() {
+        controller.searchingAll = true
+
+        controller.openSearchResult(TerminalId("gone"), row = 0, query = "needle")
+
+        assertFalse(controller.searchingAll)
+        assertNull(controller.findingTerminal)
+    }
 }
