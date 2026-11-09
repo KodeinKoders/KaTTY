@@ -46,7 +46,7 @@ class SessionRegistryTest {
         scope.cancel()
     }
 
-    private fun sync() = registry.sync(store.state.value)
+    private fun sync(dark: Boolean = false) = registry.sync(store.state.value, dark)
 
     @Test
     fun aChangeOfTheCursorIsGivenToTheRunningSessions() {
@@ -325,10 +325,40 @@ class SessionRegistryTest {
         store.addProject("/tmp")
         sync()
 
-        store.updateSettings { it.copy(colorScheme = "Nord") }
+        store.updateSettings { it.copy(lightColorScheme = "Nord") }
         sync()
 
         assertEquals(listOf("Alabaster", "Nord"), themes)
+    }
+
+    @Test
+    fun aTerminalWithoutASchemeOfItsOwnFollowsTheThemeOfTheApplication() {
+        store.addProject("/tmp")
+        val follows = store.state.value.selection.terminal!!
+        val own = store.split(follows, app.katty.core.SplitDirection.ROW)!!
+        store.setColorScheme(own, "Nord")
+        sync()
+        assertEquals("Alabaster", registry.schemeOf(follows))
+
+        sync(dark = true)
+
+        assertEquals("Dracula", registry.schemeOf(follows))
+        assertEquals("Nord", registry.schemeOf(own), "A terminal's own scheme is its own in both themes")
+        sync(dark = false)
+        assertEquals("Alabaster", registry.schemeOf(follows))
+        assertEquals(setOf("Alabaster", "Nord", "Dracula"), themes.toSet())
+        assertEquals(themes.distinct(), themes, "Each scheme is read once")
+    }
+
+    @Test
+    fun aTerminalThatIsStartedAgainInTheDarkTakesTheDarkScheme() {
+        store.addProject("/tmp")
+        val id = store.state.value.selection.terminal!!
+        sync(dark = true)
+
+        registry.restart(id)
+
+        assertEquals("Dracula", registry.schemeOf(id))
     }
 
     @Test

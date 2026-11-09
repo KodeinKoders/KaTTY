@@ -98,8 +98,8 @@ class PaletteHandlers(
     /** Goes back to calling the selected terminal after what runs in it. */
     val useProcessName: () -> Unit = {},
     val copyDirectory: () -> Unit = {},
-    /** Opens the choice of the color scheme that the terminals have unless they have one of their own. */
-    val defaultColorScheme: () -> Unit = {},
+    /** Opens the choice of the color scheme that the terminals have unless they have one of their own, in the dark or the light application. */
+    val defaultColorScheme: (dark: Boolean) -> Unit = {},
     val toggleLigatures: () -> Unit = {},
     val refreshUsage: () -> Unit = {},
     val toggleCompactUsage: () -> Unit = {},
@@ -286,7 +286,8 @@ fun paletteCommands(
     command("menu", "Open the main menu", AppShortcut.MENU.label, handlers.openMenu)
     command("edit-shortcuts", "Edit keyboard shortcuts…", action = handlers.editShortcuts)
     command("about", "About KaTTY", action = handlers.openAbout)
-    command("default-color-scheme", "Choose the default color scheme…", action = handlers.defaultColorScheme)
+    command("light-color-scheme", "Choose the light color scheme…") { handlers.defaultColorScheme(false) }
+    command("dark-color-scheme", "Choose the dark color scheme…") { handlers.defaultColorScheme(true) }
     command("ligatures", if (state.settings.ligatures) "Turn font ligatures off" else "Turn font ligatures on", action = handlers.toggleLigatures)
     command("usage-refresh", "Refresh the usage of the agents", action = handlers.refreshUsage)
     command("usage-compact", if (state.settings.compactUsage) "Show the usage in full" else "Show the usage in a compact form", action = handlers.toggleCompactUsage)

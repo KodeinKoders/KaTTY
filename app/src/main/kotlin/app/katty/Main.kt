@@ -1,6 +1,5 @@
 package app.katty
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
@@ -31,6 +30,7 @@ import app.katty.terminals.SessionUsageTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.ui.KattyTheme
 import app.katty.ui.UiScale
+import app.katty.ui.rememberSystemDark
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -133,10 +133,12 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     DisposableEffect(Unit) { takeQuitItem(requestQuit); onDispose { } }
 
     val settings by store.state.collectAsState().let { state -> derivedStateOf { state.value.settings } }
+    // The system's appearance is read again while the theme follows it: the terminals that have no scheme of their own change with it.
+    val systemDark by rememberSystemDark(follow = settings.theme == ThemeMode.SYSTEM)
     val dark = when (settings.theme) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.SYSTEM -> systemDark
     }
     // The shortcuts of the window are handled by the window, which sees the keys before whatever has the focus.
     val windowKeys = remember { WindowKeys() }

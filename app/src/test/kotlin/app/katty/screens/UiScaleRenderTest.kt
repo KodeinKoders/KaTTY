@@ -97,7 +97,7 @@ class UiScaleRenderTest {
     @Test
     fun drawsTheMainMenu() = draws("menu", 700, 1300) {
         Box(Modifier.fillMaxSize().padding(8.dp)) {
-            MainMenu(Settings(layout = LayoutMode.HORIZONTAL), onChange = {}, colorScheme = null, fontFamilies = emptyList(), onPickColorScheme = {}, onDismiss = {})
+            MainMenu(Settings(layout = LayoutMode.HORIZONTAL), onChange = {}, lightColorScheme = null, darkColorScheme = null, fontFamilies = emptyList(), onPickColorScheme = {}, onDismiss = {})
         }
     }
 }

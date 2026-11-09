@@ -1,5 +1,7 @@
 package app.katty.core
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /** How the application is arranged. */
@@ -109,7 +111,9 @@ public enum class MainView {
 /**
  * The settings, all of them in the main menu.
  *
- * @param colorScheme The name of the default color scheme of the terminals (a terminal can have its own).
+ * @param lightColorScheme The name of the color scheme of the terminals that have none of their own while the application is light ([colorScheme]).
+ * @param darkColorScheme The one while it is dark.
+ * @param colorScheme The one scheme of a file written before there were two: [StateFile] reads it into the two and it is never written.
  * @param fontFamily The family of the terminals' font; `null` for the bundled JetBrains Mono.
  * @param fontSize In pixels.
  * @param shortcuts What the user changed of the shortcuts of the window, by the name of the shortcut and the keys written as the application writes
@@ -135,11 +139,14 @@ public enum class MainView {
  * @param usageHidden The limits of those agents that are not shown, each made by [usageKey]. It is the hidden ones that are kept, so that a
  * limit that an agent starts to report later is shown.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class Settings(
     val layout: LayoutMode = LayoutMode.AUTO,
     val theme: ThemeMode = ThemeMode.LIGHT,
-    val colorScheme: String = DEFAULT_COLOR_SCHEME,
+    val lightColorScheme: String = DEFAULT_LIGHT_COLOR_SCHEME,
+    val darkColorScheme: String = DEFAULT_DARK_COLOR_SCHEME,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val colorScheme: String? = null,
     val fontFamily: String? = null,
     val fontSize: Float = DEFAULT_FONT_SIZE,
     val uiScale: Float = DEFAULT_UI_SCALE,
@@ -165,7 +172,8 @@ public data class Settings(
     val view: MainView = MainView.TERMINALS,
 ) {
     public companion object {
-        public const val DEFAULT_COLOR_SCHEME: String = "Alabaster"
+        public const val DEFAULT_LIGHT_COLOR_SCHEME: String = "Alabaster"
+        public const val DEFAULT_DARK_COLOR_SCHEME: String = "Dracula"
         public const val DEFAULT_FONT_SIZE: Float = 14f
         public const val MIN_FONT_SIZE: Float = 8f
         public const val MAX_FONT_SIZE: Float = 32f
@@ -173,6 +181,19 @@ public data class Settings(
 
         /** The sizes that the text of the application can have, from the smallest: one that is kept in the file and is not one of them is the nearest. */
         public val UI_SCALES: List<Float> = listOf(0.8f, 0.9f, 1f, 1.1f, 1.25f, 1.5f, 1.75f)
+    }
+
+    /** The color scheme of the terminals that have none of their own, in the [dark] or the light application. */
+    public fun colorScheme(dark: Boolean): String = if (dark) darkColorScheme else lightColorScheme
+
+    /**
+     * These settings with the one scheme of a file written before there were two ([colorScheme]) read into them. The scheme that was the default
+     * then (Alabaster, which an older file always writes) was not the user's choice, so the dark one is the new default; any other is theirs, and
+     * is the scheme of both until they choose another for one. A file of now has none, and its settings are as they are.
+     */
+    public fun migrated(): Settings {
+        val old = colorScheme ?: return this
+        return copy(lightColorScheme = old, darkColorScheme = if (old == DEFAULT_LIGHT_COLOR_SCHEME) DEFAULT_DARK_COLOR_SCHEME else old, colorScheme = null)
     }
 
     /** [uiScale] as it is used: the one of [UI_SCALES] that is nearest to it, so that a file that was edited by hand cannot make the text unreadable. */

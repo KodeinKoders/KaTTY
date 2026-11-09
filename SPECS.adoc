@@ -120,10 +120,14 @@ After any change, the selection is made to point at something: a project, worksp
 
 | Theme
 | Light
-| Light, Dark, System (follows macOS).
+| Light, Dark, System (follows macOS, and its changes while the application runs).
 
-| Default color scheme
+| Default color scheme of the light theme
 | Alabaster
+| Any of the 811 iTerm2 schemes.
+
+| Default color scheme of the dark theme
+| Dracula
 | Any of the 811 iTerm2 schemes.
 
 | Font family
@@ -219,7 +223,7 @@ It is added to the right of everything in the target (a new root split, `ROW`), 
 A workspace left without terminals is removed.
 
 | Color scheme of a terminal
-| A scheme of its own, or the default of the settings.
+| A scheme of its own, in both themes, or the default of the settings for the theme of the application, which changes with it.
 
 | Resize a split
 | By dragging the gap between panes; the ratio is kept, within 0.05 and 0.95, and a side is never smaller than 160 px.
@@ -542,7 +546,7 @@ The main menu, opened from the title bar, is the only place where the applicatio
 
 * LAYOUT: Auto, Horizontal, Vertical, with "Auto uses Vertical when the window is taller than it is wide."
 * THEME: Light, Dark, System.
-* TERMINAL COLOR SCHEME: a field with four swatches of the scheme and its name, which opens the color scheme picker.
+* TERMINAL COLOR SCHEME: a field for the light theme and one for the dark theme, each with four swatches of the scheme and its name, which opens the color scheme picker on that theme; "The terminals that have no scheme of their own follow the theme of the application."
 * FONT FAMILY: a field that opens the list of families ("JetBrains Mono (bundled)" first, then the monospaced families of the system); the font size with − and + by 0.5 px; "Font ligatures" with "Shows sequences like => and != as single glyphs."
 
 A change applies at once to every terminal.
@@ -551,7 +555,7 @@ A family that cannot be loaded gives the bundled font.
 
 === Color scheme picker
 
-* It chooses the default scheme (from the main menu) or the scheme of one terminal (from its menu, with "Default" first, which says the default's name).
+* It chooses a default scheme (from the main menu or the palette), with tabs "Light mode" and "Dark mode" for the scheme of each theme, open on the one of the application's theme; or the scheme of one terminal (from its menu, with "Default" first, which says the names of both default schemes and previews the one of the application's theme).
 * It has a search field (anywhere in the name, without regard for the case), a filter All / Light / Dark with the number of schemes of each, and a list with a swatch, the name and the kind of each scheme.
 * It shows the chosen scheme in a real terminal, with the swatches of its palette (background, foreground, red, green, yellow, blue, magenta, cyan).
 * A click applies the scheme at once; the picker stays open until its close button or Escape.

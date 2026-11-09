@@ -76,8 +76,8 @@ internal class QuitRequest {
 
 /** Whose color scheme the picker chooses. */
 internal sealed interface SchemeTarget {
-    /** The default of the settings, which the terminals that have no scheme of their own follow. */
-    data object Default : SchemeTarget
+    /** The default of the settings for the [dark] or the light application, which the terminals that have no scheme of their own follow. */
+    data class Default(val dark: Boolean) : SchemeTarget
 
     data class Terminal(val id: TerminalId) : SchemeTarget
 }
@@ -567,7 +567,7 @@ internal class WindowController(
         moveTerminalTo = { workspace -> state.selection.terminal?.let { store.moveTerminal(it, workspace) } },
         useProcessName = { state.selection.terminal?.let { store.renameTerminal(it, null) } },
         copyDirectory = { state.selection.terminal?.let { id -> state.locate(id)?.terminal?.directory?.let(platform::copy) } },
-        defaultColorScheme = { picking = SchemeTarget.Default },
+        defaultColorScheme = { dark -> picking = SchemeTarget.Default(dark) },
         toggleLigatures = { store.updateSettings { it.copy(ligatures = !it.ligatures) } },
         refreshUsage = { refreshUsage() },
         toggleCompactUsage = { store.updateSettings { it.copy(compactUsage = !it.compactUsage) } },

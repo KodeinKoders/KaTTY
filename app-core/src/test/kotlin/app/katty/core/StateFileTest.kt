@@ -131,6 +131,40 @@ class StateFileTest {
     }
 
     @Test
+    fun theOneColorSchemeOfAnOlderFileIsTheSchemeOfBothThemes() {
+        path.writeText("""{"version": ${KattyState.VERSION}, "settings": {"colorScheme": "Nord"}}""")
+
+        val settings = file.load().settings
+
+        assertEquals("Nord", settings.lightColorScheme)
+        assertEquals("Nord", settings.darkColorScheme, "What the user chose stays until they choose another for a theme")
+        assertEquals(null, settings.colorScheme)
+    }
+
+    @Test
+    fun theDefaultSchemeOfAnOlderFileWasNoChoiceAndTheDarkThemeGetsItsOwn() {
+        // An older file always wrote the scheme, the default too.
+        path.writeText("""{"version": ${KattyState.VERSION}, "settings": {"colorScheme": "Alabaster"}}""")
+
+        val settings = file.load().settings
+
+        assertEquals("Alabaster", settings.lightColorScheme)
+        assertEquals("Dracula", settings.darkColorScheme)
+    }
+
+    @Test
+    fun theSchemesOfBothThemesSurviveAndTheOldOneIsNotWritten() {
+        val state = KattyState(settings = Settings(lightColorScheme = "GitHub", darkColorScheme = "Nord"))
+
+        file.save(state)
+
+        assertEquals(state.settings, file.load().settings)
+        assertFalse("\"colorScheme\"" in path.readText(), "Only the schemes of the two themes are written")
+        assertEquals("Nord", file.load().settings.colorScheme(dark = true))
+        assertEquals("GitHub", file.load().settings.colorScheme(dark = false))
+    }
+
+    @Test
     fun aStateSurvivesBeingWrittenAndRead() {
         val state = built()
 

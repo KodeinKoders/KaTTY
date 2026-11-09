@@ -116,17 +116,19 @@ const val BUNDLED_FONT_NAME = "JetBrains Mono"
 /**
  * The main menu: the only place where the application is set up. It opens under the button that [onDismiss] closes it from.
  *
- * @param colorScheme The entry of the default color scheme, for its swatch.
+ * @param lightColorScheme The entry of the color scheme of the terminals in the light application, for its swatch.
+ * @param darkColorScheme The one of the dark application.
  * @param fontFamilies The monospaced families of the system, which may still be being listed.
- * @param onPickColorScheme Opens the picker of the default color scheme.
+ * @param onPickColorScheme Opens the picker of the color scheme of the dark or of the light application.
  */
 @Composable
 fun MainMenu(
     settings: Settings,
     onChange: ((Settings) -> Settings) -> Unit,
-    colorScheme: ITermColorSchemeInfo?,
+    lightColorScheme: ITermColorSchemeInfo?,
+    darkColorScheme: ITermColorSchemeInfo?,
     fontFamilies: List<String>,
-    onPickColorScheme: () -> Unit,
+    onPickColorScheme: (dark: Boolean) -> Unit,
     onDismiss: () -> Unit,
     onEditShortcuts: () -> Unit = {},
     onAbout: () -> Unit = {},
@@ -166,9 +168,9 @@ fun MainMenu(
                     }
                     Separator()
                     Section("TERMINAL COLOR SCHEME") {
-                        Field(settings.colorScheme, "Terminal color scheme: ${settings.colorScheme}", onPickColorScheme) {
-                            if (colorScheme != null) Swatches(colorScheme)
-                        }
+                        SchemeField("Light", settings.lightColorScheme, lightColorScheme) { onPickColorScheme(false) }
+                        SchemeField("Dark", settings.darkColorScheme, darkColorScheme) { onPickColorScheme(true) }
+                        Caption("The terminals that have no scheme of their own follow the theme of the application.")
                     }
                     Separator()
                     Section("CURSOR") {
@@ -306,10 +308,10 @@ private fun Caption(text: String) {
 
 /** A field that opens a choice: its value, and a chevron. */
 @Composable
-internal fun Field(value: String, description: String, onClick: () -> Unit, chevron: Boolean = true, leading: @Composable () -> Unit = {}) {
+internal fun Field(value: String, description: String, onClick: () -> Unit, chevron: Boolean = true, modifier: Modifier = Modifier, leading: @Composable () -> Unit = {}) {
     val colors = Katty.colors
     Row(
-        Modifier.padding(horizontal = 4.dp).fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).border(1.dp, colors.line, RoundedCornerShape(5.dp))
+        modifier.padding(horizontal = 4.dp).fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).border(1.dp, colors.line, RoundedCornerShape(5.dp))
             .semantics { contentDescription = description }
             .clickable(role = Role.DropdownList, onClick = onClick)
             .padding(horizontal = 8.dp),
@@ -319,6 +321,17 @@ internal fun Field(value: String, description: String, onClick: () -> Unit, chev
         leading()
         OneLine(value, Modifier.weight(1f), color = colors.text)
         if (chevron) Icon(KattyIcons.ChevronDown, colors.muted, size = 14.dp)
+    }
+}
+
+/** The color scheme of the terminals in one theme of the application ([mode]: Light or Dark), with its swatch: a click opens the picker on it. */
+@Composable
+private fun SchemeField(mode: String, name: String, scheme: ITermColorSchemeInfo?, onClick: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(mode, Modifier.width(40.dp * uiScaleFactor()).padding(start = 4.dp), color = Katty.colors.muted)
+        Field(name, "Terminal color scheme, ${mode.lowercase()} theme: $name", onClick, modifier = Modifier.weight(1f)) {
+            if (scheme != null) Swatches(scheme)
+        }
     }
 }
 

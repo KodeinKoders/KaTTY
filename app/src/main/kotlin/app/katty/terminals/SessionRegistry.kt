@@ -187,9 +187,19 @@ class SessionRegistry(
 
     private fun theme(name: String): TerminalTheme? = themes.computeIfAbsent(name) { java.util.Optional.ofNullable(loadTheme(it)) }.orElse(null)
 
-    /** Makes the sessions match the terminals of [state]: the shells of the new ones are started, the ones that are gone are closed. */
+    // Whether the application was dark at the last sync: the terminals that have no scheme of their own take the one of that mode, and so does one
+    // that is started again.
+    @Volatile
+    private var dark = false
+
+    /**
+     * Makes the sessions match the terminals of [state]: the shells of the new ones are started, the ones that are gone are closed. The terminals
+     * that have no color scheme of their own take the one of the settings for a [dark] or a light application, and are given the other when it
+     * changes.
+     */
     @Synchronized
-    fun sync(state: KattyState) {
+    fun sync(state: KattyState, dark: Boolean = false) {
+        this.dark = dark
         val terminals = state.allTerminals()
         val wanted = terminals.map { it.terminal.id }.toSet()
         val current = mutableHandles.value
@@ -214,7 +224,7 @@ class SessionRegistry(
         generations.keys.retainAll(wanted)
         for (place in terminals) {
             val id = place.terminal.id
-            val scheme = place.terminal.colorScheme ?: state.settings.colorScheme
+            val scheme = place.terminal.colorScheme ?: state.settings.colorScheme(dark)
             if (id !in current && id !in starting) {
                 // Where it starts is only worked out for a terminal that is new: it asks the file system.
                 begin(startingPlace(place.terminal, place.project.directory), scheme, generations[id] ?: 0)
@@ -307,7 +317,7 @@ class SessionRegistry(
         mutableHandles.value = mutableHandles.value - id
         val generation = (generations[id] ?: 0) + 1
         generations[id] = generation
-        begin(spec, spec.colorScheme ?: state.settings.colorScheme, generation)
+        begin(spec, spec.colorScheme ?: state.settings.colorScheme(dark), generation)
         applyVisibility()
     }
 

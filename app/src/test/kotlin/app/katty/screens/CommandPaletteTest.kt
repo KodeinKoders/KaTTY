@@ -483,7 +483,7 @@ class CommandPaletteTest {
         store.updateSettings { it.copy(showUsage = false) }
         assertTrue("Show agent usage" in labels())
         assertTrue(labels().none { it.startsWith("Show agent usage in") }, "No choice of place while it is hidden")
-        for (label in listOf("Choose the default color scheme…", "Refresh the usage of the agents", "Open the main menu", "Bigger terminal font", "Smaller terminal font", "Default terminal font size", "Bigger interface text", "Smaller interface text", "Default interface text size", "Show the agents that need you")) {
+        for (label in listOf("Choose the light color scheme…", "Choose the dark color scheme…", "Refresh the usage of the agents", "Open the main menu", "Bigger terminal font", "Smaller terminal font", "Default terminal font size", "Bigger interface text", "Smaller interface text", "Default interface text size", "Show the agents that need you")) {
             assertTrue(label in labels(), label)
         }
     }

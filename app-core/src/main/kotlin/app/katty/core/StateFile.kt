@@ -50,7 +50,9 @@ public class StateFile(private val path: Path) {
             return keepAside("version-$version")
         }
         return try {
-            JSON.decodeFromString(KattyState.serializer(), text).let { it.copy(selection = it.selection.copy(maximized = null)) }.normalized()
+            // The settings of an older file are read into what they are now: its one color scheme into the light and the dark ones.
+            JSON.decodeFromString(KattyState.serializer(), text)
+                .let { it.copy(selection = it.selection.copy(maximized = null), settings = it.settings.migrated()) }.normalized()
         } catch (e: SerializationException) {
             logger.error("{} cannot be read", path, e)
             keepAside("damaged")

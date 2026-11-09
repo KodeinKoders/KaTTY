@@ -153,6 +153,38 @@ class ColorSchemePickerTest {
     }
 
     @Test
+    fun theSchemesOfTheLightAndTheDarkThemesAreEachChosenInTheirTab() = runComposeUiTest {
+        val schemes = androidx.compose.runtime.mutableStateMapOf(false to "Atom One Light", true to "Dracula")
+        var mode by androidx.compose.runtime.mutableStateOf(false)
+        setContent {
+            KattyTheme(false) {
+                ColorSchemePicker(entries, selected = schemes.getValue(mode), mode = mode, onMode = { mode = it }, onSelect = { schemes[mode] = it!! }, onClose = {})
+            }
+        }
+
+        onNodeWithContentDescription("Atom One Light").assertIsSelected()
+        onNodeWithText("Dark mode").performClick()
+        onNodeWithContentDescription("Dracula").assertIsSelected()
+        onNodeWithContentDescription("Solarized Dark").performClick()
+        onNodeWithText("Light mode").performClick()
+        onNodeWithContentDescription("Solarized Light").performClick()
+
+        assertEquals(mapOf(false to "Solarized Light", true to "Solarized Dark"), schemes.toMap())
+    }
+
+    @Test
+    fun aTerminalsSchemeHasNoTabsAndItsDefaultSaysTheSchemesOfBothThemes() = runComposeUiTest {
+        setContent {
+            KattyTheme(false) {
+                ColorSchemePicker(entries, selected = null, defaultName = "Atom One Light", defaultLabel = "Atom One Light / Dracula", onSelect = {}, onClose = {})
+            }
+        }
+
+        onNodeWithText("Atom One Light / Dracula").assertExists()
+        onNodeWithText("Dark mode").assertDoesNotExist()
+    }
+
+    @Test
     fun theCloseButtonCloses() = runComposeUiTest {
         var closed = false
         setContent { KattyTheme(false) { ColorSchemePicker(entries, selected = "Dracula", onSelect = {}, onClose = { closed = true }) } }
@@ -168,7 +200,7 @@ class ColorSchemePickerTest {
         val real = ITermColorSchemes.entries
         for (dark in listOf(false, true)) {
             val rendered = render("color-scheme-picker-${if (dark) "dark" else "light"}", 1920, 1300, dark = dark) {
-                ColorSchemePicker(real, selected = names[0], onSelect = {}, onClose = {})
+                ColorSchemePicker(real, selected = names[0], onSelect = {}, onClose = {}, mode = dark)
             }
             assertTrue(rendered.count(0x282A36, tolerance = 4) > 1000, "The preview is drawn in the colors of Dracula")
         }

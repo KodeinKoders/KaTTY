@@ -276,13 +276,16 @@ internal fun KattyWindowContent(
     }
 
     // The sessions follow the terminals of the store, and the ones that are not on the screen are paused.
-    // Only when a terminal comes or goes, or its scheme changes: the state changes at every `cd` and every move of a divider.
-    val sessionsKey = remember(state.projects, state.settings.colorScheme) {
-        state.allTerminals().map { it.terminal.id to (it.terminal.colorScheme ?: state.settings.colorScheme) }
+    // Only when a terminal comes or goes, or its scheme changes: the state changes at every `cd` and every move of a divider. The terminals that have
+    // no scheme of their own take the one of the application's theme, which is the one this window is drawn in.
+    val dark = Katty.colors.dark
+    val defaultScheme = settings.colorScheme(dark)
+    val sessionsKey = remember(state.projects, defaultScheme) {
+        state.allTerminals().map { it.terminal.id to (it.terminal.colorScheme ?: defaultScheme) }
     }
     // And when what the sessions take of the settings changes: the cursor, bold text, the scrollback, and whether what they show is kept.
     val sessionSettings = listOf(settings.cursorShape, settings.cursorBlink, settings.boldIsBright, settings.scrollback, settings.restoreContents)
-    LaunchedEffect(sessionsKey, sessionSettings) { registry.sync(store.state.value) }
+    LaunchedEffect(sessionsKey, sessionSettings) { registry.sync(store.state.value, dark) }
     // No terminal is on the screen while the board is.
     val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
     LaunchedEffect(shown, handles) { controller.dropStaleFind() }
@@ -389,9 +392,10 @@ internal fun KattyWindowContent(
                         MainMenu(
                             settings = settings,
                             onChange = store::updateSettings,
-                            colorScheme = ITermColorSchemes.entries.firstOrNull { it.name == settings.colorScheme },
+                            lightColorScheme = ITermColorSchemes.entries.firstOrNull { it.name == settings.lightColorScheme },
+                            darkColorScheme = ITermColorSchemes.entries.firstOrNull { it.name == settings.darkColorScheme },
                             fontFamilies = families,
-                            onPickColorScheme = { menuOpen = false; picking = SchemeTarget.Default },
+                            onPickColorScheme = { mode -> menuOpen = false; picking = SchemeTarget.Default(mode) },
                             onDismiss = { menuOpen = false },
                             onEditShortcuts = { menuOpen = false; editingShortcuts = true },
                             onAbout = { menuOpen = false; onOpenAbout() },
@@ -592,16 +596,22 @@ internal fun KattyWindowContent(
         }
         picking?.let { target ->
             val chosen = when (target) {
-                SchemeTarget.Default -> settings.colorScheme
+                is SchemeTarget.Default -> settings.colorScheme(target.dark)
                 is SchemeTarget.Terminal -> state.locate(target.id)?.terminal?.colorScheme
             }
             ColorSchemePicker(
                 entries = ITermColorSchemes.entries,
                 selected = chosen,
-                defaultName = if (target is SchemeTarget.Terminal) settings.colorScheme else null,
+                // A terminal that follows the default shows the one of the application's theme now, and takes the other with it.
+                defaultName = if (target is SchemeTarget.Terminal) defaultScheme else null,
+                defaultLabel = if (target is SchemeTarget.Terminal) "${settings.lightColorScheme} / ${settings.darkColorScheme}" else null,
+                mode = (target as? SchemeTarget.Default)?.dark,
+                onMode = { mode -> picking = SchemeTarget.Default(mode) },
                 onSelect = { name ->
                     when (target) {
-                        SchemeTarget.Default -> if (name != null) store.updateSettings { it.copy(colorScheme = name) }
+                        is SchemeTarget.Default -> if (name != null) {
+                            store.updateSettings { if (target.dark) it.copy(darkColorScheme = name) else it.copy(lightColorScheme = name) }
+                        }
                         is SchemeTarget.Terminal -> store.setColorScheme(target.id, name)
                     }
                 },

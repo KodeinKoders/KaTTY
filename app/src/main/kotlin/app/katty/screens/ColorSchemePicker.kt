@@ -101,7 +101,11 @@ internal fun TerminalColor.toColor(): Color = Color(0xFF000000.toInt() or rgb)
  * is the first), as a click would, and Enter and Escape close the picker.
  *
  * @param selected The scheme that is chosen; `null` for the default, when there is one to choose ([defaultName] says which it is).
- * @param defaultName The name of the default scheme, when what is being chosen is the scheme of a terminal that may follow it.
+ * @param defaultName The name of the default scheme that a terminal that follows it shows now, when what is being chosen is the scheme of such a terminal:
+ * what the preview shows for the default.
+ * @param defaultLabel What the row of the default says of it, when it is not [defaultName]: the schemes of the light and of the dark application.
+ * @param mode Whether the default scheme of the [dark][mode] or of the light application is being chosen, which tabs above the search say and change
+ * through [onMode]; `null` when what is chosen is not one of them (a terminal's own).
  */
 @Composable
 fun ColorSchemePicker(
@@ -111,6 +115,9 @@ fun ColorSchemePicker(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     defaultName: String? = null,
+    defaultLabel: String? = null,
+    mode: Boolean? = null,
+    onMode: (dark: Boolean) -> Unit = {},
 ) {
     val colors = Katty.colors
     val query = rememberTextFieldState()
@@ -152,6 +159,10 @@ fun ColorSchemePicker(
             }
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Column(Modifier.width(340.dp * uiScaleFactor()).fillMaxHeight().padding(start = 12.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Which of the two defaults is chosen: the one of the light application or the one of the dark one.
+                    if (mode != null) {
+                        Choice(listOf(ChoiceOption(false, "Light mode"), ChoiceOption(true, "Dark mode")), mode, onMode, Modifier.semantics { contentDescription = "Application mode" })
+                    }
                     TextField(
                         query,
                         Modifier.fillMaxWidth().focusRequester(focus).semantics { contentDescription = "Search color schemes" }.onPreviewKeyEvent { event ->
@@ -181,7 +192,7 @@ fun ColorSchemePicker(
                     // The chosen scheme is in view when the picker opens: the list starts at it, rather than scrolls to it once it is laid out.
                     LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState) {
                         if (defaultName != null && hasDefaultRow) {
-                            item(key = "default") { DefaultRow(defaultName, selected == null) { onSelect(null) } }
+                            item(key = "default") { DefaultRow(defaultLabel ?: defaultName, selected == null) { onSelect(null) } }
                         }
                         items(shown, key = { it.name }) { entry -> SchemeRow(entry, entry.name == selected) { onSelect(entry.name) } }
                         if (shown.isEmpty()) {

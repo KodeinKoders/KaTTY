@@ -11,6 +11,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -42,9 +43,10 @@ class MainMenuTest {
                 MainMenu(
                     settings = settings,
                     onChange = { change -> settings = change(settings) },
-                    colorScheme = null,
+                    lightColorScheme = null,
+                    darkColorScheme = null,
                     fontFamilies = families,
-                    onPickColorScheme = { picked += "colorScheme" },
+                    onPickColorScheme = { dark -> picked += if (dark) "dark scheme" else "light scheme" },
                     onDismiss = { picked += "dismiss" },
                 )
             }
@@ -92,7 +94,8 @@ class MainMenuTest {
         show()
 
         onNodeWithText("Vertical").performClick()
-        onNodeWithText("Dark").performClick()
+        // The button of the theme, not the label of the terminals' scheme of the dark theme.
+        onNode(hasText("Dark") and androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.Role, androidx.compose.ui.semantics.Role.RadioButton)).performClick()
         waitForIdle()
 
         assertEquals(LayoutMode.VERTICAL, settings.layout)
@@ -203,12 +206,13 @@ class MainMenuTest {
     }
 
     @Test
-    fun theColorSchemeFieldOpensThePicker() = runComposeUiTest {
+    fun theColorSchemeOfEachThemeOpensThePickerOnIt() = runComposeUiTest {
         show()
 
-        onNodeWithContentDescription("Terminal color scheme: Alabaster").performClick()
+        onNodeWithContentDescription("Terminal color scheme, light theme: Alabaster").performClick()
+        onNodeWithContentDescription("Terminal color scheme, dark theme: Dracula").performClick()
 
-        assertEquals(listOf("colorScheme"), picked)
+        assertEquals(listOf("light scheme", "dark scheme"), picked)
     }
 
     @Test
@@ -247,7 +251,7 @@ class MainMenuTest {
         setContent {
             KattyTheme(dark = false) {
                 MainMenu(
-                    settings = settings, onChange = { change -> settings = change(settings) }, colorScheme = null, fontFamilies = emptyList(),
+                    settings = settings, onChange = { change -> settings = change(settings) }, lightColorScheme = null, darkColorScheme = null, fontFamilies = emptyList(),
                     onPickColorScheme = {}, onDismiss = {}, onEditShortcuts = { opened += "shortcuts" },
                 )
             }
@@ -300,7 +304,8 @@ class MainMenuRenderTest {
                     MainMenu(
                         settings = Settings(layout = LayoutMode.HORIZONTAL, theme = if (dark) ThemeMode.DARK else ThemeMode.LIGHT),
                         onChange = {},
-                        colorScheme = app.katty.terminal.themes.ITermColorSchemes.entries.first { it.name == "Dracula" },
+                        lightColorScheme = app.katty.terminal.themes.ITermColorSchemes.entries.first { it.name == "Alabaster" },
+                        darkColorScheme = app.katty.terminal.themes.ITermColorSchemes.entries.first { it.name == "Dracula" },
                         fontFamilies = emptyList(),
                         onPickColorScheme = {},
                         onDismiss = {},
@@ -319,7 +324,7 @@ class MainMenuRenderTest {
         val scene = androidx.compose.ui.ImageComposeScene(width = 640, height = 700, density = androidx.compose.ui.unit.Density(2f)) {
             app.katty.ui.KattyTheme(false) {
                 androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().padding(8.dp)) {
-                    MainMenu(settings = Settings(), onChange = {}, colorScheme = null, fontFamilies = emptyList(), onPickColorScheme = {}, onDismiss = {})
+                    MainMenu(settings = Settings(), onChange = {}, lightColorScheme = null, darkColorScheme = null, fontFamilies = emptyList(), onPickColorScheme = {}, onDismiss = {})
                 }
             }
         }
