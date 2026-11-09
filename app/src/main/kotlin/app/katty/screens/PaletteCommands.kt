@@ -30,6 +30,9 @@ class PaletteHandlers(
     val addProject: () -> Unit,
     /** Opens the list of the projects that were opened before and are not open now. */
     val openRecent: () -> Unit = {},
+    /** Opens what was closed last again, and what the palette calls it; `null` when nothing was closed lately. */
+    val reopenClosed: (() -> Unit)? = null,
+    val reopenLabel: String = "Reopen closed terminal",
     val newWorkspace: () -> Unit,
     val renameWorkspace: () -> Unit,
     val closeWorkspace: () -> Unit,
@@ -207,6 +210,7 @@ fun paletteCommands(
     val split = SplitLabels.of(vertical)
     command("add-project", "Add project folder…", AppShortcut.ADD_PROJECT.label, handlers.addProject)
     command("open-recent", "Open recent project…", AppShortcut.OPEN_RECENT.label, handlers.openRecent)
+    handlers.reopenClosed?.let { command("reopen-closed", handlers.reopenLabel, AppShortcut.REOPEN_CLOSED.label, it) }
     if (state.selection.project != null) command("new-workspace", "New workspace", AppShortcut.NEW_WORKSPACE.label, handlers.newWorkspace)
     state.selectedProject?.let { project ->
         val index = state.projects.indexOf(project)

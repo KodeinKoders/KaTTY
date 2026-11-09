@@ -38,6 +38,9 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     SPLIT_OTHER(ShortcutGroup.PANES, "Split across the main direction", listOf(cmd(Awt.VK_D, shift = true))),
     CLOSE_TERMINAL(ShortcutGroup.PANES, "Close the terminal", listOf(cmd(Awt.VK_W))),
     RESTART_TERMINAL(ShortcutGroup.PANES, "Restart the terminal", listOf(cmd(Awt.VK_R))),
+
+    /** Opens what was closed last again: a terminal at its place, or a whole workspace. */
+    REOPEN_CLOSED(ShortcutGroup.PANES, "Reopen the last closed terminal or workspace", listOf(cmd(Awt.VK_T, shift = true))),
     JUMP_TO_WAITING(ShortcutGroup.AGENTS, "Jump to the next agent that waits", listOf(cmd(Awt.VK_J, shift = true))),
 
     /** Opens the list of the agents that need the user, and closes it. */

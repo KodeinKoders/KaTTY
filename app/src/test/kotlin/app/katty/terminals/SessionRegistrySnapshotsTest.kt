@@ -1,6 +1,7 @@
 package app.katty.terminals
 
 import app.katty.core.KattyStore
+import app.katty.core.REOPEN_KEPT_MS
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalSnapshotStore
 import app.katty.terminal.TerminalSession
@@ -20,7 +21,8 @@ import kotlin.test.assertTrue
 // What a terminal showed comes back when the registry is made again, with real shells and real files.
 class SessionRegistrySnapshotsTest {
     private var counter = 0
-    private val store = KattyStore(newId = { "id${counter++}" })
+    private var clock = 1_000_000L
+    private val store = KattyStore(newId = { "id${counter++}" }, now = { clock })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val directory: Path = Files.createTempDirectory("katty-registry-snapshots").resolve("snapshots")
     private val snapshots = TerminalSnapshotStore(directory)
@@ -53,10 +55,10 @@ class SessionRegistrySnapshotsTest {
         autosaveMillis = autosaveMillis,
     ).also { registries += it }
 
-    private fun await(what: String, condition: () -> Boolean) {
+    private fun await(what: String, screen: () -> String? = { null }, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 15_000_000_000L
         while (!condition()) {
-            check(System.nanoTime() < deadline) { "Still waiting for $what" }
+            check(System.nanoTime() < deadline) { "Still waiting for $what" + (screen()?.let { ", the screen:\n$it" } ?: "") }
             Thread.sleep(10)
         }
     }
@@ -102,6 +104,7 @@ class SessionRegistrySnapshotsTest {
         val id = store.state.value.selection.terminal!!
 
         second.restart(id)
+        assertTrue(second.closedContentsKept().isEmpty(), "A terminal that is started again keeps nothing of the old shell")
 
         // The shell that was started again says `first` (a plain one), and has none of what the old one showed.
         await("the new shell") { second.handles.value[id]?.session?.let { "first" in it.readText() } == true }
@@ -164,5 +167,71 @@ class SessionRegistrySnapshotsTest {
         assertEquals(saved, Files.getLastModifiedTime(files().single()), "A terminal that has not changed is not saved again")
         registry.session().paste("x")
         await("a save of what changed") { Files.getLastModifiedTime(files().single()) > saved }
+    }
+
+    // A project with two terminals whose shells said `first`, the second of which is closed: its id.
+    private fun closedSecond(registry: SessionRegistry): app.katty.core.TerminalId {
+        store.addProject("/tmp")
+        val closed = store.split(store.state.value.selection.terminal!!, SplitDirection.ROW)!!
+        registry.sync(store.state.value)
+        await("both shells") { registry.handles.value.size == 2 && registry.handles.value.values.all { it.session?.readText()?.contains("first") == true } }
+        store.closeTerminal(closed)
+        registry.sync(store.state.value)
+        return closed
+    }
+
+    @Test
+    fun aTerminalThatIsClosedAndOpenedAgainHasWhatItShowedBackFromMemory() {
+        val registry = registry()
+        val closed = closedSecond(registry)
+
+        assertEquals(setOf(closed), registry.closedContentsKept())
+        assertTrue(files().isEmpty(), "Not in a file")
+        assertEquals(closed, store.reopenClosed())
+        registry.sync(store.state.value)
+
+        await("its new shell", { registry.handles.value[closed]?.session?.readText() }) { registry.handles.value[closed]?.session?.readText()?.contains("second") == true }
+        val text = registry.handles.value.getValue(closed).session!!.readText().lines()
+        assertTrue(text.indexOf("first") in 0 until text.indexOf("Restored"), "What it showed is there, then the note: $text")
+        assertTrue(text.indexOf("Restored") < text.indexOf("second"), "And its new shell below: $text")
+        assertTrue(registry.closedContentsKept().isEmpty(), "Given to it")
+    }
+
+    @Test
+    fun withTheSettingOffATerminalThatIsOpenedAgainStartsPlain() {
+        store.updateSettings { it.copy(restoreContents = false) }
+        val registry = registry()
+        val closed = closedSecond(registry)
+
+        assertTrue(registry.closedContentsKept().isEmpty())
+        store.reopenClosed()
+        registry.sync(store.state.value)
+
+        await("its new shell", { registry.handles.value[closed]?.session?.readText() }) { registry.handles.value[closed]?.session?.readText()?.contains("first") == true }
+        assertFalse("Restored" in registry.handles.value.getValue(closed).session!!.readText())
+    }
+
+    @Test
+    fun whatAClosedTerminalShowedIsLetGoOfOnceItCannotBeOpenedAgain() {
+        val registry = registry()
+        val closed = closedSecond(registry)
+        assertEquals(setOf(closed), registry.closedContentsKept())
+
+        clock += REOPEN_KEPT_MS + 1
+        registry.sync(store.state.value)
+
+        assertTrue(registry.closedContentsKept().isEmpty())
+        assertEquals(null, store.reopenClosed())
+    }
+
+    @Test
+    fun turningTheSettingOffLetsGoOfWhatTheClosedTerminalsShowed() {
+        val registry = registry()
+        closedSecond(registry)
+
+        store.updateSettings { it.copy(restoreContents = false) }
+        registry.sync(store.state.value)
+
+        assertTrue(registry.closedContentsKept().isEmpty())
     }
 }

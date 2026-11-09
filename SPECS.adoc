@@ -272,6 +272,13 @@ It is written to `state.json.tmp`, then moved over `state.json`.
 While the board is shown, no terminal is on the screen.
 * Closing a terminal ends its shell.
 Quitting the application ends every shell.
+* What was closed can be reopened (⌘⇧T, and "Reopen closed terminal" in the palette, which says "Reopen closed workspace “name”" for a workspace), the last first:
+** a terminal comes back at its place, in the split that held it, with its direction and ratio, beside what was beside it, or beside all the terminals of its workspace when that is gone;
+** a workspace that was closed, or whose last terminal was, comes back at its place in its project, with its name, its splits and its IDE;
+** a terminal whose workspace is gone comes back in that workspace, made again with it alone;
+** what comes back is selected, in the Terminals view, with the keyboard;
+** it starts as a terminal of the saved state does at launch: a new shell in its directory, the program that ran typed again, and what it showed when it was closed while "Restore terminal contents" is on, kept in memory only;
+** the last 10 things closed can be reopened for 10 minutes, and nothing is kept across launches; what was in a project that is removed does not come back.
 * At launch, every terminal of the saved state gets a new shell; the old programs and the scrollback are not kept.
 
 
@@ -671,7 +678,7 @@ In it the label is on two lines ("AGENT", "USAGE") when the items are full, with
 ** WORKSPACES: each workspace, with its project;
 ** TERMINALS: each terminal, with its workspace and state (idle, working, needs input, done);
 ** COMMANDS: with their shortcuts, the ones that need a workspace or a terminal only when there is one.
-* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Jump to next waiting agent, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
+* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next waiting agent, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
 * What is typed is matched with the labels: its letters, in order, without regard for the case and the spaces.
 A match whose letters are together, at the start of the text or of a word, in a short label, is better; the matched letters are bold in the accent color.
 * The groups stay in their order; in a group, the best match is first; with nothing typed, everything is in its order.
@@ -707,6 +714,9 @@ The window's shortcuts are handled before the terminal sees them.
 
 | ⌘R
 | Restart the shell of the focused terminal.
+
+| ⌘⇧T
+| Reopen the terminal or the workspace that was closed last.
 
 | ⌘⇧J
 | Jump to the next agent that waits.

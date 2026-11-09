@@ -33,7 +33,7 @@ class PaletteCoverageTest {
 
     private val handlers = PaletteHandlers(
         addProject = {}, newWorkspace = {}, renameWorkspace = {}, closeWorkspace = {}, splitRight = {}, splitDown = {}, renameTerminal = {},
-        closeTerminal = {}, restartTerminal = {}, find = {}, clearScreen = {}, maximize = {}, colorScheme = {}, toggleSidebar = {}, showView = {},
+        closeTerminal = {}, restartTerminal = {}, reopenClosed = { calls += "reopen" }, find = {}, clearScreen = {}, maximize = {}, colorScheme = {}, toggleSidebar = {}, showView = {},
         setLayout = {}, setTheme = {}, jumpToWaiting = {}, markAllSeen = {}, openBoardWindow = {}, openTerminal = {}, openWorkspace = {},
         focusPane = { calls += "focus $it" }, resizeSplit = { calls += "resize $it" }, findNext = { calls += "findNext" }, findPrevious = { calls += "findPrevious" },
         copy = { calls += "copy" }, paste = { calls += "paste" }, selectAll = { calls += "selectAll" },

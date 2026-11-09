@@ -80,6 +80,9 @@ It is saved every 30 seconds for the terminals that changed, and when you quit, 
 The files are in `~/Library/Application Support/KaTTY/snapshots`, compressed and readable only by you: a terminal's history may hold anything that was printed in it.
 "Restore terminal contents" in the settings turns it off, and deletes them.
 * What a program held in memory is not kept, such as an unsent prompt or the unsaved buffers of an editor.
+* A terminal or a workspace that you closed by mistake comes back with ⌘⇧T, for 10 minutes, the last one first, up to 10 of them.
+A terminal comes back at its place in its splits, a workspace at its place in its project with all its panes.
+They come back as at launch: a new shell where the old one was, the program that ran typed again, and what the terminal showed, kept in memory only and never written to a file.
 
 === A terminal you will enjoy
 
@@ -167,6 +170,9 @@ Escape is never used by the window, except to close what is open in front of it 
 
 | ⌘R
 | Restart the terminal
+
+| ⌘⇧T
+| Reopen the terminal or the workspace that was closed last
 
 | ⌘F2
 | Rename the terminal

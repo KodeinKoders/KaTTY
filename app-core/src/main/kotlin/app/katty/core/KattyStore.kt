@@ -21,13 +21,20 @@ public enum class CloseResult {
  * The projects, their workspaces and terminals, the selection and the settings: one immutable [KattyState] that only this changes, whatever
  * the thread. A terminal's shell is not here: a session is a runtime object that the application keeps next to it, by [TerminalId].
  *
+ * It also keeps what was closed lately, which [reopenClosed] opens again: in memory only, not in the state, which is what is saved.
+ *
  * @param newId Makes the id of what is created. Tests give a counter.
+ * @param now The time, in milliseconds since the epoch: how long what was closed can be opened again is counted with it. Tests give their own.
  */
 public class KattyStore(
     initial: KattyState = KattyState(),
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val flow = MutableStateFlow(initial.normalized())
+
+    // What was closed lately, the newest last: at most [REOPEN_MAX_ITEMS], none older than [REOPEN_KEPT_MS]. Under its own monitor.
+    private val closed = ArrayDeque<ClosedItem>()
 
     /** What the application is, now. */
     public val state: StateFlow<KattyState> get() = flow
@@ -146,9 +153,22 @@ public class KattyStore(
         edit { state -> state.mapWorkspaces { if (it.id == id) it.copy(ide = ide?.name) else it } }
     }
 
-    /** Closes a workspace, with its terminals. */
+    /** Closes a workspace, with its terminals: [reopenClosed] opens it again for a while. */
     public fun closeWorkspace(id: WorkspaceId) {
-        edit { state -> state.closingWorkspace(id) }
+        val at = now()
+        var item: ClosedItem? = null
+        edit { state ->
+            item = state.closedWorkspace(id, at)
+            state.closingWorkspace(id)
+        }
+        item?.let(::remember)
+    }
+
+    // What closing the workspace [id] leaves to open again: all of it, at its place in its project.
+    private fun KattyState.closedWorkspace(id: WorkspaceId, at: Long): ClosedItem? {
+        val project = projects.firstOrNull { p -> p.workspaces.any { it.id == id } } ?: return null
+        val index = project.workspaces.indexOfFirst { it.id == id }
+        return ClosedItem(project.id, index, project.workspaces[index], place = null, closedAt = at)
     }
 
     // [this] without the workspace [id], and the one after it, else before it, selected if it was.
@@ -188,18 +208,28 @@ public class KattyStore(
     }
 
     /**
-     * Closes a terminal: the sibling takes its space and has the focus. The last terminal of a workspace takes the workspace with it.
+     * Closes a terminal: the sibling takes its space and has the focus. The last terminal of a workspace takes the workspace with it. [reopenClosed]
+     * opens it again for a while, at its place.
      */
     public fun closeTerminal(id: TerminalId): CloseResult {
         var result = CloseResult.NOT_FOUND
+        val at = now()
+        var item: ClosedItem? = null
         edit { state ->
+            item = null
             val location = state.locate(id) ?: return@edit state.also { result = CloseResult.NOT_FOUND }
             val remaining = location.workspace.layout.withoutTerminal(id)
             if (remaining == null) {
                 result = CloseResult.WORKSPACE_DELETED
+                item = state.closedWorkspace(location.workspace.id, at)
                 return@edit state.closingWorkspace(location.workspace.id)
             }
             result = CloseResult.CLOSED
+            // Its workspace alone with it, for when the workspace is gone by the time it is opened again.
+            item = ClosedItem(
+                location.project.id, location.project.workspaces.indexOfFirst { it.id == location.workspace.id },
+                location.workspace.copy(layout = PaneNode.Leaf(location.terminal), focused = id), location.workspace.layout.placeOf(id), at,
+            )
             val neighbours = location.workspace.layout.terminals()
             val index = neighbours.indexOfFirst { it.id == id }
             val survivors = remaining.terminals()
@@ -208,7 +238,92 @@ public class KattyStore(
             val selection = if (state.selection.workspace == location.workspace.id) state.selection.copy(terminal = focus.id, maximized = state.selection.maximized.takeIf { it != id }) else state.selection
             state.mapWorkspaces { if (it.id == location.workspace.id) it.copy(layout = remaining) else it }.copy(selection = selection)
         }
+        item?.let(::remember)
         return result
+    }
+
+    // ----- What was closed
+
+    private fun remember(item: ClosedItem) = synchronized(closed) {
+        closed.addLast(item)
+        forgetOldClosed()
+    }
+
+    // Under the monitor of [closed].
+    private fun forgetOldClosed() {
+        val oldest = now() - REOPEN_KEPT_MS
+        closed.removeAll { it.closedAt < oldest }
+        while (closed.size > REOPEN_MAX_ITEMS) closed.removeFirst()
+    }
+
+    /** What [reopenClosed] would open: the last thing closed that can come back, `null` when there is none. */
+    public fun lastClosed(): ClosedItem? {
+        val projects = flow.value.projects.map { it.id }.toSet()
+        return synchronized(closed) {
+            forgetOldClosed()
+            closed.lastOrNull { it.project in projects }
+        }
+    }
+
+    /** The terminals of what can be opened again: what they showed is worth keeping while they are in it. */
+    public fun reopenableTerminals(): Set<TerminalId> {
+        val projects = flow.value.projects.map { it.id }.toSet()
+        return synchronized(closed) {
+            forgetOldClosed()
+            closed.filter { it.project in projects }.flatMap { item -> item.terminals.map { it.id } }.toSet()
+        }
+    }
+
+    /**
+     * Opens what was closed last again, and selects it: a terminal at its place in its workspace (see [withTerminalAt]), or in its workspace made again
+     * when that is gone too; a workspace at its place in its project. What cannot come back (its project was removed) is forgotten, and what was
+     * closed before it comes back instead.
+     *
+     * @return The terminal that has the focus, `null` when nothing came back.
+     */
+    public fun reopenClosed(): TerminalId? {
+        while (true) {
+            val item = synchronized(closed) {
+                forgetOldClosed()
+                closed.removeLastOrNull()
+            } ?: return null
+            var focus: TerminalId? = null
+            edit { state ->
+                val reopened = state.reopening(item)
+                focus = reopened?.selection?.terminal
+                reopened ?: state
+            }
+            if (focus != null) return focus
+        }
+    }
+
+    // [this] with [item] back, and selected; `null` when it cannot come back.
+    private fun KattyState.reopening(item: ClosedItem): KattyState? {
+        val project = projects.firstOrNull { it.id == item.project } ?: return null
+        val terminals = item.terminals
+        // Its ids are its own: they cannot be in the state, unless it was put back already.
+        val ids = terminals.map { it.id }.toSet()
+        if (allTerminals().any { it.terminal.id in ids }) return null
+        val existing = project.workspaces.firstOrNull { it.id == item.workspace.id }
+        val place = item.place
+        val (workspaces, focus) = when {
+            existing == null -> {
+                val focus = item.workspace.terminalToFocus() ?: return null
+                project.workspaces.toMutableList().apply { add(item.index.coerceIn(0, size), item.workspace) } to focus
+            }
+            // A whole workspace whose id is there again: it cannot be.
+            place == null -> return null
+            else -> {
+                val terminal = terminals.single()
+                val back = existing.copy(layout = existing.layout.withTerminalAt(terminal, place), focused = terminal.id)
+                project.workspaces.map { if (it.id == existing.id) back else it } to terminal.id
+            }
+        }
+        // Its project is open: what is selected can be seen.
+        return copy(
+            projects = projects.map { if (it.id == project.id) it.copy(workspaces = workspaces, open = true) else it },
+            selection = Selection(project.id, item.workspace.id, focus),
+        )
     }
 
     /** Renames a terminal; a blank [name] goes back to the name of its agent or its shell. */

@@ -9,6 +9,7 @@ import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -176,6 +177,43 @@ class SessionRegistryTest {
             assertNull(slow.handles.value[id])
         } finally {
             slow.close()
+        }
+    }
+
+    @Test
+    fun aTerminalThatIsOpenedAgainBeforeItsFirstShellStartedHasTheShellThatWasStartedForIt() {
+        // The shells start one after the other, in the order they were asked for, and the first one waits until the terminal has been closed and
+        // opened again: it is ready before the one that was started for it then.
+        val starter = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val reopened = java.util.concurrent.CountDownLatch(1)
+        val begun = java.util.concurrent.ConcurrentHashMap<String, Int>()
+        val made = java.util.concurrent.CopyOnWriteArrayList<TerminalSession>()
+        val slow = SessionRegistry(
+            store, scope, loadTheme = { null }, starter = starter.asCoroutineDispatcher(),
+            start = { spec, _ ->
+                val first = begun.merge(spec.id.value, 1, Int::plus) == 1
+                if (first) reopened.await(10, java.util.concurrent.TimeUnit.SECONDS)
+                val script = if (first) "echo first; sleep 30" else "echo second; sleep 30"
+                TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), directory = spec.directory, shellIntegration = false).also { made += it }
+            },
+        )
+        try {
+            store.addProject("/tmp")
+            val id = store.state.value.selection.terminal!!
+            store.split(id, SplitDirection.ROW)
+            slow.sync(store.state.value)
+            store.closeTerminal(id)
+            slow.sync(store.state.value)
+
+            assertEquals(id, store.reopenClosed())
+            slow.sync(store.state.value)
+            reopened.countDown()
+
+            awaitUntil("the shell that was started for it again") { slow.handles.value[id]?.session?.readText()?.contains("second") == true }
+            awaitUntil("the first to be closed") { made.size == 3 && made.count { it.exited.value != null } == 1 }
+        } finally {
+            slow.close()
+            starter.shutdown()
         }
     }
 

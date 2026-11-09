@@ -24,6 +24,7 @@ import app.katty.terminal.TerminalSnapshot
 import app.katty.terminal.TerminalSnapshotException
 import app.katty.terminal.TerminalTheme
 import app.katty.terminal.themes.ITermColorSchemes
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
 import app.katty.terminal.TerminalEvent
 import kotlinx.coroutines.launch
@@ -50,7 +52,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import org.slf4j.LoggerFactory
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -106,7 +111,9 @@ class TerminalHandle(
  * @param shellIntegration Where the scripts of the shell integration are kept (see [TerminalSession.start]).
  * @param snapshots Where what the terminals showed is kept (while `Settings.restoreContents` is on): a terminal that starts with one has its screen
  * and history back, under a line that says it is restored, and its shell below. They are saved every [autosaveMillis] for the terminals that changed,
- * and when the registry is closed. The snapshot of a terminal that is gone, or that is started again by the user, is deleted.
+ * and when the registry is closed. The snapshot of a terminal that is gone, or that is started again by the user, is deleted. What a terminal that is
+ * closed and can be opened again (`KattyStore.reopenableTerminals`) showed is kept **in memory** instead, for as long as it can, and the terminal that
+ * comes back starts with it.
  * @param startRestored Starts the shell of a terminal that has a snapshot, which [start] starts without.
  * @param starter Where the shells are started and the color schemes read. Tests give one that does it at once, on the caller's thread.
  */
@@ -132,6 +139,9 @@ class SessionRegistry(
                 while (isActive) {
                     delay(autosaveMillis)
                     autosave()
+                    // What the closed terminals showed, once they cannot be opened again.
+                    val wanted = store.state.value.allTerminals().map { it.terminal.id }.toSet()
+                    synchronized(this@SessionRegistry) { forgetClosedContents(wanted) }
                 }
             }
         }
@@ -167,7 +177,15 @@ class SessionRegistry(
     // to its writes. Checked and cleared under the flag's own monitor, so that nothing is written once [stop] has returned.
     private val alive = HashMap<TerminalId, AtomicBoolean>()
     private val schemes = HashMap<TerminalId, String>()
-    private val starting = HashMap<TerminalId, Int>()
+
+    // The shell that is being started for each terminal, by a number of its own: a terminal that is closed and opened again before the first has
+    // started has the same id and generation, and the first must not be taken for the second.
+    private val starting = HashMap<TerminalId, Long>()
+    private var starts = 0L
+
+    // What the terminals that were closed and can be opened again showed, made when they were closed (`null` when it could not be), compressed: a few
+    // dozen kB for megabytes of history, and a workspace that is closed may have many terminals. In memory, never in a file. Under the monitor.
+    private val closedContents = HashMap<TerminalId, CompletableDeferred<ByteArray?>>()
     private var visible: Set<TerminalId>? = null
     private var generations = HashMap<TerminalId, Int>()
     private var closed = false
@@ -207,6 +225,8 @@ class SessionRegistry(
 
         syncSnapshots(wanted, state.settings.restoreContents)
 
+        forgetClosedContents(wanted)
+
         val settingsPreferences = state.settings.toPreferences()
         if (settingsPreferences != preferences) {
             val before = preferences
@@ -245,6 +265,7 @@ class SessionRegistry(
             contentsKept = keep
             if (!keep) {
                 savedVersions.clear()
+                closedContents.clear()
                 scope.launch(starter) { store.clear() }
             }
         }
@@ -279,9 +300,33 @@ class SessionRegistry(
         false
     }
 
-    // The snapshot that a terminal that starts is made from, if it has one and what the terminals showed is kept.
-    private fun snapshotOf(id: TerminalId): TerminalSnapshot? =
-        if (store.state.value.settings.restoreContents) snapshots?.load(id) else null
+    // The snapshot that a terminal that starts is made from, if it has one and what the terminals showed is kept: what it showed when it was closed,
+    // for one that is opened again, else its file.
+    private suspend fun snapshotOf(id: TerminalId): TerminalSnapshot? {
+        // It is made as the old shell is closed, which takes a few milliseconds: one that is never made does not keep the terminal from starting.
+        val closed = synchronized(this) { closedContents.remove(id) }?.let { withTimeoutOrNull(CLOSED_SNAPSHOT_WAIT_MS) { it.await() } }
+        if (!store.state.value.settings.restoreContents) return null
+        return closed?.let { decompressed(id, it) } ?: snapshots?.load(id)
+    }
+
+    // The snapshot that [bytes] are, compressed; `null` when they cannot be read.
+    private fun decompressed(id: TerminalId, bytes: ByteArray): TerminalSnapshot? = try {
+        TerminalSnapshot.fromByteArray(GZIPInputStream(bytes.inputStream()).use { it.readBytes() })
+    } catch (e: Exception) {
+        logger.warn("What {} showed when it was closed cannot be read", id.value, e)
+        null
+    }
+
+    // Lets go of what the closed terminals showed once they cannot be opened again: not of one that was opened again and whose shell is to start with
+    // it, which is in the store ([wanted]) and has no handle yet. Under the monitor.
+    private fun forgetClosedContents(wanted: Set<TerminalId>) {
+        if (closedContents.isEmpty()) return
+        closedContents.keys.retainAll(store.reopenableTerminals() + (wanted - mutableHandles.value.keys))
+    }
+
+    /** The terminals whose content is kept since they were closed, so that it comes back if they are opened again. */
+    @Synchronized
+    internal fun closedContentsKept(): Set<TerminalId> = closedContents.keys.toSet()
 
     /** The color scheme that the terminal [id] is given. */
     @Synchronized
@@ -356,7 +401,8 @@ class SessionRegistry(
     // Starts the shell of [spec] on [starter], and publishes its handle once it has started, if the terminal still wants it. Under the monitor.
     private fun begin(spec: TerminalSpec, scheme: String, generation: Int) {
         schemes[spec.id] = scheme
-        starting[spec.id] = generation
+        val token = ++starts
+        starting[spec.id] = token
         scope.launch(starter) {
             val started = try {
                 Result.success(startWithContents(spec, theme(scheme)))
@@ -367,7 +413,7 @@ class SessionRegistry(
             val session = started.getOrNull()
             val wanted = synchronized(this@SessionRegistry) {
                 // The terminal is gone, was started again, or the application quits: this shell is nobody's.
-                if (closed || starting[spec.id] != generation) {
+                if (closed || starting[spec.id] != token) {
                     false
                 } else {
                     starting.remove(spec.id)
@@ -388,7 +434,7 @@ class SessionRegistry(
 
     // Starts the shell of [spec], with what the terminal showed when there is a snapshot of it. A snapshot that cannot be restored is deleted, and the shell
     // starts without it: a terminal never fails to start for its history.
-    private fun startWithContents(spec: TerminalSpec, theme: TerminalTheme?): TerminalSession {
+    private suspend fun startWithContents(spec: TerminalSpec, theme: TerminalTheme?): TerminalSession {
         val snapshot = snapshotOf(spec.id) ?: return start(spec, theme)
         return try {
             startRestored(spec, theme, snapshot)
@@ -539,12 +585,35 @@ class SessionRegistry(
         // The terminal is gone, or its shell is started again: what it showed is not for the next launch.
         savedVersions.remove(handle.id)
         snapshots?.let { store -> scope.launch(Dispatchers.IO) { store.delete(handle.id) } }
+        // A terminal that was closed and can be opened again keeps what it shows now, in memory, for when it is (not one that is started again: it is in
+        // the store still). Before its shell is hung up.
+        val kept = if (contentsKept == true && handle.id in store.reopenableTerminals()) CompletableDeferred<ByteArray?>().also { closedContents[handle.id] = it } else null
         // Closing waits for the shell to end: not on the thread that draws.
-        scope.launch(Dispatchers.IO) { session.close() }
+        scope.launch(Dispatchers.IO) {
+            try {
+                kept?.complete(closingSnapshot(handle.id, session))
+            } finally {
+                kept?.complete(null)
+                session.close()
+            }
+        }
+    }
+
+    // What [session] shows, as it is closed, compressed; `null` when it cannot be made.
+    private fun closingSnapshot(id: TerminalId, session: TerminalSession): ByteArray? = try {
+        val bytes = ByteArrayOutputStream()
+        GZIPOutputStream(bytes).use { it.write(session.snapshot().toByteArray()) }
+        bytes.toByteArray()
+    } catch (e: Exception) {
+        logger.info("What {} showed is not kept: {}", id.value, e.message)
+        null
     }
 }
 
 // What the shell is called, as its program is: the one that the user's login shell is.
+/** How long a terminal that is opened again waits for what it showed when it was closed, which is made as its old shell is closed. */
+private const val CLOSED_SNAPSHOT_WAIT_MS = 2_000L
+
 /** How long quitting waits for the sessions to close, all together. */
 private const val CLOSE_ALL_TIMEOUT_MS = 3_000L
 

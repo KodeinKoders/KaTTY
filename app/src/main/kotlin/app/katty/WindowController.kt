@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import app.katty.core.AgentState
 import app.katty.core.AttentionItem
 import app.katty.core.CloseDecision
+import app.katty.core.ClosedItem
 import app.katty.core.Direction
 import app.katty.core.GitReader
 import app.katty.core.Ide
@@ -238,6 +239,16 @@ internal class WindowController(
         if (running(id)) restartingTerminal = id else restart(id)
     }
 
+    /**
+     * Opens what was closed last again (a terminal at its place, or a whole workspace: see `KattyStore.reopenClosed`), and shows it with the keyboard,
+     * whatever the window shows. Nothing happens when nothing was closed lately.
+     */
+    fun reopenClosed() {
+        store.reopenClosed() ?: return
+        showTerminals()
+        focusTick++
+    }
+
     /** Goes to a terminal, whatever the window is showing. */
     fun openTerminal(id: TerminalId) {
         store.updateSettings { it.copy(view = MainView.TERMINALS) }
@@ -444,6 +455,7 @@ internal class WindowController(
             AppShortcut.SPLIT_OTHER -> onTerminal { store.split(it, SplitDirection.COLUMN) }
             AppShortcut.CLOSE_TERMINAL -> onTerminal(::closeTerminal)
             AppShortcut.RESTART_TERMINAL -> onTerminal(::restartTerminal)
+            AppShortcut.REOPEN_CLOSED -> reopenClosed()
             AppShortcut.JUMP_TO_WAITING -> jumpToWaiting()
             AppShortcut.ATTENTION -> attentionOpen = !attentionOpen
             AppShortcut.MAXIMIZE -> onTerminals { maximize() }
@@ -510,8 +522,11 @@ internal class WindowController(
     }
 
     /** What the palette runs: the same actions as the shortcuts, under the same rules. */
-    fun paletteHandlers(worktree: String? = selectedWorktree()): PaletteHandlers = PaletteHandlers(
+    fun paletteHandlers(worktree: String? = selectedWorktree(), closed: ClosedItem? = store.lastClosed()): PaletteHandlers = PaletteHandlers(
         addProject = ::addProject,
+        // What would come back, read when the palette's commands are made.
+        reopenClosed = closed?.let { { reopenClosed() } },
+        reopenLabel = reopenLabel(closed),
         openRecent = ::openRecent,
         newWorkspace = ::newWorkspace,
         renameWorkspace = ::renameWorkspace,
@@ -600,6 +615,10 @@ internal class WindowController(
         nextWorkspace = { stepWorkspace(1) },
     )
 }
+
+/** What the palette calls the command that opens [closed] again. */
+internal fun reopenLabel(closed: ClosedItem?): String =
+    if (closed?.isWorkspace == true) "Reopen closed workspace “${closed.workspace.name}”" else "Reopen closed terminal"
 
 /**
  * The terminal whose search the find shortcuts step: the one whose find bar is open ([finding]), while it is on the screen ([shown]) and has a

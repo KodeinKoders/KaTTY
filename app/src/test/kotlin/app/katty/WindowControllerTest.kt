@@ -404,4 +404,60 @@ class WindowControllerTest {
         assertFalse(controller.attentionOpen)
         assertEquals(tick + 1, controller.focusTick)
     }
+
+    @Test
+    fun theShortcutReopensWhatWasClosedLastAndShowsItWithTheKeyboard() {
+        val closed = terminal
+        controller.closeTerminal(closed)
+        showBoard()
+        val tick = controller.focusTick
+
+        assertTrue(controller.handle(AppShortcut.REOPEN_CLOSED, null))
+
+        assertEquals(closed, terminal)
+        assertEquals(2, state.selectedWorkspace!!.layout.terminals().size)
+        assertEquals(MainView.TERMINALS, state.settings.view, "From the board too: it is shown")
+        assertEquals(tick + 1, controller.focusTick)
+    }
+
+    @Test
+    fun withNothingClosedTheShortcutDoesNothing() {
+        showBoard()
+        val before = state
+        val tick = controller.focusTick
+
+        assertTrue(controller.handle(AppShortcut.REOPEN_CLOSED, null))
+
+        assertEquals(before, state)
+        assertEquals(tick, controller.focusTick)
+    }
+
+    @Test
+    fun aDialogKeepsTheShortcutFromReopening() {
+        val closed = terminal
+        controller.closeTerminal(closed)
+        controller.closingWorkspace = state.selection.workspace
+
+        controller.handle(AppShortcut.REOPEN_CLOSED, null)
+
+        assertNull(state.locate(closed))
+    }
+
+    @Test
+    fun thePaletteReopensWhatWasClosedAndSaysWhatItIs() {
+        fun commands() = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = controller.paletteHandlers()).let { c -> c to c.entries.filter { it.id == "command:reopen-closed" } }
+        assertTrue(commands().second.isEmpty(), "Nothing was closed")
+
+        val closed = terminal
+        controller.closeTerminal(closed)
+        val (withTerminal, terminalEntry) = commands()
+        assertEquals("Reopen closed terminal", terminalEntry.single().label)
+        assertEquals("⌘⇧T", terminalEntry.single().shortcut)
+        withTerminal.run(terminalEntry.single())
+        assertEquals(closed, terminal)
+
+        val workspace = state.selectedWorkspace!!
+        controller.closeWorkspace(workspace.id)
+        assertEquals("Reopen closed workspace “${workspace.name}”", commands().second.single().label)
+    }
 }
