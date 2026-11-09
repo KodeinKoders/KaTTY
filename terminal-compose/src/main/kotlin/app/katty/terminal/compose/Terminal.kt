@@ -1,5 +1,12 @@
 package app.katty.terminal.compose
 
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.awtTransferable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -143,6 +150,9 @@ import kotlin.math.roundToInt
  * @param onOpenFile Opens the file of a link that names one ([TerminalLink.file]: a path written in the text, such as `src/Foo.kt:42` in what a
  * compiler printed, or a `file://` address), at its line, in an editor. Without it such a link goes to [onOpenLink] as its `file://` address,
  * which the default shows in the Finder.
+ * @param acceptDrops Whether files dropped on the terminal (from the Finder) paste their paths, escaped for a shell with a backslash before what it
+ * would take for something else, and separated by a space, as Ghostty does; a text that is dropped is pasted as it is. It is a paste: the program's
+ * bracketed paste mode is followed, [confirmPaste] is asked about what could run commands, and the terminal takes the keyboard.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -171,6 +181,7 @@ public fun Terminal(
     optionClickMovesCursor: Boolean = true,
     commandMarks: Boolean = false,
     onOpenFile: ((TerminalFilePosition) -> Unit)? = null,
+    acceptDrops: Boolean = true,
 ) {
     require(minimumContrast in 1f..21f) { "The minimum contrast is from 1 (none) to 21, not $minimumContrast" }
     require(backgroundOpacity in 0f..1f) { "The opacity is from 0 to 1, not $backgroundOpacity" }
@@ -217,6 +228,41 @@ public fun Terminal(
             }
         }
     }
+    // What is dragged from another application: every terminal that takes it says so while it is over the window, the one under the pointer
+    // says what it will do with it, and what is dropped is pasted.
+    var dropFeedback by remember(session) { mutableStateOf(DropFeedback.NONE) }
+    var dropLabel by remember(session) { mutableStateOf("") }
+    val latestFocusRequester = rememberUpdatedState(focusRequester)
+    val dropTarget = remember(session) {
+        object : DragAndDropTarget {
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                dropFeedback = dropFeedback.next(DropEvent.DROPPED)
+                return drop(event.awtTransferable) { text ->
+                    pasteConfirmed(text)
+                    latestFocusRequester.value.requestFocus()
+                }
+            }
+
+            override fun onStarted(event: DragAndDropEvent) {
+                dropFeedback = dropFeedback.next(DropEvent.STARTED)
+            }
+
+            override fun onEntered(event: DragAndDropEvent) {
+                dropLabel = event.awtTransferable.dropLabel()
+                dropFeedback = dropFeedback.next(DropEvent.ENTERED)
+            }
+
+            override fun onExited(event: DragAndDropEvent) {
+                dropFeedback = dropFeedback.next(DropEvent.EXITED)
+            }
+
+            override fun onEnded(event: DragAndDropEvent) {
+                dropFeedback = dropFeedback.next(DropEvent.ENDED)
+            }
+        }
+    }
+    // The label is in the default font of the system, not the terminal's: it is the terminal's word, not the program's.
+    val textMeasurer = rememberTextMeasurer()
     val copy: (String) -> Unit = remember(clipboard) {
         { text -> scope.launch { clipboard.setClipEntry(ClipEntry(StringSelection(text))) } }
     }
@@ -406,6 +452,14 @@ public fun Terminal(
         // The background is painted here, with the padding, and not by the view, which would paint it over again where it is translucent.
         defaultBackgroundAlpha = 0f,
         modifier = modifier
+            .then(
+                if (acceptDrops) {
+                    Modifier.dragAndDropTarget(shouldStartDragAndDrop = { event -> event.awtTransferable.isDroppable() }, target = dropTarget)
+                        .dropFeedback(dropFeedback, frame.foreground.rgb.toColor(), frame.background.rgb.toColor(), dropLabel, textMeasurer, DROP_LABEL_STYLE)
+                } else {
+                    Modifier
+                },
+            )
             .background(frame.background.rgb.toColor().copy(alpha = backgroundOpacity))
             .then(
                 if (markGutter <= 0f) {

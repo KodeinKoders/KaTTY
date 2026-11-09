@@ -97,6 +97,7 @@ Click it to go back to where the command starts.
 * Select with the mouse by word, by line or by block, or with Shift and the arrow keys.
 Copy and paste are safe: what you paste cannot run commands behind your back.
 A middle click pastes the last selection.
+* Drop files from the Finder on a terminal to paste their paths, escaped for the shell: a screenshot for an agent, a file for a command.
 * Find in the terminal (⌘F), and jump from prompt to prompt (⌘↑ and ⌘↓) with zsh and bash.
 * ⌘-click opens the links that programs print, and the addresses written in the text.
 * ⌘-click on the path of a file or a folder (`src/Foo.kt:42:5` in what a compiler printed, `README.adoc` in `git status`, `src` in `ls`) opens it in your IDE, a file at its line.
