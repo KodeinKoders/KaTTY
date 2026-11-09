@@ -127,6 +127,25 @@ tasks.withType<AbstractJPackageTask>().configureEach {
     dependsOn(macIcon)
 }
 
+// What macOS shows when a program that runs in a terminal asks for what it protects: it asks on behalf of KaTTY, and refuses without asking when
+// KaTTY has no description for it (and no entitlement, for the ones that have one: entitlements.plist). The same as Ghostty's.
+val usageDescriptions = mapOf(
+    "NSAppleEventsUsageDescription" to "use AppleScript",
+    "NSAudioCaptureUsageDescription" to "access your system's audio",
+    "NSBluetoothAlwaysUsageDescription" to "use Bluetooth",
+    "NSCalendarsUsageDescription" to "access your Calendar",
+    "NSCameraUsageDescription" to "use the camera",
+    "NSContactsUsageDescription" to "access your Contacts",
+    "NSLocalNetworkUsageDescription" to "access the local network",
+    "NSLocationUsageDescription" to "access your location information",
+    "NSMicrophoneUsageDescription" to "use your microphone",
+    "NSMotionUsageDescription" to "access motion data",
+    "NSPhotoLibraryUsageDescription" to "access your Photo Library",
+    "NSRemindersUsageDescription" to "access your reminders",
+    "NSSpeechRecognitionUsageDescription" to "use speech recognition",
+    "NSSystemAdministrationUsageDescription" to "use elevated privileges",
+)
+
 tasks.test {
     // The FFM API is restricted: without this flag, the JVM warns on the first native call.
     jvmArgs("--enable-native-access=ALL-UNNAMED")
@@ -161,6 +180,13 @@ compose {
                 bundleID = "app.katty"
                 dockName = "KaTTY"
                 iconFile.set(layout.buildDirectory.file("icons/KaTTY.icns"))
+                // The ones of the application, which runs the programs of the terminals. The runtime keeps Compose's, which are the JVM's.
+                entitlementsFile.set(file("entitlements.plist"))
+                infoPlist {
+                    extraKeysRawXml = usageDescriptions.entries.joinToString("\n") { (key, what) ->
+                        "<key>$key</key>\n<string>A program running in KaTTY would like to $what.</string>"
+                    }
+                }
             }
         }
     }
