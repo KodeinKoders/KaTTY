@@ -10,6 +10,15 @@ image::logo.png[KaTTY logo, 160, align=center]
 [.lead]
 *A terminal manager for people who run several coding agents at once.*
 
+KaTTY *never tries to read your credentials*: it talks to the agents through their own command lines.
+It *collects nothing about you*: no telemetry, no account.
+
+It *does not modify the agents*: when one can do something by itself, such as reporting its state or resuming a conversation, KaTTY uses that.
+It *favors no agent*: any program that reports its state through an open protocol (OSC 7501) is shown the same way, whoever makes it.
+It *would rather show nothing than something wrong*: an agent comes back on a new conversation rather than on one it may not have been in, and a usage number that cannot be read is not shown.
+
+It *does not try to sell you anything*, nor a "premium integration" with a service: it is free and open source.
+
 KaTTY keeps your terminals organized in projects and workspaces, and shows at a glance what each agent in them is doing: working, waiting for you, or done.
 You start the agents yourself, in plain terminals, with the tools you already use.
 KaTTY displays and arranges them, and never reads or writes what an agent says.
