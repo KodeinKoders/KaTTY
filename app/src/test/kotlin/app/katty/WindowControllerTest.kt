@@ -10,6 +10,8 @@ import app.katty.core.terminals
 import app.katty.screens.paletteCommands
 import app.katty.screens.toTerminal
 import app.katty.terminal.compose.TerminalSecureInput
+import app.katty.terminal.TerminalSession
+import app.katty.terminals.ExportFormat
 import app.katty.terminals.TerminalHandle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,8 +28,16 @@ class WindowControllerTest {
     private val restarted = mutableListOf<TerminalId>()
     private val opened = mutableListOf<Pair<String, String>>()
     private val openedFiles = mutableListOf<Pair<app.katty.core.Ide, app.katty.terminal.TerminalFilePosition>>()
+    // What the save panel is asked (its folder and the name it proposes), and what it answers.
+    private val saveRequests = mutableListOf<Pair<String?, String>>()
+    private var saveAnswer: String? = null
+    private val sessions = mutableListOf<TerminalSession>()
     private val platform = object : WindowPlatform {
         override fun chooseFolder(title: String, initial: String?): String? = null
+        override fun chooseSaveFile(title: String, directory: String?, name: String): String? {
+            saveRequests += directory to name
+            return saveAnswer
+        }
         override fun copy(text: String) = Unit
         override fun readClipboard(): String? = null
         override fun reveal(directory: String) = Unit
@@ -542,5 +552,98 @@ class WindowControllerTest {
 
         assertEquals(other, terminal)
         assertEquals(listOf(other), seen)
+    }
+
+    @kotlin.test.AfterTest
+    fun closeSessions() {
+        sessions.forEach { it.close() }
+    }
+
+    // The selected terminal, with a session whose program wrote [text].
+    private fun terminalThatWrote(text: String): TerminalId {
+        val session = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "printf '$text\\r\\n'; sleep 30"), shellIntegration = false).also { sessions += it }
+        val deadline = System.nanoTime() + 15_000_000_000L
+        while (text !in session.screenText()) {
+            check(System.nanoTime() < deadline) { "The program did not write: ${session.screenText()}" }
+            Thread.sleep(10)
+        }
+        controller.handles = mapOf(terminal to TerminalHandle(terminal, session))
+        return terminal
+    }
+
+    private fun awaitTrue(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 15_000_000_000L
+        while (!condition()) {
+            check(System.nanoTime() < deadline) { "Still waiting for $what" }
+            Thread.sleep(10)
+        }
+    }
+
+    private val now = java.time.LocalDateTime.of(2026, 11, 10, 19, 43)
+
+    @Test
+    fun theHistoryIsExportedInTheFormatThatIsChosenWhereTheUserSays() {
+        val id = terminalThatWrote("hello export")
+        val folder = java.nio.file.Files.createTempDirectory("katty-export")
+        saveAnswer = folder.resolve("history.html").toString()
+
+        controller.paletteHandlers().exportHistory()
+        assertEquals(id, controller.exportingHistory, "The format is asked first")
+        assertTrue(controller.blockingDialog)
+        controller.answerExport(ExportFormat.HTML, now)
+
+        assertNull(controller.exportingHistory)
+        val (directory, name) = saveRequests.single()
+        val downloads = java.io.File(System.getProperty("user.home"), "Downloads")
+        assertEquals(if (downloads.isDirectory) downloads.path else System.getProperty("user.home"), directory, "The first export proposes the Downloads")
+        assertEquals("zsh 2026-11-10 19-43.html", name)
+        val file = folder.resolve("history.html")
+        awaitTrue("the file") { java.nio.file.Files.exists(file) }
+        val page = java.nio.file.Files.readString(file)
+        assertTrue(page.startsWith("<!DOCTYPE html>") && "hello export" in page)
+        assertEquals(ExportFormat.HTML, controller.lastExportFormat, "The next export starts on it")
+
+        // The next one proposes the folder of the last.
+        saveAnswer = null
+        controller.exportHistory(id)
+        controller.answerExport(ExportFormat.TEXT, now)
+        assertEquals(folder.toString() to "zsh 2026-11-10 19-43.txt", saveRequests.last())
+    }
+
+    @Test
+    fun aSavePanelThatIsCancelledWritesNothing() {
+        terminalThatWrote("hello")
+        val folder = java.nio.file.Files.createTempDirectory("katty-export")
+
+        controller.exportHistory()
+        controller.answerExport(ExportFormat.TEXT, now)
+
+        assertEquals(1, saveRequests.size)
+        assertEquals(emptyList(), folder.toFile().list()!!.toList())
+        assertNull(controller.exportFailure)
+    }
+
+    @Test
+    fun aFileThatCannotBeWrittenIsTold() {
+        terminalThatWrote("hello")
+        saveAnswer = "/no/such/folder/history.txt"
+
+        controller.exportHistory()
+        controller.answerExport(ExportFormat.TEXT, now)
+
+        awaitTrue("the failure") { controller.exportFailure != null }
+        assertEquals("/no/such/folder/history.txt could not be written: its folder is not there.", controller.exportFailure)
+        assertTrue(controller.blockingDialog, "It is told in a dialog")
+    }
+
+    @Test
+    fun thereIsNothingToExportOnTheBoardNorForATerminalWithoutASession() {
+        controller.exportHistory()
+        assertNull(controller.exportingHistory, "No session")
+
+        terminalThatWrote("hello")
+        showBoard()
+        controller.paletteHandlers().exportHistory()
+        assertNull(controller.exportingHistory, "The palette's terminal commands are for the terminals")
     }
 }

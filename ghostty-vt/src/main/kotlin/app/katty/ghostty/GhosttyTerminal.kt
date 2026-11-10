@@ -12,6 +12,9 @@ import app.katty.ghostty.ffm.GhosttyDeviceAttributesPrimary
 import app.katty.ghostty.ffm.GhosttyDeviceAttributesSecondary
 import app.katty.ghostty.ffm.GhosttyDeviceAttributesTertiary
 import app.katty.ghostty.ffm.GhosttyColorRgb
+import app.katty.ghostty.ffm.GhosttyFormatterScreenExtra
+import app.katty.ghostty.ffm.GhosttyFormatterTerminalExtra
+import app.katty.ghostty.ffm.GhosttyFormatterTerminalOptions
 import app.katty.ghostty.ffm.GhosttyGridRef
 import app.katty.ghostty.ffm.GhosttyKittyGraphicsPlacementRenderInfo
 import app.katty.ghostty.ffm.GhosttyPoint
@@ -622,6 +625,56 @@ public class GhosttyTerminal private constructor(
         }
     }
 
+    /**
+     * Everything that the active screen keeps, its history and the screen, as [format] says: what libghostty's formatter gives of the whole screen.
+     * A soft-wrapped line is joined when [unwrap], and the blanks that end the lines are dropped.
+     *
+     * Not a selection's text: in HTML, that writes the colors of the palette as CSS variables (`var(--vt-palette-1)`) that it does not define,
+     * which [palette] makes the formatter define first, in a `<style>` (in VT, as OSC 4 sequences, which set the palette of the terminal that
+     * reads them). Formatting a large history takes time: the caller holds what the terminal is written under for as long.
+     */
+    public fun formatAll(format: GhosttyTextFormat, unwrap: Boolean = true, palette: Boolean = false): String {
+        requireOpen()
+        return Arena.ofConfined().use { arena ->
+            val options = arena.allocate(GhosttyFormatterTerminalOptions.layout())
+            GhosttyFormatterTerminalOptions.size(options, GhosttyFormatterTerminalOptions.layout().byteSize())
+            GhosttyFormatterTerminalOptions.emit(options, format.emit())
+            GhosttyFormatterTerminalOptions.unwrap(options, unwrap)
+            GhosttyFormatterTerminalOptions.trim(options, true)
+            val extra = GhosttyFormatterTerminalOptions.extra(options)
+            GhosttyFormatterTerminalExtra.size(extra, GhosttyFormatterTerminalExtra.layout().byteSize())
+            GhosttyFormatterTerminalExtra.palette(extra, palette)
+            GhosttyFormatterScreenExtra.size(GhosttyFormatterTerminalExtra.screen(extra), GhosttyFormatterScreenExtra.layout().byteSize())
+            // No selection: the whole screen, with its history.
+            GhosttyFormatterTerminalOptions.selection(options, MemorySegment.NULL)
+
+            val out = arena.allocate(ValueLayout.ADDRESS)
+            checkResult(GhosttyVt.ghostty_formatter_terminal_new(MemorySegment.NULL, out, handle, options), "ghostty_formatter_terminal_new")
+            val formatter = out.get(ValueLayout.ADDRESS, 0)
+            try {
+                val pointer = arena.allocate(ValueLayout.ADDRESS)
+                val length = arena.allocate(ValueLayout.JAVA_LONG)
+                checkResult(GhosttyVt.ghostty_formatter_format_alloc(formatter, MemorySegment.NULL, pointer, length), "ghostty_formatter_format_alloc")
+                val size = length.get(ValueLayout.JAVA_LONG, 0)
+                val buffer = pointer.get(ValueLayout.ADDRESS, 0)
+                if (size == 0L || buffer == MemorySegment.NULL) return@use ""
+                try {
+                    String(buffer.reinterpret(size).toArray(ValueLayout.JAVA_BYTE), Charsets.UTF_8)
+                } finally {
+                    GhosttyVt.ghostty_free(MemorySegment.NULL, buffer, size)
+                }
+            } finally {
+                GhosttyVt.ghostty_formatter_free(formatter)
+            }
+        }
+    }
+
+    /** The color of the text by default now, `0xRRGGBB`: the default one, or what a program set it to (OSC 10). `null` when there is none. */
+    public val foreground: Int? get() = getRgb(GhosttyVt.GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND())
+
+    /** The color of the background by default now, `0xRRGGBB`: the default one, or what a program set it to (OSC 11). `null` when there is none. */
+    public val background: Int? get() = getRgb(GhosttyVt.GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND())
+
     /** All the text of the history and the screen, as [readRows] gives it. Empty when there is none. */
     internal fun allText(unwrap: Boolean = true): String {
         requireOpen()
@@ -772,14 +825,7 @@ public class GhosttyTerminal private constructor(
         Arena.ofConfined().use { arena ->
             val options = arena.allocate(GhosttyTerminalSelectionFormatOptions.layout())
             GhosttyTerminalSelectionFormatOptions.size(options, GhosttyTerminalSelectionFormatOptions.layout().byteSize())
-            GhosttyTerminalSelectionFormatOptions.emit(
-                options,
-                when (format) {
-                    GhosttyTextFormat.PLAIN -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_PLAIN()
-                    GhosttyTextFormat.VT -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_VT()
-                    GhosttyTextFormat.HTML -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_HTML()
-                },
-            )
+            GhosttyTerminalSelectionFormatOptions.emit(options, format.emit())
             GhosttyTerminalSelectionFormatOptions.unwrap(options, unwrap)
             GhosttyTerminalSelectionFormatOptions.trim(options, true)
             GhosttyTerminalSelectionFormatOptions.selection(options, selection)
@@ -1663,6 +1709,15 @@ public class GhosttyTerminal private constructor(
         check(!closed) { "The terminal is closed" }
     }
 
+    private fun getRgb(data: Int): Int? {
+        requireOpen()
+        val out = scratch(GhosttyColorRgb.layout().byteSize())
+        val result = GhosttyVt.ghostty_terminal_get(handle, data, out)
+        if (result == GhosttyVt.GHOSTTY_NO_VALUE()) return null
+        checkResult(result, "ghostty_terminal_get")
+        return ((GhosttyColorRgb.r(out).toInt() and 0xFF) shl 16) or ((GhosttyColorRgb.g(out).toInt() and 0xFF) shl 8) or (GhosttyColorRgb.b(out).toInt() and 0xFF)
+    }
+
     private fun getUInt16(data: Int): Int {
         requireOpen()
         return run {
@@ -1671,6 +1726,13 @@ public class GhosttyTerminal private constructor(
             out.get(ValueLayout.JAVA_SHORT, 0).toInt() and 0xFFFF
         }
     }
+}
+
+// What libghostty's formatter calls a format.
+private fun GhosttyTextFormat.emit(): Int = when (this) {
+    GhosttyTextFormat.PLAIN -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_PLAIN()
+    GhosttyTextFormat.VT -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_VT()
+    GhosttyTextFormat.HTML -> GhosttyVt.GHOSTTY_FORMATTER_FORMAT_HTML()
 }
 
 /**

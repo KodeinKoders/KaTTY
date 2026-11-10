@@ -838,6 +838,23 @@ public class TerminalSession private constructor(
         if (lines.size >= count) lines else lines + List(count - lines.size) { "" }
     }
 
+    /**
+     * Everything that the terminal keeps, its history and its screen, as [format] says, with its colors by default: what an export writes. A line
+     * that wraps is joined, and the blanks that end the lines are dropped. In HTML, the colors of the palette are defined in the text (a `<style>`);
+     * in VT they are not, since the sequences that define them would set the palette of the terminal that shows the text.
+     *
+     * It is the screen that is active, as for [readText]: while a full-screen program has the alternate screen, it is that screen. It is formatted
+     * at once, under the lock that the program's output is written under: a large history makes the output wait for as long.
+     */
+    public fun history(format: TerminalTextFormat): TerminalHistory = whileOpen(TerminalHistory("", null, null)) {
+        producer.historyRead()
+        TerminalHistory(
+            terminal.formatAll(format.toGhostty(), unwrap = true, palette = format == TerminalTextFormat.HTML),
+            terminal.foreground?.let(::TerminalColor),
+            terminal.background?.let(::TerminalColor),
+        )
+    }
+
     /** The text of the rows that are in view. */
     public fun viewportText(unwrap: Boolean = true): String = whileOpen("") {
         producer.historyRead()

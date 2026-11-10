@@ -27,4 +27,19 @@ fun chooseFolder(parent: Frame?, title: String, initial: String? = null): String
     }
 }
 
+/**
+ * Asks where a file is saved, with the save panel of the system, proposing [name] in [directory]: the path chosen, `null` when the user cancelled.
+ * The panel asks itself before a file that is there is replaced.
+ */
+fun chooseSaveFile(parent: Frame?, title: String, directory: String?, name: String): String? {
+    val dialog = FileDialog(parent, title, FileDialog.SAVE)
+    if (directory != null) dialog.directory = directory
+    dialog.file = name
+    // Modal: it returns when the user has answered.
+    dialog.isVisible = true
+    val chosenDirectory = dialog.directory ?: return null
+    val file = dialog.file ?: return null
+    return java.io.File(chosenDirectory, file).path
+}
+
 private const val FOR_DIRECTORIES = "apple.awt.fileDialogForDirectories"

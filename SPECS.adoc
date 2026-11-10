@@ -357,6 +357,21 @@ Escape does not: the programs in a terminal use it.
 * A text that goes on onto the next row is not found.
 
 
+=== Export the history
+
+* "Export history…", in the palette (for the selected terminal of the Terminals view) and in the menu of a terminal, has no shortcut.
+* It asks the format first, in a dialog that starts on the format of the last export (Text the first time): Text (`.txt`, the characters only), HTML (`.html`, with the colors and styles, for a browser) or ANSI (`.ans`, with the escape sequences, that `cat` or `less -R` show in color).
+The arrows move, Enter or a click chooses, Escape or a click outside cancels.
+* Then the save panel of macOS asks where, in `~/Downloads` the first time and then in the folder of the last export, while KaTTY runs, proposing `<terminal name> 2026-11-10 19-43.<extension>`, in which `/` and `:` are dashes.
+* What is written is everything that the terminal keeps, its history and its screen, a line that wraps as one line, ending with a newline.
+The HTML is a page on the terminal's colors, in the system's monospace font, with the palette that the terminal has; a link keeps its address and its color.
+The ANSI has the styles and colors as SGR sequences (a palette color by its index) and the links, but not the palette, which would set the one of the terminal that shows it.
+* Only the screen that is active is exported: while a full-screen program runs, it is its screen and not the history of the shell.
+The dialog says so then, while it is open: such a program (an editor, Claude Code in its fullscreen renderer) keeps its history itself, and the terminal only ever has its screen.
+* The file is written whole: an export that fails leaves no file half written, and says why in a dialog.
+A successful one says nothing.
+
+
 [#agent-state]
 == Agent state
 
@@ -522,7 +537,7 @@ A project without a workspace shows "This project has no workspace." and a butto
 | Rename workspace F2, — , Close workspace ⌘⇧W (red).
 
 | Terminal (the "…" of a pane, or a right click anywhere on its header, which also focuses it)
-| Rename terminal, Use process name (only when the terminal has a name of its own), — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces of the project, by their name; absent when the project has no other), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, — , Close terminal ⌘W (red).
+| Rename terminal, Use process name (only when the terminal has a name of its own), — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces of the project, by their name; absent when the project has no other), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, Export history…, — , Close terminal ⌘W (red).
 
 | Context (right click in a terminal that did not ask for the mouse, or with Shift)
 | Copy ⌘C (only when something is selected), Paste ⌘V, Select all ⌘A, — , Find… ⌘F, Clear scrollback ⌘L, — , Split right ⌘D, Split down ⌘⇧D, — , Close terminal ⌘W (red).
@@ -697,7 +712,7 @@ In it the label is on two lines ("AGENT", "USAGE") when the items are full, with
 ** WORKSPACES: each workspace, with its project;
 ** TERMINALS: each terminal, with its workspace and state (idle, working, needs input, done);
 ** COMMANDS: with their shortcuts, the ones that need a workspace or a terminal only when there is one.
-* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Search in all terminals…, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next terminal that needs you, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
+* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Search in all terminals…, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Export history…, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next terminal that needs you, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
 * What is typed is matched with the labels: its letters, in order, without regard for the case and the spaces.
 A match whose letters are together, at the start of the text or of a word, in a short label, is better; the matched letters are bold in the accent color.
 * The groups stay in their order; in a group, the best match is first; with nothing typed, everything is in its order.

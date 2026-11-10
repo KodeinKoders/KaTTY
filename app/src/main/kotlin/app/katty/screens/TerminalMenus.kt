@@ -28,6 +28,8 @@ class TerminalMenuActions(
     val moveTo: (WorkspaceId) -> Unit,
     val colorScheme: () -> Unit,
     val copyDirectory: () -> Unit,
+    /** Asks in which format the terminal's history is exported, then where. */
+    val exportHistory: () -> Unit = {},
     /** Starts the terminal's shell again, which asks first while a program runs in it, as the shortcut does. */
     val restart: () -> Unit,
     val close: () -> Unit,
@@ -57,6 +59,7 @@ fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, a
     action("Color scheme", hint = colorSchemeHint, onClick = actions.colorScheme)
     divider()
     action("Copy working directory", onClick = actions.copyDirectory)
+    action("Export history…", onClick = actions.exportHistory)
     divider()
     action("Restart terminal", AppShortcut.RESTART_TERMINAL.label, onClick = actions.restart)
     action("Close terminal", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.close)

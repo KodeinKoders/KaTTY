@@ -293,7 +293,7 @@ class WorkspaceAreaTest {
         // Nothing is selected: Copy is there, and cannot be chosen.
         onNodeWithText("Copy").assertExists().assertIsNotEnabled()
         onNodeWithText("Paste").assertExists()
-        listOf("Rename terminal", "Split right", "Split down", "Color scheme", "Copy working directory", "Restart terminal", "Close terminal").forEach {
+        listOf("Rename terminal", "Split right", "Split down", "Color scheme", "Copy working directory", "Export history…", "Restart terminal", "Close terminal").forEach {
             onNodeWithText(it).assertExists()
         }
         onNodeWithText("Rename terminal").performClick()

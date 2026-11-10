@@ -79,6 +79,8 @@ import app.katty.screens.ColorSchemePicker
 import app.katty.screens.MainMenu
 import app.katty.screens.CloseWorkspaceDialog
 import app.katty.screens.RestartTerminalDialog
+import app.katty.screens.ExportHistoryDialog
+import app.katty.screens.MessageDialog
 import app.katty.screens.OpenFileDialog
 import app.katty.screens.PasteDialog
 import app.katty.screens.WorkspaceIdeDialog
@@ -107,6 +109,9 @@ import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import app.katty.ui.Katty
@@ -178,6 +183,7 @@ internal fun KattyWindowContent(
     val controller = remember {
         val platform = object : WindowPlatform {
             override fun chooseFolder(title: String, initial: String?) = chooseFolder(window, title, initial)
+            override fun chooseSaveFile(title: String, directory: String?, name: String) = chooseSaveFile(window, title, directory, name)
             override fun copy(text: String) = copyToClipboard(text)
             override fun readClipboard() = app.katty.readClipboard()
             override fun reveal(directory: String) = revealInFileManager(directory)
@@ -467,6 +473,7 @@ internal fun KattyWindowContent(
                             onPaste = pasteInto,
                             onOpenFile = if (ides.isEmpty()) null else controller::openFile,
                             onInteraction = interacted,
+                            onExportHistory = controller::exportHistory,
                         ),
                         maximized = state.selection.maximized,
                         font = font,
@@ -715,6 +722,20 @@ internal fun KattyWindowContent(
                     onChoose = { ide -> controller.setWorkspaceIde(id, ide) }, onCancel = { controller.editingWorkspaceIde = null },
                 )
             }
+        }
+        controller.exportingHistory?.let { id ->
+            val terminal = state.locate(id)?.terminal ?: return@let
+            // Followed while the dialog is open (the program may leave it), from the frames, which a hidden session keeps it in too; only its
+            // changes draw the window again, not every frame.
+            val frames = handles[id]?.session?.frames
+            val alternateScreen by remember(frames) { frames?.map { it.alternateScreen }?.distinctUntilChanged() ?: flowOf(false) }
+                .collectAsState(frames?.value?.alternateScreen == true)
+            ExportHistoryDialog(describe(terminal).title, alternateScreen, controller.lastExportFormat, controller::answerExport) {
+                controller.exportingHistory = null
+            }
+        }
+        controller.exportFailure?.let { message ->
+            MessageDialog("Could not export the history", message) { controller.exportFailure = null }
         }
         controller.quitting?.let { request ->
             val stopped = controller.stoppedByQuitting().map { location ->

@@ -207,6 +207,8 @@ class PaneActions(
     val finding: TerminalId? = null,
     /** The user did something with a terminal (typed in it, clicked in its pane): what it finished or failed at has been seen. */
     val onInteraction: (TerminalId) -> Unit = {},
+    /** Asks in which format the history of a terminal is exported, then where. */
+    val onExportHistory: (TerminalId) -> Unit = {},
     /** What the find bar starts with, and a number that changes when it is to be made again with it. */
     val findQuery: String = "",
     val findRequest: Int = 0,

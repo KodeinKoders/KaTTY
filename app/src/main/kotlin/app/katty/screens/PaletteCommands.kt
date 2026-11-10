@@ -103,6 +103,8 @@ class PaletteHandlers(
     /** Goes back to calling the selected terminal after what runs in it. */
     val useProcessName: () -> Unit = {},
     val copyDirectory: () -> Unit = {},
+    /** Asks in which format the history of the selected terminal is exported, then where. */
+    val exportHistory: () -> Unit = {},
     /** Opens the choice of the color scheme that the terminals have unless they have one of their own, in the dark or the light application. */
     val defaultColorScheme: (dark: Boolean) -> Unit = {},
     val toggleLigatures: () -> Unit = {},
@@ -247,6 +249,7 @@ fun paletteCommands(
         command("color-scheme", "Change the color scheme of the terminal", action = handlers.colorScheme)
         if (selectedTerminal?.terminal?.name != null) command("process-name", "Use process name for the terminal", action = handlers.useProcessName)
         command("copy-directory", "Copy working directory", action = handlers.copyDirectory)
+        command("export-history", "Export history…", action = handlers.exportHistory)
         // The other workspaces of its project: what the menu of the pane offers in a submenu.
         for (destination in destinationsOf(state, state.selection.terminal!!)) {
             command("move-terminal:${destination.id.value}", "Move terminal to “${destination.label}”") { handlers.moveTerminalTo(destination.id) }

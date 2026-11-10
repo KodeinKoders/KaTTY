@@ -260,6 +260,8 @@ class CommandPaletteTest {
         assertEquals("⌘F2", shortcuts["Rename terminal"])
         assertEquals("⌘L", shortcuts["Clear screen and scrollback"])
         assertEquals("⌘⇧W", shortcuts["Close workspace"])
+        assertTrue("Export history…" in shortcuts, "The history of the selected terminal is exported from the palette")
+        assertEquals(null, shortcuts["Export history…"], "It has no shortcut")
     }
 
     @Test

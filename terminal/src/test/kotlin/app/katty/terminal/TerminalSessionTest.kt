@@ -247,6 +247,33 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun theHistoryIsGivenWholeInTheFormatThatIsAskedFor() {
+        // More than the screen holds: most of it is in the history.
+        val session = start("""seq 1 100; printf '\033[31mred <b>\033[0m \033[38;5;208morange\033[0m\r\n'; echo END; sleep 30""")
+        session.awaitFrame { "END" in it.text() }
+        session.setTheme(theme)
+
+        val plain = session.history(TerminalTextFormat.PLAIN)
+        val lines = plain.text.lines()
+        assertEquals("1", lines.first())
+        assertTrue("100" in lines, "The history is there")
+        assertTrue("red <b> orange" in lines)
+        assertTrue('\u001b' !in plain.text, "No escape sequence in the characters")
+        assertEquals(theme.foreground, plain.foreground)
+        assertEquals(theme.background, plain.background)
+
+        val html = session.history(TerminalTextFormat.HTML).text
+        assertTrue("--vt-palette-1: ${theme.ansi[1]};" in html, "The palette is defined: $html".take(400))
+        assertTrue("var(--vt-palette-1)" in html)
+        assertTrue("var(--vt-palette-208)" in html)
+        assertTrue("red &lt;b&gt;" in html, "The text is escaped")
+
+        val vt = session.history(TerminalTextFormat.VT).text
+        assertTrue("\u001b[" in vt && "red <b>" in vt)
+        assertTrue("\u001b]4;" !in vt, "No palette: it would set the one of the terminal that shows it")
+    }
+
+    @Test
     fun aProgramsColorsWinOverTheTheme() {
         val session = start("""printf '\033]11;rgb:ff/00/00\033\\'; sleep 30""")
         session.setTheme(theme)

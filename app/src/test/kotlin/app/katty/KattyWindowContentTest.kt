@@ -14,11 +14,13 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.CursorShape
 import app.katty.core.KattyDirectories
@@ -232,6 +234,31 @@ class KattyWindowContentTest {
 
         onNodeWithText("Close the last terminal?", useUnmergedTree = true).assertExists()
         assertEquals(terminal, state.selection.terminal, "It is not closed before the user says so")
+    }
+
+    // What the export says follows the terminal while it is asked: a program on the alternate screen has no history in it, and once it leaves it
+    // the shell's history is there again.
+    @Test
+    fun theExportSaysWhetherAProgramHasTheAlternateScreen() = runComposeUiTest {
+        command = listOf("/bin/sh", "-c", """printf '\033[?1049hfull screen'; read line; printf '\033[?1049l'; sleep 30""")
+        store.addProject(directories.support.toString())
+        showWindow()
+        val session = registry.handles.value.values.single().session!!
+        waitUntil(timeoutMillis = 15_000) { session.frames.value.alternateScreen }
+
+        assertTrue(shortcut(Key.K))
+        waitForIdle()
+        onNode(hasSetTextAction()).performTextInput("Export history")
+        waitForIdle()
+        onNodeWithContentDescription("Export history…", substring = true, useUnmergedTree = true).performClick()
+        waitForIdle()
+        onNodeWithText("Only what the program shows now", substring = true, useUnmergedTree = true).assertExists()
+
+        session.sendText("\r")
+        waitUntil(timeoutMillis = 15_000) {
+            onAllNodesWithText("Everything the terminal keeps: its history and its screen.", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("Only what the program shows now", substring = true, useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test

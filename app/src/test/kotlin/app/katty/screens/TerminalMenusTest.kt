@@ -20,6 +20,7 @@ class TerminalMenusTest {
         moveTo = { calls += "move ${it.value}" },
         colorScheme = { calls += "colorScheme" },
         copyDirectory = { calls += "copyDirectory" },
+        exportHistory = { calls += "exportHistory" },
         restart = { calls += "restart" },
         close = { calls += "close" },
     )
@@ -50,7 +51,7 @@ class TerminalMenusTest {
         val entries = terminalMenu(listOf(WorkspaceChoice(WorkspaceId("w"), "release-notes")), "Default", menuActions)
 
         assertEquals(
-            listOf("Rename terminal", "---", "Split right", "Split down", "---", "Move to workspace ›", "Color scheme", "---", "Copy working directory", "---", "Restart terminal", "Close terminal"),
+            listOf("Rename terminal", "---", "Split right", "Split down", "---", "Move to workspace ›", "Color scheme", "---", "Copy working directory", "Export history…", "---", "Restart terminal", "Close terminal"),
             entries.labels(),
         )
     }
@@ -100,16 +101,16 @@ class TerminalMenusTest {
         val entries = terminalMenu(emptyList(), "Default", menuActions)
 
         assertFalse(entries.any { it is MenuSubmenu })
-        assertEquals(listOf("Rename terminal", "---", "Split right", "Split down", "---", "Color scheme", "---", "Copy working directory", "---", "Restart terminal", "Close terminal"), entries.labels())
+        assertEquals(listOf("Rename terminal", "---", "Split right", "Split down", "---", "Color scheme", "---", "Copy working directory", "Export history…", "---", "Restart terminal", "Close terminal"), entries.labels())
     }
 
     @Test
     fun theItemsOfTheMenuDoWhatTheySay() {
         val entries = terminalMenu(emptyList(), "Default", menuActions)
 
-        listOf("Rename terminal", "Split right", "Split down", "Copy working directory", "Restart terminal", "Close terminal").forEach { entries.action(it).onClick() }
+        listOf("Rename terminal", "Split right", "Split down", "Copy working directory", "Export history…", "Restart terminal", "Close terminal").forEach { entries.action(it).onClick() }
 
-        assertEquals(listOf("rename", "splitRight", "splitDown", "copyDirectory", "restart", "close"), calls)
+        assertEquals(listOf("rename", "splitRight", "splitDown", "copyDirectory", "exportHistory", "restart", "close"), calls)
     }
 
     @Test
@@ -147,7 +148,7 @@ class TerminalMenusTest {
         assertEquals(
             listOf(
                 "Copy", "Paste", "Select all", "---", "Find…", "Clear screen and scrollback", "---",
-                "Rename terminal", "---", "Split right", "Split down", "---", "Move to workspace ›", "Color scheme", "---", "Copy working directory", "---", "Restart terminal", "Close terminal",
+                "Rename terminal", "---", "Split right", "Split down", "---", "Move to workspace ›", "Color scheme", "---", "Copy working directory", "Export history…", "---", "Restart terminal", "Close terminal",
             ),
             entries.labels(),
         )

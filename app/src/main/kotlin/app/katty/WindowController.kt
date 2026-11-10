@@ -27,16 +27,26 @@ import app.katty.core.neighbour
 import app.katty.core.quitDecision
 import app.katty.core.stoppedByQuitting
 import app.katty.core.splitToNudge
+import app.katty.core.terminalIdentity
 import app.katty.core.terminals
 import app.katty.screens.PaletteHandlers
 import app.katty.screens.splitVisually
 import app.katty.terminal.TerminalFilePosition
 import app.katty.terminal.TerminalSession
+import app.katty.terminals.ExportFormat
 import app.katty.terminals.TerminalHandle
+import app.katty.terminals.exportContent
+import app.katty.terminals.exportFailureReason
+import app.katty.terminals.exportFileName
+import app.katty.terminals.writeExport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.nio.file.Path
+import java.time.LocalDateTime
 
 /** How much of a split a press of the resize shortcut moves, and how much the font grows or shrinks for one of the zoom ones. */
 private const val SPLIT_STEP = 0.05f
@@ -45,6 +55,9 @@ private const val FONT_STEP = 1f
 /** What the window asks of the system: a folder, the clipboard, the file manager, another application, its other windows. */
 internal interface WindowPlatform {
     fun chooseFolder(title: String, initial: String?): String?
+
+    /** Asks where a file is saved, proposing [name] in [directory]: the path chosen, `null` when the user cancelled. */
+    fun chooseSaveFile(title: String, directory: String?, name: String): String?
 
     fun copy(text: String)
 
@@ -151,6 +164,15 @@ internal class WindowController(
     var choosingIde by mutableStateOf<IdeRequest?>(null)
     var editingWorkspaceIde by mutableStateOf<WorkspaceId?>(null)
 
+    // The terminal whose history is being exported, while its format is chosen, and why the last export failed, until the user has read it.
+    var exportingHistory by mutableStateOf<TerminalId?>(null)
+    var exportFailure by mutableStateOf<String?>(null)
+
+    /** The format of the last export, which the next one starts on: in memory, as the folder. */
+    var lastExportFormat: ExportFormat = ExportFormat.TEXT
+        private set
+    private var lastExportFolder: String? = null
+
     /** The sessions of the terminals, as the registry has them now. */
     var handles: Map<TerminalId, TerminalHandle> = emptyMap()
 
@@ -174,7 +196,7 @@ internal class WindowController(
     /** What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons. */
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
-            quitting != null || recentOpen || choosingIde != null || editingWorkspaceIde != null
+            quitting != null || recentOpen || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -452,6 +474,45 @@ internal class WindowController(
         state.projects.firstOrNull { it.id == id }?.let { platform.reveal(it.directory) }
     }
 
+    /** Asks in which format the history of [terminal], the selected one by default, is exported: nothing for a terminal that has no session. */
+    fun exportHistory(terminal: TerminalId? = state.selection.terminal) {
+        if (terminal == null || handles[terminal]?.session == null) return
+        exportingHistory = terminal
+    }
+
+    /**
+     * The user chose [format] for the history that waits: where it goes is asked (the folder of the last export, else the Downloads), and it is
+     * written there off the UI thread. A file that cannot be written is told.
+     */
+    fun answerExport(format: ExportFormat, now: LocalDateTime = LocalDateTime.now()) {
+        val terminal = exportingHistory ?: return
+        exportingHistory = null
+        lastExportFormat = format
+        val session = handles[terminal]?.session ?: return
+        val title = terminalTitle(terminal)
+        val chosen = platform.chooseSaveFile("Export the history of “$title”", lastExportFolder ?: downloadsFolder(), exportFileName(title, now, format)) ?: return
+        val path = Path.of(chosen)
+        lastExportFolder = path.parent?.toString()
+        scope.launch {
+            val failure = withContext(Dispatchers.IO) {
+                runCatching { writeExport(path, exportContent(session.history(format.text), format, title)) }.exceptionOrNull()
+            }
+            if (failure != null) exportFailure = "$chosen could not be written: ${exportFailureReason(failure)}."
+        }
+    }
+
+    // What the terminal is called, as its pane says it.
+    private fun terminalTitle(terminal: TerminalId): String {
+        val handle = handles[terminal]
+        val spec = state.locate(terminal)?.terminal
+        return terminalIdentity(spec?.name, infos[terminal]?.report, handle?.processName?.value, handle?.shellName ?: "zsh").title
+    }
+
+    private fun downloadsFolder(): String {
+        val home = System.getProperty("user.home")
+        return File(home, "Downloads").takeIf { it.isDirectory }?.path ?: home
+    }
+
     /** A rename of what is gone, or that nothing draws (the board shows no names, and the rail no field), ends: it would keep the keyboard for good. */
     fun dropStaleRenames() {
         val current = state
@@ -463,6 +524,8 @@ internal class WindowController(
         fun gone(id: WorkspaceId) = current.projects.none { p -> p.workspaces.any { it.id == id } }
         choosingIde?.let { if (gone(it.workspace)) choosingIde = null }
         editingWorkspaceIde?.let { if (gone(it)) editingWorkspaceIde = null }
+        // The format of the history of a terminal that is gone.
+        exportingHistory?.let { if (current.locate(it) == null) exportingHistory = null }
     }
 
     /**
@@ -628,6 +691,7 @@ internal class WindowController(
         moveTerminalTo = { workspace -> state.selection.terminal?.let { store.moveTerminal(it, workspace) } },
         useProcessName = { state.selection.terminal?.let { store.renameTerminal(it, null) } },
         copyDirectory = { state.selection.terminal?.let { id -> state.locate(id)?.terminal?.directory?.let(platform::copy) } },
+        exportHistory = { onTerminal { exportHistory(it) } },
         defaultColorScheme = { dark -> picking = SchemeTarget.Default(dark) },
         toggleLigatures = { store.updateSettings { it.copy(ligatures = !it.ligatures) } },
         refreshUsage = { refreshUsage() },
