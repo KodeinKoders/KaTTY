@@ -47,6 +47,7 @@ import app.katty.AppShortcut
 import app.katty.core.AgentState
 import app.katty.core.Attention
 import app.katty.core.AttentionItem
+import app.katty.core.FinishedCommand
 import app.katty.core.TerminalId
 import app.katty.core.relativeTime
 import app.katty.ui.AgentTile
@@ -64,27 +65,64 @@ import app.katty.ui.Shortcut
 import app.katty.ui.StateGlyph
 import app.katty.ui.TileSize
 import app.katty.ui.glyph
+import app.katty.terminal.TerminalCommandOutcome
+import app.katty.terminal.compose.formatCommandDuration
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 
 /** What the command that goes to the next terminal that needs the user, one that waits or one that finished, is called. */
-internal const val JUMP_LABEL = "Jump to next agent that needs you"
+internal const val JUMP_LABEL = "Jump to next terminal that needs you"
 
-/** What an item of attention calls its agent: the agent's name, or what the program calls itself, or its terminal's name. */
-internal fun AttentionItem.title(): String =
-    info.report.agent?.displayName ?: info.report.app ?: terminal.name ?: "Terminal"
+/** What the bell and its list are called: they list agents and commands that ended. */
+internal const val ATTENTION_LABEL = "Terminals needing attention"
 
-/** What a terminal that needs the user, or that finished, says it is doing in the words of a notification. */
-internal fun AttentionItem.headline(): String = when (info.state) {
-    AgentState.NEEDS_INPUT -> "${title()} needs input"
-    AgentState.ERROR -> "${title()} failed"
-    AgentState.DONE -> "${title()} finished"
-    else -> title()
+/**
+ * What an item of attention is called: the agent's name, or what the program calls itself, or its terminal's name; for a command that ended, its
+ * line, or its terminal's name when it is not known.
+ */
+internal fun AttentionItem.title(): String {
+    command?.let { return it.line ?: terminal.name ?: "Command" }
+    return info?.report?.agent?.displayName ?: info?.report?.app ?: terminal.name ?: "Terminal"
+}
+
+/** How a command that ended went, and how long it ran: `Exit 2 · 3 min 12 s`, `Succeeded · 42 s`. */
+internal fun FinishedCommand.summary(): String {
+    val how = when (outcome) {
+        TerminalCommandOutcome.SUCCEEDED -> "Succeeded"
+        TerminalCommandOutcome.FAILED -> "Exit $exitCode"
+        TerminalCommandOutcome.STOPPED -> "Stopped"
+        TerminalCommandOutcome.ENDED, TerminalCommandOutcome.RUNNING -> "Ended"
+    }
+    return "$how · ${formatCommandDuration(java.time.Duration.ofMillis(durationMs))}"
+}
+
+/** The line under an item of attention: what its agent says, or how its command went. */
+internal fun AttentionItem.note(): String? = command?.summary() ?: info?.report?.note
+
+/**
+ * What a terminal that needs the user, or that finished, says it is doing in the words of a notification. For a command, what happened comes
+ * first: its line may be long, and is cut where it is drawn.
+ */
+internal fun AttentionItem.headline(): String {
+    command?.let { command ->
+        val how = when (command.outcome) {
+            TerminalCommandOutcome.FAILED -> "Failed"
+            TerminalCommandOutcome.STOPPED -> "Stopped"
+            else -> "Finished"
+        }
+        return "$how: ${title()}"
+    }
+    return when (state) {
+        AgentState.NEEDS_INPUT -> "${title()} needs input"
+        AgentState.ERROR -> "${title()} failed"
+        AgentState.DONE -> "${title()} finished"
+        else -> title()
+    }
 }
 
 /**
- * The bell of the title bar, with the number of the agents that need the user ([count]: the ones that wait and the ones that finished): amber
- * while one waits ([waiting]), green when they only finished.
+ * The bell of the title bar, with the number of the terminals that need the user ([count]: the agents that wait, and the agents and the commands
+ * that finished): amber while one waits ([waiting]), green when they only finished.
  */
 @Composable
 fun AttentionBell(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier, waiting: Boolean = true) {
@@ -92,7 +130,7 @@ fun AttentionBell(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier
     Box(modifier) {
         app.katty.ui.KattyIconButton(
             KattyIcons.Bell,
-            if (count == 0) "Agents needing attention" else "Agents needing attention: $count",
+            if (count == 0) ATTENTION_LABEL else "$ATTENTION_LABEL: $count",
             onClick,
             shortcut = AppShortcut.ATTENTION.label,
         )
@@ -109,8 +147,8 @@ fun AttentionBell(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier
 }
 
 /**
- * The list of attention that the bell opens: the agents that need the user, then the ones that finished, with where they are and what
- * they said, how long ago, a button to take them all off, and the shortcut to go to the next one that waits.
+ * The list of attention that the bell opens: the agents that need the user, then the agents and the commands that finished, with where they are
+ * and what they said, how long ago, a button to take them all off, and the shortcut to go to the next one.
  *
  * It has the keyboard when it opens: the arrows move the selected row, Enter goes to its terminal and Escape closes the list.
  *
@@ -144,7 +182,7 @@ fun AttentionPopover(
         LaunchedEffect(Unit) { focus.requestFocus() }
         Column(
             Modifier.width(380.dp * uiScaleFactor()).shadow(24.dp, RoundedCornerShape(10.dp)).clip(RoundedCornerShape(10.dp)).background(colors.panel)
-                .border(1.dp, colors.line, RoundedCornerShape(10.dp)).semantics { contentDescription = "Agents needing attention" }
+                .border(1.dp, colors.line, RoundedCornerShape(10.dp)).semantics { contentDescription = ATTENTION_LABEL }
                 .focusRequester(focus).focusable()
                 // Not a preview: the button in the header handles its own Enter first.
                 .onKeyEvent { event ->
@@ -198,22 +236,22 @@ private fun AttentionRow(item: AttentionItem, now: Long, selected: Boolean, onCl
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        StateGlyph(item.info.state, Modifier.padding(top = 3.dp))
-        AgentTile(item.info.report.agent.glyph(), size = TileSize.HEADER)
+        StateGlyph(item.state, Modifier.padding(top = 3.dp))
+        AgentTile(item.info?.report?.agent.glyph(), size = TileSize.HEADER)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OneLine(item.title(), Modifier.weight(1f), color = colors.text)
-                Text(relativeTime(now, item.info.since), color = colors.muted, fontSize = 11.sp)
+                Text(relativeTime(now, item.since), color = colors.muted, fontSize = 11.sp)
             }
             OneLine("${item.project.name} / ${item.workspace.name}", color = colors.muted, fontSize = 12.sp)
-            item.info.report.note?.let { Text(it, color = colors.text, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            item.note()?.let { Text(it, color = colors.text, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
     }
 }
 
 /**
- * A notice in a corner of the window for an agent that started needing the user, finished or failed in a terminal that the user is not
- * looking at. A click goes to the terminal.
+ * A notice in a corner of the window for an agent that started needing the user, finished or failed, or a command that ended, in a terminal that
+ * the user is not looking at. A click goes to the terminal.
  */
 @Composable
 fun AgentToast(item: AttentionItem, now: Long, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -230,10 +268,10 @@ fun AgentToast(item: AttentionItem, now: Long, onClick: () -> Unit, modifier: Mo
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OneLine(item.headline(), Modifier.weight(1f), color = colors.text)
-                Text(relativeTime(now, item.info.since), color = colors.muted, fontSize = 11.sp)
+                Text(relativeTime(now, item.since), color = colors.muted, fontSize = 11.sp)
             }
             OneLine("${item.project.name} / ${item.workspace.name}", color = colors.muted, fontSize = 12.sp)
-            item.info.report.note?.let { OneLine(it, color = colors.text, fontSize = 12.sp) }
+            item.note()?.let { OneLine(it, color = colors.text, fontSize = 12.sp) }
         }
     }
 }

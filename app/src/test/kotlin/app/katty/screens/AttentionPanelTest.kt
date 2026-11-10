@@ -28,9 +28,11 @@ import app.katty.core.AgentReport
 import app.katty.core.AgentState
 import app.katty.core.Attention
 import app.katty.core.AttentionItem
+import app.katty.core.FinishedCommand
 import app.katty.core.KattyStore
 import app.katty.core.attention
 import app.katty.core.TerminalId
+import app.katty.terminal.TerminalCommandOutcome
 import app.katty.ui.KattyTheme
 import app.katty.ui.render
 import kotlin.test.Test
@@ -51,6 +53,24 @@ class AttentionPanelTest {
         return store.state.value.attention(mapOf(terminal to info)).let { (it.needsYou + it.finished).first { item -> item.workspace.id == workspaceId } }
     }
 
+    // A command that ended in a terminal of its own workspace, [agoMinutes] ago, after [durationMs].
+    private fun command(project: String, workspace: String, line: String?, exitCode: Int, agoMinutes: Long, durationMs: Long): AttentionItem {
+        val directory = "/dev/$project"
+        val projectId = store.state.value.projects.firstOrNull { it.directory == directory }?.id ?: store.addProject(directory, project)
+        store.addWorkspace(projectId, workspace)!!
+        val terminal = store.state.value.selection.terminal!!
+        val outcome = if (exitCode == 0) TerminalCommandOutcome.SUCCEEDED else TerminalCommandOutcome.FAILED
+        val command = FinishedCommand(line, outcome, exitCode, durationMs, now - agoMinutes * 60_000)
+        return store.state.value.attention(emptyMap(), mapOf(terminal to command)).finished.single()
+    }
+
+    private fun commands(): Attention {
+        val failed = command("api-gateway", "migrations", "./gradlew test --tests '*Migration*'", 1, 1, 192_000)
+        val succeeded = command("web-client", "checkout-form", "npm run build", 0, 3, 42_000)
+        val unknown = command("docs-site", "getting-started", null, 0, 9, 400)
+        return Attention(needsYou = emptyList(), finished = listOf(failed, succeeded, unknown))
+    }
+
     private fun attention(): Attention {
         val codex = item("api-gateway", "refactor-auth", AgentState.NEEDS_INPUT, "codex", 2, "Apply this patch? 1. Yes  2. No, tell me what to change")
         val claude = item("web-client", "checkout-form", AgentState.ERROR, "claude-code", 14, "Failed: build error in CartSummary.tsx.")
@@ -60,7 +80,7 @@ class AttentionPanelTest {
     }
 
     private fun ComposeUiTest.press(key: Key) {
-        onNodeWithContentDescription("Agents needing attention").performKeyInput { pressKey(key) }
+        onNodeWithContentDescription("Terminals needing attention").performKeyInput { pressKey(key) }
     }
 
     @Test
@@ -142,7 +162,7 @@ class AttentionPanelTest {
     fun theBellShowsHowManyAgentsNeedTheUser() = runComposeUiTest {
         setContent { KattyTheme(false) { AttentionBell(2, onClick = {}) } }
 
-        onNodeWithContentDescription("Agents needing attention: 2").assertExists()
+        onNodeWithContentDescription("Terminals needing attention: 2").assertExists()
         onNodeWithText("2").assertExists()
     }
 
@@ -173,16 +193,16 @@ class AttentionPanelTest {
     fun theTooltipOfTheBellSaysItsShortcut() = runComposeUiTest {
         setContent { KattyTheme(false) { AttentionBell(2, onClick = {}) } }
 
-        onNodeWithContentDescription("Agents needing attention: 2").performMouseInput { moveTo(center) }
+        onNodeWithContentDescription("Terminals needing attention: 2").performMouseInput { moveTo(center) }
 
-        waitUntilAtLeastOneExists(hasText("Agents needing attention: 2 (⌘J)"), timeoutMillis = 5_000)
+        waitUntilAtLeastOneExists(hasText("Terminals needing attention: 2 (⌘J)"), timeoutMillis = 5_000)
     }
 
     @Test
     fun theBellShowsNoNumberWhenNobodyNeedsTheUser() = runComposeUiTest {
         setContent { KattyTheme(false) { AttentionBell(0, onClick = {}) } }
 
-        onNodeWithContentDescription("Agents needing attention").assertExists()
+        onNodeWithContentDescription("Terminals needing attention").assertExists()
         assertEquals(0, onAllNodesWithText("0").fetchSemanticsNodes().size)
     }
 
@@ -198,7 +218,7 @@ class AttentionPanelTest {
         onNodeWithText("21 min").assertExists()
         onNodeWithText("api-gateway / refactor-auth").assertExists()
         onNodeWithText("Failed: build error in CartSummary.tsx.").assertExists()
-        onNodeWithText("Jump to next agent that needs you").assertExists()
+        onNodeWithText("Jump to next terminal that needs you").assertExists()
     }
 
     @Test
@@ -219,7 +239,7 @@ class AttentionPanelTest {
         setContent { KattyTheme(false) { AttentionPopover(attention(), now, onOpen = {}, onMarkAllSeen = { calls += "seen" }, onJumpToNext = { calls += "jump" }, onDismiss = {}) } }
 
         onNodeWithText("Mark all seen").performClick()
-        onNodeWithText("Jump to next agent that needs you").performClick()
+        onNodeWithText("Jump to next terminal that needs you").performClick()
 
         assertEquals(listOf("seen", "jump"), calls)
     }
@@ -252,6 +272,58 @@ class AttentionPanelTest {
 
         onNodeWithText("Claude Code failed").assertExists()
         onNodeWithText("Claude Code finished").assertExists()
+    }
+
+    @Test
+    fun aCommandThatEndedSaysItsLineHowItWentAndHowLongItRan() = runComposeUiTest {
+        val list = commands()
+        val opened = mutableListOf<TerminalId>()
+        setContent { KattyTheme(false) { AttentionPopover(list, now, onOpen = { opened += it }, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {}) } }
+
+        onNodeWithText("Nothing needs you.").assertExists()
+        onNodeWithText("FINISHED").assertExists()
+        onNodeWithText("./gradlew test --tests '*Migration*'").assertExists()
+        onNodeWithText("Exit 1 · 3 min 12 s").assertExists()
+        onNodeWithText("npm run build").assertExists()
+        onNodeWithText("Succeeded · 42 s").assertExists()
+        onNodeWithText("3 min").assertExists()
+        // A shell that does not mark where the command line starts (fish) gives no line.
+        onNodeWithText("Command").assertExists()
+        onNodeWithText("Succeeded · 0.4 s").assertExists()
+        onNodeWithContentDescription("npm run build in web-client / checkout-form").performClick()
+
+        assertEquals(listOf(list.finished[1].terminal.id), opened)
+    }
+
+    @Test
+    fun theNoticeOfACommandThatEnded() = runComposeUiTest {
+        val list = commands()
+        setContent { KattyTheme(false) { androidx.compose.foundation.layout.Column { AgentToast(list.finished[0], now, {}); AgentToast(list.finished[1], now, {}) } } }
+
+        onNodeWithText("Failed: ./gradlew test --tests '*Migration*'").assertExists()
+        onNodeWithText("Exit 1 · 3 min 12 s").assertExists()
+        onNodeWithText("Finished: npm run build").assertExists()
+        onNodeWithText("web-client / checkout-form").assertExists()
+    }
+
+    @Test
+    fun drawsTheCommandsThatEndedInBothThemes() {
+        for (dark in listOf(false, true)) {
+            val list = commands()
+            val theme = if (dark) "dark" else "light"
+            val rendered = render("attention-commands-$theme", 1000, 700, dark = dark) {
+                Box(Modifier.fillMaxSize().padding(8.dp)) {
+                    AttentionPopover(list, now, onOpen = {}, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {})
+                }
+            }
+            // The red of the command that failed, and the green of the ones that succeeded.
+            assertTrue(rendered.count(if (dark) 0xF2767A else 0xC93234) > 50)
+            assertTrue(rendered.count(if (dark) 0x6CC17D else 0x1F7A3A) > 50)
+            // The notice on its own: the list, a popup, is drawn over what is under it.
+            render("attention-command-notice-$theme", 760, 280, dark = dark) {
+                Box(Modifier.fillMaxSize().padding(16.dp)) { AgentToast(list.finished[0], now, onClick = {}) }
+            }
+        }
     }
 
     @Test

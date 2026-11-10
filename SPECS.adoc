@@ -410,6 +410,7 @@ The session keeps the records by the rules of the specification: a report replac
 A terminal that is Done or failed stays so until the user does something with it: types in it (a key without ⌘ that is not a modifier alone), clicks in its pane, goes to it from the bell, the board, the palette, a notice, ⌘⇧J or ⌘⌥1…9, or uses "Mark all seen".
 Being the selected terminal of a window that has the focus is not enough: coming back to the window shows it, and the bell must still list it; the ⌘ of ⌘J, which opens the bell, does not count either.
 Seeing it removes its `done` and `error` records, and the terminal is at rest.
+A command that ended where the user was not looking (see <<attention>>) is seen the same way, and leaves the bell.
 
 
 === Agents
@@ -588,19 +589,24 @@ The families are the ones of the system whose characters `iIlMW.m1` all have the
 They are listed once, in the background.
 
 
+[#attention]
 == Attention
 
-* The bell of the title bar shows the number of terminals that need the user: the ones that wait (Needs input or failed) and the Done ones that were not seen; in amber while one waits, in green when they only finished.
+* A command that the shell ran (OSC 133, which needs the shell integration) and that ends in a terminal the user is not looking at is kept for the bell until it is seen, failed or not, however long it ran.
+The user is not looking at a terminal when it is not the selected one, when the window does not have the focus, or when the board is shown.
+A terminal keeps its last command; its agent comes first when it waits, failed or finished.
+* The bell of the title bar ("Terminals needing attention") shows the number of terminals that need the user: the ones that wait (Needs input or failed), the Done ones and the commands that were not seen; in amber while one waits, in green when they only finished.
 * Its panel (380 px) has:
 ** NEEDS YOU, with the number of the ones that wait, and "Mark all seen";
-** the terminals that need the user, the most recent first, then FINISHED: the Done terminals that were not seen, the most recent first; each with its glyph, tile, name, how long ago, `project / workspace` and its note;
+** the terminals that need the user, the most recent first, then FINISHED: the Done terminals and the commands that were not seen, the most recent first; each with its glyph, tile, name, how long ago, `project / workspace` and its note;
+** for a command: the green glyph, or the red one when it failed, the shell's tile, its line (or "Command" when the shell did not mark where it starts), and how it went and how long it ran ("Exit 2 · 3 min 12 s", "Succeeded · 42 s", "Stopped", "Ended");
 ** "Nothing needs you." when there is none;
-** "Jump to next agent that needs you ⌘⇧J" at its bottom.
+** "Jump to next terminal that needs you ⌘⇧J" at its bottom.
 * A click on a row goes to the terminal: the Terminals view, its workspace and project selected, the terminal focused.
 * Mark all seen removes what every terminal finished or failed at; the terminals that wait for the user still do.
-* Jump to next agent that needs you (⌘⇧J) goes to the terminal that waits or finished that follows the focused one in the order of the sidebar, round to the first; nothing when none needs the user. A Done one that it goes to is seen, and leaves the list.
-* A notice appears at the bottom right of the window for 6 s when a terminal starts needing the user, finishes or fails, unless it is the focused terminal of the Terminals view of a window that has the focus.
-It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, and the note; a click goes to the terminal.
+* Jump to next terminal that needs you (⌘⇧J) goes to the terminal that waits or finished that follows the focused one in the order of the sidebar, round to the first; nothing when none needs the user. A Done one, or a command, that it goes to is seen, and leaves the list.
+* A notice appears at the bottom right of the window for 6 s when a terminal starts needing the user, finishes or fails, or when a command ends in it, unless it is the focused terminal of the Terminals view of a window that has the focus.
+It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, and the note; for a command, "Finished: <line>", "Failed: <line>" or "Stopped: <line>" (what happened first: the line is cut where it is drawn), where, and how it went; a click goes to the terminal.
 * Ages are "now" under a minute, then "N min", "N h", "N d".
 
 
@@ -691,7 +697,7 @@ In it the label is on two lines ("AGENT", "USAGE") when the items are full, with
 ** WORKSPACES: each workspace, with its project;
 ** TERMINALS: each terminal, with its workspace and state (idle, working, needs input, done);
 ** COMMANDS: with their shortcuts, the ones that need a workspace or a terminal only when there is one.
-* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Search in all terminals…, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next agent that needs you, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
+* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Search in all terminals…, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next terminal that needs you, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
 * What is typed is matched with the labels: its letters, in order, without regard for the case and the spaces.
 A match whose letters are together, at the start of the text or of a word, in a short label, is better; the matched letters are bold in the accent color.
 * The groups stay in their order; in a group, the best match is first; with nothing typed, everything is in its order.
@@ -732,7 +738,7 @@ The window's shortcuts are handled before the terminal sees them.
 | Reopen the terminal or the workspace that was closed last.
 
 | ⌘⇧J
-| Jump to the next agent that needs you: one that waits or one that finished.
+| Jump to the next terminal that needs you: one that waits or one that finished, an agent or a command.
 
 | ⌘⌥ + arrow
 | Focus the pane next to the focused one, as the screen shows them: among the panes past its edge that share part of its side, the nearest, then the one that shares the most.

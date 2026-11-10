@@ -18,6 +18,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -1268,6 +1269,23 @@ class TerminalSessionTest {
             listOf(TerminalEvent.PromptStarted, TerminalEvent.CommandStarted(null), TerminalEvent.CommandFinished(1)),
             events.toList(),
         )
+    }
+
+    @Test
+    fun theLastCommandHasItsLineOnceItsEndIsTold() {
+        // All in one write: the end is told inside it, before the line is read, after it.
+        val session = startThatWaits("""printf '\033]133;A\007$ \033]133;B\007make build\r\n\033]133;C\007oops\r\n\033]133;D;2\007\033]133;A\007$ '; sleep 30""")
+        val events = session.collectEvents()
+        assertNull(session.lastCommand(), "No command yet")
+
+        session.paste("x")
+        await("the end of the command") { TerminalEvent.CommandFinished(2) in events }
+
+        val command = assertNotNull(session.lastCommand())
+        assertEquals("make build", command.command)
+        assertEquals(2, command.exitCode)
+        assertEquals(TerminalCommandOutcome.FAILED, command.outcome)
+        assertTrue(command.finishedAt!! >= command.startedAt)
     }
 
     @Test

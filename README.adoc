@@ -56,9 +56,10 @@ The sidebar counts how many terminals are in each state.
 Filter it by project, and open it in a window of its own to keep it on another screen.
 A click on a card brings you to that terminal.
 * The bell in the title bar lists the agents that need you or have finished, and counts both: amber while one waits for you, green when they have only finished.
-A finished agent stays there until you type or click in its terminal, or go to it: coming back to KaTTY is not enough.
-⌘⇧J jumps to the next agent that needs you, one that waits or one that finished.
-* When an agent you are not looking at needs you, finishes or fails, a notice appears in the window.
+It also lists the commands that end in a terminal you are not looking at, a build in another workspace for instance, with their exit code and how long they ran.
+What finished stays there until you type or click in its terminal, or go to it: coming back to KaTTY is not enough.
+⌘⇧J jumps to the next terminal that needs you, one that waits or one that finished.
+* When an agent you are not looking at needs you, finishes or fails, or a command ends there, a notice appears in the window.
 KaTTY does not send macOS notifications, badges or sounds.
 * The header of each pane shows the agent or the program that runs in it, and the *git branch*, worktree or commit that the terminal is in.
 It follows a branch that an agent or your IDE checks out while a program runs.
@@ -207,10 +208,10 @@ When you switch to a workspace, the terminal that you used last in it has the ke
 | Shortcut | Action
 
 | ⌘J
-| Show the agents that need you or have finished: ↑ and ↓ choose one, Enter goes to its terminal, Escape closes the list
+| Show the agents that need you or have finished, and the commands that ended: ↑ and ↓ choose one, Enter goes to its terminal, Escape closes the list
 
 | ⌘⇧J
-| Jump to the next agent that needs you, one that waits or one that finished
+| Jump to the next terminal that needs you, one that waits or one that finished
 
 | ⌘⇧B
 | Switch between the agent board and the terminals

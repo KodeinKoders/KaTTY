@@ -3,18 +3,24 @@ package app.katty.terminals
 import app.katty.core.AgentInfo
 import app.katty.core.AgentReport
 import app.katty.core.AgentState
+import app.katty.core.FinishedCommand
 import app.katty.core.TerminalId
 import app.katty.core.column
 import app.katty.core.summarize
+import app.katty.terminal.TerminalEvent
 import app.katty.terminal.TerminalProgramState
 import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.Duration
 
 /**
  * A terminal changed state.
@@ -24,12 +30,18 @@ import kotlinx.coroutines.launch
  */
 data class AgentTransition(val terminal: TerminalId, val from: AgentState, val info: AgentInfo)
 
+/** A command that the shell ran ended in a terminal (OSC 133 D). */
+data class CommandEnd(val terminal: TerminalId, val command: FinishedCommand)
+
 /**
  * What each terminal says it is doing: it follows the program status records of every session (OSC 7501), and keeps, for each terminal, its
  * state, the program, the note and since when it has been in that state. It only reads: what the programs say is theirs, and nothing here
  * answers it.
  *
  * `done` and `error` records stay on a session until someone has seen them: [markSeen] removes them, and the terminal is then at rest.
+ *
+ * It also tells when a command that the shell ran ends ([commandEnds]), and keeps the ones that the window gives it back ([keepFinished]: the ones
+ * that ended where the user was not looking) in [finishedCommands], until [markSeen] too.
  */
 class AgentTracker(
     private val scope: CoroutineScope,
@@ -45,7 +57,19 @@ class AgentTracker(
     /** A terminal changed state. A collector that comes late misses what happened before. */
     val transitions: SharedFlow<AgentTransition> get() = mutableTransitions
 
-    private class Follow(val session: TerminalSession, val job: Job, val processJob: Job)
+    private val mutableCommandEnds = MutableSharedFlow<CommandEnd>(extraBufferCapacity = 64)
+
+    /** A command ended in a terminal, whoever was looking. A collector that comes late misses what happened before. */
+    val commandEnds: SharedFlow<CommandEnd> get() = mutableCommandEnds
+
+    private val mutableFinished = MutableStateFlow<Map<TerminalId, FinishedCommand>>(emptyMap())
+
+    /** The commands that ended where the user was not looking and that they have not seen, by terminal: the last one of each. */
+    val finishedCommands: StateFlow<Map<TerminalId, FinishedCommand>> get() = mutableFinished
+
+    private class Follow(val session: TerminalSession, val jobs: List<Job>) {
+        fun cancel() = jobs.forEach { it.cancel() }
+    }
 
     private val follows = HashMap<TerminalId, Follow>()
 
@@ -67,11 +91,12 @@ class AgentTracker(
         for (id in follows.keys.toList()) {
             val session = handles[id]?.session
             if (session == null || follows.getValue(id).session !== session) {
-                follows.remove(id)?.let { it.job.cancel(); it.processJob.cancel() }
+                follows.remove(id)?.cancel()
                 reporters.remove(id)
                 latest.remove(id)
                 atShell.remove(id)
                 mutableInfos.value = mutableInfos.value - id
+                mutableFinished.value = mutableFinished.value - id
             }
         }
         for ((id, handle) in handles) {
@@ -80,11 +105,14 @@ class AgentTracker(
             atShell += id
             follows[id] = Follow(
                 session,
-                scope.launch { session.programStatus.collect { records -> update(id, summarize(records)) } },
-                // The shell has the terminal again: the agent that ran in it is over.
-                scope.launch {
-                    handle.processName.collect { name -> programChanged(id, name == null || name == handle.shellName) }
-                },
+                listOf(
+                    scope.launch { session.programStatus.collect { records -> update(id, summarize(records)) } },
+                    // The shell has the terminal again: the agent that ran in it is over.
+                    scope.launch {
+                        handle.processName.collect { name -> programChanged(id, name == null || name == handle.shellName) }
+                    },
+                    scope.launch { session.events.filterIsInstance<TerminalEvent.CommandFinished>().collect { commandFinished(id, session) } },
+                ),
             )
         }
     }
@@ -141,8 +169,26 @@ class AgentTracker(
         transition?.let { mutableTransitions.tryEmit(it) }
     }
 
-    /** The user has seen the terminal: what it finished or failed at is taken off, and it is at rest. */
+    // A command ended in the terminal [id]. Asked after the event, and not on the thread that told it (a collector may run there, inside the write):
+    // its line is read once the write is over, under the lock that this waits for.
+    private suspend fun commandFinished(id: TerminalId, session: TerminalSession) {
+        val command = withContext(Dispatchers.IO) { session.lastCommand() } ?: return
+        val end = command.finishedAt ?: return
+        val duration = Duration.between(command.startedAt, end).toMillis().coerceAtLeast(0)
+        mutableCommandEnds.tryEmit(CommandEnd(id, FinishedCommand(command.command, command.outcome, command.exitCode, duration, clock())))
+    }
+
+    /** Keeps [command], which ended in the terminal [id] while the user was not looking, until they have seen it: it replaces the one before. */
+    @Synchronized
+    fun keepFinished(id: TerminalId, command: FinishedCommand) {
+        // A terminal that is gone meanwhile is not brought back.
+        if (id !in follows) return
+        mutableFinished.value = mutableFinished.value + (id to command)
+    }
+
+    /** The user has seen the terminal: what it finished or failed at is taken off, a command that ended in it too, and it is at rest. */
     fun markSeen(id: TerminalId) {
+        synchronized(this) { mutableFinished.value = mutableFinished.value - id }
         val session = synchronized(this) { follows[id]?.session } ?: return
         for (record in session.programStatus.value) {
             if (record.state == TerminalProgramState.DONE || record.state == TerminalProgramState.ERROR) session.clearProgramStatus(record.id)
@@ -158,11 +204,12 @@ class AgentTracker(
     /** Lets go of every session. */
     @Synchronized
     fun close() {
-        follows.values.forEach { it.job.cancel(); it.processJob.cancel() }
+        follows.values.forEach { it.cancel() }
         follows.clear()
         reporters.clear()
         latest.clear()
         atShell.clear()
         mutableInfos.value = emptyMap()
+        mutableFinished.value = emptyMap()
     }
 }

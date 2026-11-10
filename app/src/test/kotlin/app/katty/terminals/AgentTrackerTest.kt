@@ -1,8 +1,10 @@
 package app.katty.terminals
 
 import app.katty.core.AgentState
+import app.katty.core.FinishedCommand
 import app.katty.core.KattyStore
 import app.katty.core.SplitDirection
+import app.katty.terminal.TerminalCommandOutcome
 import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -318,4 +320,89 @@ class AgentTrackerTest {
         await("at rest") { tracker.infos.value[id]?.state == AgentState.IDLE }
     }
 
+    // The marks that a shell's integration sends around a command (OSC 133), `make build` typed at a `$ ` prompt.
+    private val commandStart = "printf '\\033]133;A\\007$ \\033]133;B\\007make build\\r\\n\\033]133;C\\007'"
+
+    private fun commandEnd(code: Int) = "printf '\\033]133;D;$code\\007\\033]133;A\\007$ '"
+
+    private fun collectCommandEnds(tracker: AgentTracker = this.tracker): List<CommandEnd> {
+        val received = java.util.concurrent.CopyOnWriteArrayList<CommandEnd>()
+        scope.launch { tracker.commandEnds.collect { received += it } }
+        Thread.sleep(200)
+        return received
+    }
+
+    @Test
+    fun aCommandThatEndsIsToldWithItsLineHowItWentAndHowLongItRan() {
+        scripts += "$commandStart; sleep 1; ${commandEnd(1)}; sleep 60"
+        val received = collectCommandEnds()
+        val id = start()
+
+        await("the end of the command") { received.isNotEmpty() }
+
+        val end = received.single()
+        assertEquals(id, end.terminal)
+        assertEquals("make build", end.command.line)
+        assertEquals(TerminalCommandOutcome.FAILED, end.command.outcome)
+        assertEquals(1, end.command.exitCode)
+        assertTrue(end.command.durationMs >= 900, "It ran for a second: ${end.command.durationMs} ms")
+        assertEquals(time, end.command.at)
+        assertTrue(tracker.finishedCommands.value.isEmpty(), "Nothing is kept until the window says so")
+    }
+
+    @Test
+    fun theLineIsThereWhenTheEndIsToldInTheWriteThatStartedTheCommand() {
+        // A collector that runs where the event is told is inside the write, before the line is read.
+        val unconfined = AgentTracker(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        try {
+            scripts += "$commandStart; ${commandEnd(0)}; sleep 60"
+            val received = collectCommandEnds(unconfined)
+            val id = start()
+            unconfined.sync(registry.handles.value)
+
+            await("the end of the command") { received.isNotEmpty() }
+
+            assertEquals(id, received.single().terminal)
+            assertEquals("make build", received.single().command.line)
+            assertEquals(TerminalCommandOutcome.SUCCEEDED, received.single().command.outcome)
+        } finally {
+            unconfined.close()
+        }
+    }
+
+    @Test
+    fun aCommandThatIsKeptStaysUntilTheTerminalIsSeen() {
+        scripts += "sleep 60"
+        scripts += "sleep 60"
+        store.addProject("/tmp")
+        val first = store.state.value.selection.terminal!!
+        val second = store.split(first, SplitDirection.ROW)!!
+        registry.sync(store.state.value)
+        tracker.sync(registry.handles.value)
+        val command = FinishedCommand("make build", TerminalCommandOutcome.SUCCEEDED, 0, 42_000, time)
+
+        tracker.keepFinished(first, command)
+        tracker.keepFinished(second, command)
+        tracker.keepFinished(app.katty.core.TerminalId("gone"), command)
+        assertEquals(setOf(first, second), tracker.finishedCommands.value.keys, "A terminal that is not followed is not kept")
+
+        tracker.markSeen(first)
+        assertEquals(setOf(second), tracker.finishedCommands.value.keys)
+
+        tracker.markAllSeen()
+        assertTrue(tracker.finishedCommands.value.isEmpty())
+    }
+
+    @Test
+    fun aCommandThatIsKeptGoesWithItsShell() {
+        scripts += "sleep 60"
+        scripts += "sleep 60"
+        val id = start()
+        tracker.keepFinished(id, FinishedCommand("make build", TerminalCommandOutcome.FAILED, 2, 1_000, time))
+
+        registry.restart(id)
+        tracker.sync(registry.handles.value)
+
+        assertTrue(tracker.finishedCommands.value.isEmpty())
+    }
 }

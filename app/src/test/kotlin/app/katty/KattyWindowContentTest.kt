@@ -16,6 +16,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -34,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.jetbrains.jewel.window.TitleBarScope
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -120,7 +122,63 @@ class KattyWindowContentTest {
         repeat(3) { waitForIdle(); Thread.sleep(100) }
 
         assertEquals(app.katty.core.AgentState.DONE, tracker.infos.value[id]?.state, "Selected in a window that has the focus is not seen")
-        onAllNodesWithContentDescription("Agents needing attention: 1").assertCountEquals(1)
+        onAllNodesWithContentDescription("Terminals needing attention: 1").assertCountEquals(1)
+    }
+
+    // Two terminals, the first one selected, that both run `make build` (as the marks of a shell's integration say it), which fails a moment after
+    // the window is there. Gives both, once both commands ended.
+    private fun androidx.compose.ui.test.ComposeUiTest.twoTerminalsWhereACommandEnds(): Pair<app.katty.core.TerminalId, app.katty.core.TerminalId> {
+        command = listOf(
+            "/bin/sh", "-c",
+            """sleep 2; printf '\033]133;A\007$ \033]133;B\007make build\r\n\033]133;C\007'; sleep 0.5; printf '\033]133;D;2\007\033]133;A\007$ '; sleep 30""",
+        )
+        store.addProject(directories.support.toString())
+        val selected = state.selection.terminal!!
+        val other = store.split(selected, app.katty.core.SplitDirection.ROW)!!
+        store.focus(selected)
+        val ends = java.util.concurrent.CopyOnWriteArrayList<app.katty.terminals.CommandEnd>()
+        scope.launch { tracker.commandEnds.collect { ends += it } }
+        showWindow()
+        waitUntil(timeoutMillis = 15_000) { ends.size >= 2 }
+        waitForIdle()
+        return selected to other
+    }
+
+    // A command that ends where the user is not looking is in the bell, and told in a notice; the one in the terminal they are looking at is not.
+    @Test
+    fun aCommandThatEndsInATerminalThatIsNotSelectedIsInTheBellUntilItIsSeen() = runComposeUiTest {
+        val (_, other) = twoTerminalsWhereACommandEnds()
+
+        assertEquals(setOf(other), tracker.finishedCommands.value.keys, "The selected terminal, in a window that has the focus, is looked at")
+        onAllNodesWithContentDescription("Terminals needing attention: 1").assertCountEquals(1)
+        onAllNodesWithContentDescription("Failed: make build").assertCountEquals(1)
+
+        // Going to it from the bell is having seen it.
+        onNodeWithContentDescription("Terminals needing attention: 1").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("make build in", substring = true).performClick()
+        waitForIdle()
+
+        assertTrue(tracker.finishedCommands.value.isEmpty())
+        assertEquals(other, state.selection.terminal)
+        onAllNodesWithContentDescription("Terminals needing attention").assertCountEquals(1)
+    }
+
+    @Test
+    fun aClickInTheTerminalWhereACommandEndedIsHavingSeenIt() = runComposeUiTest {
+        val (_, other) = twoTerminalsWhereACommandEnds()
+        assertEquals(setOf(other), tracker.finishedCommands.value.keys)
+
+        // The title of each pane: a click in the one of the terminal that is selected sees nothing, the other's sees the command.
+        val titles = androidx.compose.ui.test.SemanticsMatcher("the title of a pane") { node ->
+            node.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription) { null }.orEmpty().any { it.startsWith("Terminal ") }
+        }
+        onAllNodes(titles).assertCountEquals(2)
+        onAllNodes(titles)[0].performClick()
+        onAllNodes(titles)[1].performClick()
+        waitForIdle()
+
+        assertTrue(tracker.finishedCommands.value.isEmpty())
     }
 
     @Test

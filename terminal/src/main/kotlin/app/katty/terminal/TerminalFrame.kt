@@ -248,14 +248,32 @@ public data class TerminalCommandMark(
     public val command: String? = null,
     public val startRow: Long = 0,
 ) {
-    public val outcome: TerminalCommandOutcome
-        get() = when {
-            finishedAt == null -> TerminalCommandOutcome.RUNNING
-            exitCode == null -> TerminalCommandOutcome.ENDED
-            exitCode == 0 -> TerminalCommandOutcome.SUCCEEDED
-            exitCode in STOPPED_EXIT_CODES -> TerminalCommandOutcome.STOPPED
-            else -> TerminalCommandOutcome.FAILED
-        }
+    public val outcome: TerminalCommandOutcome get() = commandOutcome(finishedAt, exitCode)
+}
+
+/**
+ * A command that the shell ran, as [TerminalSession.lastCommand] gives it.
+ *
+ * @param command The line that it was typed on (its first line, without the prompt), `null` when it is not known.
+ * @param exitCode The exit code that the shell gave when it ended, or `null` while it runs and when it did not say.
+ * @param startedAt When it started to run: when its output started.
+ * @param finishedAt When it ended, or `null` while it runs.
+ */
+public data class TerminalCommand(
+    public val command: String?,
+    public val exitCode: Int?,
+    public val startedAt: Instant,
+    public val finishedAt: Instant?,
+) {
+    public val outcome: TerminalCommandOutcome get() = commandOutcome(finishedAt, exitCode)
+}
+
+private fun commandOutcome(finishedAt: Instant?, exitCode: Int?): TerminalCommandOutcome = when {
+    finishedAt == null -> TerminalCommandOutcome.RUNNING
+    exitCode == null -> TerminalCommandOutcome.ENDED
+    exitCode == 0 -> TerminalCommandOutcome.SUCCEEDED
+    exitCode in STOPPED_EXIT_CODES -> TerminalCommandOutcome.STOPPED
+    else -> TerminalCommandOutcome.FAILED
 }
 
 // What a shell says of a job that was stopped: 128 and the signal (SIGSTOP 17, SIGTSTP 18, SIGTTIN 21, SIGTTOU 22: the numbers of macOS, the only

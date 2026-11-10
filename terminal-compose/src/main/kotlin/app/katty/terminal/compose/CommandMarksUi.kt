@@ -190,7 +190,7 @@ internal fun commandMarkLines(mark: TerminalCommandMark, now: Instant, zone: Zon
 private val COMMAND_TIME_FORMAT = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss")
 
 /** A duration as a person says it: `0.4 s`, `12 s`, `1 min 12 s`, `2 h 5 min`; the part that is zero is left out. */
-internal fun formatCommandDuration(duration: Duration): String {
+public fun formatCommandDuration(duration: Duration): String {
     val millis = duration.toMillis().coerceAtLeast(0)
     if (millis < 1000) return "%.1f s".format(java.util.Locale.ROOT, millis / 1000.0)
     val seconds = millis / 1000

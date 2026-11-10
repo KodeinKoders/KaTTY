@@ -40,6 +40,7 @@ import app.katty.core.KattyDirectories
 import app.katty.core.UsageService
 import app.katty.core.usageSources
 import app.katty.core.KattyStore
+import app.katty.core.KattyState
 import app.katty.core.MainView
 import app.katty.core.Orientation
 import app.katty.core.orientation
@@ -162,6 +163,8 @@ internal fun KattyWindowContent(
     val gits by registry.gitInfos.collectAsState()
     // What each terminal is doing comes from what its program reports (OSC 7501).
     val infos by tracker.infos.collectAsState()
+    // The commands that ended where the user was not looking, until they have seen them.
+    val finishedCommands by tracker.finishedCommands.collectAsState()
     // What the session of the agent in each terminal has used.
     val usages by sessionUsage.usages.collectAsState()
     // The shape of the window decides the layout when the user left it to Auto.
@@ -191,6 +194,7 @@ internal fun KattyWindowContent(
     SideEffect {
         controller.handles = handles
         controller.infos = infos
+        controller.commands = finishedCommands
         controller.vertical = vertical
     }
     var renamingWorkspace by controller::renamingWorkspace
@@ -261,7 +265,7 @@ internal fun KattyWindowContent(
         store.updateSettings { it.copy(usageHidden = if (on) it.usageHidden - OPEN_SESSIONS_KEY else it.usageHidden + OPEN_SESSIONS_KEY) }
     }
     val setCompact: (Boolean) -> Unit = { on -> store.updateSettings { it.copy(compactUsage = on) } }
-    val attention = remember(state.projects, infos) { state.attention(infos) }
+    val attention = remember(state.projects, infos, finishedCommands) { state.attention(infos, finishedCommands) }
     // The time that ages are told from moves on by itself.
     val now = rememberNow()
     val usageNow = java.time.Instant.ofEpochMilli(now)
@@ -274,7 +278,7 @@ internal fun KattyWindowContent(
     val interacted: (TerminalId) -> Unit = remember(tracker) {
         { id ->
             val agent = tracker.infos.value[id]?.state
-            if (agent == AgentState.DONE || agent == AgentState.ERROR) tracker.markSeen(id)
+            if (agent == AgentState.DONE || agent == AgentState.ERROR || id in tracker.finishedCommands.value) tracker.markSeen(id)
         }
     }
     val describe: (TerminalSpec) -> TerminalSummary = { spec ->
@@ -339,10 +343,20 @@ internal fun KattyWindowContent(
     LaunchedEffect(Unit) {
         tracker.transitions.collect { transition ->
             val current = store.state.value
-            val looking = transition.terminal == current.selection.terminal && windowFocusedNow && current.settings.view == MainView.TERMINALS
-            if (looking || transition.info.state !in setOf(AgentState.NEEDS_INPUT, AgentState.ERROR, AgentState.DONE)) return@collect
+            if (current.lookingAt(transition.terminal, windowFocusedNow)) return@collect
+            if (transition.info.state !in setOf(AgentState.NEEDS_INPUT, AgentState.ERROR, AgentState.DONE)) return@collect
             val location = current.locate(transition.terminal) ?: return@collect
             toast = AttentionItem(location.terminal, location.project, location.workspace, transition.info)
+        }
+    }
+    // A command that ends in a terminal that the user is not looking at stays in the bell until they have seen it, and is told in a notice.
+    LaunchedEffect(Unit) {
+        tracker.commandEnds.collect { end ->
+            val current = store.state.value
+            if (current.lookingAt(end.terminal, windowFocusedNow)) return@collect
+            val location = current.locate(end.terminal) ?: return@collect
+            tracker.keepFinished(end.terminal, end.command)
+            toast = AttentionItem(location.terminal, location.project, location.workspace, null, end.command)
         }
     }
     LaunchedEffect(toast) {
@@ -715,6 +729,13 @@ internal fun KattyWindowContent(
 private const val TOAST_MS = 6_000L
 
 /** What a project without workspaces shows. */
+/**
+ * Whether the user is looking at the terminal [id]: it is the selected one, the terminals are shown (not the board), and the window has the focus.
+ * What happens in a terminal that they are not looking at is told in a notice and kept in the bell.
+ */
+internal fun KattyState.lookingAt(id: TerminalId, windowFocused: Boolean): Boolean =
+    id == selection.terminal && windowFocused && settings.view == MainView.TERMINALS
+
 @Composable
 private fun EmptyProject(modifier: Modifier, onNewWorkspace: () -> Unit) {
     Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {

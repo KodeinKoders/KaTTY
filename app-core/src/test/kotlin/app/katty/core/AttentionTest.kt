@@ -1,5 +1,6 @@
 package app.katty.core
 
+import app.katty.terminal.TerminalCommandOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -10,6 +11,9 @@ class AttentionTest {
     private val state get() = store.state.value
 
     private fun info(state: AgentState, since: Long, app: String = "claude-code") = AgentInfo(AgentReport(state, app), since)
+
+    private fun command(at: Long, exitCode: Int = 0) =
+        FinishedCommand("make build", if (exitCode == 0) TerminalCommandOutcome.SUCCEEDED else TerminalCommandOutcome.FAILED, exitCode, 1_000, at)
 
     private fun populate(): List<TerminalId> {
         val project = store.addProject("/a")
@@ -92,6 +96,49 @@ class AttentionTest {
         populate()
 
         assertNull(state.attention(emptyMap()).next(state, null))
+    }
+
+    @Test
+    fun aCommandThatEndedIsWithWhatFinishedFailedOrNot() {
+        val (a, b, c) = populate()
+
+        val attention = state.attention(
+            mapOf(a to info(AgentState.DONE, 200)),
+            mapOf(b to command(at = 300), c to command(at = 100, exitCode = 2)),
+        )
+
+        assertEquals(emptyList(), attention.needsYou, "A command that failed is not waiting for the user")
+        assertEquals(listOf(b, a, c), attention.finished.map { it.terminal.id }, "The most recent first, commands and agents together")
+        assertEquals(3, attention.count)
+        val failed = attention.finished.last()
+        assertEquals(AgentState.ERROR, failed.state)
+        assertEquals(100, failed.since)
+        assertNull(failed.info)
+        assertEquals(AgentState.DONE, attention.finished.first().state)
+    }
+
+    @Test
+    fun aTerminalIsListedOnceForWhatItsAgentSaysWhenItNeedsTheUser() {
+        val (a, b) = populate()
+
+        val attention = state.attention(
+            mapOf(a to info(AgentState.NEEDS_INPUT, 100), b to info(AgentState.IDLE, 100)),
+            mapOf(a to command(at = 300), b to command(at = 200)),
+        )
+
+        assertEquals(listOf(a), attention.needsYou.map { it.terminal.id })
+        assertNull(attention.needsYou.single().command)
+        assertEquals(listOf(b), attention.finished.map { it.terminal.id }, "An agent at rest says nothing that needs the user: its command is listed")
+        assertEquals(2, attention.count)
+    }
+
+    @Test
+    fun theJumpGoesThroughTheCommandsThatEnded() {
+        val (a, b, c) = populate()
+        val attention = state.attention(mapOf(a to info(AgentState.NEEDS_INPUT, 1)), mapOf(c to command(at = 2)))
+
+        assertEquals(c, attention.next(state, from = a))
+        assertEquals(a, attention.next(state, from = c))
     }
 
     @Test

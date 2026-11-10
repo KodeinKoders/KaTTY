@@ -862,6 +862,15 @@ public class TerminalSession private constructor(
     }
 
     /**
+     * The last command that the shell ran: its line, its exit code, when it started and ended. `null` when the shell marked none (OSC 133: see
+     * `shellIntegration` of [start]), and once it is forgotten (its rows erased, or 500 commands later).
+     *
+     * [TerminalEvent.CommandFinished] says that it ended, and comes from the mark of its end, inside the write, before its line is read (after the
+     * write: see `CommandMarks.readCommandLines`). The two are under the lock that this takes: asked after the event, it has the line.
+     */
+    public fun lastCommand(): TerminalCommand? = whileOpen(null) { commandMarks.last() }
+
+    /**
      * Moves the cursor of the line that the shell is reading to the cell at [column] and [row] of the screen, by sending it the arrow keys
      * that get there, as Ghostty does with a click: it is for a click on the command line. Only the shell that marks its input (OSC 133: see
      * `shellIntegration` of [start]) and the row of the cursor are moved: the line may be wider than the screen, and the shell is the one to

@@ -157,6 +157,9 @@ internal class WindowController(
     /** What each terminal's program reports. */
     var infos: Map<TerminalId, app.katty.core.AgentInfo> = emptyMap()
 
+    /** The commands that ended where the user was not looking, until they have seen them. */
+    var commands: Map<TerminalId, app.katty.core.FinishedCommand> = emptyMap()
+
     /** Whether the window shows the vertical layout, which draws every split turned. */
     var vertical: Boolean = false
 
@@ -389,7 +392,7 @@ internal class WindowController(
     }
 
     fun jumpToWaiting() {
-        state.attention(infos).next(state, state.selection.terminal)?.let(::openTerminal)
+        state.attention(infos, commands).next(state, state.selection.terminal)?.let(::openTerminal)
     }
 
     fun maximize() {
