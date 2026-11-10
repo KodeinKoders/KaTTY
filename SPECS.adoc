@@ -490,6 +490,8 @@ The title bar is 40 px high and holds:
 * in the middle: the switch between Terminals and Board;
 * at the right: the field that opens the palette ("Search or run a command… ⌘K", or "Commands ⌘K" in the vertical layout), the bell, and the button of the main menu.
 
+In presentation mode the button that folds the sidebar is not there, and a "Presenting ⌘⌥P" button in the accent color, before the field of the palette, stops it.
+
 
 === Horizontal layout
 
@@ -522,6 +524,27 @@ The list does not scroll by itself while an item is dragged.
 The window shows the welcome: "Add your first project", what a project is, a button "Add project folder…" with ⌘O, and the agents in two sections: DETECTED ON THIS MACHINE, with the number of agents found (each with its program and "Detected"), and NOT FOUND, which lists the supported agents that were not found, with their number, and is folded until the user opens it (it is absent when every agent is found); "Agents you install later appear here automatically."
 
 A project without a workspace shows "This project has no workspace." and a button for a new one.
+
+
+=== Presentation mode
+
+For a demo or a stream.
+
+* ⌘⌥P, or "Start presentation mode" in the palette, starts it; ⌘⌥P again, "Stop presentation mode", or the "Presenting" button of the title bar stops it.
+Escape does not: it is the programs'.
+* It is not kept: KaTTY always starts without it.
+* The window shows only the terminals, in their splits: no sidebar or rail, no tabs, no usage, no header of the workspace or of a pane.
+The accent ring says which pane has the keyboard, and the menu of a pane is at the end of the right-click menu of its terminal.
+The board is shown alone too.
+* The font of the terminals is half as big again as the setting (21 points for 14), in whole points from 8 to 32.
+⌘=, ⌘- and ⌘0 change it while presentation mode is on, and the setting comes back after it.
+* The keys that are pressed are shown at the bottom of the window, over everything, three at most, the newest last, each for 2.5 seconds: a key with ⌘ or ⌃, Escape, Tab, the arrows, and the terminal's own keys.
+A shortcut and a key of the terminal say what they do ("⌘D Split right", "⌘C Copy"), and the same key again within a second counts on its line ("↓ ×5").
+A command run from the palette is shown by its name, with its shortcut.
+* What is typed is never shown: a letter, a digit, Shift or Option with a key, Return, Backspace, Space.
+A password typed during a demo is not on the screen.
+* Notices are not shown: nothing of another terminal comes on the screen by itself.
+The bell still counts what needs the user.
 
 
 == Menus
@@ -712,7 +735,7 @@ In it the label is on two lines ("AGENT", "USAGE") when the items are full, with
 ** WORKSPACES: each workspace, with its project;
 ** TERMINALS: each terminal, with its workspace and state (idle, working, needs input, done);
 ** COMMANDS: with their shortcuts, the ones that need a workspace or a terminal only when there is one.
-* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Search in all terminals…, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Export history…, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next terminal that needs you, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Toggle project sidebar, the three layouts and the three themes.
+* The commands are: Add project folder…, New workspace, Rename workspace, Close workspace, Split right, Split down, Rename terminal, Restart terminal, Find in terminal, Search in all terminals…, Clear scrollback, Maximize (or Restore) terminal, Change the color scheme of the terminal, Export history…, Close terminal, Reopen closed terminal (only while something closed can be), Jump to next terminal that needs you, Mark all agents seen, Show the agent board (or Show terminals), Open the board in a window (the same as the button of the board, available whatever the window shows), Start (or Stop) presentation mode, Toggle project sidebar, the three layouts and the three themes.
 * What is typed is matched with the labels: its letters, in order, without regard for the case and the spaces.
 A match whose letters are together, at the start of the text or of a word, in a short label, is better; the matched letters are bold in the accent color.
 * The groups stay in their order; in a group, the best match is first; with nothing typed, everything is in its order.
@@ -763,6 +786,9 @@ The window's shortcuts are handled before the terminal sees them.
 
 | ⌘⇧F
 | Search in all terminals.
+
+| ⌘⌥P
+| Start or stop presentation mode.
 
 | ⌘C, ⌘V
 | Copy, paste: the terminal's own.

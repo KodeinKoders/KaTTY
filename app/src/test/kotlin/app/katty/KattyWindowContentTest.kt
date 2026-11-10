@@ -8,6 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -19,6 +20,8 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -129,7 +132,9 @@ class KattyWindowContentTest {
 
     // Two terminals, the first one selected, that both run `make build` (as the marks of a shell's integration say it), which fails a moment after
     // the window is there. Gives both, once both commands ended.
-    private fun androidx.compose.ui.test.ComposeUiTest.twoTerminalsWhereACommandEnds(): Pair<app.katty.core.TerminalId, app.katty.core.TerminalId> {
+    private fun androidx.compose.ui.test.ComposeUiTest.twoTerminalsWhereACommandEnds(
+        beforeItEnds: androidx.compose.ui.test.ComposeUiTest.() -> Unit = {},
+    ): Pair<app.katty.core.TerminalId, app.katty.core.TerminalId> {
         command = listOf(
             "/bin/sh", "-c",
             """sleep 2; printf '\033]133;A\007$ \033]133;B\007make build\r\n\033]133;C\007'; sleep 0.5; printf '\033]133;D;2\007\033]133;A\007$ '; sleep 30""",
@@ -141,6 +146,7 @@ class KattyWindowContentTest {
         val ends = java.util.concurrent.CopyOnWriteArrayList<app.katty.terminals.CommandEnd>()
         scope.launch { tracker.commandEnds.collect { ends += it } }
         showWindow()
+        beforeItEnds()
         waitUntil(timeoutMillis = 15_000) { ends.size >= 2 }
         waitForIdle()
         return selected to other
@@ -259,6 +265,60 @@ class KattyWindowContentTest {
             onAllNodesWithText("Everything the terminal keeps: its history and its screen.", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         onNodeWithText("Only what the program shows now", substring = true, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    private fun press(key: Key, meta: Boolean = false, alt: Boolean = false, ctrl: Boolean = false) =
+        keys.handle(KeyEvent(key = key, type = KeyEventType.KeyDown, isMetaPressed = meta, isAltPressed = alt, isCtrlPressed = ctrl))
+
+    // Only the terminals, in a bigger font, and the keys that are pressed, never what is typed; a click on the title bar's button ends it.
+    @Test
+    fun presentationModeShowsOnlyTheTerminalsAndTheKeysThatArePressed() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+        val session = registry.handles.value.values.single().session!!
+        waitUntil(timeoutMillis = 5_000) { session.frames.value.rows.size > 5 }
+        val rows = session.frames.value.rows.size
+        onAllNodesWithContentDescription("Add project").assertCountEquals(1)
+        onAllNodesWithContentDescription("Pane menu").assertCountEquals(1)
+
+        assertTrue(press(Key.P, meta = true, alt = true))
+        waitForIdle()
+        onAllNodesWithContentDescription("Add project").assertCountEquals(0)
+        onAllNodesWithContentDescription("Pane menu").assertCountEquals(0)
+        onNodeWithContentDescription("Stop presentation mode").assertExists()
+        waitUntil(timeoutMillis = 5_000) { session.frames.value.rows.size < rows }
+
+        assertTrue(press(Key.D, meta = true))
+        assertFalse(press(Key.S))
+        assertFalse(press(Key.C, ctrl = true))
+        waitForIdle()
+        assertEquals(2, state.selectedWorkspace!!.layout.terminals().size)
+        onNodeWithText("⌘D").assertExists()
+        onNodeWithText("Split right").assertExists()
+        onNodeWithText("⌃C").assertExists()
+        onAllNodesWithText("S").assertCountEquals(0)
+        // To look at: the window as a demo shows it.
+        session.sendText("echo 'Hello, presentation'\r")
+        waitUntil(timeoutMillis = 5_000) { session.frames.value.rows.any { row -> row.cells.joinToString("") { it.text }.contains("Hello, presentation") } }
+        waitForIdle()
+        val image = org.jetbrains.skia.Image.makeFromBitmap(onRoot().captureToImage().asSkiaBitmap())
+        java.io.File("build/renders").apply { mkdirs() }.resolve("presentation-window.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+
+        onNodeWithContentDescription("Stop presentation mode").performClick()
+        waitForIdle()
+        onAllNodesWithContentDescription("Add project").assertCountEquals(1)
+        onAllNodesWithContentDescription("Pane menu").assertCountEquals(2)
+        onAllNodesWithText("⌘D").assertCountEquals(0)
+    }
+
+    // Nothing of another terminal comes on the screen by itself during a demo: the bell still counts it.
+    @Test
+    fun aNoticeIsNotShownDuringAPresentation() = runComposeUiTest {
+        twoTerminalsWhereACommandEnds { assertTrue(press(Key.P, meta = true, alt = true)) }
+        waitForIdle()
+
+        onAllNodesWithContentDescription("Failed: make build").assertCountEquals(0)
+        onAllNodesWithContentDescription("Terminals needing attention: 1").assertCountEquals(1)
     }
 
     @Test

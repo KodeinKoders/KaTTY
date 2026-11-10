@@ -81,6 +81,7 @@ import app.katty.screens.CloseWorkspaceDialog
 import app.katty.screens.RestartTerminalDialog
 import app.katty.screens.ExportHistoryDialog
 import app.katty.screens.MessageDialog
+import app.katty.screens.PresentedKeysOverlay
 import app.katty.screens.OpenFileDialog
 import app.katty.screens.PasteDialog
 import app.katty.screens.WorkspaceIdeDialog
@@ -384,7 +385,13 @@ internal fun KattyWindowContent(
         onDispose { if (bridge.confirmQuit != null) bridge.confirmQuit = null }
     }
     // The shortcuts of the window, on the window itself: they work whatever has the focus, and when nothing has it.
-    SideEffect { keys.handler = { event -> controller.handle(event.appShortcut(), event.shortcutNumber()) } }
+    // In presentation mode they are shown first, with the other keys that it shows: the window sees them all before the terminal does.
+    SideEffect {
+        keys.handler = { event ->
+            if (controller.presenting) event.presented(vertical)?.let(controller.presentedKeys::show)
+            controller.handle(event.appShortcut(), event.shortcutNumber())
+        }
+    }
     // What the user bound the shortcuts to, for the whole application: what shows a label draws it again when that changes.
     val shortcutMap = remember(settings.shortcuts) { ShortcutMap.of(settings.shortcuts) }
     SideEffect { Shortcuts.map = shortcutMap }
@@ -393,7 +400,9 @@ internal fun KattyWindowContent(
         TitleBarContent(
             state,
             onToggleSidebar = { store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) } },
-            showSidebarToggle = !vertical && settings.view == MainView.TERMINALS,
+            showSidebarToggle = !vertical && settings.view == MainView.TERMINALS && !controller.presenting,
+            presenting = controller.presenting,
+            onStopPresenting = controller::togglePresentation,
             view = settings.view,
             onView = { view -> store.updateSettings { it.copy(view = view) } },
             boardTitle = state.projects.firstOrNull { it.id == boardFilter }?.name ?: "All projects",
@@ -477,6 +486,9 @@ internal fun KattyWindowContent(
                         ),
                         maximized = state.selection.maximized,
                         font = font,
+                        // Presentation mode has a font of its own, and only the terminals: no header over them.
+                        fontSize = if (controller.presenting) controller.presentationFontSize else settings.fontSize,
+                        paneHeaders = !controller.presenting,
                         showHeader = header,
                         infos = infos,
                         usages = usages,
@@ -502,21 +514,23 @@ internal fun KattyWindowContent(
                 val board: @Composable (Modifier) -> Unit = { boardModifier ->
                     AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, usages = usages, modifier = boardModifier, onOpenWindow = onOpenBoardWindow)
                 }
+                // Presentation mode shows the board alone, as it shows the terminals alone.
                 if (vertical) {
                     Column(Modifier.fillMaxSize()) {
-                        BoardTabs(state, filter, { boardFilter = it }, states = agentStates)
+                        if (!controller.presenting) BoardTabs(state, filter, { boardFilter = it }, states = agentStates)
                         board(Modifier.weight(1f))
-                        usageBar()
+                        if (!controller.presenting) usageBar()
                     }
                 } else {
                     Row(Modifier.fillMaxSize()) {
-                        BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() }, agents = agentsOnBoard)
+                        if (!controller.presenting) BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() }, agents = agentsOnBoard)
                         board(Modifier.weight(1f))
                     }
                 }
             } else if (vertical) {
                 Column(Modifier.fillMaxSize()) {
-                    ProjectTabs(
+                    // Presentation mode shows only the terminals.
+                    if (!controller.presenting) ProjectTabs(
                         state, store,
                         onAddProject = addProject,
                         onOpenRecent = openRecent,
@@ -529,7 +543,7 @@ internal fun KattyWindowContent(
                         onNewWorkspace = { project -> renamingWorkspace = store.addWorkspace(project) },
                         states = agentStates,
                     )
-                    WorkspaceTabs(
+                    if (!controller.presenting) WorkspaceTabs(
                         project = state.selectedProject,
                         selectedWorkspace = state.selection.workspace,
                         selectedTerminal = state.selection.terminal,
@@ -543,11 +557,13 @@ internal fun KattyWindowContent(
                         onWorkspaceIde = workspaceIde,
                     )
                     area(Modifier.weight(1f).fillMaxWidth(), false)
-                    usageBar()
+                    if (!controller.presenting) usageBar()
                 }
             } else {
                 Row(Modifier.fillMaxSize()) {
-                    if (settings.sidebarCollapsed) {
+                    if (controller.presenting) {
+                        // Only the terminals, without the header of their workspace either.
+                    } else if (settings.sidebarCollapsed) {
                         Rail(
                             state, store, onAddProject = addProject, onOpenRecent = openRecent, states = agentStates, gits = gits,
                             usage = {
@@ -578,7 +594,7 @@ internal fun KattyWindowContent(
                             usage = { usageSection() },
                         )
                     }
-                    area(Modifier.weight(1f).fillMaxHeight(), true)
+                    area(Modifier.weight(1f).fillMaxHeight(), !controller.presenting)
                 }
             }
         }
@@ -612,10 +628,22 @@ internal fun KattyWindowContent(
             // Whether something is selected is asked when the palette opens, once: that is when there is a choice to make, and asking takes the lock
             // of the terminal that its output is written under.
             val hasSelection = remember { selectedSession()?.selectedText() != null }
-            val commands = remember(state, infos, handles, vertical, shortcutMap) {
-                paletteCommands(state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical, hasSelection = hasSelection)
+            val commands = remember(state, infos, handles, vertical, shortcutMap, controller.presenting) {
+                paletteCommands(
+                    state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical,
+                    hasSelection = hasSelection, presenting = controller.presenting,
+                )
             }
-            CommandPalette(commands.entries, onRun = { entry -> paletteOpen = false; commands.run(entry) }, onDismiss = { paletteOpen = false })
+            CommandPalette(
+                commands.entries,
+                onRun = { entry ->
+                    paletteOpen = false
+                    // What was run is shown in presentation mode, with its shortcut when it has one, which the audience learns then.
+                    if (controller.presenting) controller.presentedKeys.show(entry.shortcut?.takeIf { it.isNotEmpty() }?.let { PresentedKey(it, entry.label) } ?: PresentedKey(entry.label))
+                    commands.run(entry)
+                },
+                onDismiss = { paletteOpen = false },
+            )
         }
         if (controller.searchingAll) {
             // What was read of the terminals is kept while the popup is open, and let go of with it.
@@ -641,7 +669,9 @@ internal fun KattyWindowContent(
             val projects = remember { recent.closed(store.state.value) }
             RecentProjectsPopup(projects, onOpen = { controller.openRecentProject(it.directory, it.name) }, onDismiss = { controller.recentOpen = false })
         }
-        toast?.let { item ->
+        // Not in presentation mode: nothing of another terminal comes on the screen by itself during a demo. It is kept as when it is drawn, so the
+        // bell and what has been seen do not change.
+        toast?.takeIf { !controller.presenting }?.let { item ->
             AgentToast(item, now, onClick = { openTerminal(item.terminal.id) }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
         }
         picking?.let { target ->
@@ -743,6 +773,8 @@ internal fun KattyWindowContent(
             }
             QuitDialog(stopped, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
         }
+        // Over everything, the palette and the dialogs too: what the audience follows.
+        if (controller.presenting) PresentedKeysOverlay(controller.presentedKeys, Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp))
     }
 }
 

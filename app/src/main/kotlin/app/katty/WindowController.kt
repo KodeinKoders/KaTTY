@@ -2,6 +2,7 @@ package app.katty
 
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -47,10 +48,18 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.file.Path
 import java.time.LocalDateTime
+import kotlin.math.roundToInt
 
 /** How much of a split a press of the resize shortcut moves, and how much the font grows or shrinks for one of the zoom ones. */
 private const val SPLIT_STEP = 0.05f
 private const val FONT_STEP = 1f
+
+// How much bigger the terminals' font is in presentation mode than the setting.
+private const val PRESENTATION_SCALE = 1.5f
+
+/** The size of the terminals' font in presentation mode, for the [fontSize] of the settings: half as big again, in whole points, within the limits. */
+internal fun presentationFontSize(fontSize: Float): Float =
+    (fontSize * PRESENTATION_SCALE).roundToInt().toFloat().coerceIn(Settings.MIN_FONT_SIZE, Settings.MAX_FONT_SIZE)
 
 /** What the window asks of the system: a folder, the clipboard, the file manager, another application, its other windows. */
 internal interface WindowPlatform {
@@ -167,6 +176,18 @@ internal class WindowController(
     // The terminal whose history is being exported, while its format is chosen, and why the last export failed, until the user has read it.
     var exportingHistory by mutableStateOf<TerminalId?>(null)
     var exportFailure by mutableStateOf<String?>(null)
+
+    /**
+     * Presentation mode: the window shows only the terminals, in a font of their own ([presentationFontSize], which the font shortcuts change
+     * then, and not the setting), with the keys that are pressed. A mode of the window and not a setting: it is not saved.
+     */
+    var presenting by mutableStateOf(false)
+        private set
+    var presentationFontSize by mutableFloatStateOf(Settings.DEFAULT_FONT_SIZE)
+        private set
+
+    /** The keys that presentation mode shows. */
+    val presentedKeys = PresentedKeys()
 
     /** The format of the last export, which the next one starts on: in memory, as the folder. */
     var lastExportFormat: ExportFormat = ExportFormat.TEXT
@@ -574,12 +595,13 @@ internal class WindowController(
             AppShortcut.FIND_PREVIOUS -> onTerminals { stepFind(false) }
             AppShortcut.FONT_BIGGER -> fontBy(FONT_STEP)
             AppShortcut.FONT_SMALLER -> fontBy(-FONT_STEP)
-            AppShortcut.FONT_RESET -> store.updateSettings { it.copy(fontSize = Settings.DEFAULT_FONT_SIZE) }
+            AppShortcut.FONT_RESET -> fontReset()
             AppShortcut.MENU -> menuOpen = !menuOpen
             AppShortcut.BOARD -> store.updateSettings { it.copy(view = if (it.view == MainView.BOARD) MainView.TERMINALS else MainView.BOARD) }
             // The vertical layout has no sidebar, and the board has its own.
             AppShortcut.SIDEBAR -> if (!vertical && onTerminals) toggleSidebar()
             AppShortcut.PALETTE -> paletteOpen = !paletteOpen
+            AppShortcut.PRESENTATION -> togglePresentation()
             AppShortcut.FOCUS_LEFT -> onTerminals { focusNeighbour(Direction.LEFT) }
             AppShortcut.FOCUS_RIGHT -> onTerminals { focusNeighbour(Direction.RIGHT) }
             AppShortcut.FOCUS_UP -> onTerminals { focusNeighbour(Direction.UP) }
@@ -610,7 +632,23 @@ internal class WindowController(
 
     private fun toggleSidebar() = store.updateSettings { it.copy(sidebarCollapsed = !it.sidebarCollapsed) }
 
-    private fun fontBy(step: Float) = store.updateSettings { it.copy(fontSize = it.fontSize + step) }
+    /** Starts presentation mode, with the font of the settings half as big again, or stops it, which gives the terminals the setting's back. */
+    fun togglePresentation() {
+        if (!presenting) presentationFontSize = presentationFontSize(state.settings.fontSize)
+        presenting = !presenting
+        presentedKeys.clear()
+    }
+
+    // The font shortcuts change the presentation's font while it is on: the setting is what comes back after it.
+    private fun fontBy(step: Float) {
+        if (presenting) presentationFontSize = (presentationFontSize + step).coerceIn(Settings.MIN_FONT_SIZE, Settings.MAX_FONT_SIZE)
+        else store.updateSettings { it.copy(fontSize = it.fontSize + step) }
+    }
+
+    private fun fontReset() {
+        if (presenting) presentationFontSize = presentationFontSize(state.settings.fontSize)
+        else store.updateSettings { it.copy(fontSize = Settings.DEFAULT_FONT_SIZE) }
+    }
 
     private fun renameTerminal() {
         val terminal = state.selection.terminal ?: return
@@ -719,7 +757,8 @@ internal class WindowController(
         uiReset = { store.updateSettings { it.copy(uiScale = Settings.DEFAULT_UI_SCALE) } },
         fontBigger = { fontBy(FONT_STEP) },
         fontSmaller = { fontBy(-FONT_STEP) },
-        fontReset = { store.updateSettings { it.copy(fontSize = Settings.DEFAULT_FONT_SIZE) } },
+        fontReset = ::fontReset,
+        togglePresentation = ::togglePresentation,
         openMenu = { menuOpen = true },
         previousWorkspace = { stepWorkspace(-1) },
         nextWorkspace = { stepWorkspace(1) },

@@ -47,6 +47,7 @@ While the program that runs in it uses the mouse, the right click is the program
 The font of the terminals is a setting of its own.
 * The window comes back where you left it, in the same size and mode, and so does the board window.
 * The command palette (⌘K) finds any project, workspace, terminal or command, and shows the shortcut of each command.
+* Presentation mode (⌘⌥P), for a demo or a stream: only the terminals, in a bigger font, with the shortcuts and control keys you press shown on the screen, and never what you type.
 
 === See what your agents are doing
 

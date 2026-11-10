@@ -85,6 +85,8 @@ val PANE_GAP = 8.dp
  * @param usages What the session of the agent in each terminal has used: the header says it too.
  * @param showHeader Whether the workspace has a header of its own: the vertical layout has tabs instead.
  * @param maximized The terminal that floats over the area of the workspace, with the others under a scrim.
+ * @param fontSize The size of the terminals' font: the setting's, or presentation mode's.
+ * @param paneHeaders Whether each pane has its header: presentation mode shows only the terminals.
  */
 @Composable
 fun WorkspaceArea(
@@ -100,6 +102,8 @@ fun WorkspaceArea(
     modifier: Modifier = Modifier,
     maximized: TerminalId? = null,
     font: TerminalFont = TerminalFont.bundled(),
+    fontSize: Float = settings.fontSize,
+    paneHeaders: Boolean = true,
     showHeader: Boolean = true,
     infos: Map<TerminalId, AgentInfo> = emptyMap(),
     usages: Map<TerminalId, SessionUsage> = emptyMap(),
@@ -120,7 +124,10 @@ fun WorkspaceArea(
     // Where the panes are, to grow the floating one from there.
     val paneBounds = remember(workspace.id) { mutableStateMapOf<TerminalId, Rect>() }
     var areaBounds by remember(workspace.id) { mutableStateOf(Rect.Zero) }
-    val context = PaneContext(workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, shown, font, infos, paneBounds, focusTick, usages)
+    val context = PaneContext(
+        workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, shown, font, infos, paneBounds, focusTick, usages,
+        fontSize = fontSize, headers = paneHeaders,
+    )
     Column(modifier.background(colors.bg)) {
         // The vertical layout has the workspace's name and its split buttons in its tabs.
         if (showHeader) WorkspaceHeader(workspace, selectedTerminal, store)
@@ -187,6 +194,10 @@ internal class PaneContext(
     val focusTick: Int = 0,
     /** What the session of the agent in each terminal has used: the header of a pane says it. */
     val usages: Map<TerminalId, SessionUsage> = emptyMap(),
+    /** The size of the terminals' font: the setting's, or presentation mode's. */
+    val fontSize: Float = settings.fontSize,
+    /** Whether a pane has its header: not in presentation mode, which shows only the terminals. */
+    val headers: Boolean = true,
 )
 
 /**

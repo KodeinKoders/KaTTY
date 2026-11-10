@@ -187,7 +187,9 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                 vertical = context.flipped,
             )
         }
-        Box {
+        // Presentation mode shows only the terminals: the accent ring still says which pane has the keyboard, and its menu is at the end of the
+        // terminal's right-click menu.
+        if (context.headers) Box {
             PaneHeader(
                 title = title,
                 glyph = identity.agent.glyph(),
@@ -227,7 +229,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                     Terminal(
                         session,
                         if (terminalSize == null) Modifier.fillMaxSize() else Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(terminalSize),
-                        fontSize = context.settings.fontSize.sp,
+                        fontSize = context.fontSize.sp,
                         font = context.font,
                         ligatures = context.settings.ligatures,
                         secureInput = context.settings.secureInput.toTerminal(),

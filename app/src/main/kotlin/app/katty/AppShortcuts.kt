@@ -78,6 +78,9 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     /** Opens the main menu, and closes it. */
     MENU(ShortcutGroup.LOOK, "Open the main menu", listOf(cmd(Awt.VK_COMMA))),
     PALETTE(ShortcutGroup.LOOK, "Open the command palette", listOf(cmd(Awt.VK_K))),
+
+    /** Shows only the terminals, in a bigger font, with the keys that are pressed: for a demo. Starts it, and stops it. */
+    PRESENTATION(ShortcutGroup.LOOK, "Start or stop presentation mode", listOf(cmd(Awt.VK_P, alt = true))),
     FOCUS_LEFT(ShortcutGroup.PANES, "Focus the pane on the left", listOf(cmd(Awt.VK_LEFT, shift = true))),
     FOCUS_RIGHT(ShortcutGroup.PANES, "Focus the pane on the right", listOf(cmd(Awt.VK_RIGHT, shift = true))),
     FOCUS_UP(ShortcutGroup.PANES, "Focus the pane above", listOf(cmd(Awt.VK_UP, shift = true))),

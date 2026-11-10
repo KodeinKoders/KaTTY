@@ -4,6 +4,7 @@ import app.katty.core.Direction
 import app.katty.core.KattyStore
 import app.katty.core.MainView
 import app.katty.core.SecureInput
+import app.katty.core.Settings
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.terminals
@@ -645,5 +646,38 @@ class WindowControllerTest {
         showBoard()
         controller.paletteHandlers().exportHistory()
         assertNull(controller.exportingHistory, "The palette's terminal commands are for the terminals")
+    }
+
+    // Presentation mode has a font of its own, half as big again: what the font shortcuts change then, and the setting is what comes back.
+    @Test
+    fun presentationModeHasABiggerFontOfItsOwnThatTheFontShortcutsChange() {
+        store.updateSettings { it.copy(fontSize = 14f) }
+
+        assertTrue(controller.handle(AppShortcut.PRESENTATION, null))
+        assertTrue(controller.presenting)
+        assertEquals(21f, controller.presentationFontSize)
+
+        controller.handle(AppShortcut.FONT_BIGGER, null)
+        controller.handle(AppShortcut.FONT_BIGGER, null)
+        controller.paletteHandlers().fontSmaller()
+        assertEquals(22f, controller.presentationFontSize)
+        controller.handle(AppShortcut.FONT_RESET, null)
+        assertEquals(21f, controller.presentationFontSize, "Back to the presentation's, not to the default")
+        assertEquals(14f, state.settings.fontSize, "The setting is not touched")
+
+        controller.presentedKeys.show(PresentedKey("⌃C"))
+        controller.paletteHandlers().togglePresentation()
+        assertFalse(controller.presenting)
+        assertEquals(emptyList(), controller.presentedKeys.lines, "The keys go with it")
+        controller.handle(AppShortcut.FONT_BIGGER, null)
+        assertEquals(15f, state.settings.fontSize, "Out of it, the shortcuts change the setting again")
+    }
+
+    @Test
+    fun thePresentationFontIsInWholePointsWithinTheLimits() {
+        assertEquals(21f, presentationFontSize(14f))
+        assertEquals(20f, presentationFontSize(13f), "19.5 is rounded")
+        assertEquals(12f, presentationFontSize(8f))
+        assertEquals(Settings.MAX_FONT_SIZE, presentationFontSize(30f))
     }
 }
