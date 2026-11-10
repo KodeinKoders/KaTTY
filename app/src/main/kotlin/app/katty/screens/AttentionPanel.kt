@@ -67,6 +67,9 @@ import app.katty.ui.glyph
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 
+/** What the command that goes to the next terminal that needs the user, one that waits or one that finished, is called. */
+internal const val JUMP_LABEL = "Jump to next agent that needs you"
+
 /** What an item of attention calls its agent: the agent's name, or what the program calls itself, or its terminal's name. */
 internal fun AttentionItem.title(): String =
     info.report.agent?.displayName ?: info.report.app ?: terminal.name ?: "Terminal"
@@ -79,9 +82,12 @@ internal fun AttentionItem.headline(): String = when (info.state) {
     else -> title()
 }
 
-/** The bell of the title bar, with the number of the agents that need the user. */
+/**
+ * The bell of the title bar, with the number of the agents that need the user ([count]: the ones that wait and the ones that finished): amber
+ * while one waits ([waiting]), green when they only finished.
+ */
 @Composable
-fun AttentionBell(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun AttentionBell(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier, waiting: Boolean = true) {
     val colors = Katty.colors
     Box(modifier) {
         app.katty.ui.KattyIconButton(
@@ -92,7 +98,8 @@ fun AttentionBell(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier
         )
         if (count > 0) {
             Box(
-                Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 0.dp).heightIn(min = 14.dp).defaultMinSize(minWidth = 14.dp).clip(RoundedCornerShape(7.dp)).background(colors.input).padding(horizontal = 4.dp),
+                Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 0.dp).heightIn(min = 14.dp).defaultMinSize(minWidth = 14.dp).clip(RoundedCornerShape(7.dp))
+                    .background(if (waiting) colors.input else colors.done).padding(horizontal = 4.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(count.toString(), color = androidx.compose.ui.graphics.Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
@@ -152,9 +159,10 @@ fun AttentionPopover(
         ) {
             Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionLabel("NEEDS YOU")
-                if (attention.count > 0) {
+                // The ones that wait: the ones that finished have their own section.
+                if (attention.needsYou.isNotEmpty()) {
                     Box(Modifier.heightIn(min = 18.dp).clip(RoundedCornerShape(9.dp)).background(colors.input).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
-                        Text(attention.count.toString(), color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text(attention.needsYou.size.toString(), color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -174,7 +182,7 @@ fun AttentionPopover(
                 Modifier.padding(top = 6.dp).fillMaxWidth().background(colors.side).clickable(role = Role.Button, onClick = onJumpToNext).padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Jump to next waiting agent", Modifier.weight(1f), color = colors.muted, fontSize = 12.sp)
+                Text(JUMP_LABEL, Modifier.weight(1f), color = colors.muted, fontSize = 12.sp)
                 AppShortcut.JUMP_TO_WAITING.label.takeIf { it.isNotEmpty() }?.let { Shortcut(shortcutKeys(it)) }
             }
         }

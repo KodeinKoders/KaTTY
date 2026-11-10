@@ -186,7 +186,7 @@ internal fun KattyWindowContent(
             override fun openBoardWindow() = openBoardWindow()
             override fun openAbout() = openAbout()
         }
-        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen)
+        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen, tracker::markSeen)
     }
     SideEffect {
         controller.handles = handles
@@ -265,14 +265,16 @@ internal fun KattyWindowContent(
     // The time that ages are told from moves on by itself.
     val now = rememberNow()
     val usageNow = java.time.Instant.ofEpochMilli(now)
-    // Seen: what a terminal finished or failed at stays until the user has it in front of them, in a window that has the focus.
     val windowFocused = LocalWindowInfo.current.isWindowFocused
-    val selectedState = state.selection.terminal?.let { infos[it]?.state }
     LaunchedEffect(windowFocused) { if (windowFocused) detectTick++ }
-    LaunchedEffect(selectedState, windowFocused, state.selection.terminal, settings.view) {
-        val id = state.selection.terminal
-        if (id != null && windowFocused && settings.view == MainView.TERMINALS && (selectedState == AgentState.DONE || selectedState == AgentState.ERROR)) {
-            tracker.markSeen(id)
+    // Seen: what a terminal finished or failed at stays until the user does something with it (types or clicks in it, or goes to it from the bell,
+    // the board, the palette or a notice), not as soon as it is in front of them: coming back to the window shows it, and the bell must still say
+    // it.
+    // What the tracker says now, not what the last drawing saw: it is called at each key.
+    val interacted: (TerminalId) -> Unit = remember(tracker) {
+        { id ->
+            val agent = tracker.infos.value[id]?.state
+            if (agent == AgentState.DONE || agent == AgentState.ERROR) tracker.markSeen(id)
         }
     }
     val describe: (TerminalSpec) -> TerminalSummary = { spec ->
@@ -379,7 +381,7 @@ internal fun KattyWindowContent(
             onPalette = { paletteOpen = !paletteOpen },
             trailing = {
                 Box {
-                    AttentionBell(attention.count, { attentionOpen = !attentionOpen })
+                    AttentionBell(attention.count, { attentionOpen = !attentionOpen }, waiting = attention.needsYou.isNotEmpty())
                     if (attentionOpen) {
                         AttentionPopover(
                             attention = attention,
@@ -450,6 +452,7 @@ internal fun KattyWindowContent(
                             confirmPaste = confirmPaste,
                             onPaste = pasteInto,
                             onOpenFile = if (ides.isEmpty()) null else controller::openFile,
+                            onInteraction = interacted,
                         ),
                         maximized = state.selection.maximized,
                         font = font,

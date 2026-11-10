@@ -4,23 +4,25 @@ package app.katty.core
 public data class AttentionItem(val terminal: TerminalSpec, val project: Project, val workspace: Workspace, val info: AgentInfo)
 
 /**
- * Who needs the user, and who finished: what the bell lists.
+ * Who needs the user, and who finished: what the bell lists. A terminal that finished needs the user as much as one that waits: what it did is
+ * there to be looked at, and it stays until the user has (see `AgentTracker.markSeen`).
  *
  * @param needsYou The terminals whose agent waits for the user, or failed, the one that has waited for the shortest time first.
  * @param finished The terminals whose agent finished and that nobody has seen, the one that finished last first.
  */
 public data class Attention(val needsYou: List<AttentionItem>, val finished: List<AttentionItem>) {
-    /** The number that the bell shows: the terminals that need the user. */
-    val count: Int get() = needsYou.size
+    /** The number that the bell shows: the terminals that need the user, the ones that finished too. */
+    val count: Int get() = needsYou.size + finished.size
 
     /**
-     * The terminal to go to for "jump to the next agent that waits": the one that follows [from] among the ones that wait, in the order that
-     * the sidebar lists them, and the first of them when [from] is the last, or is not one of them. `null` when none waits.
+     * The terminal to go to for "jump to the next agent that needs you": the one that follows [from] among the ones that wait and the ones that
+     * finished, in the order that the sidebar lists them, and the first of them when [from] is the last, or is not one of them. `null` when none
+     * needs the user.
      */
-    public fun nextWaiting(state: KattyState, from: TerminalId?): TerminalId? {
-        val waiting = needsYou.map { it.terminal.id }.toSet()
-        if (waiting.isEmpty()) return null
-        val order = state.allTerminals().map { it.terminal.id }.filter { it in waiting }
+    public fun next(state: KattyState, from: TerminalId?): TerminalId? {
+        val needing = (needsYou + finished).map { it.terminal.id }.toSet()
+        if (needing.isEmpty()) return null
+        val order = state.allTerminals().map { it.terminal.id }.filter { it in needing }
         val index = order.indexOf(from)
         return if (index < 0) order.first() else order[(index + 1) % order.size]
     }

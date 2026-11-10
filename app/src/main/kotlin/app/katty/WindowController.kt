@@ -94,6 +94,7 @@ internal sealed interface SchemeTarget {
  * @param scope Where a paste waits for the user's answer.
  * @param restart Starts a terminal's shell again.
  * @param markAllSeen Takes the finished and failed agents off the list of what needs the user.
+ * @param markSeen Takes what a terminal finished or failed at off that list: the user has gone to it.
  */
 internal class WindowController(
     private val store: KattyStore,
@@ -101,6 +102,7 @@ internal class WindowController(
     private val platform: WindowPlatform,
     private val restart: (TerminalId) -> Unit,
     private val markAllSeen: () -> Unit,
+    private val markSeen: (TerminalId) -> Unit = {},
 ) {
     var renamingWorkspace by mutableStateOf<WorkspaceId?>(null)
     var renamingProject by mutableStateOf<ProjectId?>(null)
@@ -287,10 +289,11 @@ internal class WindowController(
         focusTick++
     }
 
-    /** Goes to a terminal, whatever the window is showing. */
+    /** Goes to a terminal, whatever the window is showing: what it finished or failed at has been seen then. */
     fun openTerminal(id: TerminalId) {
         store.updateSettings { it.copy(view = MainView.TERMINALS) }
         store.focus(id)
+        markSeen(id)
         // Where it is can be seen.
         state.locate(id)?.project?.id?.let { store.setProjectOpen(it, true) }
         attentionOpen = false
@@ -386,7 +389,7 @@ internal class WindowController(
     }
 
     fun jumpToWaiting() {
-        state.attention(infos).nextWaiting(state, state.selection.terminal)?.let(::openTerminal)
+        state.attention(infos).next(state, state.selection.terminal)?.let(::openTerminal)
     }
 
     fun maximize() {

@@ -31,7 +31,7 @@ class AttentionTest {
 
         assertEquals(listOf(d, a), attention.needsYou.map { it.terminal.id })
         assertEquals(listOf(b), attention.finished.map { it.terminal.id })
-        assertEquals(2, attention.count)
+        assertEquals(3, attention.count, "What finished needs the user too")
     }
 
     @Test
@@ -65,24 +65,33 @@ class AttentionTest {
     }
 
     @Test
-    fun theNextWaitingAgentFollowsTheOneThatHasTheFocusInTheOrderOfTheSidebar() {
+    fun theNextAgentThatNeedsTheUserFollowsTheOneThatHasTheFocusInTheOrderOfTheSidebar() {
         val (a, b, c, d) = populate()
         val attention = state.attention(mapOf(d to info(AgentState.NEEDS_INPUT, 1), a to info(AgentState.NEEDS_INPUT, 9), c to info(AgentState.ERROR, 5)))
 
-        assertEquals(a, attention.nextWaiting(state, from = null))
-        assertEquals(c, attention.nextWaiting(state, from = a))
-        assertEquals(d, attention.nextWaiting(state, from = c))
+        assertEquals(a, attention.next(state, from = null))
+        assertEquals(c, attention.next(state, from = a))
+        assertEquals(d, attention.next(state, from = c))
         // Round to the first once past the last.
-        assertEquals(a, attention.nextWaiting(state, from = d))
-        // From a terminal that does not wait: the first.
-        assertEquals(a, attention.nextWaiting(state, from = b))
+        assertEquals(a, attention.next(state, from = d))
+        // From a terminal that does not need the user: the first.
+        assertEquals(a, attention.next(state, from = b))
     }
 
     @Test
-    fun withNoAgentWaitingThereIsNowhereToJump() {
+    fun theNextAgentMayBeOneThatFinished() {
+        val (a, b, c, _) = populate()
+        val attention = state.attention(mapOf(a to info(AgentState.NEEDS_INPUT, 1), b to info(AgentState.DONE, 2), c to info(AgentState.WORKING, 3)))
+
+        assertEquals(b, attention.next(state, from = a))
+        assertEquals(a, attention.next(state, from = b))
+    }
+
+    @Test
+    fun withNoAgentNeedingTheUserThereIsNowhereToJump() {
         populate()
 
-        assertNull(state.attention(emptyMap()).nextWaiting(state, null))
+        assertNull(state.attention(emptyMap()).next(state, null))
     }
 
     @Test

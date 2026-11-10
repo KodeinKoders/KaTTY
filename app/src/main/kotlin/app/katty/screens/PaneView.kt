@@ -28,6 +28,7 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -137,6 +138,9 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
         return
     }
 
+    // What the user does with the terminal: typing in it, clicking in its pane. Remembered, since it is a key of the pointer's handler.
+    val interaction = rememberUpdatedState(context.actions.onInteraction)
+    val onInteraction = remember(spec.id) { { interaction.value(spec.id) } }
     Column(
         Modifier.fillMaxSize()
             .clip(shape)
@@ -144,6 +148,7 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
             // The ring is the border of the design plus the shadow around it: 2 px of the accent, 1 px of the line otherwise.
             .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.line, shape)
             .onFocusChanged { if (it.hasFocus) context.store.focus(spec.id) }
+            .userInteraction(onInteraction)
             // Select all is the terminal's, whenever it has the focus: in a text field of the pane, it is the field's.
             .onPreviewKeyEvent { event ->
                 val session = handle?.session ?: return@onPreviewKeyEvent false

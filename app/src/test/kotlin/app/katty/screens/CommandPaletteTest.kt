@@ -219,7 +219,7 @@ class CommandPaletteTest {
         val labels = commands().entries.map { it.label }
 
         assertTrue("Add project folder…" in labels)
-        assertTrue("Jump to next waiting agent" in labels)
+        assertTrue("Jump to next agent that needs you" in labels)
         assertFalse("New workspace" in labels)
         assertFalse("Split right" in labels)
         assertFalse("Close terminal" in labels)

@@ -14,6 +14,7 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -105,6 +106,21 @@ class KattyWindowContentTest {
             Thread.sleep(20)
         }
         assertFalse(session.frames.value.cursor.blinking)
+    }
+
+    // Coming back to the window shows the terminal that finished: the bell must still say it, until the user does something with it.
+    @Test
+    fun aTerminalThatFinishedInFrontOfTheUserStaysInTheBellUntilTheyTypeInIt() = runComposeUiTest {
+        command = listOf("/bin/sh", "-c", """printf '\033]7501;state=done:app=claude\033\\'; sleep 30""")
+        store.addProject(directories.support.toString())
+        showWindow()
+        val id = state.selection.terminal!!
+        waitUntil(timeoutMillis = 15_000) { tracker.infos.value[id]?.state == app.katty.core.AgentState.DONE }
+        // What the window does when it is drawn again with it.
+        repeat(3) { waitForIdle(); Thread.sleep(100) }
+
+        assertEquals(app.katty.core.AgentState.DONE, tracker.infos.value[id]?.state, "Selected in a window that has the focus is not seen")
+        onAllNodesWithContentDescription("Agents needing attention: 1").assertCountEquals(1)
     }
 
     @Test

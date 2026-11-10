@@ -282,7 +282,7 @@ fun paletteCommands(
         command("previous-workspace", "Previous workspace", AppShortcut.WORKSPACE_PREVIOUS.label, handlers.previousWorkspace)
         command("next-workspace", "Next workspace", AppShortcut.WORKSPACE_NEXT.label, handlers.nextWorkspace)
     }
-    command("jump", "Jump to next waiting agent", AppShortcut.JUMP_TO_WAITING.label, handlers.jumpToWaiting)
+    command("jump", JUMP_LABEL, AppShortcut.JUMP_TO_WAITING.label, handlers.jumpToWaiting)
     command("attention", "Show the agents that need you", AppShortcut.ATTENTION.label, handlers.openAttention)
     command("mark-seen", "Mark all agents seen", action = handlers.markAllSeen)
     command("view", if (state.settings.view == MainView.BOARD) "Show terminals" else "Show the agent board", AppShortcut.BOARD.label) {

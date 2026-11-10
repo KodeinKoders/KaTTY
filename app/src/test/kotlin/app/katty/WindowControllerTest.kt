@@ -40,7 +40,8 @@ class WindowControllerTest {
         override fun openBoardWindow() = Unit
         override fun openAbout() = Unit
     }
-    private val controller = WindowController(store, CoroutineScope(Dispatchers.Unconfined), platform, { restarted += it }, {})
+    private val seen = mutableListOf<TerminalId>()
+    private val controller = WindowController(store, CoroutineScope(Dispatchers.Unconfined), platform, { restarted += it }, {}, { seen += it })
 
     private val state get() = store.state.value
     private val terminal get() = state.selection.terminal!!
@@ -521,5 +522,25 @@ class WindowControllerTest {
 
         assertFalse(controller.searchingAll)
         assertNull(controller.findingTerminal)
+    }
+
+    @Test
+    fun goingToATerminalIsHavingSeenWhatItFinished() {
+        val other = state.selectedWorkspace!!.layout.terminals().first { it.id != terminal }.id
+
+        controller.openTerminal(other)
+
+        assertEquals(listOf(other), seen)
+    }
+
+    @Test
+    fun theJumpGoesToATerminalThatFinishedAndSeesIt() {
+        val other = state.selectedWorkspace!!.layout.terminals().first { it.id != terminal }.id
+        controller.infos = mapOf(other to app.katty.core.AgentInfo(app.katty.core.AgentReport(app.katty.core.AgentState.DONE, "claude"), 1))
+
+        controller.handle(AppShortcut.JUMP_TO_WAITING, null)
+
+        assertEquals(other, terminal)
+        assertEquals(listOf(other), seen)
     }
 }

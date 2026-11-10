@@ -41,7 +41,8 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
 
     /** Opens what was closed last again: a terminal at its place, or a whole workspace. */
     REOPEN_CLOSED(ShortcutGroup.PANES, "Reopen the last closed terminal or workspace", listOf(cmd(Awt.VK_T, shift = true))),
-    JUMP_TO_WAITING(ShortcutGroup.AGENTS, "Jump to the next agent that waits", listOf(cmd(Awt.VK_J, shift = true))),
+    /** Goes to the next terminal that needs the user, one that waits or one that finished: the name is the one that the user's bindings are kept by. */
+    JUMP_TO_WAITING(ShortcutGroup.AGENTS, "Jump to the next agent that needs you", listOf(cmd(Awt.VK_J, shift = true))),
 
     /** Opens the list of the agents that need the user, and closes it. */
     ATTENTION(ShortcutGroup.AGENTS, "Show the agents that need you", listOf(cmd(Awt.VK_J))),

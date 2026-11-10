@@ -205,6 +205,8 @@ class PaneActions(
     val onMove: (TerminalId, app.katty.core.WorkspaceId) -> Unit,
     /** The terminal whose find bar is open. */
     val finding: TerminalId? = null,
+    /** The user did something with a terminal (typed in it, clicked in its pane): what it finished or failed at has been seen. */
+    val onInteraction: (TerminalId) -> Unit = {},
     /** What the find bar starts with, and a number that changes when it is to be made again with it. */
     val findQuery: String = "",
     val findRequest: Int = 0,

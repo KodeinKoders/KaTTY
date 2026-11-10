@@ -147,6 +147,29 @@ class AttentionPanelTest {
     }
 
     @Test
+    fun theBellIsAmberWhileOneWaitsAndGreenWhenTheyOnlyFinished() {
+        for (dark in listOf(false, true)) {
+            val theme = if (dark) "dark" else "light"
+            val (amber, green) = if (dark) 0xE5A93D to 0x6CC17D else 0xA85F00 to 0x1F7A3A
+            val waiting = render("bell-waiting-$theme", 120, 80, dark = dark) { AttentionBell(3, onClick = {}, waiting = true) }
+            val finished = render("bell-finished-$theme", 120, 80, dark = dark) { AttentionBell(2, onClick = {}, waiting = false) }
+
+            assertTrue(waiting.count(amber) > 20 && waiting.count(green) == 0, "Amber while one waits ($theme)")
+            assertTrue(finished.count(green) > 20 && finished.count(amber) == 0, "Green when they only finished ($theme)")
+        }
+    }
+
+    @Test
+    fun theSectionOfWhoNeedsTheUserCountsOnlyTheOnesThatWait() = runComposeUiTest {
+        val list = attention()
+        setContent { KattyTheme(false) { AttentionPopover(list, now, onOpen = {}, onMarkAllSeen = {}, onJumpToNext = {}, onDismiss = {}) } }
+
+        assertEquals(4, list.count, "The bell counts the ones that finished too")
+        onNodeWithText("${list.needsYou.size}").assertExists()
+        assertEquals(0, onAllNodesWithText("4").fetchSemanticsNodes().size)
+    }
+
+    @Test
     fun theTooltipOfTheBellSaysItsShortcut() = runComposeUiTest {
         setContent { KattyTheme(false) { AttentionBell(2, onClick = {}) } }
 
@@ -175,7 +198,7 @@ class AttentionPanelTest {
         onNodeWithText("21 min").assertExists()
         onNodeWithText("api-gateway / refactor-auth").assertExists()
         onNodeWithText("Failed: build error in CartSummary.tsx.").assertExists()
-        onNodeWithText("Jump to next waiting agent").assertExists()
+        onNodeWithText("Jump to next agent that needs you").assertExists()
     }
 
     @Test
@@ -196,7 +219,7 @@ class AttentionPanelTest {
         setContent { KattyTheme(false) { AttentionPopover(attention(), now, onOpen = {}, onMarkAllSeen = { calls += "seen" }, onJumpToNext = { calls += "jump" }, onDismiss = {}) } }
 
         onNodeWithText("Mark all seen").performClick()
-        onNodeWithText("Jump to next waiting agent").performClick()
+        onNodeWithText("Jump to next agent that needs you").performClick()
 
         assertEquals(listOf("seen", "jump"), calls)
     }
