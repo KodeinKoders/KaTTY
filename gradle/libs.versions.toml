@@ -9,7 +9,7 @@ kotlin = "2.4.21"                   # https://kotlinlang.org/docs/releases.html#
 kotlinxSerialization = "1.12.0"     # https://github.com/Kotlin/kotlinx.serialization/releases
 pty4j = "0.14.0"                    # https://github.com/JetBrains/pty4j/releases
 slf4j = "2.0.20"                    # https://www.slf4j.org/news.html
-xmlutil = "1.0.2"                   # https://github.com/pdvrieze/xmlutil/releases
+xmlutil = "1.0.2.1"                 # https://github.com/pdvrieze/xmlutil/releases
 
 [plugins]
 buildconfig = { id = "com.github.gmazzo.buildconfig", version.ref = "buildConfig" }
