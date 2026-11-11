@@ -10,7 +10,11 @@ import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.icon.IconKey
+import org.jetbrains.jewel.ui.theme.menuStyle
 
 class MenusTest {
     private val calls = mutableListOf<String>()
@@ -48,5 +52,21 @@ class MenusTest {
         waitForIdle()
 
         assertEquals(listOf("move rate-limiter"), calls)
+    }
+
+    // The arrow of an item that opens a submenu is an icon that the theme of the menus names: Jewel draws one that is not found as a gray square,
+    // and its own key names an icon of IntelliJ that is in no jar of the application.
+    @Test
+    fun theArrowOfASubmenuIsAnIconOfTheApplicationInBothThemes() {
+        for (dark in listOf(false, true)) {
+            var chevron: IconKey? = null
+            render("menu-submenu-${if (dark) "dark" else "light"}", 520, 300, dark = dark) {
+                chevron = JewelTheme.menuStyle.icons.submenuChevron
+                KattyMenu(entries, onDismiss = {})
+            }
+            val key = assertNotNull(chevron)
+            val path = key.path(true)
+            assertNotNull(key.iconClass.classLoader.getResource(path), "The arrow of a submenu, $path, is not in the application")
+        }
     }
 }
