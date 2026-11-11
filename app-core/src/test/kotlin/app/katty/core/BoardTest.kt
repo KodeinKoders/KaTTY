@@ -25,7 +25,7 @@ class BoardTest {
         )
 
         assertEquals(BoardColumn.entries.toList(), board.keys.toList())
-        assertEquals(listOf(e), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
+        assertEquals(listOf(e), board.getValue(BoardColumn.IDLE).map { it.terminal.id })
         assertEquals(listOf(a), board.getValue(BoardColumn.WORKING).map { it.terminal.id })
         assertEquals(listOf(b, c), board.getValue(BoardColumn.NEEDS_INPUT).map { it.terminal.id })
         assertEquals(listOf(d), board.getValue(BoardColumn.DONE).map { it.terminal.id })
@@ -53,7 +53,7 @@ class BoardTest {
 
         assertEquals(setOf(silent, editor, agent), board.values.flatten().map { it.terminal.id }.toSet())
         assertEquals(listOf(editor), board.getValue(BoardColumn.WORKING).map { it.terminal.id })
-        assertEquals(listOf(agent, silent), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
+        assertEquals(listOf(agent, silent), board.getValue(BoardColumn.IDLE).map { it.terminal.id })
         assertEquals(emptyList(), state.board(null, emptyMap()).values.flatten())
     }
 
@@ -65,8 +65,8 @@ class BoardTest {
         val named = AgentInfo(AgentReport(AgentState.IDLE, "my-tool", reporting = true), 5)
         val unnamed = AgentInfo(AgentReport(AgentState.IDLE, reporting = true), 5)
 
-        assertEquals(listOf(tool), state.board(null, mapOf(tool to named)).getValue(BoardColumn.NOTHING).map { it.terminal.id })
-        assertEquals(listOf(tool), state.board(null, mapOf(tool to unnamed)).getValue(BoardColumn.NOTHING).map { it.terminal.id })
+        assertEquals(listOf(tool), state.board(null, mapOf(tool to named)).getValue(BoardColumn.IDLE).map { it.terminal.id })
+        assertEquals(listOf(tool), state.board(null, mapOf(tool to unnamed)).getValue(BoardColumn.IDLE).map { it.terminal.id })
     }
 
     @Test
@@ -100,7 +100,7 @@ class BoardTest {
         val board = state.board(null, mapOf(b to info(AgentState.IDLE, 50), a to info(AgentState.IDLE, 50)))
 
         // They arrived together and stay as the tree has them.
-        assertEquals(listOf(a, b), board.getValue(BoardColumn.NOTHING).map { it.terminal.id })
+        assertEquals(listOf(a, b), board.getValue(BoardColumn.IDLE).map { it.terminal.id })
     }
 
     @Test
@@ -112,8 +112,8 @@ class BoardTest {
 
         val infos = mapOf(inFirst to info(AgentState.IDLE, 1), inSecond to info(AgentState.IDLE, 2))
 
-        assertEquals(listOf(inFirst), state.board(first, infos).getValue(BoardColumn.NOTHING).map { it.terminal.id })
-        assertEquals(setOf(inFirst, inSecond), state.board(null, infos).getValue(BoardColumn.NOTHING).map { it.terminal.id }.toSet())
+        assertEquals(listOf(inFirst), state.board(first, infos).getValue(BoardColumn.IDLE).map { it.terminal.id })
+        assertEquals(setOf(inFirst, inSecond), state.board(null, infos).getValue(BoardColumn.IDLE).map { it.terminal.id }.toSet())
     }
 
     @Test
@@ -121,7 +121,7 @@ class BoardTest {
         store.addProject("/dev/api-gateway")
         store.renameWorkspace(state.selection.workspace!!, "refactor-auth")
 
-        val card = state.board(null, mapOf(state.selection.terminal!! to info(AgentState.IDLE, 1))).getValue(BoardColumn.NOTHING).single()
+        val card = state.board(null, mapOf(state.selection.terminal!! to info(AgentState.IDLE, 1))).getValue(BoardColumn.IDLE).single()
 
         assertEquals("api-gateway", card.project.name)
         assertEquals("refactor-auth", card.workspace.name)
@@ -130,13 +130,13 @@ class BoardTest {
     @Test
     fun theColumnOfEachState() {
         assertEquals(
-            listOf(BoardColumn.NOTHING, BoardColumn.WORKING, BoardColumn.NEEDS_INPUT, BoardColumn.DONE, BoardColumn.NEEDS_INPUT),
+            listOf(BoardColumn.IDLE, BoardColumn.WORKING, BoardColumn.NEEDS_INPUT, BoardColumn.DONE, BoardColumn.NEEDS_INPUT),
             listOf(AgentState.IDLE, AgentState.WORKING, AgentState.NEEDS_INPUT, AgentState.DONE, AgentState.ERROR).map { it.column() },
         )
     }
 
     @Test
     fun theColumnsHaveTheTitlesOfTheDesign() {
-        assertEquals(listOf("Nothing", "Working", "Needs input", "Done"), BoardColumn.entries.map { it.title })
+        assertEquals(listOf("Idle", "Working", "Needs input", "Done"), BoardColumn.entries.map { it.title })
     }
 }

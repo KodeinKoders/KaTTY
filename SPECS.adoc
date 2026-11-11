@@ -650,11 +650,11 @@ It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, an
 
 == Board
 
-* The Board view has a column for each state, in this order: Nothing, Working, Needs input (with the failures), Done, each with its glyph, title and number of cards.
+* The Board view has a column for each state, in this order: Idle, Working, Needs input (with the failures), Done, each with its glyph, title and number of cards.
 * Only a terminal whose program reports (OSC 7501) has a card, whatever the program is: it is not matched against a list, and a shell and a program that says nothing have none.
 A terminal goes on being a card, at rest, after what it finished was seen and taken off (which removes the records), until the shell has the terminal again.
 The agents that KaTTY knows by name (Claude Code, Codex, Antigravity, Copilot CLI, Junie) only add to a card: their logo and name, where another program has the neutral tile and the name it gave.
-The "Nothing" column is for a program at rest; its card says "At rest.".
+The "Idle" column is for a program at rest; its card says "At rest.".
 In a column, the card that arrived in it first is at the top (the oldest first), and cards that arrived together keep the order of the tree.
 * The time on a card, and so its place, is since it arrived in its **column**, not in its state: a wait that becomes a failure (both are "Needs input") keeps it.
 * A card has the state's glyph, the tile, the title (as the pane's), how long ago, `project / workspace`, the branch or worktree, and the note on two lines at most.

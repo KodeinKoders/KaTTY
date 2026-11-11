@@ -135,7 +135,7 @@ class AgentBoardTest {
 
         onNodeWithText("Agent board").assertExists()
         onNodeWithText("3 agents across 2 projects").assertExists()
-        onNodeWithText("Nothing").assertExists()
+        onNodeWithText("Idle").assertExists()
         onNodeWithText("Working").assertExists()
         onNodeWithText("Needs input").assertExists()
         onNodeWithText("Done").assertExists()

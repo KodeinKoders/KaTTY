@@ -165,7 +165,7 @@ private fun BoardHeader(column: BoardColumn, count: Int) {
     Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         StateGlyph(
             when (column) {
-                BoardColumn.NOTHING -> AgentState.IDLE
+                BoardColumn.IDLE -> AgentState.IDLE
                 BoardColumn.WORKING -> AgentState.WORKING
                 BoardColumn.NEEDS_INPUT -> AgentState.NEEDS_INPUT
                 BoardColumn.DONE -> AgentState.DONE

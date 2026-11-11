@@ -2,7 +2,7 @@ package app.katty.core
 
 /** The columns of the agent board, in the order they are drawn. */
 public enum class BoardColumn(public val title: String) {
-    NOTHING("Nothing"),
+    IDLE("Idle"),
     WORKING("Working"),
     NEEDS_INPUT("Needs input"),
     DONE("Done"),
@@ -10,7 +10,7 @@ public enum class BoardColumn(public val title: String) {
 
 /** The column that a state is in: a failure is with what needs the user. */
 public fun AgentState.column(): BoardColumn = when (this) {
-    AgentState.IDLE -> BoardColumn.NOTHING
+    AgentState.IDLE -> BoardColumn.IDLE
     AgentState.WORKING -> BoardColumn.WORKING
     AgentState.NEEDS_INPUT, AgentState.ERROR -> BoardColumn.NEEDS_INPUT
     AgentState.DONE -> BoardColumn.DONE
