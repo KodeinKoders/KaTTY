@@ -333,8 +333,9 @@ class MainMenuRenderTest {
             val inside = androidx.compose.ui.geometry.Offset(300f, 400f)
             scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, inside)
             scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Scroll, inside, scrollDelta = androidx.compose.ui.geometry.Offset(0f, 2f))
-            scene.render(100_000_000)
-            val image = scene.render(200_000_000)
+            // Jewel draws the thumb some frames after the scroll, whatever the time between them: the third since Jewel 0.42, the second before.
+            for (frame in 1..4) scene.render(frame * 100_000_000L)
+            val image = scene.render(500_000_000)
             java.io.File("build/renders").apply { mkdirs() }.resolve("main-menu-scrolled.png")
                 .writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
             // The thumb, a gray bar on the right of the white panel, a little below its top.
