@@ -24,6 +24,8 @@ import org.jetbrains.jewel.ui.component.Text
  * A terminal as a list in a dialog tells it: what runs in it, and what it is doing.
  *
  * @param running Whether a program other than the shell has it, which closing it stops.
+ * @param reporting Whether its program reports its state (OSC 7501), as an agent does: at rest, it says so, where a program that reports
+ * nothing is only known to run.
  * @param place Where it is (`project / workspace`), for a list of terminals of more than one workspace; `null` when it goes without saying.
  */
 data class TerminalSummary(
@@ -32,6 +34,7 @@ data class TerminalSummary(
     val glyph: AgentGlyph,
     val state: AgentState,
     val running: Boolean = false,
+    val reporting: Boolean = false,
     val place: String? = null,
 )
 
@@ -49,8 +52,10 @@ private fun SummaryRow(summary: TerminalSummary) {
             }
         }
         StateGlyph(summary.state)
-        // A program that reports nothing (an editor, a build) is not at rest: it is what closing would stop.
-        Text(if (summary.running && summary.state == AgentState.IDLE) "Running" else summary.state.label(), color = colors.muted)
+        // A program that reports nothing (an editor, a build) is not at rest: it is what closing would stop. One that reports its state, as an
+        // agent that waits for its next prompt, says when it is at rest.
+        val runsSilently = summary.running && summary.state == AgentState.IDLE && !summary.reporting
+        Text(if (runsSilently) "Running" else summary.state.label(), color = colors.muted)
     }
 }
 

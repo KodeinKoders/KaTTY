@@ -596,6 +596,7 @@ F2 renames the project or the workspace that has the focus in the sidebar or the
 | "Remove “name”?", "Removing this project closes its workspaces and ends its terminals. Its folder stays on your disk.", its workspaces with their numbers of terminals, Cancel and a red "Remove project".
 |===
 
+The state of a terminal in these lists is its agent's; a program that runs and says nothing of itself (an editor, a build) is "Running", and an agent that waits for its next prompt is "Idle".
 A dialog is over a scrim of 30 % black that covers the window; Escape cancels it.
 
 

@@ -290,7 +290,7 @@ internal fun KattyWindowContent(
     }
     val describe: (TerminalSpec) -> TerminalSummary = { spec ->
         val identity = terminalIdentity(spec.name, infos[spec.id]?.report, handles[spec.id]?.processName?.value, handles[spec.id]?.shellName ?: "shell")
-        TerminalSummary(spec.id, identity.title, identity.agent.glyph(), stateOf(spec.id))
+        TerminalSummary(spec.id, identity.title, identity.agent.glyph(), stateOf(spec.id), reporting = infos[spec.id]?.report?.reporting == true)
     }
 
     // The sessions follow the terminals of the store, and the ones that are not on the screen are paused.

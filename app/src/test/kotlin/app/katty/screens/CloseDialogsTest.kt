@@ -9,6 +9,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -73,6 +74,18 @@ class CloseDialogsTest {
         onNodeWithText("Cancel").performClick()
         onNodeWithText("Quit").performClick()
         assertEquals(listOf("cancel", "quit"), answers)
+    }
+
+    // An agent that waits for its next prompt runs too, and quitting stops it: it is at rest, which it says, where a program that says nothing of
+    // itself (vim) is only known to run.
+    @Test
+    fun anAgentAtRestIsIdleAndAProgramThatSaysNothingIsRunning() = runComposeUiTest {
+        val claude = summary("a", "Claude Code", AgentGlyph.CLAUDE, AgentState.IDLE).copy(running = true, reporting = true, place = "api / refactor-auth")
+        val vim = summary("d", "vim", AgentGlyph.SHELL, AgentState.IDLE).copy(running = true, place = "web / main")
+        setContent { KattyTheme(false) { QuitDialog(listOf(claude, vim), onConfirm = {}, onCancel = {}) } }
+
+        onNodeWithText("Idle").assertExists()
+        assertEquals(1, onAllNodesWithText("Running").fetchSemanticsNodes().size, "Only vim is running")
     }
 
     @Test
