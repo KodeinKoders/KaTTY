@@ -675,7 +675,8 @@ Without a note, it says "At rest.", "Working.", "Waiting for you.", "Failed." or
 
 === Installed agents
 
-* The agents' programs are looked for in the `PATH` of the user's login shell, read once with `$SHELL -l -c 'printf %s "$PATH"'` (8 s at most), else in the application's own `PATH`.
+* The agents' programs are looked for in the `PATH` of the user's interactive login shell, which is the one of a terminal, read once with `$SHELL -l -i -c 'printf %s "$PATH"'`.
+When that fails, it is read with `$SHELL -l -c 'printf %s "$PATH"'` (8 s at most for each), else the programs are looked for in the application's own `PATH`.
 * The first folder of the `PATH` that has an executable file of the program's name wins.
 * They are looked for again each time the window gets the focus.
 

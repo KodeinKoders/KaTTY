@@ -18,8 +18,9 @@ public object AgentDetection {
         private set
 
     /**
-     * The `PATH` that a login shell has, or `null` if it could not be read in [timeoutMs]. It starts the shell once; the caller keeps what
-     * it got, and so does [knownLoginPath].
+     * The `PATH` that an interactive login shell has, which is the one of a terminal, or the one of a login shell that is not interactive when
+     * that could not be read; `null` if neither could be, each in [timeoutMs]. It is read once; the caller keeps what it got, and so does
+     * [knownLoginPath].
      */
     public fun loginShellPath(shell: String = userShell(), timeoutMs: Long = 8_000): String? =
         // Only the user's own shell says what the user's PATH is.
@@ -27,12 +28,18 @@ public object AgentDetection {
 
     private fun userShell(): String = System.getenv("SHELL") ?: "/bin/zsh"
 
+    // The shell is interactive as well as a login one, as the shell of a terminal is: a folder that the file of the interactive shells adds
+    // (`.zshrc`, where the installer of Claude Code puts `~/.local/bin`) is not in the `PATH` of a login shell that is not interactive. A shell
+    // that has no `-i`, or whose interactive file fails or hangs with no terminal, is asked again as a login shell only, with [timeoutMs] for each.
+    //
     // Through the runner of the usage commands, which reads the output on its own thread: a profile that starts a program in the background
     // (ssh-agent, keychain) leaves the output open after the shell ended, and a read that waits for its end would wait for that program.
     private fun readLoginShellPath(shell: String, timeoutMs: Long, runner: CommandRunner = ProcessCommandRunner): String? {
         // Between two markers: what the login files print (a greeting, a notice) comes before and after it.
-        val result = runner.run(listOf(shell, "-l", "-c", "printf '$PATH_MARK%s$PATH_MARK' \"\$PATH\""), Path.of(System.getProperty("user.home")), timeoutMs)
-        return result?.takeIf { it.exitCode == 0 }?.output?.let(::betweenMarks)
+        val script = "printf '$PATH_MARK%s$PATH_MARK' \"\$PATH\""
+        return sequenceOf(listOf("-l", "-i", "-c"), listOf("-l", "-c")).firstNotNullOfOrNull { options ->
+            runner.run(listOf(shell) + options + script, Path.of(System.getProperty("user.home")), timeoutMs)?.takeIf { it.exitCode == 0 }?.output?.let(::betweenMarks)
+        }
     }
 
     /**

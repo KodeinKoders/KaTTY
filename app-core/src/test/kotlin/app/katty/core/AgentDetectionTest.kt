@@ -84,17 +84,54 @@ class AgentDetectionTest {
 
     @Test
     fun readsThePathOfALoginShell() {
-        // A shell that runs what it is given (`-l -c <script>`), with the PATH of a profile: as a real one does.
-        val shell = root.resolve("fake-shell").also { it.writeText("#!/bin/sh\nPATH=/opt/one:/opt/two:\$PATH exec /bin/sh -c \"\$3\"\n"); it.toFile().setExecutable(true) }
+        // A shell that runs what it is given (the script is its last argument), with the PATH of a profile: as a real one does.
+        val shell = root.resolve("fake-shell").also {
+            it.writeText("#!/bin/sh\nfor script; do :; done\nPATH=/opt/one:/opt/two:\$PATH exec /bin/sh -c \"\$script\"\n")
+            it.toFile().setExecutable(true)
+        }
 
         assertEquals("/opt/one:/opt/two", AgentDetection.loginShellPath(shell.toString())?.split(':')?.take(2)?.joinToString(":"))
+    }
+
+    @Test
+    fun readsThePathThatOnlyAnInteractiveShellHas() {
+        // A folder that the file of the interactive shells adds (`.zshrc`, where the installer of Claude Code puts `~/.local/bin`): a login shell
+        // that is not interactive does not read it, and an application that was started from the Finder or Raycast has no other way to it.
+        val shell = root.resolve("rc-shell").also {
+            it.writeText("#!/bin/sh\nPATH=/opt/profile\nfor script; do [ \"\$script\" = -i ] && PATH=/opt/interactive:\$PATH; done\nexec /bin/sh -c \"\$script\"\n")
+            it.toFile().setExecutable(true)
+        }
+
+        assertEquals("/opt/interactive:/opt/profile", AgentDetection.loginShellPath(shell.toString()))
+    }
+
+    @Test
+    fun aShellThatFailsWhenInteractiveIsReadAsALoginShell() {
+        // A shell that has no `-i`, or a file of the interactive shells that fails without a terminal.
+        val shell = root.resolve("strict-shell").also {
+            it.writeText("#!/bin/sh\nfor script; do [ \"\$script\" = -i ] && exit 3; done\nPATH=/opt/one:/opt/two exec /bin/sh -c \"\$script\"\n")
+            it.toFile().setExecutable(true)
+        }
+
+        assertEquals("/opt/one:/opt/two", AgentDetection.loginShellPath(shell.toString()))
+    }
+
+    @Test
+    fun anInteractiveShellThatHangsIsReadAsALoginShell() {
+        // A file of the interactive shells that waits for something that a shell with no terminal never gets.
+        val shell = root.resolve("hanging-shell").also {
+            it.writeText("#!/bin/sh\nfor script; do [ \"\$script\" = -i ] && exec sleep 20; done\nPATH=/opt/one:/opt/two exec /bin/sh -c \"\$script\"\n")
+            it.toFile().setExecutable(true)
+        }
+
+        assertEquals("/opt/one:/opt/two", AgentDetection.loginShellPath(shell.toString(), timeoutMs = 1_000))
     }
 
     @Test
     fun whatTheProfilePrintsIsNotPartOfThePath() {
         // A greeting, a fortune, a version manager's notice: before and after what the command prints.
         val shell = root.resolve("chatty-shell").also {
-            it.writeText("#!/bin/sh\necho Welcome back\nPATH=/opt/one:/opt/two /bin/sh -c \"\$3\"\necho bye\n")
+            it.writeText("#!/bin/sh\nfor script; do :; done\necho Welcome back\nPATH=/opt/one:/opt/two /bin/sh -c \"\$script\"\necho bye\n")
             it.toFile().setExecutable(true)
         }
 
@@ -105,7 +142,7 @@ class AgentDetectionTest {
     fun aProfileThatStartsABackgroundProgramDoesNotHoldTheReading() {
         // ssh-agent, keychain, gpg-agent: a program that the profile starts and that keeps the output open.
         val shell = root.resolve("agent-shell").also {
-            it.writeText("#!/bin/sh\nsleep 20 &\nPATH=/opt/one:/opt/two /bin/sh -c \"\$3\"\n")
+            it.writeText("#!/bin/sh\nfor script; do :; done\nsleep 20 &\nPATH=/opt/one:/opt/two /bin/sh -c \"\$script\"\n")
             it.toFile().setExecutable(true)
         }
 
