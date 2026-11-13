@@ -597,6 +597,72 @@ class KattyStoreTest {
 
         assertEquals(second, state.selection.terminal, "Not the first terminal of the workspace")
     }
+
+    @Test
+    fun theListenersAreToldOfAProjectThatIsRemovedAsItWas() {
+        val id = addProject("/a")
+        val terminal = workspace.layout.terminals().single().id
+        store.setRunning(terminal, RunningCommand(listOf("vim")))
+        addProject("/b")
+        val told = mutableListOf<Project>()
+        store.addRemovalListener { told += it }
+
+        val before = state.projects.first { it.id == id }
+        store.removeProject(id)
+        store.removeProject(ProjectId("nothing"))
+
+        assertEquals(listOf(before), told, "Told once, with what ran in it, before removeProject returned")
+    }
+
+    @Test
+    fun aRemovedProjectIsRestoredWithItsIdsWhatRanAndTheWorkspaceItHadSelected() {
+        val id = addProject("/a")
+        val first = workspace.layout.terminals().single().id
+        store.setRunning(first, RunningCommand(listOf("claude", "--resume", "x"), agent = "claude", agentSession = "x"))
+        val split = store.split(first, SplitDirection.ROW)!!
+        val second = store.addWorkspace(id, "second")!!
+        store.selectWorkspace(state.projects.single().workspaces.first().id)
+        store.focus(split)
+        store.setProjectOpen(id, false)
+        addProject("/b")
+        val saved = state.projects.first { it.id == id }
+        store.removeProject(id)
+
+        val restored = store.restoreProject(saved)
+
+        assertEquals(id, restored)
+        val project = state.projects.last()
+        assertEquals(saved.copy(open = true), project)
+        assertEquals(listOf(id), state.projects.filter { it.directory == "/a" }.map { it.id })
+        assertNotEquals(second, state.selection.workspace)
+        assertEquals(Selection(id, saved.workspaces.first().id, split), state.selection, "The workspace selected last, and its terminal that had the focus")
+        assertEquals("x", project.workspaces.first().layout.terminals().first().running?.agentSession)
+    }
+
+    @Test
+    fun restoringAFolderThatIsAProjectSelectsIt() {
+        val id = addProject("/a")
+        val saved = state.projects.single()
+        addProject("/b")
+
+        assertEquals(id, store.restoreProject(saved.copy(id = ProjectId("other"))))
+        assertEquals(2, state.projects.size)
+        assertEquals(id, state.selection.project)
+    }
+
+    @Test
+    fun aSavedProjectWhoseIdsAreTakenOpensAsANewProject() {
+        addProject("/a")
+        val taken = state.projects.single()
+        val saved = taken.copy(id = ProjectId("saved"), directory = "/c")
+
+        val restored = store.restoreProject(saved)
+
+        assertNotEquals(ProjectId("saved"), restored)
+        val project = state.projects.first { it.id == restored }
+        assertEquals("/c", project.directory)
+        assertTrue(project.workspaces.single().layout.terminals().none { it.id == taken.workspaces.single().layout.terminals().single().id })
+    }
 }
 
 class UiScaleTest {
@@ -629,4 +695,5 @@ class UiScaleTest {
 
         assertEquals(1f, json.uiScale)
     }
+
 }

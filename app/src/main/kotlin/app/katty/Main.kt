@@ -18,6 +18,8 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import app.katty.core.KattyDirectories
 import app.katty.core.KattyStore
+import app.katty.core.RecentProjects
+import app.katty.core.RecentProjectsFile
 import app.katty.core.TerminalSnapshotStore
 import app.katty.core.StateFile
 import app.katty.core.StatePersistence
@@ -80,8 +82,15 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     // What the store holds is written to the file as it changes, and a last time when the application quits.
     val writer = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     val persistence = remember { StatePersistence(store, file, writer) }
+    // The projects that were opened before, and the state of the ones that were removed, whose terminals keep what they showed.
+    val recent = remember { RecentProjects(store, RecentProjectsFile(directories.recentProjectsFile), writer) }
     // One shell for each terminal of the store, which goes on running when its workspace is not the one that is shown.
-    val registry = remember { SessionRegistry(store, writer, shellIntegration = directories.shellIntegration, snapshots = TerminalSnapshotStore(directories.snapshots)) }
+    val registry = remember {
+        SessionRegistry(
+            store, writer, shellIntegration = directories.shellIntegration, snapshots = TerminalSnapshotStore(directories.snapshots),
+            savedTerminals = recent.savedTerminals,
+        )
+    }
     // What each of them says it is doing.
     val tracker = remember { AgentTracker(writer) }
     // The sound of one of them that starts needing the user.
@@ -94,7 +103,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
             { id -> store.state.value.locate(id)?.terminal?.running?.agentSession },
         ).also { it.start() }
     }
-    DisposableEffect(Unit) { onDispose { writer.cancel() } }
+    DisposableEffect(Unit) { onDispose { recent.stop(); writer.cancel() } }
     val windowState = rememberWindowState(placement = geometry.mode.toPlacement(), position = geometry.toPosition(), size = geometry.toSize())
     // Where the window is, how big and in which mode is kept as it changes, and a last time when the application quits.
     val flushWindow = keepWindowGeometry(windowState, windowFile, geometry)
@@ -163,7 +172,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
             onPreviewKeyEvent = windowKeys::handle,
         ) {
             UiScale(settings.effectiveUiScale) {
-                KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys)
+                KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys, recent = recent)
             }
         }
         if (aboutOpen) AboutWindow(settings.effectiveUiScale, onClose = { aboutOpen = false })

@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 
@@ -44,6 +45,9 @@ import org.jetbrains.jewel.ui.component.Text
  * @param title What is asked, as "Close “refactor-auth”?".
  * @param message What will happen.
  * @param details What would be lost, listed under the message: the terminals with their states.
+ * @param cancelLabel What the button that Escape presses says.
+ * @param destructive Whether what is confirmed destroys something: the button is red then, and the accent's otherwise (a question that has two
+ * answers, neither of which destroys).
  */
 @Composable
 fun ConfirmDialog(
@@ -54,6 +58,8 @@ fun ConfirmDialog(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
     details: (@Composable () -> Unit)? = null,
+    cancelLabel: String = "Cancel",
+    destructive: Boolean = true,
 ) {
     val colors = Katty.colors
     val confirmFocus = remember { FocusRequester() }
@@ -83,9 +89,10 @@ fun ConfirmDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedButton(onClick = onCancel) { Text("Cancel") }
+                OutlinedButton(onClick = onCancel) { Text(cancelLabel) }
                 // A destructive action is red: Jewel's default button is the accent's, so the red one is drawn here.
-                DestructiveButton(confirmLabel, onConfirm, Modifier.focusRequester(confirmFocus))
+                if (destructive) DestructiveButton(confirmLabel, onConfirm, Modifier.focusRequester(confirmFocus))
+                else DefaultButton(onClick = onConfirm, modifier = Modifier.focusRequester(confirmFocus)) { Text(confirmLabel) }
             }
         }
     }

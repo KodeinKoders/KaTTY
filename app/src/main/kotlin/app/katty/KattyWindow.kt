@@ -58,6 +58,7 @@ import app.katty.screens.AgentBoard
 import app.katty.screens.AgentToast
 import app.katty.core.RecentProjects
 import app.katty.core.RecentProjectsFile
+import app.katty.core.RunningCommand
 import app.katty.screens.CommandPalette
 import app.katty.screens.SearchAllPopup
 import app.katty.screens.SearchedTerminal
@@ -139,8 +140,9 @@ fun DecoratedWindowScope.KattyWindowContent(
     onOpenBoardWindow: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
     keys: WindowKeys = WindowKeys(),
+    recent: RecentProjects? = null,
 ) {
-    KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenBoardWindow, onOpenAbout, keys, window) { content ->
+    KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenBoardWindow, onOpenAbout, keys, window, recent) { content ->
         TitleBar { content() }
     }
 }
@@ -162,6 +164,7 @@ internal fun KattyWindowContent(
     onOpenAbout: () -> Unit,
     keys: WindowKeys,
     window: java.awt.Frame?,
+    recent: RecentProjects? = null,
     titleBar: @Composable (content: @Composable TitleBarScope.() -> Unit) -> Unit,
 ) {
     val state by store.state.collectAsState()
@@ -183,6 +186,11 @@ internal fun KattyWindowContent(
     val openBoardWindow by rememberUpdatedState(onOpenBoardWindow)
     val openAbout by rememberUpdatedState(onOpenAbout)
     val windowScope = rememberCoroutineScope()
+    // The projects that were opened before, and the state of the ones that were removed: the application's, else (in a test) the window's own, kept
+    // for as long as the window is.
+    val ownRecent = remember(recent) { if (recent == null) RecentProjects(store, RecentProjectsFile(directories.recentProjectsFile), windowScope) else null }
+    DisposableEffect(ownRecent) { onDispose { ownRecent?.stop() } }
+    val recent = recent ?: ownRecent!!
     val controller = remember {
         val platform = object : WindowPlatform {
             override fun chooseFolder(title: String, initial: String?) = chooseFolder(window, title, initial)
@@ -198,7 +206,7 @@ internal fun KattyWindowContent(
             override fun openBoardWindow() = openBoardWindow()
             override fun openAbout() = openAbout()
         }
-        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen, tracker::markSeen)
+        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen, tracker::markSeen, recent)
     }
     SideEffect {
         controller.handles = handles
@@ -215,9 +223,6 @@ internal fun KattyWindowContent(
     var attentionOpen by controller::attentionOpen
     var paletteOpen by controller::paletteOpen
     val recentOpen = controller.recentOpen
-    // The projects that were opened before: it watches the store, so it is kept for as long as the window is.
-    val recent = remember { RecentProjects(store, RecentProjectsFile(directories.recentProjectsFile), windowScope) }
-    DisposableEffect(recent) { onDispose { recent.stop() } }
     val openRecent = controller::openRecent
     var editingShortcuts by controller::editingShortcuts
     var focusTick by controller::focusTick
@@ -736,6 +741,9 @@ internal fun KattyWindowContent(
                 RestartTerminalDialog(describe(location.terminal), onConfirm = { registry.restart(id); restartingTerminal = null }, onCancel = { restartingTerminal = null })
             }
         }
+        controller.restoring?.let { request ->
+            RestoreProjectDialog(request.saved, onRestore = { controller.answerRestore(true) }, onFresh = { controller.answerRestore(false) })
+        }
         removing?.let { id ->
             val project = state.projects.firstOrNull { it.id == id }
             if (project == null) removing = null else RemoveProjectDialog(project, onConfirm = { store.removeProject(id); removing = null }, onCancel = { removing = null })
@@ -807,7 +815,8 @@ private fun RemoveProjectDialog(project: Project, onConfirm: () -> Unit, onCance
     val terminals = project.workspaces.sumOf { it.layout.terminals().size }
     ConfirmDialog(
         title = "Remove “${project.name}”?",
-        message = "Removing this project closes its workspaces and ends its terminals. Its folder stays on your disk.",
+        message = "Removing this project closes its workspaces and ends its terminals. Its folder stays on your disk, " +
+            "and they come back as they were when it is opened again from the recent projects.",
         confirmLabel = "Remove project",
         onConfirm = onConfirm,
         onCancel = onCancel,
@@ -824,6 +833,36 @@ private fun RemoveProjectDialog(project: Project, onConfirm: () -> Unit, onCance
         },
     )
 }
+
+/**
+ * Asks whether a project that was removed comes back as it was when its folder is added again: Enter restores it, Escape opens it fresh. It lists its
+ * workspaces and the programs that are started again in their terminals.
+ */
+@Composable
+internal fun RestoreProjectDialog(saved: Project, onRestore: () -> Unit, onFresh: () -> Unit) {
+    ConfirmDialog(
+        title = "Restore “${saved.name}”?",
+        message = "This project was removed with its workspaces and terminals. They can come back as they were, with the programs and agents that " +
+            "ran in them, or it can open with a new shell.",
+        confirmLabel = "Restore",
+        cancelLabel = "Don't restore",
+        destructive = false,
+        onConfirm = onRestore,
+        onCancel = onFresh,
+        details = {
+            for (workspace in saved.workspaces) {
+                val terminals = workspace.layout.terminals()
+                val programs = terminals.mapNotNull { it.running?.let(::programName) }
+                val count = if (terminals.size == 1) "1 terminal" else "${terminals.size} terminals"
+                Text(listOf(workspace.name, count).plus(programs).joinToString("  ·  "), color = Katty.colors.text)
+            }
+        },
+    )
+}
+
+// What a program that runs again is called: its agent's name, else its command.
+private fun programName(running: RunningCommand): String =
+    running.agent?.let(Agent::byId)?.displayName ?: running.argv.firstOrNull()?.substringAfterLast('/').orEmpty()
 
 internal fun revealInFileManager(directory: String) {
     val file = File(directory)

@@ -15,9 +15,17 @@ import java.nio.file.Path
 
 private val logger = LoggerFactory.getLogger("app.katty.core.RecentProjects")
 
-/** A project that was opened, as the list of the recent ones keeps it. [openedAt] is in milliseconds since the epoch. */
+/**
+ * A project that was opened, as the list of the recent ones keeps it. [openedAt] is in milliseconds since the epoch.
+ *
+ * @param saved The project as it was when it was removed (its workspaces, splits and terminals, with what ran in them), which opening it again
+ * restores; `null` for a folder that was not removed, or that had no workspace.
+ */
 @Serializable
-public data class RecentProject(val directory: String, val name: String, val openedAt: Long)
+public data class RecentProject(val directory: String, val name: String, val openedAt: Long, val saved: Project? = null) {
+    /** The terminals of [saved]. */
+    public val savedTerminals: List<TerminalSpec> get() = saved?.workspaces?.flatMap { it.layout.terminals() }.orEmpty()
+}
 
 @Serializable
 internal data class RecentProjectsData(val version: Int = RecentProjectsFile.VERSION, val projects: List<RecentProject> = emptyList())
@@ -61,9 +69,11 @@ public class RecentProjectsFile(private val path: Path) {
 }
 
 /**
- * The last [MAX] projects that were opened, newest first, one for each folder. A project is recorded when it is added to the store and again,
- * with the name it had, when it is removed, whatever the route: the store's state is what is watched, so nothing has to call this.
- * Projects that are open when the application starts are recorded when they are removed.
+ * The last [MAX] projects that were opened, newest first, one for each folder. A project is recorded when it is added to the store and again, with
+ * the name it had and **its state** ([RecentProject.saved]), when it is removed, whatever the route: the additions are seen in the store's state, and
+ * the removals are told by the store ([KattyStore.addRemovalListener]) before [KattyStore.removeProject] returns, so that [savedTerminals] has the
+ * terminals of a removed project before anything that follows the store sees it gone. Projects that are open when the application starts are
+ * recorded when they are removed. A folder that is added again, restored or not, has its saved state dropped.
  */
 public class RecentProjects(
     private val store: KattyStore,
@@ -76,25 +86,59 @@ public class RecentProjects(
     /** What is kept, newest first, whether the folder is still a project or not: [closed] says which can be opened. */
     public val entries: StateFlow<List<RecentProject>> get() = list
 
+    private val saved = MutableStateFlow(terminalsOf(list.value))
+
+    /** The terminals of the projects that were removed and whose state is kept: what they showed is kept with it. */
+    public val savedTerminals: StateFlow<Set<TerminalId>> get() = saved
+
     // The projects seen last, by folder, read now so that a change between here and the first collected state is not missed.
-    private var seen: Map<String, String> = names(store.state.value)
+    private var seen: Set<String> = folders(store.state.value)
+
+    private val removalListener: (Project) -> Unit = ::removed
+
+    init {
+        store.addRemovalListener(removalListener)
+    }
 
     private val job: Job = scope.launch {
-        store.state.collect { state ->
-            val now = names(state)
+        store.state.collect {
             synchronized(this@RecentProjects) {
-                // What came, then what went (with the name it had): both are things the user did with the project.
+                // The state as it is now, not the one collected: one from before a removal would take the folder for one that is added again, after
+                // the removal was recorded, and drop its state.
+                val now = names(store.state.value)
+                // What came: the user opened it. What went is told by the store, with its state.
                 for ((directory, name) in now) if (directory !in seen) record(directory, name)
-                for ((directory, name) in seen) if (directory !in now) record(directory, name)
-                seen = now
+                seen = now.keys
             }
         }
     }
 
+    // A project was removed: it is recorded with what it was. Its folder is not one that is seen any more, so that adding it again records it.
     @Synchronized
-    internal fun record(directory: String, name: String) {
-        val updated = (listOf(RecentProject(directory, name, clock())) + list.value.filterNot { it.directory == directory }).take(MAX)
+    private fun removed(project: Project) {
+        record(project.directory, project.name, project.takeIf { it.workspaces.isNotEmpty() })
+        seen = seen - project.directory
+    }
+
+    @Synchronized
+    internal fun record(directory: String, name: String, state: Project? = null) {
+        update((listOf(RecentProject(directory, name, clock(), state)) + list.value.filterNot { it.directory == directory }).take(MAX))
+    }
+
+    /** The state kept for the folder [directory], `null` when there is none. */
+    public fun saved(directory: String): Project? = list.value.firstOrNull { it.directory == directory }?.saved
+
+    /** Forgets the state kept for the folder [directory]: it is opened again, as it was or not. */
+    @Synchronized
+    public fun dropSaved(directory: String) {
+        if (list.value.none { it.directory == directory && it.saved != null }) return
+        update(list.value.map { if (it.directory == directory) it.copy(saved = null) else it })
+    }
+
+    // Under the monitor.
+    private fun update(updated: List<RecentProject>) {
         list.value = updated
+        saved.value = terminalsOf(updated)
         try {
             file.save(updated)
         } catch (e: IOException) {
@@ -110,10 +154,15 @@ public class RecentProjects(
     }
 
     public fun stop() {
+        store.removeRemovalListener(removalListener)
         job.cancel()
     }
 
     private fun names(state: KattyState) = state.projects.associate { it.directory to it.name }
+
+    private fun folders(state: KattyState) = state.projects.map { it.directory }.toSet()
+
+    private fun terminalsOf(entries: List<RecentProject>) = entries.flatMap { entry -> entry.savedTerminals.map { it.id } }.toSet()
 
     public companion object {
         public const val MAX: Int = 50

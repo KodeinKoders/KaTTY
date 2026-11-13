@@ -243,13 +243,13 @@ private const val RECENT_PREFIX = "recent:"
 
 /**
  * The projects that were opened before, in a popup that works like the palette: a filter field that has the focus, the arrows, Enter and Escape.
- * The folder is written with `~` for the home, as the context of each.
+ * The folder is written with `~` for the home, as the context of each, followed by what comes back with a project that was removed with its state.
  */
 @Composable
 fun RecentProjectsPopup(projects: List<RecentProject>, onOpen: (RecentProject) -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val home = System.getProperty("user.home").orEmpty()
     val entries = remember(projects) {
-        projects.map { PaletteEntry(RECENT_PREFIX + it.directory, PaletteGroup.PROJECTS, it.name, if (home.isNotEmpty() && it.directory.startsWith("$home/")) "~" + it.directory.removePrefix(home) else it.directory) }
+        projects.map { PaletteEntry(RECENT_PREFIX + it.directory, PaletteGroup.PROJECTS, it.name, recentContext(it, home)) }
     }
     CommandPalette(
         entries,
@@ -261,4 +261,13 @@ fun RecentProjectsPopup(projects: List<RecentProject>, onOpen: (RecentProject) -
         toggleHint = false,
         icon = KattyIcons.Folder,
     )
+}
+
+/** What the recent list says of [project]: its folder, with `~` for [home], and what comes back with it when its state is kept. */
+internal fun recentContext(project: RecentProject, home: String): String {
+    val folder = if (home.isNotEmpty() && project.directory.startsWith("$home/")) "~" + project.directory.removePrefix(home) else project.directory
+    val saved = project.saved ?: return folder
+    val workspaces = saved.workspaces.size
+    val terminals = project.savedTerminals.size
+    return "$folder  ·  ${if (workspaces == 1) "1 workspace" else "$workspaces workspaces"}, ${if (terminals == 1) "1 terminal" else "$terminals terminals"}"
 }

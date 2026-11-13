@@ -113,9 +113,12 @@ class TerminalHandle(
  * and history back, under a line that says it is restored, and its shell below. They are saved every [autosaveMillis] for the terminals that changed,
  * and when the registry is closed. The snapshot of a terminal that is gone, or that is started again by the user, is deleted. What a terminal that is
  * closed and can be opened again (`KattyStore.reopenableTerminals`) showed is kept **in memory** instead, for as long as it can, and the terminal that
- * comes back starts with it.
+ * comes back starts with it. The terminals of a project that was removed and whose state is kept ([savedTerminals]) have theirs **saved** in its file as
+ * their shells are closed, and kept until that state is dropped: a project that is opened again as it was starts its terminals from them.
  * @param startRestored Starts the shell of a terminal that has a snapshot, which [start] starts without.
  * @param starter Where the shells are started and the color schemes read. Tests give one that does it at once, on the caller's thread.
+ * @param savedTerminals The terminals of the projects that were removed and whose state is kept (`RecentProjects.savedTerminals`), which have that set
+ * before their project is gone from the store.
  */
 class SessionRegistry(
     private val store: KattyStore,
@@ -129,6 +132,7 @@ class SessionRegistry(
         startShell(spec, theme, shellIntegration, store.state.value.settings, snapshot)
     },
     private val autosaveMillis: Long = AUTOSAVE_MS,
+    private val savedTerminals: StateFlow<Set<TerminalId>> = MutableStateFlow(emptySet()),
 ) {
     private val mutableHandles = MutableStateFlow<Map<TerminalId, TerminalHandle>>(emptyMap())
 
@@ -142,6 +146,15 @@ class SessionRegistry(
                     // What the closed terminals showed, once they cannot be opened again.
                     val wanted = store.state.value.allTerminals().map { it.terminal.id }.toSet()
                     synchronized(this@SessionRegistry) { forgetClosedContents(wanted) }
+                }
+            }
+            // The snapshots of the saved terminals that are dropped (a project opened fresh, or that left the recent list) are deleted. The store's
+            // terminals as they are now, not as the last sync saw them: a project that is restored is in the store before its state is dropped.
+            scope.launch {
+                savedTerminals.collect {
+                    synchronized(this@SessionRegistry) {
+                        if (contentsKept == true) keepSnapshots(store.state.value.allTerminals().map { it.terminal.id }.toSet())
+                    }
                 }
             }
         }
@@ -190,7 +203,7 @@ class SessionRegistry(
     private var generations = HashMap<TerminalId, Int>()
     private var closed = false
 
-    // The terminals that are in the store, as the snapshots last saw them, and whether what they showed is kept (`Settings.restoreContents`).
+    // The terminals whose snapshots are kept (in the store, or saved with a removed project), as they were last seen, and whether what they showed is kept (`Settings.restoreContents`).
     private var snapshotsWanted: Set<TerminalId>? = null
     private var contentsKept: Boolean? = null
 
@@ -269,9 +282,16 @@ class SessionRegistry(
                 scope.launch(starter) { store.clear() }
             }
         }
-        if (keep && wanted != snapshotsWanted) {
-            snapshotsWanted = wanted
-            scope.launch(starter) { store.keepOnly(wanted) }
+        if (keep) keepSnapshots(wanted)
+    }
+
+    // Deletes the snapshots of the terminals that are neither in the store ([wanted]) nor saved with a project, when that changed. Under the monitor.
+    private fun keepSnapshots(wanted: Set<TerminalId>) {
+        val store = snapshots ?: return
+        val kept = wanted + savedTerminals.value
+        if (kept != snapshotsWanted) {
+            snapshotsWanted = kept
+            scope.launch(starter) { store.keepOnly(kept) }
         }
     }
 
@@ -578,12 +598,25 @@ class SessionRegistry(
         mutableProcessNames.update { it - handle.id }
         mutableGitInfos.update { it - handle.id }
         schemes.remove(handle.id)
+        // A terminal of a project that was removed with its state: what it shows is kept, in its file, until that state is dropped.
+        val saved = snapshots?.takeIf { contentsKept == true && handle.id in savedTerminals.value && store.state.value.locate(handle.id) == null }
         val session = handle.session ?: run {
-            snapshots?.let { store -> scope.launch(Dispatchers.IO) { store.delete(handle.id) } }
+            if (saved == null) snapshots?.let { store -> scope.launch(Dispatchers.IO) { store.delete(handle.id) } }
+            return
+        }
+        savedVersions.remove(handle.id)
+        if (saved != null) {
+            // Before its shell is hung up. Closing waits for the shell to end: not on the thread that draws.
+            scope.launch(Dispatchers.IO) {
+                try {
+                    saveSnapshot(saved, handle.id, session)
+                } finally {
+                    session.close()
+                }
+            }
             return
         }
         // The terminal is gone, or its shell is started again: what it showed is not for the next launch.
-        savedVersions.remove(handle.id)
         snapshots?.let { store -> scope.launch(Dispatchers.IO) { store.delete(handle.id) } }
         // A terminal that was closed and can be opened again keeps what it shows now, in memory, for when it is (not one that is started again: it is in
         // the store still). Before its shell is hung up.

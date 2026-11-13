@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** What closing a terminal did. */
 public enum class CloseResult {
@@ -35,6 +36,9 @@ public class KattyStore(
 
     // What was closed lately, the newest last: at most [REOPEN_MAX_ITEMS], none older than [REOPEN_KEPT_MS]. Under its own monitor.
     private val closed = ArrayDeque<ClosedItem>()
+
+    // What is told of the projects that are removed, as they were, on the thread that removes them.
+    private val removalListeners = CopyOnWriteArrayList<(Project) -> Unit>()
 
     /** What the application is, now. */
     public val state: StateFlow<KattyState> get() = flow
@@ -79,15 +83,74 @@ public class KattyStore(
         edit { state -> state.copy(projects = state.projects.map { if (it.id == id) it.copy(name = name.trim()) else it }) }
     }
 
-    /** Removes the project with its workspaces and terminals. Its folder stays where it is. */
+    /**
+     * Removes the project with its workspaces and terminals. Its folder stays where it is. The listeners of [addRemovalListener] are told of it as it
+     * was, before this returns.
+     */
     public fun removeProject(id: ProjectId) {
+        var removed: Project? = null
         edit { state ->
+            removed = null
             val index = state.projects.indexOfFirst { it.id == id }
             if (index < 0) return@edit state
+            removed = state.projects[index]
             val projects = state.projects.filter { it.id != id }
             // What was selected after it, else before it.
             val next = if (state.selection.project == id) projects.getOrNull(index) ?: projects.getOrNull(index - 1) else null
             state.copy(projects = projects, selection = if (state.selection.project == id) Selection(next?.id) else state.selection)
+        }
+        removed?.let { project -> removalListeners.forEach { it(project) } }
+    }
+
+    /**
+     * Tells [listener] of every project that is removed, as it was, on the thread that removes it and before [removeProject] returns: what keeps a
+     * project's state for later has it before anything that follows the store can see that it is gone (the registry deletes what the terminals of a
+     * project that is gone showed).
+     */
+    public fun addRemovalListener(listener: (Project) -> Unit) {
+        removalListeners += listener
+    }
+
+    public fun removeRemovalListener(listener: (Project) -> Unit) {
+        removalListeners -= listener
+    }
+
+    /**
+     * Opens again a project that was removed, as it was: its workspaces, splits and terminals with **their ids** (what the terminals showed is kept
+     * by id) and what ran in them, which their new shells type again as at launch. It is selected, on the workspace that was selected in it last.
+     * A folder that is a project already is selected instead; when one of its ids is in the state, it is opened as a new project.
+     *
+     * @return The project.
+     */
+    public fun restoreProject(saved: Project): ProjectId {
+        val existing = flow.value.projects.firstOrNull { it.directory == saved.directory }
+        if (existing != null) {
+            selectProject(existing.id)
+            return existing.id
+        }
+        var restored = false
+        edit { state ->
+            restored = false
+            if (state.projects.any { it.directory == saved.directory } || state.hasAnyIdOf(saved)) return@edit state
+            val workspace = saved.workspaces.firstOrNull { it.id == saved.lastWorkspace } ?: saved.workspaces.firstOrNull() ?: return@edit state
+            restored = true
+            state.copy(projects = state.projects + saved.copy(open = true), selection = Selection(saved.id, workspace.id, workspace.terminalToFocus()))
+        }
+        return if (restored) saved.id else addProject(saved.directory, saved.name)
+    }
+
+    // Whether an id of [project] (its own, its workspaces', its splits', its terminals') is in [this].
+    private fun KattyState.hasAnyIdOf(project: Project): Boolean {
+        fun PaneNode.splits(): List<SplitId> = when (this) {
+            is PaneNode.Leaf -> emptyList()
+            is PaneNode.Split -> listOf(id) + first.splits() + second.splits()
+        }
+        val workspaces = projects.flatMap { it.workspaces }
+        val workspaceIds = workspaces.map { it.id }.toSet()
+        val splitIds = workspaces.flatMap { it.layout.splits() }.toSet()
+        val terminalIds = workspaces.flatMap { it.layout.terminals() }.map { it.id }.toSet()
+        return projects.any { it.id == project.id } || project.workspaces.any { workspace ->
+            workspace.id in workspaceIds || workspace.layout.splits().any { it in splitIds } || workspace.layout.terminals().any { it.id in terminalIds }
         }
     }
 

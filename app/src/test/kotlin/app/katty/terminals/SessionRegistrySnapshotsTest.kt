@@ -2,6 +2,8 @@ package app.katty.terminals
 
 import app.katty.core.KattyStore
 import app.katty.core.REOPEN_KEPT_MS
+import app.katty.core.RecentProjects
+import app.katty.core.RecentProjectsFile
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalSnapshotStore
 import app.katty.terminal.TerminalSession
@@ -28,9 +30,11 @@ class SessionRegistrySnapshotsTest {
     private val snapshots = TerminalSnapshotStore(directory)
     private val registries = mutableListOf<SessionRegistry>()
     private val sessions = mutableListOf<TerminalSession>()
+    private val recent = RecentProjects(store, RecentProjectsFile(directory.resolveSibling("recent-projects.json")), scope)
 
     @AfterTest
     fun close() {
+        recent.stop()
         registries.forEach { it.close() }
         sessions.forEach { it.close() }
         scope.cancel()
@@ -53,6 +57,7 @@ class SessionRegistrySnapshotsTest {
             ).also { sessions += it }
         },
         autosaveMillis = autosaveMillis,
+        savedTerminals = recent.savedTerminals,
     ).also { registries += it }
 
     private fun await(what: String, screen: () -> String? = { null }, condition: () -> Boolean) {
@@ -83,6 +88,56 @@ class SessionRegistrySnapshotsTest {
         val text = second.session().also { it.awaitText("second") }.readText().lines()
         assertTrue(text.indexOf("first") < text.indexOf("Restored"), "What it showed is there, then the note: $text")
         assertTrue(text.indexOf("Restored") < text.indexOf("second"), "And its new shell below: $text")
+    }
+
+    @Test
+    fun whatTheTerminalsOfARemovedProjectShowedIsKeptAndComesBackWithIt() {
+        val project = store.addProject("/tmp")
+        val registry = registry().also { it.sync(store.state.value) }
+        registry.session().awaitText("first")
+
+        store.removeProject(project)
+        registry.sync(store.state.value)
+
+        await("the snapshot of the removed terminal") { files().size == 1 }
+        store.restoreProject(recent.saved("/tmp")!!)
+        recent.dropSaved("/tmp")
+        registry.sync(store.state.value)
+        val text = registry.session().also { it.awaitText("second") }.readText().lines()
+        assertTrue(text.indexOf("first") < text.indexOf("Restored"), "What it showed is there, then the note: $text")
+        assertEquals(1, files().size, "It is the store's terminal now, and its snapshot stays")
+    }
+
+    @Test
+    fun theSnapshotsOfARemovedProjectAreDeletedWhenItsStateIsDropped() {
+        val project = store.addProject("/tmp")
+        val registry = registry().also { it.sync(store.state.value) }
+        registry.session().awaitText("first")
+        store.removeProject(project)
+        registry.sync(store.state.value)
+        await("the snapshot of the removed terminal") { files().size == 1 }
+
+        // The folder is opened fresh: its state is dropped.
+        store.addProject("/tmp")
+        registry.sync(store.state.value)
+
+        await("the snapshot to go") { files().isEmpty() }
+        assertFalse("Restored" in registry.session().also { it.awaitText("first") }.readText())
+    }
+
+    @Test
+    fun withTheSettingOffARemovedProjectKeepsNoSnapshot() {
+        store.updateSettings { it.copy(restoreContents = false) }
+        val project = store.addProject("/tmp")
+        val registry = registry().also { it.sync(store.state.value) }
+        registry.session().awaitText("first")
+
+        store.removeProject(project)
+        registry.sync(store.state.value)
+
+        Thread.sleep(300)
+        assertTrue(files().isEmpty())
+        assertNotNull(recent.saved("/tmp"), "The project's state is kept without what its terminals showed")
     }
 
     @Test

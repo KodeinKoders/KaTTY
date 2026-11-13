@@ -3,6 +3,8 @@ package app.katty
 import app.katty.core.Direction
 import app.katty.core.KattyStore
 import app.katty.core.MainView
+import app.katty.core.RecentProjects
+import app.katty.core.RecentProjectsFile
 import app.katty.core.SecureInput
 import app.katty.core.Settings
 import app.katty.core.SplitDirection
@@ -33,8 +35,10 @@ class WindowControllerTest {
     private val saveRequests = mutableListOf<Pair<String?, String>>()
     private var saveAnswer: String? = null
     private val sessions = mutableListOf<TerminalSession>()
+    // What the folder chooser answers.
+    private var folderAnswer: String? = null
     private val platform = object : WindowPlatform {
-        override fun chooseFolder(title: String, initial: String?): String? = null
+        override fun chooseFolder(title: String, initial: String?): String? = folderAnswer
         override fun chooseSaveFile(title: String, directory: String?, name: String): String? {
             saveRequests += directory to name
             return saveAnswer
@@ -679,5 +683,76 @@ class WindowControllerTest {
         assertEquals(20f, presentationFontSize(13f), "19.5 is rounded")
         assertEquals(12f, presentationFontSize(8f))
         assertEquals(Settings.MAX_FONT_SIZE, presentationFontSize(30f))
+    }
+
+    // A controller with the recent projects, where the project of [folder] was removed with a second workspace and a program in its first terminal.
+    private fun withRemovedProject(folder: String, test: (WindowController, RecentProjects, app.katty.core.Project) -> Unit) {
+        val directory = java.nio.file.Files.createTempDirectory("katty-recent")
+        val recent = RecentProjects(store, RecentProjectsFile(directory.resolve("recent-projects.json")), CoroutineScope(Dispatchers.Unconfined))
+        try {
+            val id = store.addProject(folder)
+            store.setRunning(state.selection.terminal!!, app.katty.core.RunningCommand(listOf("vim")))
+            store.addWorkspace(id, "second")
+            val saved = state.projects.first { it.id == id }
+            store.removeProject(id)
+            test(WindowController(store, CoroutineScope(Dispatchers.Unconfined), platform, {}, {}, {}, recent), recent, saved)
+        } finally {
+            recent.stop()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun addingTheFolderOfAProjectRemovedWithItsStateAsksAndRestoresIt() = withRemovedProject("/tmp/removed") { controller, recent, saved ->
+        folderAnswer = "/tmp/removed"
+
+        controller.addProject()
+
+        assertEquals(RestoreRequest("/tmp/removed", saved), controller.restoring)
+        assertTrue(controller.blockingDialog)
+        assertTrue(state.projects.none { it.directory == "/tmp/removed" }, "Nothing is added before the answer")
+
+        controller.answerRestore(true)
+
+        assertNull(controller.restoring)
+        assertEquals(saved.copy(open = true), state.projects.single { it.directory == "/tmp/removed" })
+        assertEquals(saved.id, state.selection.project)
+        assertNull(recent.saved("/tmp/removed"), "Its state is dropped once it is back")
+        assertNull(controller.renamingWorkspace)
+    }
+
+    @Test
+    fun notRestoringOpensTheFolderFreshAndDropsItsState() = withRemovedProject("/tmp/removed") { controller, recent, saved ->
+        folderAnswer = "/tmp/removed"
+        controller.addProject()
+
+        controller.answerRestore(false)
+
+        val project = state.projects.single { it.directory == "/tmp/removed" }
+        assertTrue(project.id != saved.id)
+        assertEquals("vim", saved.workspaces.first().layout.terminals().single().running?.argv?.single())
+        assertNull(project.workspaces.single().layout.terminals().single().running, "A new shell")
+        assertNull(recent.saved("/tmp/removed"))
+        assertEquals(project.workspaces.single().id, controller.renamingWorkspace, "A new project's workspace is renamed, as always")
+    }
+
+    @Test
+    fun aFolderWithNoStateIsAddedWithoutAQuestion() = withRemovedProject("/tmp/removed") { controller, _, _ ->
+        folderAnswer = "/tmp/other"
+
+        controller.addProject()
+
+        assertNull(controller.restoring)
+        assertEquals("/tmp/other", state.selectedProject?.directory)
+    }
+
+    @Test
+    fun openingAProjectOfTheRecentListRestoresItWithoutAsking() = withRemovedProject("/tmp/removed") { controller, recent, saved ->
+        controller.openRecentProject("/tmp/removed", saved.name)
+
+        assertNull(controller.restoring)
+        assertEquals(saved.copy(open = true), state.projects.single { it.directory == "/tmp/removed" })
+        assertEquals(saved.id, state.selection.project)
+        assertNull(recent.saved("/tmp/removed"))
     }
 }

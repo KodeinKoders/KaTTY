@@ -16,7 +16,9 @@ import app.katty.core.Ide
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
 import app.katty.core.MainView
+import app.katty.core.Project
 import app.katty.core.ProjectId
+import app.katty.core.RecentProjects
 import app.katty.core.Settings
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
@@ -89,6 +91,9 @@ internal class PasteRequest(val text: String) {
     val answer = CompletableDeferred<Boolean>()
 }
 
+/** A folder to add whose project was removed with its state ([saved]), which the user may restore. */
+internal data class RestoreRequest(val directory: String, val saved: Project)
+
 /** The path of a [file] that was clicked in a terminal of [workspace], whose IDE the user chooses. */
 internal data class IdeRequest(val workspace: WorkspaceId, val file: TerminalFilePosition)
 
@@ -125,6 +130,7 @@ internal class WindowController(
     private val restart: (TerminalId) -> Unit,
     private val markAllSeen: () -> Unit,
     private val markSeen: (TerminalId) -> Unit = {},
+    private val recent: RecentProjects? = null,
 ) {
     var renamingWorkspace by mutableStateOf<WorkspaceId?>(null)
     var renamingProject by mutableStateOf<ProjectId?>(null)
@@ -137,6 +143,9 @@ internal class WindowController(
 
     /** The list of the projects that were opened before, which works like the palette. */
     var recentOpen by mutableStateOf(false)
+
+    /** A folder that was chosen to be added, whose project was removed with its state: the user is asked whether it comes back as it was. */
+    var restoring by mutableStateOf<RestoreRequest?>(null)
 
     /** The search of every terminal's history, which works like the palette. */
     var searchingAll by mutableStateOf(false)
@@ -217,7 +226,7 @@ internal class WindowController(
     /** What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons. */
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
-            quitting != null || recentOpen || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null
+            quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -249,6 +258,35 @@ internal class WindowController(
 
     fun addProject() {
         val folder = platform.chooseFolder("Add project folder", state.selectedProject?.directory) ?: return
+        // A folder whose project was removed with its state: the user says whether it comes back as it was.
+        val saved = recent?.saved(folder)
+        if (saved != null && state.projects.none { it.directory == folder }) {
+            restoring = RestoreRequest(folder, saved)
+            return
+        }
+        addFreshProject(folder)
+    }
+
+    /** The answer to [restoring]: the project as it was, or a new one in its folder; its state is dropped either way. */
+    fun answerRestore(restore: Boolean) {
+        val request = restoring ?: return
+        restoring = null
+        if (restore) {
+            restoreProject(request.directory, request.saved)
+        } else {
+            recent?.dropSaved(request.directory)
+            addFreshProject(request.directory)
+        }
+    }
+
+    // The project as it was, then its state dropped: in that order, so that what its terminals showed is never taken for nobody's.
+    private fun restoreProject(directory: String, saved: Project) {
+        val id = store.restoreProject(saved)
+        recent?.dropSaved(directory)
+        goToProject(id)
+    }
+
+    private fun addFreshProject(folder: String) {
         val before = state.projects.size
         store.addProject(folder)
         // A project that is new has a workspace with its default name, which opens for editing as a new workspace does.
@@ -294,10 +332,11 @@ internal class WindowController(
         findingTerminal = terminal
     }
 
-    /** Opens a project of the recent list again, and goes to it. */
+    /** Opens a project of the recent list again, as it was when it was removed when its state is kept, and goes to it. */
     fun openRecentProject(directory: String, name: String) {
         recentOpen = false
-        goToProject(store.addProject(directory, name))
+        val saved = recent?.saved(directory)
+        if (saved != null && state.projects.none { it.directory == directory }) restoreProject(directory, saved) else goToProject(store.addProject(directory, name))
     }
 
     fun newWorkspace() {
