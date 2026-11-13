@@ -5,7 +5,7 @@ package app.katty.core
  * by its bundle identifier (the first of [bundleIds] that is installed is the one that opens): LaunchServices finds it wherever it is, in
  * `/Applications`, in `~/Applications` where JetBrains Toolbox puts them, or elsewhere.
  *
- * Seen on a machine: IntelliJ IDEA, Visual Studio Code, Xcode, Android Studio. The other identifiers are the vendors', not checked on an
+ * Seen on a machine: IntelliJ IDEA, Visual Studio Code, Xcode, Android Studio, OpenIDEA. The other identifiers are the vendors', not checked on an
  * installation, and [NOTEPAD_PLUS_PLUS] has none: it has no version for macOS, so it is never found there.
  *
  * [FINDER] is not an IDE, and only opens what is clicked in a terminal ([forProjects] is false): a project's menu already shows its folder there.
@@ -20,6 +20,7 @@ public enum class Ide(
     VS_CODE("Visual Studio Code", listOf("com.microsoft.VSCode"), FileOpener.VS_CODE),
     INTELLIJ_IDEA("IntelliJ IDEA", listOf("com.jetbrains.intellij"), FileOpener.JETBRAINS),
     INTELLIJ_IDEA_CE("IntelliJ IDEA Community", listOf("com.jetbrains.intellij.ce"), FileOpener.JETBRAINS),
+    OPENIDEA("OpenIDEA", listOf("ai.l0ng.openidea"), FileOpener.OPENIDEA),
     CLION("CLion", listOf("com.jetbrains.CLion"), FileOpener.JETBRAINS),
     RUSTROVER("RustRover", listOf("com.jetbrains.rustrover"), FileOpener.JETBRAINS),
     GOLAND("GoLand", listOf("com.jetbrains.goland"), FileOpener.JETBRAINS),
@@ -66,6 +67,9 @@ public enum class FileOpener {
     /** The `xed` of the bundle, `--line N <file>`. */
     XCODE,
 
+    /** The `openidea` script of the bundle, `--line N --column C <file>`: it gives the file to the OpenIDEA that runs, and starts it if none does. */
+    OPENIDEA,
+
     /** `open -b <id> <file>`: no line. */
     PLAIN,
 
@@ -107,6 +111,14 @@ public fun openFileCommand(
         FileOpener.VS_CODE -> tool("Contents/Resources/app/bin/code")?.let { if (line != null) listOf(it, "--goto", withLine) else listOf(it, path) } ?: plain
         FileOpener.SUBLIME -> tool("Contents/SharedSupport/bin/subl")?.let { listOf(it, withLine) } ?: plain
         FileOpener.XCODE -> tool("Contents/Developer/usr/bin/xed")?.let { if (line != null) listOf(it, "--line", line.toString(), path) else listOf(it, path) } ?: plain
+        FileOpener.OPENIDEA -> tool("Contents/Resources/bin/openidea")?.let {
+            buildList {
+                add(it)
+                if (line != null) addAll(listOf("--line", line.toString()))
+                if (column != null) addAll(listOf("--column", column.toString()))
+                add(path)
+            }
+        } ?: plain
         FileOpener.PLAIN -> plain
         FileOpener.FINDER -> if (directory && java.io.File(path).extension.isEmpty()) plain else listOf("open", "-R", path)
     }
