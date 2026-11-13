@@ -155,6 +155,9 @@ Escape is never used by the window, except to close what is open in front of it 
 | ⌘⇧W
 | Close the workspace
 
+| ⌘⌥W
+| Remove the project, after asking: it comes back as it was from the recent projects
+
 | ⌘⇧[, ⌘⇧]
 | Previous or next workspace, going on to the other projects at the ends of one
 

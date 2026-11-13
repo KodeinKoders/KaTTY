@@ -31,6 +31,9 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     OPEN_RECENT(ShortcutGroup.PROJECTS, "Open a recent project", listOf(cmd(Awt.VK_O, shift = true))),
     CLOSE_WORKSPACE(ShortcutGroup.PROJECTS, "Close the workspace", listOf(cmd(Awt.VK_W, shift = true))),
 
+    /** Removes the selected project, which asks first: it comes back as it was from the recent projects. */
+    REMOVE_PROJECT(ShortcutGroup.PROJECTS, "Remove the project", listOf(cmd(Awt.VK_W, alt = true))),
+
     /** Splits in the main direction of the layout: right in the horizontal one, down in the vertical one. */
     SPLIT_MAIN(ShortcutGroup.PANES, "Split in the main direction of the layout", listOf(cmd(Awt.VK_D))),
 

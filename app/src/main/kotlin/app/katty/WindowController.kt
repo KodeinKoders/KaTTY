@@ -618,6 +618,7 @@ internal class WindowController(
             AppShortcut.OPEN_RECENT -> openRecent()
             AppShortcut.NEW_WORKSPACE -> newWorkspace()
             AppShortcut.CLOSE_WORKSPACE -> state.selection.workspace?.let(::closeWorkspace)
+            AppShortcut.REMOVE_PROJECT -> state.selection.project?.let { removing = it }
             AppShortcut.SPLIT_MAIN -> onTerminal { store.split(it, SplitDirection.ROW) }
             AppShortcut.SPLIT_OTHER -> onTerminal { store.split(it, SplitDirection.COLUMN) }
             AppShortcut.CLOSE_TERMINAL -> onTerminal(::closeTerminal)

@@ -29,7 +29,7 @@ fun projectMenu(
     action("Reveal in file manager", onClick = onReveal)
     if (ides.isNotEmpty()) submenu("Open in") { for (ide in ides) action(ide.displayName) { onOpenIn(ide) } }
     divider()
-    action("Remove project…", danger = true, onClick = onRemove)
+    action("Remove project…", AppShortcut.REMOVE_PROJECT.label, danger = true, onClick = onRemove)
 }
 
 /**

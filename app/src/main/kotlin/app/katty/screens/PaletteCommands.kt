@@ -231,7 +231,7 @@ fun paletteCommands(
         for (ide in handlers.ides) command("open-in-${ide.name.lowercase()}", "Open $what in ${ide.displayName}") { handlers.openProjectIn(ide) }
         if (index > 0) command("project-up", "Move project up") { handlers.moveProject(-1) }
         if (index < state.projects.lastIndex) command("project-down", "Move project down") { handlers.moveProject(1) }
-        command("remove-project", "Remove project…", action = handlers.removeProject)
+        command("remove-project", "Remove project…", AppShortcut.REMOVE_PROJECT.label, handlers.removeProject)
     }
     if (hasWorkspace) {
         command("rename-workspace", "Rename workspace", AppShortcut.RENAME_WORKSPACE.label, handlers.renameWorkspace)

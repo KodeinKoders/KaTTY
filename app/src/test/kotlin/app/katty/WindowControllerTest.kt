@@ -755,4 +755,15 @@ class WindowControllerTest {
         assertEquals(saved.id, state.selection.project)
         assertNull(recent.saved("/tmp/removed"))
     }
+
+    @Test
+    fun commandOptionWAsksToRemoveTheSelectedProject() {
+        val project = state.selection.project!!
+
+        assertTrue(controller.handle(AppShortcut.REMOVE_PROJECT, null))
+
+        assertEquals(project, controller.removing, "It asks first: the project is still there")
+        assertTrue(state.projects.any { it.id == project })
+        assertTrue(controller.blockingDialog)
+    }
 }
