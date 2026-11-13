@@ -125,6 +125,8 @@ public enum class MainView {
  * the user can read: see [TerminalSnapshotStore]). The programs of the terminals do not.
  * @param optionKey Which Option keys are the program's Alt, and which type characters.
  * @param bell What a BEL character does.
+ * @param attentionSound Whether the system's alert sound is played when an agent that the user is not looking at starts needing them: it waits
+ * for them, or it failed.
  * @param copyOnSelect Whether what is selected is put in the clipboard as soon as the selection is made.
  * @param commandMarks Whether a mark is shown beside each command that a shell ran, green when it succeeded and red when it failed.
  * @param boldIsBright Whether bold text in one of the 8 normal colors is drawn in the bright one.
@@ -158,6 +160,7 @@ public data class Settings(
     val restoreContents: Boolean = true,
     val optionKey: OptionKey = OptionKey.CHARACTERS,
     val bell: BellMode = BellMode.VISUAL,
+    val attentionSound: Boolean = true,
     val copyOnSelect: Boolean = false,
     val commandMarks: Boolean = true,
     val boldIsBright: Boolean = false,

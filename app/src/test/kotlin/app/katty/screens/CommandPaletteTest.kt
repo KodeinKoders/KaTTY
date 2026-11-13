@@ -442,6 +442,16 @@ class CommandPaletteTest {
     }
 
     @Test
+    fun theSoundOfAnAgentThatNeedsTheUserHasACommandThatSaysWhatItDoesNext() {
+        store.addProject("/dev/api-gateway")
+        assertTrue("Turn the sound when an agent needs you off" in labels())
+
+        store.updateSettings { it.copy(attentionSound = false) }
+
+        assertTrue("Turn the sound when an agent needs you on" in labels())
+    }
+
+    @Test
     fun theBehaviorOfTheTerminalsHasCommands() {
         store.addProject("/dev/api-gateway")
         for (label in listOf(

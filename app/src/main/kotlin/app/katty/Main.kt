@@ -84,6 +84,8 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val registry = remember { SessionRegistry(store, writer, shellIntegration = directories.shellIntegration, snapshots = TerminalSnapshotStore(directories.snapshots)) }
     // What each of them says it is doing.
     val tracker = remember { AgentTracker(writer) }
+    // The sound of one of them that starts needing the user.
+    val attentionSound = remember { AttentionSound() }
     // What the session of the agent in each of them has used, read from the agent's own files.
     val sessionUsage = remember {
         SessionUsageTracker(
@@ -161,7 +163,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
             onPreviewKeyEvent = windowKeys::handle,
         ) {
             UiScale(settings.effectiveUiScale) {
-                KattyWindowContent(store, registry, tracker, sessionUsage, directories, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys)
+                KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys)
             }
         }
         if (aboutOpen) AboutWindow(settings.effectiveUiScale, onClose = { aboutOpen = false })

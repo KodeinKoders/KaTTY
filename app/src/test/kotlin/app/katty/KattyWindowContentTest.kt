@@ -66,6 +66,11 @@ class KattyWindowContentTest {
     private val keys = WindowKeys()
     private val bridge = WindowBridge()
 
+    // The sounds that the window made. The clock moves by 10 s each time it is read: no sound is held back for coming too soon after another.
+    private var soundTime = 0L
+    private val sounds = java.util.concurrent.atomic.AtomicInteger()
+    private val attentionSound = AttentionSound(clock = { soundTime += 10_000_000_000L; soundTime }, sound = { sounds.incrementAndGet() })
+
     private val state get() = store.state.value
 
     @AfterTest
@@ -87,7 +92,7 @@ class KattyWindowContentTest {
         setContent {
             KattyTheme(false) {
                 Column {
-                    KattyWindowContent(store, registry, tracker, usage, directories, bridge, {}, {}, keys, window = null) { content ->
+                    KattyWindowContent(store, registry, tracker, usage, directories, attentionSound, bridge, {}, {}, keys, window = null) { content ->
                         Row { with(PlainTitleBar) { content() } }
                     }
                 }
@@ -319,6 +324,74 @@ class KattyWindowContentTest {
 
         onAllNodesWithContentDescription("Failed: make build").assertCountEquals(0)
         onAllNodesWithContentDescription("Terminals needing attention: 1").assertCountEquals(1)
+    }
+
+    // Two terminals, the first one selected, whose programs both report [report] (OSC 7501) a moment after the window is there. Gives both, once
+    // both are in [reported].
+    private fun androidx.compose.ui.test.ComposeUiTest.twoTerminalsThatReport(
+        report: String,
+        reported: app.katty.core.AgentState,
+        beforeTheyReport: androidx.compose.ui.test.ComposeUiTest.() -> Unit = {},
+    ): Pair<app.katty.core.TerminalId, app.katty.core.TerminalId> {
+        command = listOf("/bin/sh", "-c", """sleep 2; printf '\033]7501;$report\033\\'; sleep 30""")
+        store.addProject(directories.support.toString())
+        val selected = state.selection.terminal!!
+        val other = store.split(selected, app.katty.core.SplitDirection.ROW)!!
+        store.focus(selected)
+        val transitions = java.util.concurrent.CopyOnWriteArrayList<app.katty.terminals.AgentTransition>()
+        scope.launch { tracker.transitions.collect { transitions += it } }
+        showWindow()
+        beforeTheyReport()
+        waitUntil(timeoutMillis = 15_000) { transitions.filter { it.info.state == reported }.map { it.terminal }.toSet() == setOf(selected, other) }
+        waitForIdle()
+        return selected to other
+    }
+
+    // The agent in the terminal that the user is looking at needs them too, and they see it: only the other one is heard.
+    @Test
+    fun anAgentThatNeedsTheUserWhereTheyAreNotLookingMakesASound() = runComposeUiTest {
+        twoTerminalsThatReport("state=blocked:app=claude", app.katty.core.AgentState.NEEDS_INPUT)
+
+        waitUntil(timeoutMillis = 5_000) { sounds.get() >= 1 }
+        waitForIdle()
+        assertEquals(1, sounds.get(), "The selected terminal, in a window that has the focus, is looked at")
+    }
+
+    @Test
+    fun anAgentThatFailsWhereTheUserIsNotLookingMakesASound() = runComposeUiTest {
+        twoTerminalsThatReport("state=error:app=claude", app.katty.core.AgentState.ERROR)
+
+        waitUntil(timeoutMillis = 5_000) { sounds.get() >= 1 }
+        waitForIdle()
+        assertEquals(1, sounds.get())
+    }
+
+    @Test
+    fun anAgentThatNeedsTheUserMakesNoSoundWhenTheSettingIsOff() = runComposeUiTest {
+        store.updateSettings { it.copy(attentionSound = false) }
+        twoTerminalsThatReport("state=blocked:app=claude", app.katty.core.AgentState.NEEDS_INPUT)
+
+        // The notice says it still: the window was told, and made no sound.
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("needs input", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(0, sounds.get())
+    }
+
+    // A demo, or a stream, is not interrupted: the bell still counts them.
+    @Test
+    fun anAgentThatNeedsTheUserMakesNoSoundDuringAPresentation() = runComposeUiTest {
+        twoTerminalsThatReport("state=blocked:app=claude", app.katty.core.AgentState.NEEDS_INPUT) { assertTrue(press(Key.P, meta = true, alt = true)) }
+
+        onAllNodesWithContentDescription("Terminals needing attention: 2").assertCountEquals(1)
+        assertEquals(0, sounds.get())
+    }
+
+    @Test
+    fun anAgentThatFinishesMakesNoSound() = runComposeUiTest {
+        twoTerminalsThatReport("state=done:app=claude", app.katty.core.AgentState.DONE)
+
+        // The notice says it: the window was told, and made no sound.
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("finished", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(0, sounds.get())
     }
 
     @Test

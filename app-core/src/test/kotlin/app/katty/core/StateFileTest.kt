@@ -38,7 +38,7 @@ class StateFileTest {
         store.setColorScheme(second, "Nord")
         store.addWorkspace(project, "release-notes")
         store.setProjectOpen(project, false)
-        store.updateSettings { it.copy(theme = ThemeMode.DARK, layout = LayoutMode.VERTICAL, fontSize = 14f, ligatures = false, secureInput = SecureInput.PASSWORD_PROMPTS, cursorShape = CursorShape.BAR, cursorBlink = false, restoreContents = false, optionKey = OptionKey.LEFT_IS_ALT, bell = BellMode.SOUND, copyOnSelect = true, commandMarks = false, boldIsBright = true, minimumContrast = MinimumContrast.NORMAL, scrollback = ScrollbackSize.LARGE, view = MainView.BOARD, usageHidden = setOf(usageKey(Agent.CLAUDE, "Week (Sonnet only)"))) }
+        store.updateSettings { it.copy(theme = ThemeMode.DARK, layout = LayoutMode.VERTICAL, fontSize = 14f, ligatures = false, secureInput = SecureInput.PASSWORD_PROMPTS, cursorShape = CursorShape.BAR, cursorBlink = false, restoreContents = false, optionKey = OptionKey.LEFT_IS_ALT, bell = BellMode.SOUND, attentionSound = false, copyOnSelect = true, commandMarks = false, boldIsBright = true, minimumContrast = MinimumContrast.NORMAL, scrollback = ScrollbackSize.LARGE, view = MainView.BOARD, usageHidden = setOf(usageKey(Agent.CLAUDE, "Week (Sonnet only)"))) }
         return store.state.value
     }
 
@@ -52,6 +52,16 @@ class StateFileTest {
         file.save(KattyState(settings = Settings(showUsage = false, usageInWindow = true)))
         assertEquals(false, file.load().settings.showUsage)
         assertTrue(file.load().settings.usageInWindow)
+    }
+
+    @Test
+    fun theSoundOfAnAgentThatNeedsTheUserIsOnUnlessAFileSaysOtherwise() {
+        // A file that was written before the setting existed.
+        path.writeText("""{"version": ${KattyState.VERSION}, "settings": {"bell": "OFF"}}""")
+        assertTrue(file.load().settings.attentionSound)
+
+        file.save(KattyState(settings = Settings(attentionSound = false)))
+        assertFalse(file.load().settings.attentionSound)
     }
 
     @Test

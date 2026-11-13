@@ -163,6 +163,18 @@ class MainMenuTest {
         assertTrue(settings.restoreContents)
     }
 
+    @Test
+    fun theSoundOfAnAgentThatNeedsTheUserIsTurnedOffAndOn() = runSkikoComposeUiTest(size = Size(1024f, 2600f)) {
+        show()
+        assertTrue(settings.attentionSound, "On by default")
+        onNodeWithText("ATTENTION").assertExists()
+
+        onNodeWithText("Sound when an agent needs you").performClick()
+        assertFalse(settings.attentionSound)
+        onNodeWithText("Sound when an agent needs you").performClick()
+        assertTrue(settings.attentionSound)
+    }
+
     // The menu is taller than the window, and scrolls: what is below is scrolled to before it is clicked.
     private fun androidx.compose.ui.test.ComposeUiTest.clickOn(text: String, index: Int = 0) {
         onAllNodesWithText(text)[index].performScrollTo().performClick()

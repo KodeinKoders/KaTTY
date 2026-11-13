@@ -210,6 +210,11 @@ fun MainMenu(
                         )
                     }
                     Separator()
+                    Section("ATTENTION") {
+                        CheckSetting("Sound when an agent needs you", settings.attentionSound, { value -> onChange { it.copy(attentionSound = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                        Caption("Plays the alert sound of macOS when an agent that you are not looking at waits for you or fails.")
+                    }
+                    Separator()
                     Section("TEXT") {
                         CheckSetting("Bold text uses bright colors", settings.boldIsBright, { value -> onChange { it.copy(boldIsBright = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                         Caption("Minimum contrast: text that is hard to read is moved towards white or black.")

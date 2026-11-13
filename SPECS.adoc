@@ -142,6 +142,10 @@ After any change, the selection is made to point at something: a project, worksp
 | On
 | On, off.
 
+| Sound when an agent needs you
+| On
+| On, off.
+
 | Usage shown
 | Claude Code, Codex, Antigravity
 | Any of the agents.
@@ -544,6 +548,7 @@ A command run from the palette is shown by its name, with its shortcut.
 * What is typed is never shown: a letter, a digit, Shift or Option with a key, Return, Backspace, Space.
 A password typed during a demo is not on the screen.
 * Notices are not shown: nothing of another terminal comes on the screen by itself.
+The sound of an agent that needs the user is not played either.
 The bell still counts what needs the user.
 
 
@@ -646,6 +651,10 @@ A terminal keeps its last command; its agent comes first when it waits, failed o
 * Jump to next terminal that needs you (⌘⇧J) goes to the terminal that waits or finished that follows the focused one in the order of the sidebar, round to the first; nothing when none needs the user. A Done one, or a command, that it goes to is seen, and leaves the list.
 * A notice appears at the bottom right of the window for 6 s when a terminal starts needing the user, finishes or fails, or when a command ends in it, unless it is the focused terminal of the Terminals view of a window that has the focus.
 It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, and the note; for a command, "Finished: <line>", "Failed: <line>" or "Stopped: <line>" (what happened first: the line is cut where it is drawn), where, and how it went; a click goes to the terminal.
+* The alert sound of macOS is played when a terminal starts needing the user (Needs input or failed, from any other state), under the rule of the notice: not for the focused terminal of the Terminals view of a window that has the focus.
+A wait that becomes a failure, or a failure that becomes a wait, needed the user already and makes no sound; a terminal that finishes and a command that ends make none.
+At most one sound is played per second: the terminals that start needing the user together make one.
+"Sound when an agent needs you" (ATTENTION in the main menu, "Turn the sound when an agent needs you off" in the palette) turns it off; it is on by default.
 * Ages are "now" under a minute, then "N min", "N h", "N d".
 
 

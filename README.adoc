@@ -61,7 +61,8 @@ It also lists the commands that end in a terminal you are not looking at, a buil
 What finished stays there until you type or click in its terminal, or go to it: coming back to KaTTY is not enough.
 ⌘⇧J jumps to the next terminal that needs you, one that waits or one that finished.
 * When an agent you are not looking at needs you, finishes or fails, or a command ends there, a notice appears in the window.
-KaTTY does not send macOS notifications, badges or sounds.
+When it needs you or fails, KaTTY also plays the alert sound of macOS, so that you hear it from another application; "Sound when an agent needs you" in the settings turns it off.
+KaTTY does not send macOS notifications or badges.
 * The header of each pane shows the agent or the program that runs in it, and the *git branch*, worktree or commit that the terminal is in.
 It follows a branch that an agent or your IDE checks out while a program runs.
 While a program works in another folder than its shell's, it is the branch of that folder.
@@ -102,7 +103,7 @@ They come back as at launch: a new shell where the old one was, the program that
 The terminals follow the theme of the application: you choose one scheme for the light theme and one for the dark theme, and they change when macOS does in the System theme.
 * The bundled JetBrains Mono, or any monospaced font of your system, from 8 to 32 points, with ligatures on or off.
 * A block, bar or underline cursor, blinking or steady, that the shell puts back at each prompt.
-* Settings for how the terminals behave: Option as Alt (left, right or both), the bell (visual, sound, both or off), copy on select, bold text in bright colors, a minimum contrast for text that is hard to read, and how much history a terminal keeps.
+* Settings for how the terminals behave: Option as Alt (left, right or both), the bell (visual, sound, both or off), the sound of an agent that needs you, copy on select, bold text in bright colors, a minimum contrast for text that is hard to read, and how much history a terminal keeps.
 The options of the settings are also commands of the palette.
 * A bar at the left of each command your shell ran, from its prompt to the end of its output: green when it succeeded, red when it failed.
 Hover it to see how it went, when it started and how long it took, and click it to select the command's output.

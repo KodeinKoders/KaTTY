@@ -134,12 +134,13 @@ fun DecoratedWindowScope.KattyWindowContent(
     tracker: AgentTracker,
     sessionUsage: SessionUsageTracker,
     directories: KattyDirectories,
+    attentionSound: AttentionSound,
     bridge: WindowBridge = WindowBridge(),
     onOpenBoardWindow: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
     keys: WindowKeys = WindowKeys(),
 ) {
-    KattyWindowContent(store, registry, tracker, sessionUsage, directories, bridge, onOpenBoardWindow, onOpenAbout, keys, window) { content ->
+    KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenBoardWindow, onOpenAbout, keys, window) { content ->
         TitleBar { content() }
     }
 }
@@ -155,6 +156,7 @@ internal fun KattyWindowContent(
     tracker: AgentTracker,
     sessionUsage: SessionUsageTracker,
     directories: KattyDirectories,
+    attentionSound: AttentionSound,
     bridge: WindowBridge,
     onOpenBoardWindow: () -> Unit,
     onOpenAbout: () -> Unit,
@@ -354,6 +356,9 @@ internal fun KattyWindowContent(
             if (transition.info.state !in setOf(AgentState.NEEDS_INPUT, AgentState.ERROR, AgentState.DONE)) return@collect
             val location = current.locate(transition.terminal) ?: return@collect
             toast = AttentionItem(location.terminal, location.project, location.workspace, transition.info)
+            // One that starts needing the user is heard too, wherever they are looking: the window may be behind another application. Not in
+            // presentation mode, as the notice: a demo is not interrupted.
+            if (current.settings.attentionSound && !controller.presenting && transition.startsNeedingTheUser()) attentionSound.play()
         }
     }
     // A command that ends in a terminal that the user is not looking at stays in the bell until they have seen it, and is told in a notice.

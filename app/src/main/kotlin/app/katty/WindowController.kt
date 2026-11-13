@@ -697,6 +697,7 @@ internal class WindowController(
         toggleRestoreContents = { store.updateSettings { it.copy(restoreContents = !it.restoreContents) } },
         setOptionKey = { key -> store.updateSettings { it.copy(optionKey = key) } },
         setBell = { mode -> store.updateSettings { it.copy(bell = mode) } },
+        toggleAttentionSound = { store.updateSettings { it.copy(attentionSound = !it.attentionSound) } },
         toggleCommandMarks = { store.updateSettings { it.copy(commandMarks = !it.commandMarks) } },
         toggleCopyOnSelect = { store.updateSettings { it.copy(copyOnSelect = !it.copyOnSelect) } },
         toggleBoldIsBright = { store.updateSettings { it.copy(boldIsBright = !it.boldIsBright) } },
