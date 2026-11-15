@@ -87,6 +87,12 @@ import app.katty.screens.OpenFileDialog
 import app.katty.screens.PasteDialog
 import app.katty.screens.WorkspaceIdeDialog
 import app.katty.screens.QuitDialog
+import app.katty.screens.RunActions
+import app.katty.screens.RunDialog
+import app.katty.screens.StopRunDialog
+import app.katty.screens.StopRunConfirmation
+import app.katty.terminals.RunTerminal
+import app.katty.ui.AgentGlyph
 import app.katty.screens.PaneActions
 import app.katty.screens.ProjectTabs
 import app.katty.screens.Rail
@@ -206,7 +212,7 @@ internal fun KattyWindowContent(
             override fun openBoardWindow() = openBoardWindow()
             override fun openAbout() = openAbout()
         }
-        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen, tracker::markSeen, recent)
+        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen, tracker::markSeen, recent, registry.runs)
     }
     SideEffect {
         controller.handles = handles
@@ -315,6 +321,24 @@ internal fun KattyWindowContent(
     val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
     LaunchedEffect(shown, handles) { controller.dropStaleFind() }
     LaunchedEffect(shown, handles.keys) { registry.setVisible(shown) }
+    // The run terminal of each workspace that has one, and what the window does with the one of the workspace that is shown.
+    val runTerminals by registry.runs.terminals.collectAsState()
+    val shownWorkspace = state.selection.workspace.takeIf { settings.view == MainView.TERMINALS }
+    LaunchedEffect(shownWorkspace) { registry.runs.setVisible(shownWorkspace) }
+    val selectedRun = state.selection.workspace?.let { runTerminals[it] }
+    val runActions = RunActions(
+        onRun = { state.selection.workspace?.let(controller::openRun) },
+        onToggle = controller::toggleRun,
+        onStop = { state.selection.workspace?.let(controller::stopRun) },
+        onMinimize = { state.selection.workspace?.let(controller::minimizeRun) },
+        confirmPaste = controller::confirmPaste,
+        finding = selectedRun != null && controller.findingRun == selectedRun.workspace,
+        onFindClosed = { controller.findingRun = null },
+    )
+    // A run whose command runs, as the dialogs that ask before closing list it with the terminals.
+    val describeRun: (RunTerminal) -> TerminalSummary = { run ->
+        TerminalSummary(TerminalId("run:${run.workspace.value}"), run.command, AgentGlyph.SHELL, AgentState.IDLE, running = true)
+    }
 
     // The actions that the drawing below gives its parts.
     val addProject = controller::addProject
@@ -503,6 +527,8 @@ internal fun KattyWindowContent(
                         infos = infos,
                         usages = usages,
                         modifier = areaModifier,
+                        run = selectedRun,
+                        runActions = runActions,
                     )
                 }
             }
@@ -556,7 +582,8 @@ internal fun KattyWindowContent(
                     if (!controller.presenting) WorkspaceTabs(
                         project = state.selectedProject,
                         selectedWorkspace = state.selection.workspace,
-                        selectedTerminal = state.selection.terminal,
+                        // The panes under the run that is shown are not split.
+                        selectedTerminal = state.selection.terminal.takeUnless { selectedRun?.shown == true },
                         store = store,
                         renamingWorkspace = renamingWorkspace,
                         onRenamingWorkspace = { renamingWorkspace = it },
@@ -565,6 +592,9 @@ internal fun KattyWindowContent(
                         states = agentStates,
                         gits = gits,
                         onWorkspaceIde = workspaceIde,
+                        onRunWorkspace = controller::openRun,
+                        run = selectedRun,
+                        runActions = runActions,
                     )
                     area(Modifier.weight(1f).fillMaxWidth(), false)
                     if (!controller.presenting) usageBar()
@@ -595,6 +625,7 @@ internal fun KattyWindowContent(
                             ides = projectIdes,
                             onOpenIn = openProjectIn,
                             onWorkspaceIde = workspaceIde,
+                            onRunWorkspace = controller::openRun,
                             renamingProject = renamingProject,
                             onRenamingProject = { renamingProject = it },
                             renamingWorkspace = renamingWorkspace,
@@ -715,7 +746,8 @@ internal fun KattyWindowContent(
             } else {
                 CloseWorkspaceDialog(
                     workspaceName = workspace.name,
-                    terminals = workspace.layout.terminals().map { describe(it).copy(running = running(it.id)) },
+                    terminals = workspace.layout.terminals().map { describe(it).copy(running = running(it.id)) } +
+                        listOfNotNull(runTerminals[id]?.takeIf { !it.ended }?.let(describeRun)),
                     onConfirm = { store.closeWorkspace(id); closingWorkspace = null },
                     onCancel = { closingWorkspace = null },
                 )
@@ -777,12 +809,30 @@ internal fun KattyWindowContent(
                 controller.exportingHistory = null
             }
         }
+        controller.runRequest?.let { request ->
+            RunDialog(request.initial, request.directory, request.interrupts, onRun = controller::answerRun, onCancel = { controller.runRequest = null })
+        }
+        controller.stoppingRun?.let { workspace ->
+            StopRunConfirmation(
+                runTerminals[workspace]?.command.orEmpty(),
+                onConfirm = { controller.answerStopRun(true) }, onCancel = { controller.answerStopRun(false) },
+            )
+        }
+        controller.confirmingRun?.let { launch ->
+            StopRunDialog(
+                runTerminals[launch.workspace]?.command.orEmpty(), launch.command,
+                onConfirm = { controller.answerRunConfirmation(true) }, onCancel = { controller.answerRunConfirmation(false) },
+            )
+        }
         controller.exportFailure?.let { message ->
             MessageDialog("Could not export the history", message) { controller.exportFailure = null }
         }
         controller.quitting?.let { request ->
             val stopped = controller.stoppedByQuitting().map { location ->
                 describe(location.terminal).copy(running = running(location.terminal.id), place = "${location.project.name} / ${location.workspace.name}")
+            } + controller.activeRuns().mapNotNull { run ->
+                val place = state.projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == run.workspace }?.let { "${project.name} / ${it.name}" } }
+                place?.let { describeRun(run).copy(place = it) }
             }
             QuitDialog(stopped, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
         }

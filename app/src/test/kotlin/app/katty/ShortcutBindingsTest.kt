@@ -26,6 +26,7 @@ class ShortcutBindingsTest {
         val expected = mapOf(
             AppShortcut.ADD_PROJECT to "⌘O", AppShortcut.OPEN_RECENT to "⌘⇧O", AppShortcut.NEW_WORKSPACE to "⌘N", AppShortcut.CLOSE_WORKSPACE to "⌘⇧W", AppShortcut.REMOVE_PROJECT to "⌘⌥W", AppShortcut.SPLIT_MAIN to "⌘D",
             AppShortcut.SPLIT_OTHER to "⌘⇧D", AppShortcut.CLOSE_TERMINAL to "⌘W", AppShortcut.RESTART_TERMINAL to "⌘⇧L", AppShortcut.REOPEN_CLOSED to "⌘⇧T", AppShortcut.JUMP_TO_WAITING to "⌘⇧J",
+            AppShortcut.RUN to "⌘R", AppShortcut.RUN_TOGGLE to "⌘⇧R",
             AppShortcut.ATTENTION to "⌘J", AppShortcut.BOARD to "⌘⇧B", AppShortcut.SIDEBAR to "⌘B", AppShortcut.MAXIMIZE to "⌘⇧↩",
             AppShortcut.RESIZE_LEFT to "⌘⌥←", AppShortcut.RESIZE_RIGHT to "⌘⌥→", AppShortcut.RESIZE_UP to "⌘⌥↑", AppShortcut.RESIZE_DOWN to "⌘⌥↓",
             AppShortcut.FIND_NEXT to "⌘G", AppShortcut.FIND_PREVIOUS to "⌘⇧G", AppShortcut.FONT_BIGGER to "⌘=", AppShortcut.FONT_SMALLER to "⌘-",

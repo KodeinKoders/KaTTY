@@ -30,6 +30,8 @@ class AppShortcutsTest {
         assertEquals(AppShortcut.CLOSE_WORKSPACE, down(Key.W, shift = true).appShortcut())
         assertEquals(AppShortcut.RESTART_TERMINAL, down(Key.L, shift = true).appShortcut())
         assertEquals(AppShortcut.REOPEN_CLOSED, down(Key.T, shift = true).appShortcut())
+        assertEquals(AppShortcut.RUN, down(Key.R).appShortcut())
+        assertEquals(AppShortcut.RUN_TOGGLE, down(Key.R, shift = true).appShortcut())
         assertEquals(AppShortcut.PALETTE, down(Key.K).appShortcut())
         assertEquals(AppShortcut.JUMP_TO_WAITING, down(Key.J, shift = true).appShortcut())
         assertEquals(AppShortcut.CLEAR_SCREEN, down(Key.L).appShortcut())

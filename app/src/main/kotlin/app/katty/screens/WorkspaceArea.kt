@@ -50,7 +50,9 @@ import app.katty.core.Workspace
 import app.katty.core.terminals
 import app.katty.terminal.TerminalSession
 import app.katty.terminal.compose.TerminalFont
+import app.katty.terminals.RunTerminal
 import app.katty.terminals.TerminalHandle
+import app.katty.AppShortcut
 import app.katty.ui.Katty
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
@@ -87,6 +89,8 @@ val PANE_GAP = 8.dp
  * @param maximized The terminal that floats over the area of the workspace, with the others under a scrim.
  * @param fontSize The size of the terminals' font: the setting's, or presentation mode's.
  * @param paneHeaders Whether each pane has its header: presentation mode shows only the terminals.
+ * @param run The run terminal of the workspace, when it has one: the header says it, and it is over the panes while it is shown.
+ * @param runActions What the window does with it, and the button of the header that asks for a command to run.
  */
 @Composable
 fun WorkspaceArea(
@@ -107,8 +111,12 @@ fun WorkspaceArea(
     showHeader: Boolean = true,
     infos: Map<TerminalId, AgentInfo> = emptyMap(),
     usages: Map<TerminalId, SessionUsage> = emptyMap(),
+    run: RunTerminal? = null,
+    runActions: RunActions = RunActions(),
 ) {
     val colors = Katty.colors
+    // The run terminal that is shown has the keyboard: the panes under it do not take it.
+    val runShown = run?.shown == true
     // What the floating pane is, while it grows from its place and while it goes back to it: it outlives `maximized` by the time of the way back.
     var shown by remember(workspace.id) { mutableStateOf<TerminalId?>(null) }
     val progress = remember(workspace.id) { Animatable(0f) }
@@ -125,12 +133,13 @@ fun WorkspaceArea(
     val paneBounds = remember(workspace.id) { mutableStateMapOf<TerminalId, Rect>() }
     var areaBounds by remember(workspace.id) { mutableStateOf(Rect.Zero) }
     val context = PaneContext(
-        workspace, selectedTerminal, handles, settings, store, flipped, focusTerminals, actions, shown, font, infos, paneBounds, focusTick, usages,
+        // Nor are they selected: what acts on a terminal acts on the run then.
+        workspace, selectedTerminal.takeUnless { runShown }, handles, settings, store, flipped, focusTerminals && !runShown, actions, shown, font, infos, paneBounds, focusTick, usages,
         fontSize = fontSize, headers = paneHeaders,
     )
     Column(modifier.background(colors.bg)) {
         // The vertical layout has the workspace's name and its split buttons in its tabs.
-        if (showHeader) WorkspaceHeader(workspace, selectedTerminal, store)
+        if (showHeader) WorkspaceHeader(workspace, selectedTerminal.takeUnless { runShown }, store, run, runActions)
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { areaBounds = it.boundsInRoot() }) {
             Column(Modifier.fillMaxSize().padding(PANE_GAP / 2)) {
                 PaneTree(node = workspace.layout, context = context)
@@ -161,6 +170,8 @@ fun WorkspaceArea(
                     PaneView(floating, context, floating = true, terminalSize = terminalSize)
                 }
             }
+            // Over everything of the workspace, a maximized pane too.
+            if (run != null && runShown) RunOverlay(run, settings, font, fontSize, focusTerminals, focusTick, runActions)
         }
     }
 }
@@ -241,7 +252,7 @@ class PaneActions(
 )
 
 @Composable
-private fun WorkspaceHeader(workspace: Workspace, selected: TerminalId?, store: KattyStore) {
+private fun WorkspaceHeader(workspace: Workspace, selected: TerminalId?, store: KattyStore, run: RunTerminal?, runActions: RunActions) {
     val colors = Katty.colors
     val count = workspace.layout.terminals().size
     Row(
@@ -256,6 +267,8 @@ private fun WorkspaceHeader(workspace: Workspace, selected: TerminalId?, store: 
         val split = SplitLabels.of(vertical = false)
         KattyIconButton(KattyIcons.SplitRight, "Split right", { selected?.let { store.split(it, SplitDirection.ROW) } }, enabled = selected != null, shortcut = split.rightShortcut)
         KattyIconButton(KattyIcons.SplitDown, "Split down", { selected?.let { store.split(it, SplitDirection.COLUMN) } }, enabled = selected != null, shortcut = split.downShortcut)
+        if (run != null) RunIndicator(run, runActions.onToggle)
+        KattyIconButton(KattyIcons.Play, "Run a command", runActions.onRun, shortcut = AppShortcut.RUN.label)
     }
 }
 

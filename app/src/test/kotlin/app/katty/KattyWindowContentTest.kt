@@ -23,6 +23,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.CursorShape
@@ -47,6 +49,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** The main window as it is composed, with real shells, but no window around it: its title bar is a row. */
@@ -59,6 +62,8 @@ class KattyWindowContentTest {
         store, scope, starter = Dispatchers.Unconfined,
         loadTheme = { null },
         start = { spec, _ -> TerminalSession.start(80, 5, command = command, directory = spec.directory) },
+        // Not the user's shell, which reads the user's files.
+        startRun = { run, directory, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", run), directory = directory, shellIntegration = false) },
     )
     private val tracker = AgentTracker(scope)
     private val usage = SessionUsageTracker(scope, emptyMap(), { emptyMap() }, { null }, { null })
@@ -99,6 +104,102 @@ class KattyWindowContentTest {
             }
         }
         waitForIdle()
+    }
+
+    // The button of the header asks what to run, Enter runs it over the panes, which is minimized into the header and shown again from there, and Stop
+    // ends it.
+    @Test
+    fun aCommandIsRunOverThePanesMinimizedShownAgainAndStopped() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+
+        onNodeWithContentDescription("Run a command").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Command").performTextInput("echo running; sleep 30")
+        onNodeWithText("Run").performClick()
+        waitForIdle()
+
+        onAllNodesWithContentDescription("Run a command", substring = false).assertCountEquals(1)
+        onAllNodesWithContentDescription("Run terminal").assertCountEquals(1)
+        val workspace = state.selection.workspace!!
+        assertEquals("echo running; sleep 30", state.selectedWorkspace!!.runCommand)
+        waitUntil(timeoutMillis = 15_000) { registry.runs.terminals.value[workspace]?.session != null }
+
+        onNodeWithContentDescription("Minimize the run terminal").performClick()
+        waitForIdle()
+        onAllNodesWithContentDescription("Run terminal").assertCountEquals(0)
+        onNodeWithContentDescription("Run terminal: echo running; sleep 30", substring = true).performClick()
+        waitForIdle()
+        onAllNodesWithContentDescription("Run terminal").assertCountEquals(1)
+
+        val session = registry.runs.terminals.value.getValue(workspace).session!!
+        onNodeWithContentDescription("Stop the run").performClick()
+        waitForIdle()
+        // As for a program in a terminal, stopping it asks.
+        onNodeWithText("Stop run").performClick()
+        waitForIdle()
+        onAllNodesWithContentDescription("Run terminal").assertCountEquals(0)
+        onAllNodesWithContentDescription("Run terminal: ", substring = true).assertCountEquals(0)
+        waitUntil(timeoutMillis = 15_000) { session.exited.value != null }
+    }
+
+    // Command + Enter in the question runs the command minimized into the header: the panes keep the keyboard.
+    @Test
+    fun commandEnterRunsTheCommandMinimized() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+
+        shortcut(Key.R)
+        waitForIdle()
+        onNodeWithContentDescription("Command").performTextInput("sleep 30")
+        onNodeWithContentDescription("Command").performKeyInput {
+            keyDown(Key.MetaLeft)
+            pressKey(Key.Enter)
+            keyUp(Key.MetaLeft)
+        }
+        waitForIdle()
+
+        onAllNodesWithContentDescription("Run a command", substring = false).assertCountEquals(1)
+        onAllNodesWithContentDescription("Run terminal").assertCountEquals(0)
+        onNodeWithContentDescription("Run terminal: sleep 30", substring = true).assertExists()
+        assertFalse(registry.runs.terminals.value.getValue(state.selection.workspace!!).shown)
+    }
+
+    // The run over the panes has the keyboard, which the panes take back when it is minimized; drawn to build/renders/run-overlay-window.png.
+    @Test
+    fun theRunOverThePanesHasTheKeyboard() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        store.split(state.selection.terminal!!, app.katty.core.SplitDirection.ROW)
+        showWindow()
+        val workspace = state.selection.workspace!!
+
+        shortcut(Key.R)
+        waitForIdle()
+        onNodeWithContentDescription("Command").performTextInput("printf 'BUILD SUCCESSFUL\\n'; exit 1")
+        onNodeWithText("Run").performClick()
+        waitUntil(timeoutMillis = 15_000) { registry.runs.terminals.value[workspace]?.session?.exited?.value != null }
+        val session = registry.runs.terminals.value.getValue(workspace).session!!
+        waitUntil(timeoutMillis = 15_000) { session.frames.value.rows.any { row -> "BUILD SUCCESSFUL" in row.cells.joinToString("") { it.text } } }
+        waitForIdle()
+
+        fun focusedInRun(): Boolean {
+            val run = onNodeWithContentDescription("Run terminal").fetchSemanticsNode().boundsInRoot
+            val focused = runCatching { onNode(androidx.compose.ui.test.isFocused()).fetchSemanticsNode().boundsInRoot }.getOrNull() ?: return false
+            return run.contains(focused.center)
+        }
+        waitUntil(timeoutMillis = 5_000) { focusedInRun() }
+        onNodeWithContentDescription("Run terminal: printf", substring = true).assertExists()
+        onAllNodesWithText("Failed (1)", useUnmergedTree = true).assertCountEquals(2)
+        val image = org.jetbrains.skia.Image.makeFromBitmap(onRoot().captureToImage().asSkiaBitmap())
+        java.io.File("build/renders").apply { mkdirs() }.resolve("run-overlay-window.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+
+        shortcut(Key.Enter, shift = true)
+        waitForIdle()
+        onAllNodesWithContentDescription("Run terminal").assertCountEquals(0)
+        assertTrue(registry.runs.terminals.value.getValue(workspace).ended, "A command that ended by itself stays")
+        val pane = registry.handles.value.getValue(state.selection.terminal!!)
+        waitUntil(timeoutMillis = 5_000) { runCatching { onNode(androidx.compose.ui.test.isFocused()).assertExists() }.isSuccess }
+        assertNotNull(pane.session)
     }
 
     // What the settings say of the terminals reaches the sessions that are running, from the window: nothing but a change of the settings makes it.

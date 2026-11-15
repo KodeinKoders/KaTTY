@@ -194,6 +194,9 @@ fun WorkspaceTabs(
     states: AgentStates = NoAgentStates,
     gits: Map<TerminalId, GitInfo?> = emptyMap(),
     onWorkspaceIde: ((WorkspaceId) -> Unit)? = null,
+    onRunWorkspace: ((WorkspaceId) -> Unit)? = null,
+    run: app.katty.terminals.RunTerminal? = null,
+    runActions: RunActions? = null,
 ) {
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.panel).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
@@ -211,6 +214,7 @@ fun WorkspaceTabs(
                     },
                     onClose = { onCloseWorkspace(workspace.id) },
                     onDefaultIde = onWorkspaceIde?.let { choose -> { choose(workspace.id) } },
+                    onRun = onRunWorkspace?.let { run -> { run(workspace.id) } },
                 )
             }
         }
@@ -219,7 +223,11 @@ fun WorkspaceTabs(
         // The first is the vertical split, which is what the vertical layout is about; every split is drawn turned here.
         val split = SplitLabels.of(vertical = true)
         KattyIconButton(KattyIcons.SplitDown, "Split down", { selectedTerminal?.let { store.splitVisually(it, right = false, flipped = true) } }, enabled = selectedTerminal != null, shortcut = split.downShortcut)
-        KattyIconButton(KattyIcons.SplitRight, "Split right", { selectedTerminal?.let { store.splitVisually(it, right = true, flipped = true) } }, Modifier.padding(end = 6.dp), enabled = selectedTerminal != null, shortcut = split.rightShortcut)
+        KattyIconButton(KattyIcons.SplitRight, "Split right", { selectedTerminal?.let { store.splitVisually(it, right = true, flipped = true) } }, Modifier.padding(end = if (runActions == null) 6.dp else 0.dp), enabled = selectedTerminal != null, shortcut = split.rightShortcut)
+        if (runActions != null) {
+            if (run != null) RunIndicator(run, runActions.onToggle)
+            KattyIconButton(KattyIcons.Play, "Run a command", runActions.onRun, Modifier.padding(end = 6.dp), shortcut = AppShortcut.RUN.label)
+        }
     }
 }
 
@@ -237,6 +245,7 @@ private fun WorkspaceTab(
     onRenamed: (String?) -> Unit,
     onClose: () -> Unit,
     onDefaultIde: (() -> Unit)?,
+    onRun: (() -> Unit)? = null,
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
@@ -279,6 +288,6 @@ private fun WorkspaceTab(
                 if (git != null) GitLabel(git, Modifier.widthIn(max = 160.dp * uiScaleFactor()), fontSize = 11.sp)
             }
         }
-        menuAt?.let { at -> KattyMenu(workspaceMenu(onRename, onClose, onDefaultIde), onDismiss = { menuAt = null }, offset = at) }
+        menuAt?.let { at -> KattyMenu(workspaceMenu(onRename, onClose, onDefaultIde, onRun), onDismiss = { menuAt = null }, offset = at) }
     }
 }

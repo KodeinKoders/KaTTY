@@ -94,6 +94,7 @@ val SIDEBAR_WIDTH = 272.dp
  * @param usage What is at the bottom of the sidebar.
  * @param ides The editors that are installed: a project's menu opens its folder in them, through [onOpenIn].
  * @param onWorkspaceIde Chooses the IDE of a workspace (see [workspaceMenu]); `null` when none is installed.
+ * @param onRunWorkspace Asks for a command to run in the run terminal of a workspace.
  */
 @Composable
 fun Sidebar(
@@ -106,6 +107,7 @@ fun Sidebar(
     onReveal: (ProjectId) -> Unit,
     renamingProject: ProjectId?,
     onWorkspaceIde: ((WorkspaceId) -> Unit)? = null,
+    onRunWorkspace: ((WorkspaceId) -> Unit)? = null,
     onRenamingProject: (ProjectId?) -> Unit,
     renamingWorkspace: WorkspaceId?,
     onRenamingWorkspace: (WorkspaceId?) -> Unit,
@@ -188,6 +190,7 @@ fun Sidebar(
                                 },
                                 onClose = { onCloseWorkspace(workspace.id) },
                                 onDefaultIde = onWorkspaceIde?.let { choose -> { choose(workspace.id) } },
+                                onRun = onRunWorkspace?.let { run -> { run(workspace.id) } },
                             )
                         }
                         Row(
@@ -286,6 +289,7 @@ private fun WorkspaceRow(
     onRenamed: (String?) -> Unit,
     onClose: () -> Unit,
     onDefaultIde: (() -> Unit)?,
+    onRun: (() -> Unit)? = null,
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
@@ -324,7 +328,7 @@ private fun WorkspaceRow(
             }
         }
         menuAt?.let { at ->
-            KattyMenu(workspaceMenu(onRename, onClose, onDefaultIde), onDismiss = { menuAt = null }, offset = at)
+            KattyMenu(workspaceMenu(onRename, onClose, onDefaultIde, onRun), onDismiss = { menuAt = null }, offset = at)
         }
     }
 }

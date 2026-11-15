@@ -216,6 +216,18 @@ public class KattyStore(
         edit { state -> state.mapWorkspaces { if (it.id == id) it.copy(ide = ide?.name) else it } }
     }
 
+    /** [command] was run in the run terminal of the workspace [id]: it is what the next run of the workspace, and of its project, is offered. */
+    public fun setRunCommand(id: WorkspaceId, command: String) {
+        edit { state ->
+            state.copy(
+                projects = state.projects.map { project ->
+                    if (project.workspaces.none { it.id == id }) project
+                    else project.copy(runCommand = command, workspaces = project.workspaces.map { if (it.id == id) it.copy(runCommand = command) else it })
+                },
+            )
+        }
+    }
+
     /** Closes a workspace, with its terminals: [reopenClosed] opens it again for a while. */
     public fun closeWorkspace(id: WorkspaceId) {
         val at = now()

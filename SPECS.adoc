@@ -339,6 +339,31 @@ The terminal is resized once, to its final size, at the start (and once more at 
 Escape does not: the programs in a terminal use it.
 
 
+[#run-terminal]
+=== Run terminal
+
+A workspace has at most one *run terminal*: a terminal that only runs one command, over its panes, to run the project.
+
+* ⌘R, the play button at the right of the split buttons (the header of the workspace, or the tabs of the vertical layout), "Run a command…" in the menu of a workspace and in the palette, open the question "Run a command".
+Its field starts with the last command that the workspace ran, else the last one that its project ran, selected; ⌘⌫ clears it.
+Under it, in small, the directory where it runs: the one of the selected terminal of the workspace, with the home as `~`.
+Enter runs it (nothing for a blank command), ⌘↩ runs it minimized into the header of the workspace (the panes keep the keyboard), Escape cancels.
+* The command is run by the user's shell as a login and interactive one (`$SHELL -l -i -c <command>`), and the terminal ends with it.
+* It is shown over the panes of its workspace, 24 px from the edges of the area, over a scrim of 30 % black, over a maximized pane too; a click on the scrim minimizes it.
+It has the keyboard while it is shown.
+Its header: the glyph of its state, the command, the directory, the state in words (Running, Done, Failed (code), Could not start), and at its right two icons: Minimize (⌘⇧R) and Stop (⌘W; Close once the command has ended).
+* While it is shown, the panes under it are not selected and the shortcuts of a terminal act on it: ⌘W stops it, ⌘⇧L stops its command and runs it again (without asking), ⌘⇧↩ minimizes it, ⌘L clears it, ⌘F, ⌘G and ⌘⇧G find in it, and the terminal's own keys (copy, paste, scrolling) are its own.
+The shortcuts of the panes (split, resize, move the focus, a pane by its number, rename the terminal) do nothing, and the split buttons are disabled.
+When it is minimized, every shortcut acts on the selected pane again: ⌘W does not stop it.
+* While it exists, an indicator in the header of the workspace (in the tabs of the vertical layout) says the command and its state; a click shows it or minimizes it, as ⌘⇧R does.
+* Stop ends its command (as closing a terminal does) and removes it.
+While the command runs, it asks first, as closing a terminal where a program runs does: "Stop the run?", "“command” is still running and will be stopped.", Cancel and a red "Stop run".
+A command that ends by itself, well or not, leaves it there to be read, with its state.
+* Running a command while one runs: the question says in red that the command that runs will be stopped, and a second question ("Stop the running command?", a red "Stop and run") confirms it.
+A command that has ended is replaced without a question.
+* Closing a workspace whose run terminal runs a command asks, as for a program in a terminal, and so does quitting.
+* The last command is saved (in the workspace and its project); the run terminal is not: it is not there after a new launch.
+
 === Find bar
 
 * ⌘F, or Find… in the context menu, opens a find bar at the top right of the terminal.
@@ -562,7 +587,7 @@ The bell still counts what needs the user.
 | New workspace ⌘N, Rename project… F2, Reveal in file manager, — , Remove project… (red).
 
 | Workspace (right click on a workspace row or tab)
-| Rename workspace F2, — , Close workspace ⌘⇧W (red).
+| Run a command… ⌘R, Rename workspace F2, — , Close workspace ⌘⇧W (red).
 
 | Terminal (the "…" of a pane, or a right click anywhere on its header, which also focuses it)
 | Rename terminal, Use process name (only when the terminal has a name of its own), — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces of the project, by their name; absent when the project has no other), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, Export history…, — , Close terminal ⌘W (red).
@@ -785,6 +810,10 @@ The window's shortcuts are handled before the terminal sees them.
 
 | ⌘⇧T
 | Reopen the terminal or the workspace that was closed last.
+
+| ⌘R, ⌘⇧R
+| Run a command in the run terminal of the workspace (see <<run-terminal>>); show it or minimize it.
+While it is shown, ⌘W, ⌘⇧L, ⌘⇧↩, ⌘L and ⌘F act on it.
 
 | ⌘⇧J
 | Jump to the next terminal that needs you: one that waits or one that finished, an agent or a command.

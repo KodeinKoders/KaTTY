@@ -42,6 +42,15 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     CLOSE_TERMINAL(ShortcutGroup.PANES, "Close the terminal", listOf(cmd(Awt.VK_W))),
     RESTART_TERMINAL(ShortcutGroup.PANES, "Restart the terminal", listOf(cmd(Awt.VK_L, shift = true))),
 
+    /** Asks for a command to run in the run terminal of the workspace, over its panes: see `RunTerminals`. */
+    RUN(ShortcutGroup.RUN, "Run a command in the workspace", listOf(cmd(Awt.VK_R))),
+
+    /**
+     * Shows the run terminal of the workspace over its panes, or minimizes it into the header of the workspace. While it is shown, the shortcuts that
+     * act on a terminal act on it: see `WindowController.handleOnRun`.
+     */
+    RUN_TOGGLE(ShortcutGroup.RUN, "Show or minimize the run terminal", listOf(cmd(Awt.VK_R, shift = true))),
+
     /** Opens what was closed last again: a terminal at its place, or a whole workspace. */
     REOPEN_CLOSED(ShortcutGroup.PANES, "Reopen the last closed terminal or workspace", listOf(cmd(Awt.VK_T, shift = true))),
     /** Goes to the next terminal that needs the user, one that waits or one that finished: the name is the one that the user's bindings are kept by. */

@@ -88,6 +88,7 @@ internal data class KeyBinding(
 internal enum class ShortcutGroup(val title: String) {
     PROJECTS("Projects and workspaces"),
     PANES("Panes"),
+    RUN("Run terminal"),
     AGENTS("Agents and views"),
     TERMINAL("In a terminal"),
     LOOK("The look and the menu"),

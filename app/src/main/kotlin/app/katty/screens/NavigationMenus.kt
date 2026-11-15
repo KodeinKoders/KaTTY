@@ -36,8 +36,10 @@ fun projectMenu(
  * The menu of a workspace. It has no split: splitting acts on a terminal, so it is in the menus of the terminals and in the header.
  *
  * @param onDefaultIde Chooses the IDE that opens the files whose paths are clicked in its terminals; `null` when no IDE is installed.
+ * @param onRun Asks for a command to run in its run terminal; `null` when there is none to ask.
  */
-fun workspaceMenu(onRename: () -> Unit, onClose: () -> Unit, onDefaultIde: (() -> Unit)? = null): List<MenuEntry> = menu {
+fun workspaceMenu(onRename: () -> Unit, onClose: () -> Unit, onDefaultIde: (() -> Unit)? = null, onRun: (() -> Unit)? = null): List<MenuEntry> = menu {
+    if (onRun != null) action("Run a command…", AppShortcut.RUN.label, onClick = onRun)
     action("Rename workspace", "F2", onClick = onRename)
     if (onDefaultIde != null) action("Default IDE…", onClick = onDefaultIde)
     divider()

@@ -34,6 +34,8 @@ public data class Project(
     val open: Boolean = true,
     /** The workspace that was selected in it last, which is selected again when the project is: the first one when it is gone or there was none. */
     val lastWorkspace: WorkspaceId? = null,
+    /** The command that was run last in one of its workspaces (see [Workspace.runCommand]): what a workspace that ran none is offered. */
+    val runCommand: String? = null,
 )
 
 /**
@@ -45,6 +47,8 @@ public data class Project(
  * @param ide The [Ide] that opens the files whose paths are clicked in its terminals, by its name (read with [Ide.named]: a name that this
  * version does not know is none), `null` when the user is asked each time. A name and not the [Ide] itself, so that a state written by another
  * version with an IDE that this one does not have is still read.
+ * @param runCommand The command that was run last in its run terminal (the terminal that only runs one command, over its panes), which the next run
+ * is offered; `null` when it ran none. The run terminal itself is not kept: its program cannot outlive the application.
  */
 @Serializable
 public data class Workspace(
@@ -53,7 +57,14 @@ public data class Workspace(
     val layout: PaneNode,
     val focused: TerminalId? = null,
     val ide: String? = null,
+    val runCommand: String? = null,
 )
+
+/** The command that the run of the workspace [id] is offered: the last one it ran, else the last one its project ran, else none. */
+public fun KattyState.runCommandFor(id: WorkspaceId): String {
+    val project = projects.firstOrNull { p -> p.workspaces.any { it.id == id } } ?: return ""
+    return project.workspaces.first { it.id == id }.runCommand ?: project.runCommand ?: ""
+}
 
 /** How a split puts its two sides, in the horizontal layout. */
 @Serializable

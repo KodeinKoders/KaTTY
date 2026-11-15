@@ -93,7 +93,7 @@ fun WorkspaceIdeDialog(workspace: String, ides: List<Ide>, current: Ide?, onChoo
 internal fun fileLabel(file: TerminalFilePosition): String =
     File(file.path).name + if (file.directory) "/" else file.line?.let { ":$it" } ?: ""
 
-private fun homeShortened(path: String): String {
+internal fun homeShortened(path: String): String {
     val home = System.getProperty("user.home").orEmpty()
     return if (home.isNotEmpty() && path.startsWith("$home/")) "~" + path.removePrefix(home) else path
 }

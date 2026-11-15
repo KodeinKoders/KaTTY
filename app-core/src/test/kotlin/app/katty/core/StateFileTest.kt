@@ -120,6 +120,21 @@ class StateFileTest {
     }
 
     @Test
+    fun theCommandThatWasRunSurvivesBeingWrittenAndRead() {
+        var n = 0
+        val store = KattyStore(newId = { "id${n++}" })
+        store.addProject("/dev/api")
+        val workspace = store.state.value.selection.workspace!!
+        store.setRunCommand(workspace, "./gradlew :app:run")
+
+        file.save(store.state.value)
+
+        val loaded = file.load()
+        assertEquals("./gradlew :app:run", loaded.selectedWorkspace!!.runCommand)
+        assertEquals("./gradlew :app:run", loaded.selectedProject!!.runCommand)
+    }
+
+    @Test
     fun theShortcutsThatWereChangedSurviveBeingWrittenAndReadAndAnOldFileHasNone() {
         var n = 0
         val store = KattyStore(newId = { "id${n++}" })

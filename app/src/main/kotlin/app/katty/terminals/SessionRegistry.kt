@@ -119,6 +119,7 @@ class TerminalHandle(
  * @param starter Where the shells are started and the color schemes read. Tests give one that does it at once, on the caller's thread.
  * @param savedTerminals The terminals of the projects that were removed and whose state is kept (`RecentProjects.savedTerminals`), which have that set
  * before their project is gone from the store.
+ * @param startRun Starts the command of a run terminal ([runs]) in a directory.
  */
 class SessionRegistry(
     private val store: KattyStore,
@@ -133,6 +134,9 @@ class SessionRegistry(
     },
     private val autosaveMillis: Long = AUTOSAVE_MS,
     private val savedTerminals: StateFlow<Set<TerminalId>> = MutableStateFlow(emptySet()),
+    private val startRun: (command: String, directory: String, TerminalTheme?) -> TerminalSession = { command, directory, theme ->
+        startCommand(command, directory, theme, store.state.value.settings)
+    },
 ) {
     private val mutableHandles = MutableStateFlow<Map<TerminalId, TerminalHandle>>(emptyMap())
 
@@ -218,6 +222,15 @@ class SessionRegistry(
 
     private fun theme(name: String): TerminalTheme? = themes.computeIfAbsent(name) { java.util.Optional.ofNullable(loadTheme(it)) }.orElse(null)
 
+    /**
+     * The run terminals of the workspaces (see [RunTerminals]): their sessions take the settings of the terminals, and the color scheme of the
+     * application's theme, as the terminals that have none of their own do.
+     */
+    val runs: RunTerminals = RunTerminals(scope, starter) { command, directory -> startRun(command, directory, theme(store.state.value.settings.colorScheme(dark))) }
+
+    // The scheme that the runs were last given.
+    private var runScheme: String? = null
+
     // Whether the application was dark at the last sync: the terminals that have no scheme of their own take the one of that mode, and so does one
     // that is started again.
     @Volatile
@@ -245,6 +258,16 @@ class SessionRegistry(
             val before = preferences
             preferences = settingsPreferences
             for (handle in current.values) handle.session?.apply(settingsPreferences, before)
+            for (run in runs.terminals.value.values) run.session?.apply(settingsPreferences, before)
+        }
+        // A run belongs to its workspace, and follows the theme of the application.
+        runs.keepOnly(state.projects.flatMap { project -> project.workspaces.map { it.id } }.toSet())
+        val defaultScheme = state.settings.colorScheme(dark)
+        if (runScheme != defaultScheme) {
+            val first = runScheme == null
+            runScheme = defaultScheme
+            val sessions = runs.terminals.value.values.mapNotNull { it.session }
+            if (!first && sessions.isNotEmpty()) scope.launch(starter) { theme(defaultScheme)?.let { theme -> sessions.forEach { it.setTheme(theme) } } }
         }
 
         for (id in current.keys - wanted) {
@@ -402,7 +425,8 @@ class SessionRegistry(
             gitHeads.close()
             mutableHandles.value.also { mutableHandles.value = emptyMap() }
         }
-        val sessions = all.values.mapNotNull { it.session }
+        // The commands that run are stopped with the shells.
+        val sessions = all.values.mapNotNull { it.session } + runs.close()
         // What the terminals show now, before their shells are ended, for the next launch.
         snapshots?.takeIf { contentsKept == true }?.let { store -> saveAll(store, all) }
         val closed = CountDownLatch(sessions.size)
@@ -705,6 +729,20 @@ private fun TerminalSession.apply(preferences: TerminalPreferences, before: Term
     }
     if (before == null || before.boldIsBright != preferences.boldIsBright) setBoldIsBright(preferences.boldIsBright)
     if (before == null || before.scrollbackBytes != preferences.scrollbackBytes) setScrollbackLimit(preferences.scrollbackBytes)
+}
+
+/**
+ * Starts [command] alone in a terminal, in [directory] (the home when it is gone), for a run terminal: the user's shell runs it as a login and
+ * interactive one (`-l -i -c`), so that it has what the user's files set (the `PATH` of `.zshrc`, its aliases), and ends with it, with its exit code.
+ * No prompt is drawn and the shell integration is not needed: there is no prompt.
+ */
+internal fun startCommand(command: String, directory: String, theme: TerminalTheme?, settings: Settings): TerminalSession {
+    val shell = System.getenv("SHELL")?.takeIf { it.isNotBlank() } ?: "/bin/zsh"
+    return TerminalSession.start(
+        cols = 80, rows = 24, command = listOf(shell, "-l", "-i", "-c", command), directory = directory.takeIf { File(it).isDirectory }, theme = theme,
+        shellIntegration = false, cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
+        boldIsBright = settings.boldIsBright, scrollbackMaxBytes = settings.scrollback.bytes,
+    )
 }
 
 private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegration: Path?, settings: Settings, snapshot: TerminalSnapshot? = null): TerminalSession {

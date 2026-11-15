@@ -49,6 +49,25 @@ class KattyStoreTest {
     }
 
     @Test
+    fun theCommandThatWasRunIsOfferedToItsWorkspaceThenToTheOthersOfItsProject() {
+        addProject()
+        val project = state.projects.single().id
+        val first = workspace.id
+        val other = store.addWorkspace(project, "other")!!
+        assertEquals("", state.runCommandFor(first), "Nothing was run")
+
+        store.setRunCommand(first, "./gradlew :app:run")
+        store.setRunCommand(other, "make test")
+
+        assertEquals("./gradlew :app:run", state.runCommandFor(first), "A workspace is offered what it ran last")
+        assertEquals("make test", state.runCommandFor(other))
+        val third = store.addWorkspace(project, "third")!!
+        assertEquals("make test", state.runCommandFor(third), "A workspace that ran nothing is offered what its project ran last")
+        addProject("/dev/web")
+        assertEquals("", state.runCommandFor(state.projects.last().workspaces.single().id), "Not what another project ran")
+    }
+
+    @Test
     fun aFolderThatIsAlreadyAProjectIsSelectedInsteadOfAddedAgain() {
         val first = addProject("/a")
         addProject("/b")

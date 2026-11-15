@@ -39,7 +39,7 @@ import org.jetbrains.jewel.ui.component.Text
  * A question that the user has to answer before something that cannot be undone: it is over a scrim that covers the window, and
  * Escape cancels. The button that confirms is red, as what it does is destroy.
  *
- * The keyboard is on the red button when it opens, so that Enter confirms (the dialog answers a deliberate Command + W or R) and Shift + Tab
+ * The keyboard is on the red button when it opens, so that Enter confirms (the dialog answers a deliberate Command + W or Shift + L) and Shift + Tab
  * goes to Cancel; Enter presses the one that has the focus. Escape cancels, and Command and Backspace confirm at once.
  *
  * @param title What is asked, as "Close “refactor-auth”?".

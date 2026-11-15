@@ -25,6 +25,9 @@ import app.katty.core.ThemeMode
 import app.katty.core.WorkspaceId
 import app.katty.core.terminals
 
+/** What the palette knows of the run terminal of the selected workspace: whether it is [shown] over the panes, and whether its command has [ended]. */
+data class RunCommandState(val shown: Boolean, val ended: Boolean)
+
 /** What the commands of the palette do: the window gives them, since it is what holds the dialogs and the selection. */
 class PaletteHandlers(
     val addProject: () -> Unit,
@@ -41,6 +44,16 @@ class PaletteHandlers(
     val renameTerminal: () -> Unit,
     val closeTerminal: () -> Unit,
     val restartTerminal: () -> Unit,
+    /** Asks what to run in the run terminal of the selected workspace. */
+    val run: () -> Unit = {},
+    /**
+     * The run terminal of the selected workspace, `null` when it has none, and what shows it or minimizes it, stops it and runs its command again.
+     * While it is shown, the commands of a terminal act on it (the window routes them), and the ones of a pane are not offered.
+     */
+    val runTerminal: RunCommandState? = null,
+    val toggleRun: () -> Unit = {},
+    val stopRun: () -> Unit = {},
+    val restartRun: () -> Unit = {},
     val find: () -> Unit,
     /** Opens the search of every terminal's history. */
     val searchAll: () -> Unit = {},
@@ -241,26 +254,22 @@ fun paletteCommands(
         if (index > 0) command("workspace-up", "Move workspace up") { handlers.moveWorkspace(-1) }
         if (index in 0 until workspaces.lastIndex) command("workspace-down", "Move workspace down") { handlers.moveWorkspace(1) }
         command("close-workspace", "Close workspace", AppShortcut.CLOSE_WORKSPACE.label, handlers.closeWorkspace)
+        command("run", "Run a command…", AppShortcut.RUN.label, handlers.run)
+        handlers.runTerminal?.let { run ->
+            command("run-toggle", if (run.shown) "Minimize run terminal" else "Show run terminal", AppShortcut.RUN_TOGGLE.label, handlers.toggleRun)
+            // What closes and restarts a terminal acts on the run while it is shown, and only then.
+            if (run.shown) {
+                command("run-stop", if (run.ended) "Close run terminal" else "Stop run", AppShortcut.CLOSE_TERMINAL.label, handlers.stopRun)
+                command("run-restart", "Run the command again", AppShortcut.RESTART_TERMINAL.label, handlers.restartRun)
+            }
+        }
     }
-    if (hasTerminal) {
-        command("split-right", "Split right", split.rightShortcut, handlers.splitRight)
-        command("split-down", "Split down", split.downShortcut, handlers.splitDown)
-        command("rename-terminal", "Rename terminal", AppShortcut.RENAME_TERMINAL.label, handlers.renameTerminal)
-        command("restart-terminal", "Restart terminal", AppShortcut.RESTART_TERMINAL.label, handlers.restartTerminal)
+    // What a terminal does, for the selected pane or for the run that is shown over it.
+    fun terminalCommands() {
         command("find", "Find in terminal", AppShortcut.FIND.label, handlers.find)
         command("find-next", "Find next match", AppShortcut.FIND_NEXT.label, handlers.findNext)
         command("find-previous", "Find previous match", AppShortcut.FIND_PREVIOUS.label, handlers.findPrevious)
         command("clear-screen", "Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, handlers.clearScreen)
-        command("maximize", if (state.selection.maximized == null) "Maximize terminal" else "Restore terminal", AppShortcut.MAXIMIZE.label, handlers.maximize)
-        command("color-scheme", "Change the color scheme of the terminal", action = handlers.colorScheme)
-        if (selectedTerminal?.terminal?.name != null) command("process-name", "Use process name for the terminal", action = handlers.useProcessName)
-        command("copy-directory", "Copy working directory", action = handlers.copyDirectory)
-        command("export-history", "Export history…", action = handlers.exportHistory)
-        // The other workspaces of its project: what the menu of the pane offers in a submenu.
-        for (destination in destinationsOf(state, state.selection.terminal!!)) {
-            command("move-terminal:${destination.id.value}", "Move terminal to “${destination.label}”") { handlers.moveTerminalTo(destination.id) }
-        }
-        command("close-terminal", "Close terminal", AppShortcut.CLOSE_TERMINAL.label, handlers.closeTerminal)
         // What the terminal does with its own keys.
         if (hasSelection) command("copy", "Copy", TerminalKeys.COPY, handlers.copy)
         command("paste", "Paste", TerminalKeys.PASTE, handlers.paste)
@@ -271,6 +280,25 @@ fun paletteCommands(
         command("scroll-page-down", "Scroll down a page", TerminalKeys.SCROLL_PAGE_DOWN, handlers.scrollPageDown)
         command("scroll-top", "Scroll to the top", TerminalKeys.SCROLL_TO_TOP, handlers.scrollToTop)
         command("scroll-bottom", "Scroll to the bottom", TerminalKeys.SCROLL_TO_BOTTOM, handlers.scrollToBottom)
+    }
+    if (handlers.runTerminal?.shown == true) {
+        terminalCommands()
+    } else if (hasTerminal) {
+        command("split-right", "Split right", split.rightShortcut, handlers.splitRight)
+        command("split-down", "Split down", split.downShortcut, handlers.splitDown)
+        command("rename-terminal", "Rename terminal", AppShortcut.RENAME_TERMINAL.label, handlers.renameTerminal)
+        command("restart-terminal", "Restart terminal", AppShortcut.RESTART_TERMINAL.label, handlers.restartTerminal)
+        command("maximize", if (state.selection.maximized == null) "Maximize terminal" else "Restore terminal", AppShortcut.MAXIMIZE.label, handlers.maximize)
+        command("color-scheme", "Change the color scheme of the terminal", action = handlers.colorScheme)
+        if (selectedTerminal?.terminal?.name != null) command("process-name", "Use process name for the terminal", action = handlers.useProcessName)
+        command("copy-directory", "Copy working directory", action = handlers.copyDirectory)
+        command("export-history", "Export history…", action = handlers.exportHistory)
+        // The other workspaces of its project: what the menu of the pane offers in a submenu.
+        for (destination in destinationsOf(state, state.selection.terminal!!)) {
+            command("move-terminal:${destination.id.value}", "Move terminal to “${destination.label}”") { handlers.moveTerminalTo(destination.id) }
+        }
+        command("close-terminal", "Close terminal", AppShortcut.CLOSE_TERMINAL.label, handlers.closeTerminal)
+        terminalCommands()
         // Moving between the panes, and resizing them, is for a workspace that has more than one.
         if ((state.selectedWorkspace?.layout?.terminals()?.size ?: 0) > 1) {
             command("focus-left", "Focus the pane on the left", AppShortcut.FOCUS_LEFT.label) { handlers.focusPane(Direction.LEFT) }

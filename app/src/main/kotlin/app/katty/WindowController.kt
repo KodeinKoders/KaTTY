@@ -28,15 +28,20 @@ import app.katty.core.closeTerminalDecision
 import app.katty.core.closeWorkspaceDecision
 import app.katty.core.neighbour
 import app.katty.core.quitDecision
+import app.katty.core.runCommandFor
+import app.katty.core.terminalToFocus
 import app.katty.core.stoppedByQuitting
 import app.katty.core.splitToNudge
 import app.katty.core.terminalIdentity
 import app.katty.core.terminals
 import app.katty.screens.PaletteHandlers
+import app.katty.screens.RunCommandState
 import app.katty.screens.splitVisually
 import app.katty.terminal.TerminalFilePosition
 import app.katty.terminal.TerminalSession
 import app.katty.terminals.ExportFormat
+import app.katty.terminals.RunTerminal
+import app.katty.terminals.RunTerminals
 import app.katty.terminals.TerminalHandle
 import app.katty.terminals.exportContent
 import app.katty.terminals.exportFailureReason
@@ -97,6 +102,15 @@ internal data class RestoreRequest(val directory: String, val saved: Project)
 /** The path of a [file] that was clicked in a terminal of [workspace], whose IDE the user chooses. */
 internal data class IdeRequest(val workspace: WorkspaceId, val file: TerminalFilePosition)
 
+/**
+ * The question of what the run terminal of [workspace] runs, in [directory]: it starts with [initial], the command that was run last, and says that
+ * the command that runs will be stopped when [interrupts].
+ */
+internal data class RunRequest(val workspace: WorkspaceId, val directory: String, val initial: String, val interrupts: Boolean)
+
+/** A run that the user asked for, over the panes or [minimized], which stops the command that runs: they confirm it first. */
+internal data class RunLaunch(val workspace: WorkspaceId, val command: String, val directory: String, val minimized: Boolean = false)
+
 /** A quit that waits for the user, whose [answer] is whether to quit. */
 internal class QuitRequest {
     val answer = CompletableDeferred<Boolean>()
@@ -122,6 +136,7 @@ internal sealed interface SchemeTarget {
  * @param restart Starts a terminal's shell again.
  * @param markAllSeen Takes the finished and failed agents off the list of what needs the user.
  * @param markSeen Takes what a terminal finished or failed at off that list: the user has gone to it.
+ * @param runs The run terminals of the workspaces, `null` for none (a test that does not run any).
  */
 internal class WindowController(
     private val store: KattyStore,
@@ -131,6 +146,7 @@ internal class WindowController(
     private val markAllSeen: () -> Unit,
     private val markSeen: (TerminalId) -> Unit = {},
     private val recent: RecentProjects? = null,
+    private val runs: RunTerminals? = null,
 ) {
     var renamingWorkspace by mutableStateOf<WorkspaceId?>(null)
     var renamingProject by mutableStateOf<ProjectId?>(null)
@@ -186,6 +202,16 @@ internal class WindowController(
     var exportingHistory by mutableStateOf<TerminalId?>(null)
     var exportFailure by mutableStateOf<String?>(null)
 
+    // What the run terminal of a workspace is asked to run, and a run that stops the command that runs, until the user confirms it.
+    var runRequest by mutableStateOf<RunRequest?>(null)
+    var confirmingRun by mutableStateOf<RunLaunch?>(null)
+
+    // The run whose command runs, which the user asked to stop: they confirm it first, as for a program in a terminal.
+    var stoppingRun by mutableStateOf<WorkspaceId?>(null)
+
+    // The workspace whose run terminal has its find bar open.
+    var findingRun by mutableStateOf<WorkspaceId?>(null)
+
     /**
      * Presentation mode: the window shows only the terminals, in a font of their own ([presentationFontSize], which the font shortcuts change
      * then, and not the setting), with the keys that are pressed. A mode of the window and not a setting: it is not saved.
@@ -226,7 +252,8 @@ internal class WindowController(
     /** What is on top of the window has the keys, and ends in its own way: the palette with its shortcut, a dialog with its buttons. */
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
-            quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null
+            quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null ||
+            runRequest != null || confirmingRun != null || stoppingRun != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -351,10 +378,134 @@ internal class WindowController(
         return handle?.session?.exited?.value == null && handle?.processName?.value.let { it != null && it != handle?.shellName }
     }
 
-    // Closing asks first when a program, or an agent that is active, would be stopped, and does not otherwise.
+    // Closing asks first when a program, or an agent that is active, would be stopped, and does not otherwise: the command of its run is one.
     fun closeWorkspace(id: WorkspaceId) {
-        if (state.closeWorkspaceDecision(id, ::stateOf, ::running) == CloseDecision.NOW) store.closeWorkspace(id) else closingWorkspace = id
+        if (state.closeWorkspaceDecision(id, ::stateOf, ::running) == CloseDecision.NOW && runs?.active(id) != true) store.closeWorkspace(id) else closingWorkspace = id
     }
+
+    /** The run terminal of [workspace], when it has one. */
+    fun runOf(workspace: WorkspaceId?): RunTerminal? = workspace?.let { runs?.terminals?.value?.get(it) }
+
+    /**
+     * Asks what to run in the run terminal of [workspace], which is shown: in the directory of its terminal that is selected, or that would be, with
+     * the command that it, else its project, ran last. When a command runs there, the question says that it will be stopped.
+     */
+    fun openRun(workspace: WorkspaceId) {
+        runs ?: return
+        val current = state
+        val target = current.projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == workspace } } ?: return
+        if (current.selection.workspace != workspace || current.settings.view != MainView.TERMINALS) goToWorkspace(workspace)
+        val terminal = (if (current.selection.workspace == workspace) current.selection.terminal else null) ?: target.terminalToFocus()
+        val directory = target.layout.terminals().firstOrNull { it.id == terminal }?.directory ?: return
+        runRequest = RunRequest(workspace, directory, current.runCommandFor(workspace), interrupts = runs.active(workspace))
+    }
+
+    /**
+     * The command that the question was answered with: it runs, over the panes or [minimized] into the header of the workspace, after the confirmation
+     * that stopping the command that runs needs.
+     */
+    fun answerRun(command: String, minimized: Boolean = false) {
+        val request = runRequest ?: return
+        val trimmed = command.trim()
+        if (trimmed.isEmpty()) return
+        runRequest = null
+        val launch = RunLaunch(request.workspace, trimmed, request.directory, minimized)
+        // What runs now, not what the question saw: the command may have ended meanwhile.
+        if (runs?.active(request.workspace) == true) confirmingRun = launch else launch(launch)
+    }
+
+    /** The run that stops the command that runs is confirmed, or not. */
+    fun answerRunConfirmation(confirmed: Boolean) {
+        val launch = confirmingRun ?: return
+        confirmingRun = null
+        if (confirmed) launch(launch)
+    }
+
+    private fun launch(launch: RunLaunch) {
+        if (findingRun == launch.workspace) findingRun = null
+        store.setRunCommand(launch.workspace, launch.command)
+        runs?.run(launch.workspace, launch.command, launch.directory, shown = !launch.minimized)
+        // The panes keep the keyboard.
+        if (launch.minimized) focusTick++
+    }
+
+    /** Shows the run of the selected workspace, or minimizes it. */
+    fun toggleRun() {
+        val workspace = state.selection.workspace ?: return
+        val run = runOf(workspace) ?: return
+        if (run.shown) minimizeRun(workspace) else runs?.setShown(workspace, true)
+    }
+
+    /** Minimizes the run of [workspace]: the panes take the keyboard back. */
+    fun minimizeRun(workspace: WorkspaceId) {
+        if (runOf(workspace)?.shown != true) return
+        runs?.setShown(workspace, false)
+        if (findingRun == workspace) findingRun = null
+        focusTick++
+    }
+
+    /**
+     * Stops the run of [workspace] and its command, or closes it when its command has ended: it is gone. A command that runs is asked about first, as
+     * closing a terminal where a program runs is.
+     */
+    fun stopRun(workspace: WorkspaceId) {
+        runOf(workspace) ?: return
+        if (runs?.active(workspace) == true) stoppingRun = workspace else endRun(workspace)
+    }
+
+    /** The question about stopping the command of a run is answered. */
+    fun answerStopRun(confirmed: Boolean) {
+        val workspace = stoppingRun ?: return
+        stoppingRun = null
+        if (confirmed) endRun(workspace)
+    }
+
+    private fun endRun(workspace: WorkspaceId) {
+        runOf(workspace) ?: return
+        runs?.stop(workspace)
+        if (findingRun == workspace) findingRun = null
+        focusTick++
+    }
+
+    /** Stops the command of the run of [workspace], whether it runs or not, and runs it again in the same place. */
+    fun restartRun(workspace: WorkspaceId) {
+        val run = runOf(workspace) ?: return
+        if (findingRun == workspace) findingRun = null
+        runs?.run(workspace, run.command, run.directory)
+    }
+
+    /** The run of the selected workspace, while it is shown over the panes: what the shortcuts of a terminal act on then. */
+    fun shownRun(): RunTerminal? = runOf(state.selection.workspace)?.takeIf { it.shown && onTerminals }
+
+    /**
+     * What a shortcut does while the run terminal [run] is shown over the panes, `false` for one that has nothing to do with a terminal (it acts as it
+     * always does). What acts on a terminal acts on the run (close stops it, restart runs its command again, maximize minimizes it), and what acts on
+     * the panes (split, resize, move the focus, rename) does nothing: the panes under it are not selected.
+     */
+    private fun handleOnRun(shortcut: AppShortcut, run: RunTerminal): Boolean {
+        when (shortcut) {
+            AppShortcut.CLOSE_TERMINAL -> stopRun(run.workspace)
+            AppShortcut.RESTART_TERMINAL -> restartRun(run.workspace)
+            AppShortcut.MAXIMIZE, AppShortcut.RUN_TOGGLE -> minimizeRun(run.workspace)
+            AppShortcut.CLEAR_SCREEN -> run.session?.clearScreen()
+            AppShortcut.FIND -> findingRun = run.workspace
+            AppShortcut.FIND_NEXT -> stepRunFind(run, forward = true)
+            AppShortcut.FIND_PREVIOUS -> stepRunFind(run, forward = false)
+            AppShortcut.SPLIT_MAIN, AppShortcut.SPLIT_OTHER, AppShortcut.RESIZE_LEFT, AppShortcut.RESIZE_RIGHT, AppShortcut.RESIZE_UP, AppShortcut.RESIZE_DOWN,
+            AppShortcut.FOCUS_LEFT, AppShortcut.FOCUS_RIGHT, AppShortcut.FOCUS_UP, AppShortcut.FOCUS_DOWN, AppShortcut.RENAME_TERMINAL, AppShortcut.PANE_NUMBER,
+            -> Unit
+            else -> return false
+        }
+        return true
+    }
+
+    // The find shortcuts open the find bar of the run, and step its search once it is open.
+    private fun stepRunFind(run: RunTerminal, forward: Boolean) {
+        if (findingRun != run.workspace) findingRun = run.workspace else run.session?.search?.let { if (forward) it.next() else it.previous() }
+    }
+
+    /** The runs whose command runs, which quitting stops. */
+    fun activeRuns(): List<RunTerminal> = runs?.terminals?.value?.values?.filter { !it.ended }.orEmpty()
 
     fun closeTerminal(id: TerminalId) {
         if (state.closeTerminalDecision(id, ::stateOf, ::running) == CloseDecision.NOW) store.closeTerminal(id) else closingTerminal = id
@@ -423,8 +574,11 @@ internal class WindowController(
         workspace.layout.splitToNudge(from, direction, SPLIT_STEP, vertical)?.let { (split, ratio) -> store.setSplitRatio(workspace.id, split, ratio) }
     }
 
-    /** The session of the selected terminal: what the commands on the terminal's own keys act on. */
-    fun selectedSession(): TerminalSession? = state.selection.terminal?.let { handles[it]?.session }
+    /** The session of the selected terminal, or of the run that is shown over it: what the commands on the terminal's own keys act on. */
+    fun selectedSession(): TerminalSession? {
+        shownRun()?.let { return it.session }
+        return state.selection.terminal?.let { handles[it]?.session }
+    }
 
     /**
      * Asks the user before a paste that could run commands, whatever pastes it (a terminal's keys and middle click, its menu, the palette): one
@@ -435,7 +589,7 @@ internal class WindowController(
      * A second request while the question waits (the close button, then ⌘Q) has the same answer.
      */
     suspend fun confirmQuit(): Boolean {
-        if (state.quitDecision(::stateOf, ::running) == CloseDecision.NOW) return true
+        if (state.quitDecision(::stateOf, ::running) == CloseDecision.NOW && activeRuns().isEmpty()) return true
         val request = quitting ?: QuitRequest().also { quitting = it }
         return try {
             request.answer.await()
@@ -586,6 +740,11 @@ internal class WindowController(
         editingWorkspaceIde?.let { if (gone(it)) editingWorkspaceIde = null }
         // The format of the history of a terminal that is gone.
         exportingHistory?.let { if (current.locate(it) == null) exportingHistory = null }
+        // A run of a workspace that is gone.
+        runRequest?.let { if (gone(it.workspace)) runRequest = null }
+        confirmingRun?.let { if (gone(it.workspace)) confirmingRun = null }
+        findingRun?.let { if (gone(it)) findingRun = null }
+        stoppingRun?.let { if (gone(it)) stoppingRun = null }
     }
 
     /**
@@ -612,6 +771,7 @@ internal class WindowController(
             return true
         }
         if (blockedWhileRenaming(shortcut, state.selection.terminal, state.selection.workspace, renamingTerminal, renamingWorkspace)) return true
+        shownRun()?.let { run -> if (handleOnRun(shortcut, run)) return true }
         val terminal = state.selection.terminal
         when (shortcut) {
             AppShortcut.ADD_PROJECT -> addProject()
@@ -624,6 +784,8 @@ internal class WindowController(
             AppShortcut.CLOSE_TERMINAL -> onTerminal(::closeTerminal)
             AppShortcut.RESTART_TERMINAL -> onTerminal(::restartTerminal)
             AppShortcut.REOPEN_CLOSED -> reopenClosed()
+            AppShortcut.RUN -> onTerminals { state.selection.workspace?.let(::openRun) }
+            AppShortcut.RUN_TOGGLE -> onTerminals { toggleRun() }
             AppShortcut.JUMP_TO_WAITING -> jumpToWaiting()
             AppShortcut.ATTENTION -> attentionOpen = !attentionOpen
             AppShortcut.MAXIMIZE -> onTerminals { maximize() }
@@ -722,9 +884,14 @@ internal class WindowController(
         renameTerminal = ::renameTerminal,
         closeTerminal = { onTerminal(::closeTerminal) },
         restartTerminal = { onTerminal(::restartTerminal) },
-        find = { onTerminals { openFind(state.selection.terminal) } },
+        run = { onTerminals { state.selection.workspace?.let(::openRun) } },
+        runTerminal = runOf(state.selection.workspace)?.let { RunCommandState(shown = it.shown, ended = it.ended) },
+        toggleRun = { onTerminals { toggleRun() } },
+        stopRun = { shownRun()?.let { stopRun(it.workspace) } },
+        restartRun = { shownRun()?.let { restartRun(it.workspace) } },
+        find = { onTerminals { shownRun()?.let { findingRun = it.workspace } ?: openFind(state.selection.terminal) } },
         searchAll = ::searchAll,
-        clearScreen = { onTerminal { handles[it]?.session?.clearScreen() } },
+        clearScreen = { onTerminals { selectedSession()?.clearScreen() } },
         maximize = { onTerminals { maximize() } },
         colorScheme = { state.selection.terminal?.let { picking = SchemeTarget.Terminal(it) } },
         toggleSidebar = ::toggleSidebar,
@@ -779,8 +946,8 @@ internal class WindowController(
         toggleUsageInWindow = { store.updateSettings { it.copy(usageInWindow = !it.usageInWindow) } },
         focusPane = { direction -> onTerminals { focusNeighbour(direction) } },
         resizeSplit = { direction -> onTerminals { resizeSplit(direction) } },
-        findNext = { onTerminals { stepFind(true) } },
-        findPrevious = { onTerminals { stepFind(false) } },
+        findNext = { onTerminals { shownRun()?.let { stepRunFind(it, forward = true) } ?: stepFind(true) } },
+        findPrevious = { onTerminals { shownRun()?.let { stepRunFind(it, forward = false) } ?: stepFind(false) } },
         copy = { onTerminals { selectedSession()?.selectedText()?.let(platform::copy) } },
         paste = { onTerminals { selectedSession()?.let { session -> platform.readClipboard()?.let { pasteInto(session, it) } } } },
         selectAll = { onTerminals { selectedSession()?.selectAll() } },
