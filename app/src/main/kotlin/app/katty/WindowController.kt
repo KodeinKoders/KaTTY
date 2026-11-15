@@ -224,7 +224,17 @@ internal class WindowController(
     var presentationFontSize by mutableFloatStateOf(Settings.DEFAULT_FONT_SIZE)
         private set
 
-    /** The keys that presentation mode shows. */
+    /**
+     * Teach mode: the window shows the keys that are pressed, as presentation mode does, and nothing else of it changes (the layout, the font, the
+     * notices and the sounds are as they were). A mode of the window, not saved.
+     */
+    var teaching by mutableStateOf(false)
+        private set
+
+    /** Whether the keys that are pressed are shown: in presentation mode and in teach mode. */
+    val showingKeys: Boolean get() = presenting || teaching
+
+    /** The keys that presentation mode and teach mode show. */
     val presentedKeys = PresentedKeys()
 
     /** The format of the last export, which the next one starts on: in memory, as the folder. */
@@ -823,6 +833,7 @@ internal class WindowController(
             AppShortcut.SIDEBAR -> if (!vertical && onTerminals) toggleSidebar()
             AppShortcut.PALETTE -> paletteOpen = !paletteOpen
             AppShortcut.PRESENTATION -> togglePresentation()
+            AppShortcut.TEACH -> toggleTeaching()
             AppShortcut.FOCUS_LEFT -> onTerminals { focusNeighbour(Direction.LEFT) }
             AppShortcut.FOCUS_RIGHT -> onTerminals { focusNeighbour(Direction.RIGHT) }
             AppShortcut.FOCUS_UP -> onTerminals { focusNeighbour(Direction.UP) }
@@ -857,6 +868,12 @@ internal class WindowController(
     fun togglePresentation() {
         if (!presenting) presentationFontSize = presentationFontSize(state.settings.fontSize)
         presenting = !presenting
+        presentedKeys.clear()
+    }
+
+    /** Starts teach mode, or stops it: the keys that were shown go with it. */
+    fun toggleTeaching() {
+        teaching = !teaching
         presentedKeys.clear()
     }
 
@@ -986,6 +1003,7 @@ internal class WindowController(
         fontSmaller = { fontBy(-FONT_STEP) },
         fontReset = ::fontReset,
         togglePresentation = ::togglePresentation,
+        toggleTeaching = ::toggleTeaching,
         openMenu = { menuOpen = true },
         previousWorkspace = { stepWorkspace(-1) },
         nextWorkspace = { stepWorkspace(1) },

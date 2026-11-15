@@ -55,6 +55,7 @@ The font of the terminals is a setting of its own.
 * The window comes back where you left it, in the same size and mode, and so does the board window.
 * The command palette (⌘K) finds any project, workspace, terminal or command, and shows the shortcut of each command.
 * Presentation mode (⌘⌥P), for a demo or a stream: only the terminals, in a bigger font, with the shortcuts and control keys you press shown on the screen, and never what you type.
+* Teach mode (⌘⌥T) shows the same keys, and changes nothing else: the window, the font, the notices and the sounds stay as they are.
 
 === See what your agents are doing
 
@@ -281,6 +282,12 @@ When you switch to a workspace, the terminal that you used last in it has the ke
 
 | ⌘=, ⌘-, ⌘0
 | Make the font bigger or smaller, or give it its default size
+
+| ⌘⌥P
+| Start or stop presentation mode
+
+| ⌘⌥T
+| Start or stop teach mode: only the keys you press are shown
 |===
 
 Closing or restarting a terminal asks first while a program other than the shell runs in it.

@@ -29,8 +29,8 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.TitleBarScope
 
 /**
- * What is in the title bar: the sidebar's toggle, and where the user is, as `project / workspace`. In presentation mode ([presenting]) it says
- * so, with a button that stops it.
+ * What is in the title bar: the sidebar's toggle, and where the user is, as `project / workspace`. In presentation mode ([presenting]) and in teach
+ * mode ([teaching]) it says so, with a button that stops it.
  */
 @Composable
 fun TitleBarScope.TitleBarContent(
@@ -44,6 +44,8 @@ fun TitleBarScope.TitleBarContent(
     onPalette: () -> Unit = {},
     presenting: Boolean = false,
     onStopPresenting: () -> Unit = {},
+    teaching: Boolean = false,
+    onStopTeaching: () -> Unit = {},
     trailing: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
@@ -67,24 +69,25 @@ fun TitleBarScope.TitleBarContent(
         Choice(listOf(ChoiceOption(MainView.TERMINALS, "Terminals"), ChoiceOption(MainView.BOARD, "Board")), view, onView)
     }
     Row(Modifier.align(Alignment.End).padding(end = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (presenting) PresentingButton(onStopPresenting)
+        if (presenting) ModeButton("Presenting", AppShortcut.PRESENTATION.label, "Stop presentation mode", onStopPresenting)
+        if (teaching) ModeButton("Teaching", AppShortcut.TEACH.label, "Stop teach mode", onStopTeaching)
         PaletteButton(compactPalette, onPalette)
         trailing()
     }
 }
 
-/** Says that the window is in presentation mode, with its shortcut: a click stops it. */
+/** Says that the window is in a mode ([label]: presentation, teach), with its [shortcut]: a click stops it, which is its [description]. */
 @Composable
-private fun PresentingButton(onClick: () -> Unit) {
+private fun ModeButton(label: String, shortcut: String, description: String, onClick: () -> Unit) {
     val colors = Katty.colors
     Row(
         Modifier.heightIn(min = 28.dp).clip(RoundedCornerShape(6.dp)).background(colors.accent)
-            .semantics(mergeDescendants = true) { contentDescription = "Stop presentation mode" }
+            .semantics(mergeDescendants = true) { contentDescription = description }
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Presenting", color = colors.onStatus, fontWeight = FontWeight.SemiBold)
-        AppShortcut.PRESENTATION.label.takeIf { it.isNotEmpty() }?.let { Text(it, color = colors.onStatus.copy(alpha = .8f)) }
+        Text(label, color = colors.onStatus, fontWeight = FontWeight.SemiBold)
+        shortcut.takeIf { it.isNotEmpty() }?.let { Text(it, color = colors.onStatus.copy(alpha = .8f)) }
     }
 }

@@ -133,6 +133,8 @@ class PaletteHandlers(
     val fontReset: () -> Unit = {},
     /** Starts presentation mode, or stops it. */
     val togglePresentation: () -> Unit = {},
+    /** Starts or stops teach mode, which only shows the keys that are pressed. */
+    val toggleTeaching: () -> Unit = {},
     /** Moves the focus to the pane in that direction, or the nearest divider that way (the keyboard does the same). */
     val focusPane: (Direction) -> Unit = {},
     val resizeSplit: (Direction) -> Unit = {},
@@ -194,6 +196,7 @@ private fun AgentState.word(): String = when (this) {
  * two ways of splitting has the shortcut without Shift.
  * @param hasSelection Whether something is selected in the terminal: there is nothing to copy otherwise.
  * @param presenting Whether the window is in presentation mode, which its command stops then.
+ * @param teaching Whether the window is in teach mode, which its command stops then.
  */
 fun paletteCommands(
     state: KattyState,
@@ -203,6 +206,7 @@ fun paletteCommands(
     vertical: Boolean = false,
     hasSelection: Boolean = false,
     presenting: Boolean = false,
+    teaching: Boolean = false,
 ): PaletteCommands {
     val entries = ArrayList<PaletteEntry>()
     val actions = HashMap<String, () -> Unit>()
@@ -327,6 +331,7 @@ fun paletteCommands(
     }
     command("board-window", "Open the board in a window", action = handlers.openBoardWindow)
     command("presentation", if (presenting) "Stop presentation mode" else "Start presentation mode", AppShortcut.PRESENTATION.label, handlers.togglePresentation)
+    command("teach", if (teaching) "Stop teach mode" else "Start teach mode", AppShortcut.TEACH.label, handlers.toggleTeaching)
     command("sidebar", "Toggle project sidebar", AppShortcut.SIDEBAR.label, handlers.toggleSidebar)
     command("menu", "Open the main menu", AppShortcut.MENU.label, handlers.openMenu)
     command("edit-shortcuts", "Edit keyboard shortcuts…", action = handlers.editShortcuts)

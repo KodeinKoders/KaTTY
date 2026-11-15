@@ -423,7 +423,7 @@ internal fun KattyWindowContent(
     // In presentation mode they are shown first, with the other keys that it shows: the window sees them all before the terminal does.
     SideEffect {
         keys.handler = { event ->
-            if (controller.presenting) event.presented(vertical)?.let(controller.presentedKeys::show)
+            if (controller.showingKeys) event.presented(vertical)?.let(controller.presentedKeys::show)
             controller.handle(event.appShortcut(), event.shortcutNumber())
         }
     }
@@ -438,6 +438,8 @@ internal fun KattyWindowContent(
             showSidebarToggle = !vertical && settings.view == MainView.TERMINALS && !controller.presenting,
             presenting = controller.presenting,
             onStopPresenting = controller::togglePresentation,
+            teaching = controller.teaching,
+            onStopTeaching = controller::toggleTeaching,
             view = settings.view,
             onView = { view -> store.updateSettings { it.copy(view = view) } },
             boardTitle = state.projects.firstOrNull { it.id == boardFilter }?.name ?: "All projects",
@@ -670,10 +672,10 @@ internal fun KattyWindowContent(
             // Whether something is selected is asked when the palette opens, once: that is when there is a choice to make, and asking takes the lock
             // of the terminal that its output is written under.
             val hasSelection = remember { selectedSession()?.selectedText() != null }
-            val commands = remember(state, infos, handles, vertical, shortcutMap, controller.presenting) {
+            val commands = remember(state, infos, handles, vertical, shortcutMap, controller.presenting, controller.teaching) {
                 paletteCommands(
                     state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical,
-                    hasSelection = hasSelection, presenting = controller.presenting,
+                    hasSelection = hasSelection, presenting = controller.presenting, teaching = controller.teaching,
                 )
             }
             CommandPalette(
@@ -681,7 +683,7 @@ internal fun KattyWindowContent(
                 onRun = { entry ->
                     paletteOpen = false
                     // What was run is shown in presentation mode, with its shortcut when it has one, which the audience learns then.
-                    if (controller.presenting) controller.presentedKeys.show(entry.shortcut?.takeIf { it.isNotEmpty() }?.let { PresentedKey(it, entry.label) } ?: PresentedKey(entry.label))
+                    if (controller.showingKeys) controller.presentedKeys.show(entry.shortcut?.takeIf { it.isNotEmpty() }?.let { PresentedKey(it, entry.label) } ?: PresentedKey(entry.label))
                     commands.run(entry)
                 },
                 onDismiss = { paletteOpen = false },
@@ -844,7 +846,7 @@ internal fun KattyWindowContent(
             QuitDialog(stopped, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
         }
         // Over everything, the palette and the dialogs too: what the audience follows.
-        if (controller.presenting) PresentedKeysOverlay(controller.presentedKeys, Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp))
+        if (controller.showingKeys) PresentedKeysOverlay(controller.presentedKeys, Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp))
     }
 }
 

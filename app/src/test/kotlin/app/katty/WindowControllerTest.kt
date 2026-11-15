@@ -652,6 +652,26 @@ class WindowControllerTest {
         assertNull(controller.exportingHistory, "The palette's terminal commands are for the terminals")
     }
 
+    // Teach mode shows the keys and changes nothing else: the font shortcuts change the setting, as without it.
+    @Test
+    fun teachModeShowsTheKeysAndLeavesTheFontToTheSetting() {
+        store.updateSettings { it.copy(fontSize = 14f) }
+
+        assertTrue(controller.handle(AppShortcut.TEACH, null))
+        assertTrue(controller.teaching)
+        assertTrue(controller.showingKeys)
+        assertFalse(controller.presenting)
+
+        controller.handle(AppShortcut.FONT_BIGGER, null)
+        assertEquals(15f, state.settings.fontSize, "Not a font of its own")
+
+        controller.presentedKeys.show(PresentedKey("⌃C"))
+        controller.paletteHandlers().toggleTeaching()
+        assertFalse(controller.teaching)
+        assertFalse(controller.showingKeys)
+        assertEquals(emptyList(), controller.presentedKeys.lines, "The keys go with it")
+    }
+
     // Presentation mode has a font of its own, half as big again: what the font shortcuts change then, and the setting is what comes back.
     @Test
     fun presentationModeHasABiggerFontOfItsOwnThatTheFontShortcutsChange() {

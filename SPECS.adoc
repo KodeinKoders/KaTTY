@@ -520,6 +520,7 @@ The title bar is 40 px high and holds:
 * at the right: the field that opens the palette ("Search or run a command… ⌘K", or "Commands ⌘K" in the vertical layout), the bell, and the button of the main menu.
 
 In presentation mode the button that folds the sidebar is not there, and a "Presenting ⌘⌥P" button in the accent color, before the field of the palette, stops it.
+In teach mode a "Teaching ⌘⌥T" button, the same, stops it.
 
 
 === Horizontal layout
@@ -575,6 +576,16 @@ A password typed during a demo is not on the screen.
 * Notices are not shown: nothing of another terminal comes on the screen by itself.
 The sound of an agent that needs the user is not played either.
 The bell still counts what needs the user.
+
+=== Teach mode
+
+For teaching: the keys are shown as in presentation mode, and nothing else changes.
+
+* ⌘⌥T, or "Start teach mode" in the palette, starts it; ⌘⌥T again, "Stop teach mode", or the "Teaching" button of the title bar stops it.
+* It is not kept: KaTTY always starts without it.
+* The keys that are pressed, and the commands run from the palette, are shown as in presentation mode, by the same rules: what is typed is never shown.
+* The window is as it is without it: the sidebar, the tabs, the headers, the font of the terminals, the notices and the sound of an agent that needs the user.
+* It can be on with presentation mode: the keys are shown while either is on.
 
 
 == Menus
@@ -829,6 +840,9 @@ While it is shown, ⌘W, ⌘⇧L, ⌘⇧↩, ⌘L and ⌘F act on it.
 
 | ⌘⌥P
 | Start or stop presentation mode.
+
+| ⌘⌥T
+| Start or stop teach mode: only the keys that are pressed are shown.
 
 | ⌘C, ⌘V
 | Copy, paste: the terminal's own.

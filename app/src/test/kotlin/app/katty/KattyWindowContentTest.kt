@@ -417,6 +417,50 @@ class KattyWindowContentTest {
         onAllNodesWithText("⌘D").assertCountEquals(0)
     }
 
+    // Teach mode shows the keys that are pressed, never what is typed, and the window stays as it is; the title bar's button ends it.
+    @Test
+    fun teachModeShowsTheKeysThatArePressedAndChangesNothingElse() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+        val session = registry.handles.value.values.single().session!!
+        waitUntil(timeoutMillis = 5_000) { session.frames.value.rows.size > 5 }
+        val rows = session.frames.value.rows.size
+
+        assertTrue(press(Key.T, meta = true, alt = true))
+        waitForIdle()
+        onNodeWithContentDescription("Stop teach mode").assertExists()
+        onAllNodesWithContentDescription("Stop presentation mode").assertCountEquals(0)
+        onAllNodesWithContentDescription("Add project").assertCountEquals(1)
+        onAllNodesWithContentDescription("Pane menu").assertCountEquals(1)
+
+        assertTrue(press(Key.D, meta = true))
+        assertFalse(press(Key.S))
+        assertFalse(press(Key.C, ctrl = true))
+        waitForIdle()
+        onNodeWithText("⌘D").assertExists()
+        onNodeWithText("Split right").assertExists()
+        onNodeWithText("⌃C").assertExists()
+        onAllNodesWithText("S").assertCountEquals(0)
+        onAllNodesWithContentDescription("Pane menu").assertCountEquals(2)
+        assertEquals(rows, session.frames.value.rows.size, "The font is the setting's: the terminal has the rows it had")
+        val image = org.jetbrains.skia.Image.makeFromBitmap(onRoot().captureToImage().asSkiaBitmap())
+        java.io.File("build/renders").apply { mkdirs() }.resolve("teach-window.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+
+        onNodeWithContentDescription("Stop teach mode").performClick()
+        waitForIdle()
+        onAllNodesWithText("⌘D").assertCountEquals(0)
+        onAllNodesWithContentDescription("Stop teach mode").assertCountEquals(0)
+    }
+
+    // Teach mode leaves the notices as they are.
+    @Test
+    fun aNoticeIsShownInTeachMode() = runComposeUiTest {
+        twoTerminalsWhereACommandEnds { assertTrue(press(Key.T, meta = true, alt = true)) }
+        waitForIdle()
+
+        onAllNodesWithContentDescription("Failed: make build").assertCountEquals(1)
+    }
+
     // Nothing of another terminal comes on the screen by itself during a demo: the bell still counts it.
     @Test
     fun aNoticeIsNotShownDuringAPresentation() = runComposeUiTest {
