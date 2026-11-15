@@ -56,7 +56,7 @@ class PaletteTest {
         PaletteEntry("w1", PaletteGroup.WORKSPACES, "refactor-auth", "api-gateway"),
         PaletteEntry("w2", PaletteGroup.WORKSPACES, "release-notes", "api-gateway"),
         PaletteEntry("t1", PaletteGroup.TERMINALS, "Claude Code", "refactor-auth · working"),
-        PaletteEntry("c1", PaletteGroup.COMMANDS, "Restart terminal", shortcut = "⌘R"),
+        PaletteEntry("c1", PaletteGroup.COMMANDS, "Restart terminal", shortcut = "⌘⇧L"),
         PaletteEntry("c2", PaletteGroup.COMMANDS, "Rename workspace", shortcut = "F2"),
         PaletteEntry("c3", PaletteGroup.COMMANDS, "Split right", shortcut = "⌘D"),
     )

@@ -290,7 +290,7 @@ Quitting the application ends every shell.
 
 * What it wrote stays on the screen, followed by `[Process completed]`.
 * The header says "Exited", and a strip under the terminal says "Shell exited with code N" with two buttons: Reopen shell (a new shell in the same pane and directory) and Close (closes the terminal).
-* Restart terminal (⌘R) does the same as Reopen shell, for a shell that runs.
+* Restart terminal (⌘⇧L) does the same as Reopen shell, for a shell that runs.
 
 
 === Pane
@@ -780,7 +780,7 @@ The window's shortcuts are handled before the terminal sees them.
 | ⌘W
 | Close the focused terminal.
 
-| ⌘R
+| ⌘⇧L
 | Restart the shell of the focused terminal.
 
 | ⌘⇧T

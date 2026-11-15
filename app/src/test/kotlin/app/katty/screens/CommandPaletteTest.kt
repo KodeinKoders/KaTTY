@@ -255,7 +255,7 @@ class CommandPaletteTest {
         val shortcuts = entries.filter { it.group == PaletteGroup.COMMANDS }.associate { it.label to it.shortcut }
         assertEquals("⌘D", shortcuts["Split right"])
         assertEquals("⌘⇧D", shortcuts["Split down"])
-        assertEquals("⌘R", shortcuts["Restart terminal"])
+        assertEquals("⌘⇧L", shortcuts["Restart terminal"])
         assertEquals("⌘⇧F2", shortcuts["Rename workspace"])
         assertEquals("⌘F2", shortcuts["Rename terminal"])
         assertEquals("⌘L", shortcuts["Clear screen and scrollback"])

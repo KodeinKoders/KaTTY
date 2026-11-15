@@ -187,7 +187,7 @@ class TerminalMenusTest {
         assertEquals(
             mapOf(
                 "Copy" to "⌘C", "Paste" to "⌘V", "Select all" to "⌘A", "Find…" to "⌘F", "Clear screen and scrollback" to "⌘L", "Rename terminal" to "⌘F2",
-                "Split right" to "⌘D", "Split down" to "⌘⇧D", "Restart terminal" to "⌘R", "Close terminal" to "⌘W",
+                "Split right" to "⌘D", "Split down" to "⌘⇧D", "Restart terminal" to "⌘⇧L", "Close terminal" to "⌘W",
             ),
             entries.filterIsInstance<MenuAction>().filter { it.shortcut != null }.associate { it.label to it.shortcut },
         )

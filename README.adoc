@@ -188,7 +188,7 @@ Escape is never used by the window, except to close what is open in front of it 
 | ⌘W
 | Close the terminal
 
-| ⌘R
+| ⌘⇧L
 | Restart the terminal
 
 | ⌘⇧T

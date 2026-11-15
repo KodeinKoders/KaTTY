@@ -40,7 +40,7 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     /** Splits across the main direction. */
     SPLIT_OTHER(ShortcutGroup.PANES, "Split across the main direction", listOf(cmd(Awt.VK_D, shift = true))),
     CLOSE_TERMINAL(ShortcutGroup.PANES, "Close the terminal", listOf(cmd(Awt.VK_W))),
-    RESTART_TERMINAL(ShortcutGroup.PANES, "Restart the terminal", listOf(cmd(Awt.VK_R))),
+    RESTART_TERMINAL(ShortcutGroup.PANES, "Restart the terminal", listOf(cmd(Awt.VK_L, shift = true))),
 
     /** Opens what was closed last again: a terminal at its place, or a whole workspace. */
     REOPEN_CLOSED(ShortcutGroup.PANES, "Reopen the last closed terminal or workspace", listOf(cmd(Awt.VK_T, shift = true))),
