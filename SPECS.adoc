@@ -352,7 +352,7 @@ Enter runs it (nothing for a blank command), ⌘↩ runs it minimized into the h
 * It is shown over the panes of its workspace, 24 px from the edges of the area, over a scrim of 30 % black, over a maximized pane too; a click on the scrim minimizes it.
 It has the keyboard while it is shown.
 Its header: the glyph of its state, the command, the directory, the state in words (Running, Done, Failed (code), Could not start), and at its right two icons: Minimize (⌘⇧R) and Stop (⌘W; Close once the command has ended).
-* While it is shown, the panes under it are not selected and the shortcuts of a terminal act on it: ⌘W stops it, ⌘⇧L stops its command and runs it again (without asking), ⌘⇧↩ minimizes it, ⌘L clears it, ⌘F, ⌘G and ⌘⇧G find in it, and the terminal's own keys (copy, paste, scrolling) are its own.
+* While it is shown, the panes under it are not selected and the shortcuts of a terminal act on it: ⌘W stops it, ⌘⇧L stops its command and runs it again (asking first while it runs: "Restart the run?", a red "Restart run"), ⌘⇧↩ minimizes it, ⌘L clears it, ⌘F, ⌘G and ⌘⇧G find in it, and the terminal's own keys (copy, paste, scrolling) are its own.
 The shortcuts of the panes (split, resize, move the focus, a pane by its number, rename the terminal) do nothing, and the split buttons are disabled.
 When it is minimized, every shortcut acts on the selected pane again: ⌘W does not stop it.
 * While it exists, an indicator in the header of the workspace (in the tabs of the vertical layout) says the command and its state; a click shows it or minimizes it, as ⌘⇧R does.

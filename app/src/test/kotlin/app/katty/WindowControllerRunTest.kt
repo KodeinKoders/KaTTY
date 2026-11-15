@@ -177,14 +177,32 @@ class WindowControllerRunTest {
         val first = runs.terminals.value.getValue(workspace)
 
         controller.handle(AppShortcut.RESTART_TERMINAL, null)
+        assertEquals(workspace, controller.restartingRun, "A command that runs is asked about first")
+        assertTrue(controller.blockingDialog)
+        controller.answerRestartRun(false)
+        assertEquals(first.generation, runs.terminals.value.getValue(workspace).generation, "Cancelled: it still runs")
+
+        controller.handle(AppShortcut.RESTART_TERMINAL, null)
+        controller.answerRestartRun(true)
 
         val second = runs.terminals.value.getValue(workspace)
         assertEquals("sleep 30", second.command)
         assertEquals(first.directory, second.directory)
         assertTrue(second.generation > first.generation, "Another session")
-        assertNull(controller.confirmingRun, "It does not ask")
         runBlocking { withTimeout(15_000) { first.session!!.exited.first { it != null } } }
         assertEquals(emptyList(), restarted, "Not the pane under it")
+    }
+
+    @Test
+    fun aCommandThatEndedRunsAgainAtOnce() {
+        run("exit 3")
+        ended(workspace)
+        val first = runs.terminals.value.getValue(workspace)
+
+        controller.handle(AppShortcut.RESTART_TERMINAL, null)
+
+        assertNull(controller.restartingRun, "A command that ended is not asked about")
+        assertTrue(runs.terminals.value.getValue(workspace).generation > first.generation)
     }
 
     @Test
@@ -274,7 +292,6 @@ class WindowControllerRunTest {
 
         assertNull(controller.stoppingRun)
         assertTrue(runs.active(workspace), "Cancelled: it still runs")
-        controller.handle(AppShortcut.RESTART_TERMINAL, null)
         controller.handle(AppShortcut.CLOSE_TERMINAL, null)
         controller.answerStopRun(true)
 

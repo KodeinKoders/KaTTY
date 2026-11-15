@@ -183,8 +183,11 @@ internal fun RunOverlay(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 StateGlyph(status.state)
-                OneLine(run.command, Modifier.weight(1f, fill = false), color = colors.text)
-                OneLine(homeShortened(run.directory), Modifier.weight(1f), color = colors.muted, fontSize = 12.sp)
+                // What it runs and where take the room that is left, whatever their lengths: the state and the buttons are at the right end.
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OneLine(run.command, Modifier.weight(1f, fill = false), color = colors.text)
+                    OneLine(homeShortened(run.directory), Modifier.weight(1f, fill = false), color = colors.muted, fontSize = 12.sp)
+                }
                 Text(status.label, color = status.color(), fontSize = 12.sp, maxLines = 1)
                 // At the right of the header, as the buttons of a pane are.
                 KattyIconButton(KattyIcons.Minimize, "Minimize the run terminal", actions.onMinimize, size = ButtonSize.COMPACT, shortcut = AppShortcut.RUN_TOGGLE.label)
@@ -306,6 +309,18 @@ internal fun StopRunConfirmation(running: String, onConfirm: () -> Unit, onCance
         title = "Stop the run?",
         message = "“$running” is still running and will be stopped.",
         confirmLabel = "Stop run",
+        onConfirm = onConfirm,
+        onCancel = onCancel,
+    )
+}
+
+/** Asked before the command of a run, [running], is stopped to be run again: as restarting a terminal where a program runs is. */
+@Composable
+internal fun RestartRunConfirmation(running: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    ConfirmDialog(
+        title = "Restart the run?",
+        message = "“$running” is still running. It will be stopped, and run again.",
+        confirmLabel = "Restart run",
         onConfirm = onConfirm,
         onCancel = onCancel,
     )

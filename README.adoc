@@ -38,7 +38,7 @@ It holds *workspaces*, and each workspace holds terminals in a layout of splits.
 * Rename projects, workspaces and terminals, and drag projects and workspaces to reorder them.
 * Run your project from a workspace without giving it a pane: ⌘R, the play button of the workspace's header or its right-click menu asks for a command (the last one is offered again), and runs it in the directory of the selected terminal, in a terminal over the panes (⌘↩ runs it minimized).
 Minimize it into the header (⌘⇧R or ⌘⇧↩) and bring it back with a click or ⌘⇧R.
-While it is shown, the shortcuts of a terminal act on it: ⌘W stops the command and closes it (it asks first while the command runs), ⌘⇧L runs the command again, ⌘L clears it, ⌘F finds in it; the ones of the panes do nothing.
+While it is shown, the shortcuts of a terminal act on it: ⌘W stops the command and closes it (it asks first while the command runs), ⌘⇧L runs the command again (it asks too), ⌘L clears it, ⌘F finds in it; the ones of the panes do nothing.
 A command that ends by itself stays there to be read, with its exit status in the header.
 A workspace has one at a time, and running another one while a command runs asks first.
 * Right-click in a terminal to copy what is selected, paste, find, or do anything that the menu of its pane does.

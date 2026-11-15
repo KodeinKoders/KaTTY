@@ -209,6 +209,9 @@ internal class WindowController(
     // The run whose command runs, which the user asked to stop: they confirm it first, as for a program in a terminal.
     var stoppingRun by mutableStateOf<WorkspaceId?>(null)
 
+    // The run whose command runs, which the user asked to run again: they confirm that it is stopped first, as for a terminal that is restarted.
+    var restartingRun by mutableStateOf<WorkspaceId?>(null)
+
     // The workspace whose run terminal has its find bar open.
     var findingRun by mutableStateOf<WorkspaceId?>(null)
 
@@ -253,7 +256,7 @@ internal class WindowController(
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
             quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null ||
-            runRequest != null || confirmingRun != null || stoppingRun != null
+            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -467,8 +470,23 @@ internal class WindowController(
         focusTick++
     }
 
-    /** Stops the command of the run of [workspace], whether it runs or not, and runs it again in the same place. */
+    /**
+     * Stops the command of the run of [workspace] and runs it again in the same place. A command that runs is asked about first, as restarting a
+     * terminal where a program runs is; one that has ended runs again at once.
+     */
     fun restartRun(workspace: WorkspaceId) {
+        runOf(workspace) ?: return
+        if (runs?.active(workspace) == true) restartingRun = workspace else rerun(workspace)
+    }
+
+    /** The question about running the command of a run again, which stops it, is answered. */
+    fun answerRestartRun(confirmed: Boolean) {
+        val workspace = restartingRun ?: return
+        restartingRun = null
+        if (confirmed) rerun(workspace)
+    }
+
+    private fun rerun(workspace: WorkspaceId) {
         val run = runOf(workspace) ?: return
         if (findingRun == workspace) findingRun = null
         runs?.run(workspace, run.command, run.directory)
@@ -745,6 +763,7 @@ internal class WindowController(
         confirmingRun?.let { if (gone(it.workspace)) confirmingRun = null }
         findingRun?.let { if (gone(it)) findingRun = null }
         stoppingRun?.let { if (gone(it)) stoppingRun = null }
+        restartingRun?.let { if (gone(it)) restartingRun = null }
     }
 
     /**

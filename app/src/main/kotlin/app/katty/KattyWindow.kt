@@ -91,6 +91,7 @@ import app.katty.screens.RunActions
 import app.katty.screens.RunDialog
 import app.katty.screens.StopRunDialog
 import app.katty.screens.StopRunConfirmation
+import app.katty.screens.RestartRunConfirmation
 import app.katty.terminals.RunTerminal
 import app.katty.ui.AgentGlyph
 import app.katty.screens.PaneActions
@@ -816,6 +817,12 @@ internal fun KattyWindowContent(
             StopRunConfirmation(
                 runTerminals[workspace]?.command.orEmpty(),
                 onConfirm = { controller.answerStopRun(true) }, onCancel = { controller.answerStopRun(false) },
+            )
+        }
+        controller.restartingRun?.let { workspace ->
+            RestartRunConfirmation(
+                runTerminals[workspace]?.command.orEmpty(),
+                onConfirm = { controller.answerRestartRun(true) }, onCancel = { controller.answerRestartRun(false) },
             )
         }
         controller.confirmingRun?.let { launch ->
