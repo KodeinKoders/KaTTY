@@ -24,6 +24,9 @@ public class KattyDirectories(public val support: Path) {
     /** Where the agent usage window was, how big and in which mode, when the usage is shown in a window. */
     public val usageWindowFile: Path get() = support.resolve("usage-window.json")
 
+    /** Where the settings window was, how big and in which mode. */
+    public val settingsWindowFile: Path get() = support.resolve("settings-window.json")
+
     /**
      * The directory that the commands of the agents that report their usage run in. `claude -p` records a session for the directory it
      * runs in, which must not be one of the user's projects.

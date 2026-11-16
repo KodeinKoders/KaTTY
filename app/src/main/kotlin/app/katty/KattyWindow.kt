@@ -63,7 +63,6 @@ import app.katty.screens.CommandPalette
 import app.katty.screens.SearchAllPopup
 import app.katty.screens.SearchedTerminal
 import app.katty.screens.RecentProjectsPopup
-import app.katty.screens.ShortcutsDialog
 import app.katty.screens.paletteCommands
 import app.katty.screens.AttentionBell
 import app.katty.screens.AttentionPopover
@@ -77,7 +76,7 @@ import app.katty.screens.UsageList
 import app.katty.screens.UsageSection
 import app.katty.screens.UsageVariant
 import app.katty.screens.ColorSchemePicker
-import app.katty.screens.MainMenu
+import app.katty.screens.SettingsContent
 import app.katty.screens.CloseWorkspaceDialog
 import app.katty.screens.RestartTerminalDialog
 import app.katty.screens.ExportHistoryDialog
@@ -90,7 +89,6 @@ import app.katty.screens.QuitDialog
 import app.katty.screens.RunActions
 import app.katty.screens.RunDialog
 import app.katty.screens.StopRunDialog
-import app.katty.screens.AiCommandDialog
 import app.katty.core.AiPrompt
 import app.katty.core.RUN_COMMAND_PROMPT
 import app.katty.core.defaultAiCommand
@@ -230,12 +228,10 @@ internal fun KattyWindowContent(
     var removing by controller::removing
     var renamingTerminal by controller::renamingTerminal
     var findingTerminal by controller::findingTerminal
-    var menuOpen by controller::menuOpen
     var attentionOpen by controller::attentionOpen
     var paletteOpen by controller::paletteOpen
     val recentOpen = controller.recentOpen
     val openRecent = controller::openRecent
-    var editingShortcuts by controller::editingShortcuts
     var focusTick by controller::focusTick
     var boardFilter by controller::boardFilter
     var toast by controller::toast
@@ -421,10 +417,14 @@ internal fun KattyWindowContent(
     LaunchedEffect(state.projects, renamingTerminal, renamingWorkspace, renamingProject, settings.view, settings.sidebarCollapsed, vertical) {
         controller.dropStaleRenames()
     }
-    // Quitting asks this window first, while it is there.
+    // Quitting asks this window first, while it is there, and the Settings item of the application menu of macOS opens its settings window.
     DisposableEffect(bridge, controller) {
         bridge.confirmQuit = controller::confirmQuit
-        onDispose { if (bridge.confirmQuit != null) bridge.confirmQuit = null }
+        bridge.openSettings = { controller.openSettings() }
+        onDispose {
+            if (bridge.confirmQuit != null) bridge.confirmQuit = null
+            bridge.openSettings = null
+        }
     }
     // The shortcuts of the window, on the window itself: they work whatever has the focus, and when nothing has it.
     // In presentation mode they are shown first, with the other keys that it shows: the window sees them all before the terminal does.
@@ -466,24 +466,7 @@ internal fun KattyWindowContent(
                         )
                     }
                 }
-                Box {
-                    KattyIconButton(KattyIcons.Menu, "Main menu", { menuOpen = !menuOpen }, shortcut = AppShortcut.MENU.label)
-                    if (menuOpen) {
-                        MainMenu(
-                            settings = settings,
-                            onChange = store::updateSettings,
-                            lightColorScheme = ITermColorSchemes.entries.firstOrNull { it.name == settings.lightColorScheme },
-                            darkColorScheme = ITermColorSchemes.entries.firstOrNull { it.name == settings.darkColorScheme },
-                            fontFamilies = families,
-                            onPickColorScheme = { mode -> menuOpen = false; picking = SchemeTarget.Default(mode) },
-                            onDismiss = { menuOpen = false },
-                            onEditShortcuts = { menuOpen = false; editingShortcuts = true },
-                            onAbout = { menuOpen = false; onOpenAbout() },
-                            aiCommand = aiCommand,
-                            onEditAiCommand = { menuOpen = false; controller.editingAiCommand = true },
-                        )
-                    }
-                }
+                KattyIconButton(KattyIcons.Settings, "Settings", { controller.openSettings() }, shortcut = AppShortcut.SETTINGS.label)
             },
         )
     }
@@ -670,12 +653,23 @@ internal fun KattyWindowContent(
                 }
             }
         }
-        if (editingShortcuts) {
-            ShortcutsDialog(
-                map = shortcutMap,
-                onChange = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
-                onClose = { editingShortcuts = false },
-            )
+        if (controller.settingsOpen) {
+            SettingsWindow(
+                settings.effectiveUiScale, directories.settingsWindowFile, controller.settingsFocusTick,
+                onClose = { controller.settingsOpen = false },
+            ) {
+                SettingsContent(
+                    page = controller.settingsPage,
+                    onPage = { controller.settingsPage = it },
+                    settings = settings,
+                    onChange = store::updateSettings,
+                    schemes = ITermColorSchemes.entries,
+                    fontFamilies = families,
+                    shortcuts = shortcutMap,
+                    onShortcuts = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
+                    defaultAiCommand = defaultAi,
+                )
+            }
         }
         if (paletteOpen) {
             // Whether something is selected is asked when the palette opens, once: that is when there is a choice to make, and asking takes the lock
@@ -832,13 +826,6 @@ internal fun KattyWindowContent(
                     }
                 },
                 askTick = controller.askRunTick,
-            )
-        }
-        if (controller.editingAiCommand) {
-            AiCommandDialog(
-                current = aiCommand, default = defaultAi,
-                onSave = { command -> store.updateSettings { it.copy(aiCommand = command) }; controller.editingAiCommand = false },
-                onCancel = { controller.editingAiCommand = false },
             )
         }
         controller.stoppingRun?.let { workspace ->

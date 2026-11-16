@@ -2,6 +2,7 @@
 
 package app.katty.screens
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -133,12 +134,11 @@ class ShortcutRowsTest {
     }
 }
 
-class ShortcutsDialogTest {
+class ShortcutsEditorTest {
     private var map by mutableStateOf(ShortcutMap.DEFAULT)
-    private var closed = 0
 
     private fun androidx.compose.ui.test.ComposeUiTest.show() {
-        setContent { KattyTheme(false) { ShortcutsDialog(map, onChange = { map = it }, onClose = { closed++ }) } }
+        setContent { KattyTheme(false) { ShortcutsEditor(map, onChange = { map = it }, androidx.compose.ui.Modifier.fillMaxSize()) } }
         waitForIdle()
     }
 
@@ -191,17 +191,27 @@ class ShortcutsDialogTest {
     }
 
     @Test
-    fun escapeGivesUpTheChangeAndThenClosesTheDialog() = runComposeUiTest {
+    fun escapeGivesUpTheChange() = runComposeUiTest {
         show()
 
         press(Key.Enter)
         press(Key.Escape)
-        assertEquals(0, closed, "The first Escape gave up the change")
+
         assertEquals(0, count("Press the new keys…"))
         assertEquals(ShortcutMap.DEFAULT, map)
-        press(Key.Escape)
+    }
 
-        assertEquals(1, closed)
+    // The settings window closes with ⌘W, after the editor: while it records, ⌘W is the new keys and closes nothing.
+    @Test
+    fun commandWIsRecordedWhileAShortcutIsChanged() = runComposeUiTest {
+        show()
+
+        press(Key.Enter)
+        // Closing a terminal has it: a second press takes it.
+        command(Key.W)
+        command(Key.W)
+
+        assertEquals("⌘W", map.label(AppShortcut.ADD_PROJECT))
     }
 
     @Test
@@ -265,7 +275,7 @@ class ShortcutsDialogTest {
 
         onNodeWithContentDescription("Change New workspace").performClick()
         command(Key.U)
-        assertEquals("⌘U", map.label(AppShortcut.NEW_WORKSPACE), "The keys go to the dialog although the click took the focus to a button")
+        assertEquals("⌘U", map.label(AppShortcut.NEW_WORKSPACE), "The keys go to the editor although the click took the focus to a button")
     }
 
     @Test
@@ -294,17 +304,7 @@ class ShortcutsDialogTest {
     }
 
     @Test
-    fun theCloseButtonAndEscapeCloseIt() = runComposeUiTest {
-        show()
-
-        onNodeWithContentDescription("Close").performClick()
-        press(Key.Escape)
-
-        assertEquals(2, closed)
-    }
-
-    @Test
-    fun whileTheDialogChangesAShortcutTheKeysAreNotTypedInTheSearch() = runComposeUiTest {
+    fun whileTheEditorChangesAShortcutTheKeysAreNotTypedInTheSearch() = runComposeUiTest {
         show()
 
         press(Key.Enter)

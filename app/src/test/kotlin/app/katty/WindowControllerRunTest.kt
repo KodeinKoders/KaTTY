@@ -102,16 +102,6 @@ class WindowControllerRunTest {
     }
 
     @Test
-    fun theAiCommandIsEditedFromThePalette() {
-        val labels = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = controller.paletteHandlers(worktree = null, closed = null))
-
-        labels.run(labels.entries.single { it.label == "AI command…" })
-
-        assertTrue(controller.editingAiCommand)
-        assertTrue(controller.blockingDialog)
-    }
-
-    @Test
     fun aBlankAnswerRunsNothing() {
         controller.handle(AppShortcut.RUN, null)
 

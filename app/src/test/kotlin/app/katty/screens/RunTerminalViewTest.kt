@@ -45,19 +45,6 @@ class RunTerminalViewTest {
         }
     }
 
-    // The setting of the AI command, with the default of the installed agent: look at build/renders.
-    @Test
-    fun drawsTheAiCommandDialog() {
-        for (dark in listOf(false, true)) {
-            for ((suffix, scale) in listOf("100" to 1f, "175" to 1.75f)) {
-                val theme = if (dark) "dark" else "light"
-                render("ai-command-dialog-$theme-$suffix", 1600, 800, dark = dark) {
-                    UiScale(scale) { AiCommandDialog("claude -p \"\$PROMPT\"", "claude -p \"\$PROMPT\"", onSave = {}, onCancel = {}) }
-                }
-            }
-        }
-    }
-
     // The indicator of the header: a run that runs, one that is shown, one that could not start.
     @Test
     fun drawsTheIndicatorOfARun() {

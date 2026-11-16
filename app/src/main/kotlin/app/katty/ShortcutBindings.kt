@@ -182,6 +182,9 @@ internal class ShortcutMap private constructor(private val bindings: Map<AppShor
 
         private val DIGITS = Awt.VK_1..Awt.VK_9
 
+        /** The shortcuts that had another name, by their former name: a file written before keeps their keys. */
+        private val FORMER_NAMES = mapOf("MENU" to AppShortcut.SETTINGS)
+
         /**
          * The defaults with [overrides] (as [ShortcutMap.overrides] writes them) put on them. A name that is not a shortcut, a value that cannot be read, and a
          * binding that [check] refuses (it does not include Command, the terminal or the system keeps it, another shortcut has it: a file edited by hand)
@@ -191,7 +194,7 @@ internal class ShortcutMap private constructor(private val bindings: Map<AppShor
             if (overrides.isEmpty()) return DEFAULT
             val changed = LinkedHashMap<AppShortcut, List<KeyBinding>>()
             for ((name, value) in overrides) {
-                val shortcut = AppShortcut.entries.firstOrNull { it.name == name } ?: continue
+                val shortcut = AppShortcut.entries.firstOrNull { it.name == name } ?: FORMER_NAMES[name] ?: continue
                 if (value == NONE) {
                     changed[shortcut] = emptyList()
                 } else {

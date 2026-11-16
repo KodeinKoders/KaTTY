@@ -135,7 +135,7 @@ class PaletteHandlers(
     val togglePresentation: () -> Unit = {},
     /** Starts or stops teach mode, which only shows the keys that are pressed. */
     val toggleTeaching: () -> Unit = {},
-    /** Opens the setting of the command that asks the AI. */
+    /** Opens the settings window on the page of the AI command. */
     val editAiCommand: () -> Unit = {},
     /** Moves the focus to the pane in that direction, or the nearest divider that way (the keyboard does the same). */
     val focusPane: (Direction) -> Unit = {},
@@ -158,12 +158,12 @@ class PaletteHandlers(
     val uiBigger: () -> Unit = {},
     val uiSmaller: () -> Unit = {},
     val uiReset: () -> Unit = {},
-    /** Opens the dialog where the shortcuts are changed. */
+    /** Opens the settings window on its page of the shortcuts. */
     val editShortcuts: () -> Unit = {},
     /** Opens the About window. */
     val openAbout: () -> Unit = {},
-    /** Opens the main menu. */
-    val openMenu: () -> Unit = {},
+    /** Opens the settings window. */
+    val openSettings: () -> Unit = {},
     /** Opens the list of the agents that need the user. */
     val openAttention: () -> Unit = {},
     /** Goes to the project before or after the selected one, wrapping around. */
@@ -335,7 +335,7 @@ fun paletteCommands(
     command("presentation", if (presenting) "Stop presentation mode" else "Start presentation mode", AppShortcut.PRESENTATION.label, handlers.togglePresentation)
     command("teach", if (teaching) "Stop teach mode" else "Start teach mode", AppShortcut.TEACH.label, handlers.toggleTeaching)
     command("sidebar", "Toggle project sidebar", AppShortcut.SIDEBAR.label, handlers.toggleSidebar)
-    command("menu", "Open the main menu", AppShortcut.MENU.label, handlers.openMenu)
+    command("settings", "Open the settings", AppShortcut.SETTINGS.label, handlers.openSettings)
     command("edit-shortcuts", "Edit keyboard shortcuts…", action = handlers.editShortcuts)
     command("ai-command", "AI command…", action = handlers.editAiCommand)
     command("about", "About KaTTY", action = handlers.openAbout)

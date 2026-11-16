@@ -91,7 +91,7 @@ fun KattyTextButton(label: String, onClick: () -> Unit, modifier: Modifier = Mod
 class ChoiceOption<T>(val value: T, val label: String)
 
 /**
- * A choice among a few options drawn as a row of segments, as the layout and the theme are in the main menu. Jewel's segmented control is
+ * A choice among a few options drawn as a row of segments, as the layout and the theme are in the settings. Jewel's segmented control is
  * the closest of its components.
  */
 @Composable

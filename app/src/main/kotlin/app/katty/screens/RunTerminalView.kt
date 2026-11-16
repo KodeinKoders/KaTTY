@@ -335,7 +335,7 @@ internal fun RunDialog(
                         placeholder = { Text(if (asking) "Asking the AI…" else "./gradlew run") },
                         textStyle = org.jetbrains.jewel.foundation.theme.JewelTheme.defaultTextStyle.copy(fontFamily = FontFamily.Monospace),
                     )
-                    val description = if (ask == null) "No AI command: set one in the main menu" else "Ask the AI for the command"
+                    val description = if (ask == null) "No AI command: set one in the settings" else "Ask the AI for the command"
                     Tooltip(tooltip = { Text(tooltipText(description, AppShortcut.RUN.label)) }) {
                         KattyTextButton(if (asking) "Asking…" else "Ask AI", { askNow() }, description = description, enabled = canAsk)
                     }

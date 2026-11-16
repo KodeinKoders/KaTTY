@@ -31,6 +31,10 @@ class WindowBridge {
      */
     @Volatile
     var confirmQuit: (suspend () -> Boolean)? = null
+
+    /** Opens the settings window, which the main window holds: the Settings item of the application menu of macOS asks for it. `null` without one. */
+    @Volatile
+    var openSettings: (() -> Unit)? = null
 }
 
 /** The time in milliseconds, which moves on by itself every 30 seconds: what the ages on the screen are told from. */

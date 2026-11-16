@@ -92,6 +92,21 @@ internal fun takeAboutItem(onAbout: () -> Unit) {
 }
 
 /**
+ * Makes the Settings item of the application menu of macOS (⌘, there) call [onSettings], which opens the settings window. Nothing is done elsewhere,
+ * and a failure leaves the item disabled, as it was.
+ */
+internal fun takeSettingsItem(onSettings: () -> Unit) {
+    if (!System.getProperty("os.name").startsWith("Mac")) return
+    try {
+        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.APP_PREFERENCES)) {
+            Desktop.getDesktop().setPreferencesHandler { EventQueue.invokeLater(onSettings) }
+        }
+    } catch (e: Throwable) {
+        logger.warn("Could not take the Settings item of the application menu", e)
+    }
+}
+
+/**
  * Makes the Quit item of the application menu of macOS, ⌘Q, the Dock's Quit and logging out go through [onQuitRequest] before the process ends,
  * which otherwise exits at once, without writing what the application keeps or asking anything. [onQuitRequest] runs on the thread that draws, as
  * a click on the window's close button does, and calls `answer` once, later if it asks the user: `true` lets the process end (after it has done

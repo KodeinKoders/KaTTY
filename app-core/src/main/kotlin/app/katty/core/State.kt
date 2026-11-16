@@ -109,7 +109,7 @@ public enum class MainView {
 }
 
 /**
- * The settings, all of them in the main menu.
+ * The settings, all of them in the settings window.
  *
  * @param lightColorScheme The name of the color scheme of the terminals that have none of their own while the application is light ([colorScheme]).
  * @param darkColorScheme The one while it is dark.

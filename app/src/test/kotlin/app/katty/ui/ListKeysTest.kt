@@ -39,7 +39,7 @@ class ListKeysTest {
 
     @Test
     fun aTooltipSaysTheShortcutAfterTheDescriptionInParentheses() {
-        assertEquals("Main menu (⌘,)", tooltipText("Main menu", "⌘,"))
+        assertEquals("Settings (⌘,)", tooltipText("Settings", "⌘,"))
         assertEquals("Add project", tooltipText("Add project", null))
     }
 }

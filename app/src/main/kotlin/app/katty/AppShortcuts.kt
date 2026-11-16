@@ -87,8 +87,8 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
     FONT_SMALLER(ShortcutGroup.LOOK, "Smaller terminal font", listOf(cmd(Awt.VK_MINUS), cmd(Awt.VK_SUBTRACT))),
     FONT_RESET(ShortcutGroup.LOOK, "Default terminal font size", listOf(cmd(Awt.VK_0), cmd(Awt.VK_NUMPAD0))),
 
-    /** Opens the main menu, and closes it. */
-    MENU(ShortcutGroup.LOOK, "Open the main menu", listOf(cmd(Awt.VK_COMMA))),
+    /** Opens the settings window, or brings it to the front. */
+    SETTINGS(ShortcutGroup.LOOK, "Open the settings", listOf(cmd(Awt.VK_COMMA))),
     PALETTE(ShortcutGroup.LOOK, "Open the command palette", listOf(cmd(Awt.VK_K))),
 
     /** Shows only the terminals, in a bigger font, with the keys that are pressed: for a demo. Starts it, and stops it. */

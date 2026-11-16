@@ -160,9 +160,11 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     // Until the user opens it or closes it themselves, it is the window that opened by itself, which does not keep the focus.
     var restoredAtLaunch by remember { mutableStateOf(openedAtLaunch) }
     var boardFocusTick by remember { mutableIntStateOf(0) }
-    // The About window, from the settings menu, the palette and the About item of the application menu of macOS.
+    // The About window, from the palette and the About item of the application menu of macOS.
     var aboutOpen by remember { mutableStateOf(false) }
     DisposableEffect(Unit) { takeAboutItem { aboutOpen = true }; onDispose { } }
+    // The Settings item of the application menu of macOS opens the settings window, which the main window holds.
+    DisposableEffect(Unit) { takeSettingsItem { bridge.openSettings?.invoke() }; onDispose { } }
     KattyTheme(dark) {
         DecoratedWindow(
             onCloseRequest = { requestQuit {} },

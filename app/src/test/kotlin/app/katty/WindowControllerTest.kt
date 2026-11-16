@@ -140,9 +140,35 @@ class WindowControllerTest {
         assertNull(state.selection.maximized)
         assertTrue(controller.handle(AppShortcut.PALETTE, null))
         assertFalse(controller.paletteOpen, "The palette's shortcut closes it")
+    }
 
-        controller.editingShortcuts = true
-        assertFalse(controller.handle(AppShortcut.PALETTE, null), "The shortcuts dialog records every key")
+    // The settings are a window of their own: the main window stays usable meanwhile, and asking for them again brings them to the front.
+    @Test
+    fun commandCommaOpensTheSettingsWindowWhichIsNoDialog() {
+        assertTrue(controller.handle(AppShortcut.SETTINGS, null))
+        assertTrue(controller.settingsOpen)
+        assertFalse(controller.overlayOpen)
+        assertEquals(0, controller.settingsFocusTick)
+
+        controller.handle(AppShortcut.MAXIMIZE, null)
+        assertEquals(terminal, state.selection.maximized, "The main window's shortcuts still act")
+        controller.handle(AppShortcut.SETTINGS, null)
+        assertTrue(controller.settingsOpen, "Asked again, it stays open")
+        assertEquals(1, controller.settingsFocusTick, "and comes to the front")
+    }
+
+    @Test
+    fun thePaletteOpensTheSettingsOnThePageOfWhatItNames() {
+        val labels = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = controller.paletteHandlers(worktree = null, closed = null))
+
+        labels.run(labels.entries.single { it.label == "Edit keyboard shortcuts…" })
+        assertTrue(controller.settingsOpen)
+        assertEquals(app.katty.screens.SettingsPage.SHORTCUTS, controller.settingsPage)
+        labels.run(labels.entries.single { it.label == "AI command…" })
+        assertEquals(app.katty.screens.SettingsPage.AGENTS, controller.settingsPage)
+        labels.run(labels.entries.single { it.label == "Open the settings" })
+        assertEquals(app.katty.screens.SettingsPage.AGENTS, controller.settingsPage, "The page it showed last")
+        assertEquals(2, controller.settingsFocusTick)
     }
 
     @Test
@@ -192,9 +218,9 @@ class WindowControllerTest {
     @Test
     fun theOverlayIsOpenWhileAnythingIsOverTheTerminals() {
         assertFalse(controller.overlayOpen)
-        controller.menuOpen = true
+        controller.attentionOpen = true
         assertTrue(controller.overlayOpen)
-        controller.menuOpen = false
+        controller.attentionOpen = false
         controller.renamingWorkspace = state.selection.workspace
         assertTrue(controller.overlayOpen)
         controller.renamingWorkspace = null

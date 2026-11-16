@@ -36,6 +36,7 @@ import app.katty.core.terminalIdentity
 import app.katty.core.terminals
 import app.katty.screens.PaletteHandlers
 import app.katty.screens.RunCommandState
+import app.katty.screens.SettingsPage
 import app.katty.screens.splitVisually
 import app.katty.terminal.TerminalFilePosition
 import app.katty.terminal.TerminalSession
@@ -153,7 +154,11 @@ internal class WindowController(
     var renamingTerminal by mutableStateOf<TerminalId?>(null)
     var removing by mutableStateOf<ProjectId?>(null)
     var findingTerminal by mutableStateOf<TerminalId?>(null)
-    var menuOpen by mutableStateOf(false)
+
+    /** Whether the settings window is open, the page that it shows, and a number that changes when it is asked for while open, to bring it to the front. */
+    var settingsOpen by mutableStateOf(false)
+    var settingsPage by mutableStateOf(SettingsPage.APPEARANCE)
+    var settingsFocusTick by mutableIntStateOf(0)
     var attentionOpen by mutableStateOf(false)
     var paletteOpen by mutableStateOf(false)
 
@@ -170,7 +175,6 @@ internal class WindowController(
     // the text that was searched in every terminal, when one of its rows is gone to.
     var findQuery by mutableStateOf("")
     var findRequest by mutableIntStateOf(0)
-    var editingShortcuts by mutableStateOf(false)
 
     // The terminal that is selected takes the keyboard back whenever this changes: when what had it (a palette, a menu, a rename) is gone, and when a
     // terminal is opened, even if it is the one that was selected.
@@ -214,9 +218,6 @@ internal class WindowController(
 
     // A number that changes when the question of the run is to ask the AI for the command (⌘R while it is open): the question has the field.
     var askRunTick by mutableIntStateOf(0)
-
-    // Whether the AI command (the setting) is being edited.
-    var editingAiCommand by mutableStateOf(false)
 
     // The workspace whose run terminal has its find bar open.
     var findingRun by mutableStateOf<WorkspaceId?>(null)
@@ -272,12 +273,12 @@ internal class WindowController(
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
             quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null ||
-            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null || editingAiCommand
+            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
     val overlayOpen: Boolean by derivedStateOf {
-        blockingDialog || editingShortcuts || paletteOpen || searchingAll || menuOpen || attentionOpen || renamingWorkspace != null || renamingProject != null ||
+        blockingDialog || paletteOpen || searchingAll || attentionOpen || renamingWorkspace != null || renamingProject != null ||
             renamingTerminal != null
     }
 
@@ -344,14 +345,12 @@ internal class WindowController(
 
     fun openRecent() {
         paletteOpen = false
-        menuOpen = false
         recentOpen = true
     }
 
     /** Opens the search of every terminal's history, over whatever the window shows. */
     fun searchAll() {
         paletteOpen = false
-        menuOpen = false
         searchingAll = true
     }
 
@@ -791,21 +790,28 @@ internal class WindowController(
     }
 
     /**
-     * What a shortcut of the window does, `true` when it is consumed. While the dialog of the shortcuts is open it sees every key, the ones that
-     * are shortcuts too: they are what it records. While a dialog, the colour picker or a menu is open the others are swallowed, except the one
-     * that closes what is open.
+     * Opens the settings window on [page] (on the page it showed last when `null`), or brings it to the front when it is open. It is a window of its
+     * own, not a dialog: the main window stays usable, and its keys are its own (the shortcuts editor is there).
+     */
+    fun openSettings(page: SettingsPage? = null) {
+        page?.let { settingsPage = it }
+        if (settingsOpen) settingsFocusTick++ else settingsOpen = true
+    }
+
+    /**
+     * What a shortcut of the window does, `true` when it is consumed. While a dialog, the colour picker or a popup is open the others are swallowed,
+     * except the one that closes what is open.
      *
      * @param number The digit of a shortcut that takes one (a workspace or a pane by its number).
      */
     fun handle(shortcut: AppShortcut?, number: Int?): Boolean {
-        if (editingShortcuts) return false
         shortcut ?: return false
         // In the question of the run, what opens it asks the AI for the command instead.
         if (shortcut == AppShortcut.RUN && runRequest != null && confirmingRun == null) {
             askRunTick++
             return true
         }
-        if (blockingDialog || (menuOpen && shortcut != AppShortcut.MENU) || (attentionOpen && shortcut != AppShortcut.ATTENTION) ||
+        if (blockingDialog || (attentionOpen && shortcut != AppShortcut.ATTENTION) ||
             (paletteOpen && shortcut != AppShortcut.PALETTE) || (searchingAll && shortcut != AppShortcut.SEARCH_ALL)
         ) {
             return true
@@ -838,7 +844,7 @@ internal class WindowController(
             AppShortcut.FONT_BIGGER -> fontBy(FONT_STEP)
             AppShortcut.FONT_SMALLER -> fontBy(-FONT_STEP)
             AppShortcut.FONT_RESET -> fontReset()
-            AppShortcut.MENU -> menuOpen = !menuOpen
+            AppShortcut.SETTINGS -> openSettings()
             AppShortcut.BOARD -> store.updateSettings { it.copy(view = if (it.view == MainView.BOARD) MainView.TERMINALS else MainView.BOARD) }
             // The vertical layout has no sidebar, and the board has its own.
             AppShortcut.SIDEBAR -> if (!vertical && onTerminals) toggleSidebar()
@@ -1004,7 +1010,7 @@ internal class WindowController(
         scrollPageDown = { onTerminals { selectedSession()?.scrollPage(1) } },
         scrollToTop = { onTerminals { selectedSession()?.scrollToTop() } },
         scrollToBottom = { onTerminals { selectedSession()?.scrollToBottom() } },
-        editShortcuts = { editingShortcuts = true },
+        editShortcuts = { openSettings(SettingsPage.SHORTCUTS) },
         openAbout = platform::openAbout,
         openAttention = { attentionOpen = true },
         uiBigger = { store.updateSettings { it.copy(uiScale = it.steppedUiScale(1)) } },
@@ -1015,8 +1021,8 @@ internal class WindowController(
         fontReset = ::fontReset,
         togglePresentation = ::togglePresentation,
         toggleTeaching = ::toggleTeaching,
-        editAiCommand = { editingAiCommand = true },
-        openMenu = { menuOpen = true },
+        editAiCommand = { openSettings(SettingsPage.AGENTS) },
+        openSettings = { openSettings() },
         previousWorkspace = { stepWorkspace(-1) },
         nextWorkspace = { stepWorkspace(1) },
     )

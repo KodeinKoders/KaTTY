@@ -141,8 +141,8 @@ class AppShortcutsTest {
     }
 
     @Test
-    fun commaOpensTheMainMenu() {
-        assertEquals(AppShortcut.MENU, down(Key.Comma).appShortcut())
+    fun commaOpensTheSettings() {
+        assertEquals(AppShortcut.SETTINGS, down(Key.Comma).appShortcut())
         assertNull(down(Key.Comma, meta = false).appShortcut())
     }
 

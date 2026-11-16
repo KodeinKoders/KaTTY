@@ -52,10 +52,7 @@ import app.katty.KeyBinding
 import app.katty.ShortcutGroup
 import app.katty.ShortcutMap
 import app.katty.TerminalKeys
-import app.katty.ui.DialogScrim
 import app.katty.ui.Katty
-import app.katty.ui.KattyIconButton
-import app.katty.ui.KattyIcons
 import app.katty.ui.KattyTextButton
 import app.katty.ui.ListKey
 import app.katty.ui.OneLine
@@ -68,7 +65,7 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
 import java.awt.event.KeyEvent as Awt
 
-/** A line of the list of the dialog: a group, a shortcut that can be changed, or a key that is fixed. */
+/** A line of the list of the shortcuts editor: a group, a shortcut that can be changed, or a key that is fixed. */
 internal sealed interface ShortcutRow {
     data class Header(val title: String) : ShortcutRow
 
@@ -90,7 +87,7 @@ internal val FIXED_KEYS: List<ShortcutRow.Fixed> = listOf(
 )
 
 /**
- * The lines of the dialog for [query]: the shortcuts of each group whose title, keys or group the query is in, each group under its title, and
+ * The lines of the shortcuts editor for [query]: the shortcuts of each group whose title, keys or group the query is in, each group under its title, and
  * then the fixed keys that it is in (all of them for no query). Case does not matter.
  */
 internal fun shortcutRows(map: ShortcutMap, query: String): List<ShortcutRow> {
@@ -160,18 +157,19 @@ internal fun record(map: ShortcutMap, shortcut: AppShortcut, pending: KeyBinding
 private fun KeyEvent.binding() = KeyBinding(key.nativeKeyCode, isMetaPressed, isCtrlPressed, isAltPressed, isShiftPressed)
 
 /**
- * The dialog where the shortcuts of the window are changed: every one with its keys, grouped, and under them the keys that are fixed. Each change
- * applies at once, and the dialog stays open until it is closed.
+ * The page of the settings where the shortcuts of the window are changed: every one with its keys, grouped, and under them the keys that are fixed.
+ * Each change applies at once.
  *
  * It is driven from the keyboard: the arrows choose a shortcut, Enter changes it (then the next keys are the new ones), ⌘⌫ puts it back to its
- * default and Escape closes. While one is being changed every key goes to the dialog: Escape gives up, Backspace unbinds, and a combination that
- * another shortcut has asks for a second press.
+ * default. While one is being changed every key goes to the editor, the ones that are shortcuts too (⌘W included): Escape gives up, Backspace
+ * unbinds, and a combination that another shortcut has asks for a second press. It is in the settings window, whose keys the main window's
+ * shortcuts never see.
  *
  * @param map What the shortcuts are bound to now.
  * @param onChange Called with the shortcuts as they become.
  */
 @Composable
-internal fun ShortcutsDialog(map: ShortcutMap, onChange: (ShortcutMap) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ShortcutsEditor(map: ShortcutMap, onChange: (ShortcutMap) -> Unit, modifier: Modifier = Modifier) {
     val colors = Katty.colors
     val query = rememberTextFieldState()
     var text by remember { mutableStateOf("") }
@@ -202,12 +200,12 @@ internal fun ShortcutsDialog(map: ShortcutMap, onChange: (ShortcutMap) -> Unit, 
         editing = shortcut
         message = null
         pending = null
-        // The keys go to the dialog wherever the focus is, but a click took it to a button.
+        // The keys go to the editor while the focus is in it, and a click took it to a button.
         runCatching { focus.requestFocus() }
     }
 
-    DialogScrim(
-        modifier.onPreviewKeyEvent { event ->
+    Column(
+        modifier.semantics { contentDescription = "Keyboard shortcuts" }.onPreviewKeyEvent { event ->
             val changing = editing
             if (changing != null) {
                 // Everything goes to the shortcut that is being changed, the characters that are typed too.
@@ -225,7 +223,7 @@ internal fun ShortcutsDialog(map: ShortcutMap, onChange: (ShortcutMap) -> Unit, 
                 ListKey.DOWN -> { chosen = shortcuts.getOrNull(shortcuts.indexOf(selected).stepped(1, shortcuts.size)); true }
                 ListKey.UP -> { chosen = shortcuts.getOrNull(shortcuts.indexOf(selected).stepped(-1, shortcuts.size)); true }
                 ListKey.ENTER -> { selected?.let(startEditing); true }
-                ListKey.ESCAPE -> { onClose(); true }
+                ListKey.ESCAPE -> false
                 null -> if (event.type == KeyEventType.KeyDown && event.isMetaPressed && event.key.nativeKeyCode == Awt.VK_BACK_SPACE) {
                     selected?.let { onChange(map.reset(it)) }
                     true
@@ -234,46 +232,39 @@ internal fun ShortcutsDialog(map: ShortcutMap, onChange: (ShortcutMap) -> Unit, 
                 }
             }
         },
-        width = 820.dp * uiScaleFactor(),
     ) {
-        Column(Modifier.height(640.dp).semantics { contentDescription = "Keyboard shortcuts" }) {
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Keyboard shortcuts", Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
-                KattyTextButton("Reset all", { onChange(map.resetAll()) }, description = "Reset all shortcuts", enabled = map.overrides.isNotEmpty())
-                KattyIconButton(KattyIcons.Close, "Close", onClose, shortcut = "Esc")
-            }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextField(
                 query,
-                Modifier.padding(horizontal = 16.dp).fillMaxWidth().focusRequester(focus).semantics { contentDescription = "Search shortcuts" },
+                Modifier.weight(1f).focusRequester(focus).semantics { contentDescription = "Search shortcuts" },
                 placeholder = { Text("Search by action or keys") },
             )
-            Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(1.dp).background(colors.line))
-            LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), state = listState) {
-                if (rows.isEmpty()) item { Text("No shortcut matches your search.", Modifier.padding(12.dp), color = colors.muted) }
-                items(rows) { row ->
-                    when (row) {
-                        is ShortcutRow.Header -> SectionLabel(row.title, Modifier.padding(start = 12.dp, top = 12.dp, bottom = 4.dp))
-                        is ShortcutRow.Item -> ShortcutLine(
-                            shortcut = row.shortcut,
-                            map = map,
-                            selected = row.shortcut == selected,
-                            editing = editing == row.shortcut,
-                            message = message.takeIf { editing == row.shortcut },
-                            onSelect = { chosen = row.shortcut },
-                            onEdit = { startEditing(row.shortcut) },
-                            onReset = { onChange(map.reset(row.shortcut)) },
-                        )
-                        is ShortcutRow.Fixed -> FixedLine(row)
-                    }
+            KattyTextButton("Reset all", { onChange(map.resetAll()) }, description = "Reset all shortcuts", enabled = map.overrides.isNotEmpty())
+        }
+        Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(1.dp).background(colors.line))
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), state = listState) {
+            if (rows.isEmpty()) item { Text("No shortcut matches your search.", Modifier.padding(12.dp), color = colors.muted) }
+            items(rows) { row ->
+                when (row) {
+                    is ShortcutRow.Header -> SectionLabel(row.title, Modifier.padding(start = 12.dp, top = 12.dp, bottom = 4.dp))
+                    is ShortcutRow.Item -> ShortcutLine(
+                        shortcut = row.shortcut,
+                        map = map,
+                        selected = row.shortcut == selected,
+                        editing = editing == row.shortcut,
+                        message = message.takeIf { editing == row.shortcut },
+                        onSelect = { chosen = row.shortcut },
+                        onEdit = { startEditing(row.shortcut) },
+                        onReset = { onChange(map.reset(row.shortcut)) },
+                    )
+                    is ShortcutRow.Fixed -> FixedLine(row)
                 }
             }
-            Row(Modifier.fillMaxWidth().heightIn(min = 38.dp).background(colors.side).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Hint(listOf("↑", "↓"), "Choose")
-                Hint(listOf("↩"), "Change")
-                Hint(listOf("⌘", "⌫"), "Back to the default")
-                Box(Modifier.weight(1f))
-                Hint(listOf("⎋"), "Close")
-            }
+        }
+        Row(Modifier.fillMaxWidth().heightIn(min = 38.dp).background(colors.side).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Hint(listOf("↑", "↓"), "Choose")
+            Hint(listOf("↩"), "Change")
+            Hint(listOf("⌘", "⌫"), "Back to the default")
         }
     }
 }

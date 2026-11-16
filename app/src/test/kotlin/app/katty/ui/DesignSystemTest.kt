@@ -47,7 +47,7 @@ class DesignSystemTest {
             SectionLabel("ICONS")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(
-                    KattyIcons.SidebarToggle, KattyIcons.Search, KattyIcons.Bell, KattyIcons.Menu, KattyIcons.ChevronDown, KattyIcons.ChevronRight,
+                    KattyIcons.SidebarToggle, KattyIcons.Search, KattyIcons.Bell, KattyIcons.Menu, KattyIcons.Settings, KattyIcons.ChevronDown, KattyIcons.ChevronRight,
                     KattyIcons.Plus, KattyIcons.Folder, KattyIcons.FolderPlus, KattyIcons.Kebab, KattyIcons.SplitRight, KattyIcons.SplitDown,
                     KattyIcons.Branch, KattyIcons.Worktree, KattyIcons.Maximize, KattyIcons.Restore, KattyIcons.Close, KattyIcons.Board,
                     KattyIcons.Check, KattyIcons.Pencil, KattyIcons.ArrowRight, KattyIcons.Palette, KattyIcons.Copy, KattyIcons.Restart,

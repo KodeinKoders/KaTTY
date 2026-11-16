@@ -359,7 +359,7 @@ When it is minimized, every shortcut acts on the selected pane again: ⌘W does 
 * Stop ends its command (as closing a terminal does) and removes it.
 While the command runs, it asks first, as closing a terminal where a program runs does: "Stop the run?", "“command” is still running and will be stopped.", Cancel and a red "Stop run".
 A command that ends by itself, well or not, leaves it there to be read, with its state.
-* While the field is empty, the button "Ask AI" at its right, or ⌘R while the question is open, runs the AI command (see <<main-menu>>) with "Give me the command to run this project with its debug options. Your output will be used as-is in a terminal. Do not print anything else but the command on one single line. Do not decorate it." in the directory of the question, and puts the first line of its answer in the field, without running it.
+* While the field is empty, the button "Ask AI" at its right, or ⌘R while the question is open, runs the AI command (see <<settings>>) with "Give me the command to run this project with its debug options. Your output will be used as-is in a terminal. Do not print anything else but the command on one single line. Do not decorate it." in the directory of the question, and puts the first line of its answer in the field, without running it.
 While it asks, the button says "Asking…" and the field cannot be typed in; a failure is a red line under the directory ("The AI command failed: it ended with the code 2: …").
 Without an AI command the button is disabled; closing the question drops an answer that has not come.
 * Running a command while one runs: the question says in red that the command that runs will be stopped, and a second question ("Stop the running command?", a red "Stop and run") confirms it.
@@ -520,7 +520,7 @@ The title bar is 40 px high and holds:
 
 * at the left: the button that folds the sidebar (horizontal layout, Terminals view), and where the user is: `project / workspace`, or "All projects" or the filtered project on the board, or "KaTTY" without a project;
 * in the middle: the switch between Terminals and Board;
-* at the right: the field that opens the palette ("Search or run a command… ⌘K", or "Commands ⌘K" in the vertical layout), the bell, and the button of the main menu.
+* at the right: the field that opens the palette ("Search or run a command… ⌘K", or "Commands ⌘K" in the vertical layout), the bell, and the button of the settings (a gear, ⌘,).
 
 In presentation mode the button that folds the sidebar is not there, and a "Presenting ⌘⌥P" button in the accent color, before the field of the palette, stops it.
 In teach mode a "Teaching ⌘⌥T" button, the same, stops it.
@@ -644,18 +644,30 @@ The state of a terminal in these lists is its agent's; a program that runs and s
 A dialog is over a scrim of 30 % black that covers the window; Escape cancels it.
 
 
-[#main-menu]
-== Main menu
+[#settings]
+== Settings
 
-The main menu, opened from the title bar, is the only place where the application is set up.
+The settings are a window of their own, "Settings", and the only place where the application is set up.
+⌘, , the gear of the title bar, "Open the settings" in the palette and the Settings item of the application menu of macOS open it, or bring it to the front when it is open.
+It is not a dialog: the main window can be used while it is open.
+⌘W closes it; it is where it was when it is opened again, and it is not opened again at launch.
 
-* LAYOUT: Auto, Horizontal, Vertical, with "Auto uses Vertical when the window is taller than it is wide."
-* THEME: Light, Dark, System.
-* TERMINAL COLOR SCHEME: a field for the light theme and one for the dark theme, each with four swatches of the scheme and its name, which opens the color scheme picker on that theme; "The terminals that have no scheme of their own follow the theme of the application."
-* AI: a field with the AI command in use ("None found" without one), which opens a dialog: a field with it, the default ("Default, from the first installed agent: …"), Use default, Cancel and Save (Enter; a blank field, or the default, is the default).
-The AI command is a command line with `$PROMPT` for the question, run by `/bin/sh` with the `PATH` of the login shell; the first line of its output, outside code fences and backticks, is the answer.
+On its left, the list of its pages, which a click or the arrows choose; on its right, the page, with its title, which scrolls when the window is too short for it.
+
+* *Appearance*:
+** LAYOUT: Auto, Horizontal, Vertical, with "Auto uses Vertical when the window is taller than it is wide."
+** THEME: Light, Dark, System.
+** INTERFACE TEXT SIZE: the size of the text of the application, with − and +.
+** TERMINAL COLOR SCHEME: a field for the light theme and one for the dark theme, each with four swatches of the scheme and its name, which opens the color scheme picker on that theme, over the settings; "The terminals that have no scheme of their own follow the theme of the application."
+** FONT FAMILY: a field that opens the list of families ("JetBrains Mono (bundled)" first, then the monospaced families of the system); the font size with − and + by 0.5 px; "Font ligatures" with "Shows sequences like => and != as single glyphs."
+* *Terminal*: CURSOR (Block, Bar, Underline, and Blinking), BELL (Off, Visual, Sound, Both), TEXT (bold text in bright colors, minimum contrast), SCROLLBACK (MB), SELECTION (copy on select, command marks), TERMINAL CONTENTS (restore them).
+* *Keyboard*: OPTION AS ALT (None, Left, Right, Both), SECURE KEYBOARD ENTRY (Never, Passwords, Always).
+* *Shortcuts*: the keyboard shortcuts, see <<keyboard>>; "Edit keyboard shortcuts…" in the palette opens the settings on this page.
+* *Agents*: ATTENTION (the sound when an agent needs you), AGENT USAGE (shown or not, in the panel or in a window), AI COMMAND.
+** The AI command is a field, kept as it is typed, with "Use default" beside it and the default under it ("Default, from the first installed agent: …", or "No installed agent has a default: type one."); a blank field, or the default, is the default.
+"AI command…" in the palette opens the settings on this page.
+** The AI command is a command line with `$PROMPT` for the question, run by `/bin/sh` with the `PATH` of the login shell; the first line of its output, outside code fences and backticks, is the answer.
 Its default is the one of the first installed agent in the order of the README's agent table (Junie, Aider and Cline have none), and follows what is installed until the user sets one.
-* FONT FAMILY: a field that opens the list of families ("JetBrains Mono (bundled)" first, then the monospaced families of the system); the font size with − and + by 0.5 px; "Font ligatures" with "Shows sequences like => and != as single glyphs."
 
 A change applies at once to every terminal.
 A family that cannot be loaded gives the bundled font.
@@ -663,7 +675,7 @@ A family that cannot be loaded gives the bundled font.
 
 === Color scheme picker
 
-* It chooses a default scheme (from the main menu or the palette), with tabs "Light mode" and "Dark mode" for the scheme of each theme, open on the one of the application's theme; or the scheme of one terminal (from its menu, with "Default" first, which says the names of both default schemes and previews the one of the application's theme).
+* It chooses a default scheme (from the settings, over their window, or from the palette, over the main window), with tabs "Light mode" and "Dark mode" for the scheme of each theme, open on the one of the application's theme; or the scheme of one terminal (from its menu, with "Default" first, which says the names of both default schemes and previews the one of the application's theme).
 * It has a search field (anywhere in the name, without regard for the case), a filter All / Light / Dark with the number of schemes of each, and a list with a swatch, the name and the kind of each scheme.
 * It shows the chosen scheme in a real terminal, with the swatches of its palette (background, foreground, red, green, yellow, blue, magenta, cyan).
 * A click applies the scheme at once; the picker stays open until its close button or Escape.
@@ -697,7 +709,7 @@ It says "<agent> needs input", "<agent> finished" or "<agent> failed", where, an
 * The alert sound of macOS is played when a terminal starts needing the user (Needs input or failed, from any other state), under the rule of the notice: not for the focused terminal of the Terminals view of a window that has the focus.
 A wait that becomes a failure, or a failure that becomes a wait, needed the user already and makes no sound; a terminal that finishes and a command that ends make none.
 At most one sound is played per second: the terminals that start needing the user together make one.
-"Sound when an agent needs you" (ATTENTION in the main menu, "Turn the sound when an agent needs you off" in the palette) turns it off; it is on by default.
+"Sound when an agent needs you" (ATTENTION in the settings, "Turn the sound when an agent needs you off" in the palette) turns it off; it is on by default.
 * Ages are "now" under a minute, then "N min", "N h", "N d".
 
 
@@ -797,9 +809,11 @@ A match whose letters are together, at the start of the text or of a word, in a 
 * Going to a workspace or a terminal switches to the Terminals view.
 
 
+[#keyboard]
 == Keyboard
 
 The window's shortcuts are handled before the terminal sees them.
+These are the defaults: each can be changed, removed or put back in the Shortcuts page of the settings (see <<settings>>), where a shortcut that is being changed takes the next keys pressed.
 
 [cols="1,3"]
 |===
@@ -807,6 +821,9 @@ The window's shortcuts are handled before the terminal sees them.
 
 | ⌘K
 | Open or close the command palette.
+
+| ⌘,
+| Open the settings, or bring them to the front.
 
 | ⌘O
 | Add a project folder.

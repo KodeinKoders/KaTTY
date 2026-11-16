@@ -40,11 +40,26 @@ private fun rect(x: Float, y: Float, w: Float, h: Float, r: Float): String =
 
 private fun circle(cx: Float, cy: Float, r: Float): String = "M${cx - r} ${cy}a$r $r 0 1 0 ${2 * r} 0a$r $r 0 1 0 -${2 * r} 0z"
 
+// The outline of a gear about the middle of the grid: [teeth] teeth that reach [outer], between them the body at [inner].
+private fun gear(teeth: Int, inner: Float, outer: Float, c: Float = 8f): String {
+    val step = 360.0 / teeth
+    val points = (0 until teeth).flatMap { i ->
+        val a = i * step
+        // A tooth is a little narrower at its top than at its foot.
+        listOf(inner to a - step * .3, outer to a - step * .18, outer to a + step * .18, inner to a + step * .3)
+    }.map { (r, degrees) ->
+        val radians = Math.toRadians(degrees - 90)
+        "%.2f %.2f".format(java.util.Locale.ROOT, c + r * kotlin.math.cos(radians), c + r * kotlin.math.sin(radians))
+    }
+    return "M" + points.joinToString("L") + "z"
+}
+
 object KattyIcons {
     val SidebarToggle = KattyIcon(listOf(rect(2f, 3f, 12f, 10f, 2f), "M6 3v10"))
     val Search = KattyIcon(listOf("M7 12.5A5.5 5.5 0 1 0 7 1.5a5.5 5.5 0 0 0 0 11zM11 11l3.5 3.5"))
     val Bell = KattyIcon(listOf("M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3zM6.5 14h3"))
     val Menu = KattyIcon(listOf("M2.5 4.5h11M2.5 8h11M2.5 11.5h11"))
+    val Settings = KattyIcon(listOf(gear(teeth = 8, inner = 4.9f, outer = 6.6f), circle(8f, 8f, 2f)), strokeWidth = 1.2f)
     val ChevronDown = KattyIcon(listOf("M4 6l4 4 4-4"))
     val ChevronRight = KattyIcon(listOf("M6 4l4 4-4 4"))
     val ChevronsDown = KattyIcon(listOf("M4 3l4 4 4-4", "M4 8l4 4 4-4"))
