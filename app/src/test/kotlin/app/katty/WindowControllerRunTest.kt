@@ -90,6 +90,28 @@ class WindowControllerRunTest {
     }
 
     @Test
+    fun commandRInTheQuestionAsksTheAiInsteadOfOpeningItAgain() {
+        controller.handle(AppShortcut.RUN, null)
+        val request = controller.runRequest
+        val tick = controller.askRunTick
+
+        assertTrue(controller.handle(AppShortcut.RUN, null))
+
+        assertEquals(tick + 1, controller.askRunTick)
+        assertEquals(request, controller.runRequest, "The question stays as it is")
+    }
+
+    @Test
+    fun theAiCommandIsEditedFromThePalette() {
+        val labels = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = controller.paletteHandlers(worktree = null, closed = null))
+
+        labels.run(labels.entries.single { it.label == "AI command…" })
+
+        assertTrue(controller.editingAiCommand)
+        assertTrue(controller.blockingDialog)
+    }
+
+    @Test
     fun aBlankAnswerRunsNothing() {
         controller.handle(AppShortcut.RUN, null)
 

@@ -37,6 +37,7 @@ It holds *workspaces*, and each workspace holds terminals in a layout of splits.
 * Split a terminal right or down, drag the gap between panes to resize them, maximize one pane to focus on it, and move a terminal to another workspace of its project.
 * Rename projects, workspaces and terminals, and drag projects and workspaces to reorder them.
 * Run your project from a workspace without giving it a pane: ⌘R, the play button of the workspace's header or its right-click menu asks for a command (the last one is offered again), and runs it in the directory of the selected terminal, in a terminal over the panes (⌘↩ runs it minimized).
+While the field is empty, *Ask AI* (or ⌘R again) asks your AI agent for the command that runs the project with its debug options, and puts its answer in the field for you to read before you run it (see <<ai-command>>).
 Minimize it into the header (⌘⇧R or ⌘⇧↩) and bring it back with a click or ⌘⇧R.
 While it is shown, the shortcuts of a terminal act on it: ⌘W stops the command and closes it (it asks first while the command runs), ⌘⇧L runs the command again (it asks too), ⌘L clears it, ⌘F finds in it; the ones of the panes do nothing.
 A command that ends by itself stays there to be read, with its exit status in the header.
@@ -420,6 +421,13 @@ In the usage panel they show what they spent today, over the last 7 days and thi
 Oh My Pi does the same, from its own statistics database (`~/.omp/stats.db`): its `omp stats -j` prints the last 24 hours and nothing else, so KaTTY runs that command only to bring the database up to date (omp does not keep it while it runs, and it takes a third of a second), and reads the periods from the database. The first time, omp makes the database.
 Above the agents, one line says how many sessions are open across all the agents and what they cost together: it can be hidden from the chooser, and so can each period.
 Antigravity needs version 1.1.11 or later.
+[#ai-command]
+* The *AI command* (the main menu, or "AI command…" in the palette) is what KaTTY runs to ask an agent something, with `$PROMPT` for the question: the first line it prints is the answer.
+It is run by `/bin/sh` in the directory the question is about, with the `PATH` of your login shell.
+Until you set your own, it is the one of the first agent of the table above that is installed, in the order of the table, without a model (add `--model` to choose one):
+Claude Code `claude -p "$PROMPT"`, Codex `codex exec --skip-git-repo-check "$PROMPT"`, Antigravity `agy -p "$PROMPT"`, Copilot CLI `copilot -p "$PROMPT" -s`, OpenCode `opencode run "$PROMPT"`, Crush `crush run -q "$PROMPT"`, Goose `goose run --no-session -q -t "$PROMPT"`, Kilo Code `kilo run "$PROMPT"`, Pi `pi -p "$PROMPT"`, Oh My Pi `omp --print "$PROMPT"`, Cursor Agent `cursor-agent -p --output-format text "$PROMPT"`.
+Junie, Aider and Cline have none: Junie runs a whole task, Aider prints its banner and costs around the answer, and Cline's headless mode approves every action.
+Only Claude Code's was tried; the others come from each agent's documentation.
 * Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline, Kilo Code, Oh My Pi and Cursor Agent resume their conversation.
 Codex and Pi start again with no conversation, on purpose: each can start a new conversation inside the program that runs (`/new`), nothing tells which one it is in, and coming back on an older one is worse than a new one.
 KaTTY finds the conversation in files that each agent keeps for itself and does not document: after an update that changes them, the agent starts a new conversation instead.

@@ -143,6 +143,38 @@ class KattyWindowContentTest {
         waitUntil(timeoutMillis = 15_000) { session.exited.value != null }
     }
 
+    // The text of the field of the question of the run.
+    private fun androidx.compose.ui.test.ComposeUiTest.commandText(): String =
+        onNodeWithContentDescription("Command").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text
+
+    // While the field is empty, the AI is asked for the command, by the button or by ⌘R, and its answer is put in the field, to be read before it runs.
+    @Test
+    fun theAiIsAskedForTheCommandWhileTheFieldIsEmpty() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "printf '\\n\\140./gradlew run --debug-jvm\\140\\n'") }
+        showWindow()
+
+        shortcut(Key.R)
+        waitForIdle()
+        onNodeWithContentDescription("Ask the AI for the command").performClick()
+        waitUntil(timeoutMillis = 15_000) { commandText() == "./gradlew run --debug-jvm" }
+        assertTrue(onNodeWithContentDescription("Ask the AI for the command").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled), "Not while the field has a command")
+
+        // ⌘R does it too, once the field is empty again; and an AI command that fails says why.
+        store.updateSettings { it.copy(aiCommand = "echo 'not logged in'; exit 2") }
+        onNodeWithContentDescription("Command").performKeyInput {
+            keyDown(Key.MetaLeft)
+            pressKey(Key.Backspace)
+            keyUp(Key.MetaLeft)
+        }
+        waitForIdle()
+        assertEquals("", commandText())
+        shortcut(Key.R)
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("The AI command failed: it ended with the code 2: not logged in.").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("", commandText())
+        onAllNodesWithContentDescription("Run a command", substring = false).assertCountEquals(2)
+    }
+
     // Command + Enter in the question runs the command minimized into the header: the panes keep the keyboard.
     @Test
     fun commandEnterRunsTheCommandMinimized() = runComposeUiTest {

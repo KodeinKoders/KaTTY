@@ -120,6 +120,7 @@ const val BUNDLED_FONT_NAME = "JetBrains Mono"
  * @param darkColorScheme The one of the dark application.
  * @param fontFamilies The monospaced families of the system, which may still be being listed.
  * @param onPickColorScheme Opens the picker of the color scheme of the dark or of the light application.
+ * @param aiCommand The command that asks the AI, as it is used (the setting, else the default), `null` when there is none; [onEditAiCommand] edits it.
  */
 @Composable
 fun MainMenu(
@@ -132,6 +133,8 @@ fun MainMenu(
     onDismiss: () -> Unit,
     onEditShortcuts: () -> Unit = {},
     onAbout: () -> Unit = {},
+    aiCommand: String? = null,
+    onEditAiCommand: () -> Unit = {},
 ) {
     val colors = Katty.colors
     Popup(popupPositionProvider = BelowEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
@@ -253,6 +256,11 @@ fun MainMenu(
                     Separator()
                     Section("KEYBOARD") {
                         Field("Keyboard shortcuts…", "Edit the keyboard shortcuts", onEditShortcuts)
+                    }
+                    Separator()
+                    Section("AI") {
+                        Field(aiCommand ?: "None found", "AI command", onEditAiCommand)
+                        Caption(if (settings.aiCommand == null) "The command of the first installed agent, which the run asks for the command of the project." else "Your command, which the run asks for the command of the project.")
                     }
                     Separator()
                     Section("SECURE KEYBOARD ENTRY") {

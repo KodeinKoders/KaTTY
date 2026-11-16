@@ -120,6 +120,22 @@ class StateFileTest {
     }
 
     @Test
+    fun theAiCommandSurvivesBeingWrittenAndReadAndAFileWithoutItHasTheDefault() {
+        var n = 0
+        val store = KattyStore(newId = { "id${n++}" })
+        store.updateSettings { it.copy(aiCommand = "claude --model sonnet -p \"\$PROMPT\"", fontSize = 20f) }
+
+        file.save(store.state.value)
+
+        assertEquals("claude --model sonnet -p \"\$PROMPT\"", file.load().settings.aiCommand)
+        // A file written before the setting existed has none: the default.
+        path.writeText(path.readText().replace(Regex(",\\s*\"aiCommand\":\\s*\"(\\\\.|[^\"\\\\])*\""), ""))
+        val loaded = file.load().settings
+        assertEquals(null, loaded.aiCommand)
+        assertEquals(20f, loaded.fontSize, "The rest of the file is read")
+    }
+
+    @Test
     fun theCommandThatWasRunSurvivesBeingWrittenAndRead() {
         var n = 0
         val store = KattyStore(newId = { "id${n++}" })

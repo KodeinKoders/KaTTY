@@ -359,6 +359,9 @@ When it is minimized, every shortcut acts on the selected pane again: ⌘W does 
 * Stop ends its command (as closing a terminal does) and removes it.
 While the command runs, it asks first, as closing a terminal where a program runs does: "Stop the run?", "“command” is still running and will be stopped.", Cancel and a red "Stop run".
 A command that ends by itself, well or not, leaves it there to be read, with its state.
+* While the field is empty, the button "Ask AI" at its right, or ⌘R while the question is open, runs the AI command (see <<main-menu>>) with "Give me the command to run this project with its debug options. Your output will be used as-is in a terminal. Do not print anything else but the command on one single line. Do not decorate it." in the directory of the question, and puts the first line of its answer in the field, without running it.
+While it asks, the button says "Asking…" and the field cannot be typed in; a failure is a red line under the directory ("The AI command failed: it ended with the code 2: …").
+Without an AI command the button is disabled; closing the question drops an answer that has not come.
 * Running a command while one runs: the question says in red that the command that runs will be stopped, and a second question ("Stop the running command?", a red "Stop and run") confirms it.
 A command that has ended is replaced without a question.
 * Closing a workspace whose run terminal runs a command asks, as for a program in a terminal, and so does quitting.
@@ -641,6 +644,7 @@ The state of a terminal in these lists is its agent's; a program that runs and s
 A dialog is over a scrim of 30 % black that covers the window; Escape cancels it.
 
 
+[#main-menu]
 == Main menu
 
 The main menu, opened from the title bar, is the only place where the application is set up.
@@ -648,6 +652,9 @@ The main menu, opened from the title bar, is the only place where the applicatio
 * LAYOUT: Auto, Horizontal, Vertical, with "Auto uses Vertical when the window is taller than it is wide."
 * THEME: Light, Dark, System.
 * TERMINAL COLOR SCHEME: a field for the light theme and one for the dark theme, each with four swatches of the scheme and its name, which opens the color scheme picker on that theme; "The terminals that have no scheme of their own follow the theme of the application."
+* AI: a field with the AI command in use ("None found" without one), which opens a dialog: a field with it, the default ("Default, from the first installed agent: …"), Use default, Cancel and Save (Enter; a blank field, or the default, is the default).
+The AI command is a command line with `$PROMPT` for the question, run by `/bin/sh` with the `PATH` of the login shell; the first line of its output, outside code fences and backticks, is the answer.
+Its default is the one of the first installed agent in the order of the README's agent table (Junie, Aider and Cline have none), and follows what is installed until the user sets one.
 * FONT FAMILY: a field that opens the list of families ("JetBrains Mono (bundled)" first, then the monospaced families of the system); the font size with − and + by 0.5 px; "Font ligatures" with "Shows sequences like => and != as single glyphs."
 
 A change applies at once to every terminal.

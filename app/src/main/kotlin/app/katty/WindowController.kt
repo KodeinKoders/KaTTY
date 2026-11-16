@@ -212,6 +212,12 @@ internal class WindowController(
     // The run whose command runs, which the user asked to run again: they confirm that it is stopped first, as for a terminal that is restarted.
     var restartingRun by mutableStateOf<WorkspaceId?>(null)
 
+    // A number that changes when the question of the run is to ask the AI for the command (⌘R while it is open): the question has the field.
+    var askRunTick by mutableIntStateOf(0)
+
+    // Whether the AI command (the setting) is being edited.
+    var editingAiCommand by mutableStateOf(false)
+
     // The workspace whose run terminal has its find bar open.
     var findingRun by mutableStateOf<WorkspaceId?>(null)
 
@@ -266,7 +272,7 @@ internal class WindowController(
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
             quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null ||
-            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null
+            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null || editingAiCommand
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -794,6 +800,11 @@ internal class WindowController(
     fun handle(shortcut: AppShortcut?, number: Int?): Boolean {
         if (editingShortcuts) return false
         shortcut ?: return false
+        // In the question of the run, what opens it asks the AI for the command instead.
+        if (shortcut == AppShortcut.RUN && runRequest != null && confirmingRun == null) {
+            askRunTick++
+            return true
+        }
         if (blockingDialog || (menuOpen && shortcut != AppShortcut.MENU) || (attentionOpen && shortcut != AppShortcut.ATTENTION) ||
             (paletteOpen && shortcut != AppShortcut.PALETTE) || (searchingAll && shortcut != AppShortcut.SEARCH_ALL)
         ) {
@@ -1004,6 +1015,7 @@ internal class WindowController(
         fontReset = ::fontReset,
         togglePresentation = ::togglePresentation,
         toggleTeaching = ::toggleTeaching,
+        editAiCommand = { editingAiCommand = true },
         openMenu = { menuOpen = true },
         previousWorkspace = { stepWorkspace(-1) },
         nextWorkspace = { stepWorkspace(1) },

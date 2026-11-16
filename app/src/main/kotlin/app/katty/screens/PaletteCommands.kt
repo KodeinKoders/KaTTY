@@ -135,6 +135,8 @@ class PaletteHandlers(
     val togglePresentation: () -> Unit = {},
     /** Starts or stops teach mode, which only shows the keys that are pressed. */
     val toggleTeaching: () -> Unit = {},
+    /** Opens the setting of the command that asks the AI. */
+    val editAiCommand: () -> Unit = {},
     /** Moves the focus to the pane in that direction, or the nearest divider that way (the keyboard does the same). */
     val focusPane: (Direction) -> Unit = {},
     val resizeSplit: (Direction) -> Unit = {},
@@ -335,6 +337,7 @@ fun paletteCommands(
     command("sidebar", "Toggle project sidebar", AppShortcut.SIDEBAR.label, handlers.toggleSidebar)
     command("menu", "Open the main menu", AppShortcut.MENU.label, handlers.openMenu)
     command("edit-shortcuts", "Edit keyboard shortcuts…", action = handlers.editShortcuts)
+    command("ai-command", "AI command…", action = handlers.editAiCommand)
     command("about", "About KaTTY", action = handlers.openAbout)
     command("light-color-scheme", "Choose the light color scheme…") { handlers.defaultColorScheme(false) }
     command("dark-color-scheme", "Choose the dark color scheme…") { handlers.defaultColorScheme(true) }

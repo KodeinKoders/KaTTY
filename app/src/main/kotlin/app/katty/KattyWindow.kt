@@ -90,6 +90,10 @@ import app.katty.screens.QuitDialog
 import app.katty.screens.RunActions
 import app.katty.screens.RunDialog
 import app.katty.screens.StopRunDialog
+import app.katty.screens.AiCommandDialog
+import app.katty.core.AiPrompt
+import app.katty.core.RUN_COMMAND_PROMPT
+import app.katty.core.defaultAiCommand
 import app.katty.screens.StopRunConfirmation
 import app.katty.screens.RestartRunConfirmation
 import app.katty.terminals.RunTerminal
@@ -258,6 +262,9 @@ internal fun KattyWindowContent(
     val detected by produceState(emptyMap<Agent, java.nio.file.Path>(), loginPath, detectTick) {
         value = withContext(Dispatchers.IO) { AgentDetection.detect(loginPath ?: System.getenv("PATH").orEmpty()) }
     }
+    // What asks the AI: the user's command, else the one of the first installed agent (in the order of the README's table, which is Agent's).
+    val defaultAi = remember(detected) { defaultAiCommand(detected.keys) }
+    val aiCommand = settings.aiCommand ?: defaultAi
     // The editors that are installed: LaunchServices knows, and is asked again when the window gets the focus, with the agents.
     val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { installedIdes() } }
     SideEffect { controller.installedIdes = installedIdes }
@@ -472,6 +479,8 @@ internal fun KattyWindowContent(
                             onDismiss = { menuOpen = false },
                             onEditShortcuts = { menuOpen = false; editingShortcuts = true },
                             onAbout = { menuOpen = false; onOpenAbout() },
+                            aiCommand = aiCommand,
+                            onEditAiCommand = { menuOpen = false; controller.editingAiCommand = true },
                         )
                     }
                 }
@@ -813,7 +822,24 @@ internal fun KattyWindowContent(
             }
         }
         controller.runRequest?.let { request ->
-            RunDialog(request.initial, request.directory, request.interrupts, onRun = controller::answerRun, onCancel = { controller.runRequest = null })
+            RunDialog(
+                request.initial, request.directory, request.interrupts, onRun = controller::answerRun, onCancel = { controller.runRequest = null },
+                ask = aiCommand?.let { command ->
+                    suspend {
+                        withContext(Dispatchers.IO) {
+                            AiPrompt.ask(command, RUN_COMMAND_PROMPT, java.nio.file.Path.of(request.directory), AgentDetection.knownLoginPath)
+                        }
+                    }
+                },
+                askTick = controller.askRunTick,
+            )
+        }
+        if (controller.editingAiCommand) {
+            AiCommandDialog(
+                current = aiCommand, default = defaultAi,
+                onSave = { command -> store.updateSettings { it.copy(aiCommand = command) }; controller.editingAiCommand = false },
+                onCancel = { controller.editingAiCommand = false },
+            )
         }
         controller.stoppingRun?.let { workspace ->
             StopRunConfirmation(

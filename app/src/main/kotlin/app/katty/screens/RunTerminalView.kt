@@ -54,6 +54,13 @@ import androidx.compose.ui.unit.sp
 import app.katty.AppShortcut
 import app.katty.KeyBinding
 import app.katty.core.AgentState
+import app.katty.core.AiAnswer
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import app.katty.core.Settings
 import app.katty.terminal.compose.Terminal
 import app.katty.terminal.compose.TerminalFont
@@ -62,6 +69,7 @@ import app.katty.ui.ConfirmDialog
 import app.katty.ui.DialogScrim
 import app.katty.ui.Katty
 import app.katty.ui.ButtonSize
+import app.katty.ui.KattyTextButton
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import app.katty.ui.LocalUnscaledDensity
@@ -245,10 +253,23 @@ internal fun RunOverlay(
  * Where it runs is under it. Enter runs it over the panes, Command + Enter runs it minimized into the header of the workspace, Escape cancels; when a
  * command runs in the workspace, it says in red that it will be stopped.
  *
+ * While the field is empty, the AI can be asked for the command ([ask], with its button or [askTick]): its answer is put in the field, to be read
+ * before it is run, and why it failed is said in red under it. Closing the question drops an answer that has not come yet.
+ *
  * @param onRun Runs the command, minimized or not.
+ * @param ask Asks the AI for the command; `null` when there is no AI command.
+ * @param askTick A number that changes when the window asks for the AI too (⌘R while the question is open).
  */
 @Composable
-internal fun RunDialog(initial: String, directory: String, interrupts: Boolean, onRun: (command: String, minimized: Boolean) -> Unit, onCancel: () -> Unit) {
+internal fun RunDialog(
+    initial: String,
+    directory: String,
+    interrupts: Boolean,
+    onRun: (command: String, minimized: Boolean) -> Unit,
+    onCancel: () -> Unit,
+    ask: (suspend () -> AiAnswer)? = null,
+    askTick: Int = 0,
+) {
     val colors = Katty.colors
     val state = rememberTextFieldState(initial)
     val focus = remember { FocusRequester() }
@@ -257,6 +278,33 @@ internal fun RunDialog(initial: String, directory: String, interrupts: Boolean, 
         state.edit { selectAll() }
     }
     val run = { minimized: Boolean -> if (state.text.isNotBlank()) onRun(state.text.toString(), minimized) }
+    // Asking the AI: only for an empty field, one question at a time, in the scope of this question so that closing it drops the answer.
+    val scope = rememberCoroutineScope()
+    var asking by remember { mutableStateOf(false) }
+    var failure by remember { mutableStateOf<String?>(null) }
+    val canAsk = ask != null && !asking && state.text.isBlank()
+    val askNow = {
+        if (ask != null && !asking && state.text.isBlank()) {
+            asking = true
+            failure = null
+            scope.launch {
+                val answer = try {
+                    ask()
+                } finally {
+                    asking = false
+                }
+                when (answer) {
+                    is AiAnswer.Command -> {
+                        state.setTextAndPlaceCursorAtEnd(answer.line)
+                        runCatching { focus.requestFocus() }
+                    }
+                    is AiAnswer.Failed -> failure = "The AI command failed: ${answer.reason}."
+                }
+            }
+        }
+    }
+    val firstTick = remember { askTick }
+    LaunchedEffect(askTick) { if (askTick != firstTick) askNow() }
     DialogScrim(
         Modifier.onPreviewKeyEvent { event ->
             if (event.type == KeyEventType.KeyDown && event.key == Key.Escape && !event.isMetaPressed) {
@@ -272,20 +320,28 @@ internal fun RunDialog(initial: String, directory: String, interrupts: Boolean, 
         Column(Modifier.semantics { contentDescription = "Run a command" }) {
             Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Run a command", fontSize = 16.sp, color = colors.text, fontWeight = FontWeight.SemiBold)
-                TextField(
-                    state,
-                    Modifier.fillMaxWidth().focusRequester(focus).semantics { contentDescription = "Command" }.onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when {
-                            event.key == Key.Enter || event.key == Key.NumPadEnter -> { run(event.isMetaPressed); true }
-                            event.key == Key.Backspace && event.isMetaPressed -> { state.clearText(); true }
-                            else -> false
-                        }
-                    },
-                    placeholder = { Text("./gradlew run") },
-                    textStyle = org.jetbrains.jewel.foundation.theme.JewelTheme.defaultTextStyle.copy(fontFamily = FontFamily.Monospace),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextField(
+                        state,
+                        Modifier.weight(1f).focusRequester(focus).semantics { contentDescription = "Command" }.onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when {
+                                event.key == Key.Enter || event.key == Key.NumPadEnter -> { run(event.isMetaPressed); true }
+                                event.key == Key.Backspace && event.isMetaPressed -> { state.clearText(); true }
+                                else -> false
+                            }
+                        },
+                        readOnly = asking,
+                        placeholder = { Text(if (asking) "Asking the AI…" else "./gradlew run") },
+                        textStyle = org.jetbrains.jewel.foundation.theme.JewelTheme.defaultTextStyle.copy(fontFamily = FontFamily.Monospace),
+                    )
+                    val description = if (ask == null) "No AI command: set one in the main menu" else "Ask the AI for the command"
+                    Tooltip(tooltip = { Text(tooltipText(description, AppShortcut.RUN.label)) }) {
+                        KattyTextButton(if (asking) "Asking…" else "Ask AI", { askNow() }, description = description, enabled = canAsk)
+                    }
+                }
                 OneLine("in ${homeShortened(directory)}", color = colors.muted, fontSize = 12.sp)
+                failure?.let { Text(it, color = colors.err) }
                 if (interrupts) Text("The command that runs in this workspace will be stopped.", color = colors.err)
             }
             Row(

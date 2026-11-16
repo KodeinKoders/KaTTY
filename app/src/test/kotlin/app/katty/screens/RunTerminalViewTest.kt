@@ -33,10 +33,27 @@ class RunTerminalViewTest {
                 val plain = render("run-dialog-$theme-$suffix", 1400, 700, dark = dark) {
                     UiScale(scale) { RunDialog("./gradlew :app:run", "${System.getProperty("user.home")}/Code/KaTTY", interrupts = false, onRun = { _, _ -> }, onCancel = {}) }
                 }
+                // An empty field, with an AI to ask: its button is enabled.
+                render("run-dialog-ask-$theme-$suffix", 1400, 700, dark = dark) {
+                    UiScale(scale) { RunDialog("", "/tmp", interrupts = false, onRun = { _, _ -> }, onCancel = {}, ask = { app.katty.core.AiAnswer.Command("make") }) }
+                }
                 val warned = render("run-dialog-warning-$theme-$suffix", 1400, 700, dark = dark) {
                     UiScale(scale) { RunDialog("./gradlew :app:run", "/tmp", interrupts = true, onRun = { _, _ -> }, onCancel = {}) }
                 }
                 assertTrue(warned.count(err, tolerance = 40) > plain.count(err, tolerance = 40) + 50, "The warning is red ($theme, $suffix)")
+            }
+        }
+    }
+
+    // The setting of the AI command, with the default of the installed agent: look at build/renders.
+    @Test
+    fun drawsTheAiCommandDialog() {
+        for (dark in listOf(false, true)) {
+            for ((suffix, scale) in listOf("100" to 1f, "175" to 1.75f)) {
+                val theme = if (dark) "dark" else "light"
+                render("ai-command-dialog-$theme-$suffix", 1600, 800, dark = dark) {
+                    UiScale(scale) { AiCommandDialog("claude -p \"\$PROMPT\"", "claude -p \"\$PROMPT\"", onSave = {}, onCancel = {}) }
+                }
             }
         }
     }

@@ -350,8 +350,8 @@ class MainMenuRenderTest {
             val image = scene.render(500_000_000)
             java.io.File("build/renders").apply { mkdirs() }.resolve("main-menu-scrolled.png")
                 .writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
-            // The thumb, a gray bar on the right of the white panel, a little below its top.
-            val thumb = org.jetbrains.skia.Bitmap.makeFromImage(image).getColor(600, 230) and 0xFFFFFF
+            // The thumb, a gray bar on the right of the white panel, a little below its top (shorter as the menu grows).
+            val thumb = org.jetbrains.skia.Bitmap.makeFromImage(image).getColor(600, 195) and 0xFFFFFF
             assertTrue(thumb != 0xFFFFFF && thumb < 0xF0F0F0, "The scrollbar is drawn: ${thumb.toString(16)}")
         } finally {
             scene.close()

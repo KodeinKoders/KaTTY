@@ -138,6 +138,8 @@ public enum class MainView {
  * @param showUsage Whether the usage of the agents is shown at all.
  * @param usageInWindow Whether it is shown in a window of its own instead of the panel. It only counts while [showUsage] is on, and goes back to
  * `false` when the user closes that window.
+ * @param aiCommand The command that asks the AI something (the run terminal asks it for the command that runs the project), with `$PROMPT` for the
+ * question: see [AiPrompt]. `null` for the default, the one of the first agent that is installed ([defaultAiCommand]), which follows what is installed.
  * @param usageHidden The limits of those agents that are not shown, each made by [usageKey]. It is the hidden ones that are kept, so that a
  * limit that an agent starts to report later is shown.
  */
@@ -173,6 +175,7 @@ public data class Settings(
     val usageInWindow: Boolean = false,
     val sidebarCollapsed: Boolean = false,
     val view: MainView = MainView.TERMINALS,
+    val aiCommand: String? = null,
 ) {
     public companion object {
         public const val DEFAULT_LIGHT_COLOR_SCHEME: String = "Alabaster"

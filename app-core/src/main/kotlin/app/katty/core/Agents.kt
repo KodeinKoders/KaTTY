@@ -12,6 +12,9 @@ private val INTERPRETER = Regex("(?i)(python[0-9.]*|node)")
  * They are not what decides that a terminal is on the board (any program that reports is): they give a logo, a name, a usage reading and a resume.
  *
  * [id] is what the settings keep, and what a program's name is matched against: see [fromApp].
+ *
+ * **Their order is the order of the agent table of the README, and the priority of the default AI command ([defaultAiCommand])**: changing one changes
+ * the others.
  */
 public enum class Agent(
     public val id: String,
