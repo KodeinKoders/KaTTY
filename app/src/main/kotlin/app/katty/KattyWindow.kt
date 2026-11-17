@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.produceState
@@ -31,6 +32,7 @@ import app.katty.core.usageKey
 import app.katty.core.AgentState
 import app.katty.core.OPEN_SESSIONS_KEY
 import app.katty.core.openSessionsCost
+import app.katty.screens.LocalGitChangesDisplay
 import app.katty.screens.OpenSessionsLine
 import app.katty.core.Agent
 import app.katty.core.AgentDetection
@@ -471,396 +473,399 @@ internal fun KattyWindowContent(
         )
     }
 
-    Box(Modifier.fillMaxSize().background(Katty.colors.bg)) {
-        if (state.projects.isEmpty()) {
-            Welcome(onAddProject = addProject, onOpenRecent = openRecent, detected = { DetectedAgents(detected) })
-        } else {
-            val workspace = state.selectedWorkspace
-            val area: @Composable (Modifier, Boolean) -> Unit = { areaModifier, header ->
-                if (workspace == null) {
-                    EmptyProject(areaModifier, onNewWorkspace = newWorkspace)
-                } else {
-                    WorkspaceArea(
-                        workspace = workspace,
-                        selectedTerminal = state.selection.terminal,
-                        handles = handles,
-                        settings = settings,
-                        store = store,
-                        flipped = flipped,
-                        focusTerminals = !overlayOpen,
-                        focusTick = focusTick,
-                        actions = PaneActions(
-                            renaming = renamingTerminal,
-                            onRename = { renamingTerminal = it },
-                            onRenamed = { id, name ->
-                                renamingTerminal = null
-                                // A name that is blank is no name: the terminal goes back to its default one only when the user clears it on purpose.
-                                if (name != null) store.renameTerminal(id, name)
-                            },
-                            onClose = closeTerminal,
-                            destinations = state.selection.terminal?.let { destinationsOf(state, it) }.orEmpty(),
-                            onMove = { id, to -> store.moveTerminal(id, to) },
-                            finding = findingTerminal,
-                            findQuery = controller.findQuery,
-                            findRequest = controller.findRequest,
-                            onFind = controller::openFind,
-                            onFindClosed = { findingTerminal = null },
-                            onReopen = restartTerminal,
-                            onColorScheme = { picking = SchemeTarget.Terminal(it) },
-                            confirmPaste = confirmPaste,
-                            onPaste = pasteInto,
-                            onOpenFile = if (ides.isEmpty()) null else controller::openFile,
-                            onInteraction = interacted,
-                            onExportHistory = controller::exportHistory,
-                        ),
-                        maximized = state.selection.maximized,
-                        font = font,
-                        // Presentation mode has a font of its own, and only the terminals: no header over them.
-                        fontSize = if (controller.presenting) controller.presentationFontSize else settings.fontSize,
-                        paneHeaders = !controller.presenting,
-                        showHeader = header,
-                        infos = infos,
-                        usages = usages,
-                        modifier = areaModifier,
-                        run = selectedRun,
-                        runActions = runActions,
-                    )
+    // How the git labels of the panes and the workspaces say that a tree has changes.
+    CompositionLocalProvider(LocalGitChangesDisplay provides settings.gitChanges) {
+        Box(Modifier.fillMaxSize().background(Katty.colors.bg)) {
+            if (state.projects.isEmpty()) {
+                Welcome(onAddProject = addProject, onOpenRecent = openRecent, detected = { DetectedAgents(detected) })
+            } else {
+                val workspace = state.selectedWorkspace
+                val area: @Composable (Modifier, Boolean) -> Unit = { areaModifier, header ->
+                    if (workspace == null) {
+                        EmptyProject(areaModifier, onNewWorkspace = newWorkspace)
+                    } else {
+                        WorkspaceArea(
+                            workspace = workspace,
+                            selectedTerminal = state.selection.terminal,
+                            handles = handles,
+                            settings = settings,
+                            store = store,
+                            flipped = flipped,
+                            focusTerminals = !overlayOpen,
+                            focusTick = focusTick,
+                            actions = PaneActions(
+                                renaming = renamingTerminal,
+                                onRename = { renamingTerminal = it },
+                                onRenamed = { id, name ->
+                                    renamingTerminal = null
+                                    // A name that is blank is no name: the terminal goes back to its default one only when the user clears it on purpose.
+                                    if (name != null) store.renameTerminal(id, name)
+                                },
+                                onClose = closeTerminal,
+                                destinations = state.selection.terminal?.let { destinationsOf(state, it) }.orEmpty(),
+                                onMove = { id, to -> store.moveTerminal(id, to) },
+                                finding = findingTerminal,
+                                findQuery = controller.findQuery,
+                                findRequest = controller.findRequest,
+                                onFind = controller::openFind,
+                                onFindClosed = { findingTerminal = null },
+                                onReopen = restartTerminal,
+                                onColorScheme = { picking = SchemeTarget.Terminal(it) },
+                                confirmPaste = confirmPaste,
+                                onPaste = pasteInto,
+                                onOpenFile = if (ides.isEmpty()) null else controller::openFile,
+                                onInteraction = interacted,
+                                onExportHistory = controller::exportHistory,
+                            ),
+                            maximized = state.selection.maximized,
+                            font = font,
+                            // Presentation mode has a font of its own, and only the terminals: no header over them.
+                            fontSize = if (controller.presenting) controller.presentationFontSize else settings.fontSize,
+                            paneHeaders = !controller.presenting,
+                            showHeader = header,
+                            infos = infos,
+                            usages = usages,
+                            modifier = areaModifier,
+                            run = selectedRun,
+                            runActions = runActions,
+                        )
+                    }
                 }
-            }
-            // In the panel only while it is shown and not in its own window.
-            val usageInPanel = settings.showUsage && !settings.usageInWindow
-            val usageSection: @Composable () -> Unit = {
-                if (usageInPanel) UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
-            }
-            val usageBar: @Composable () -> Unit = {
-                if (usageInPanel) UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
-            }
-            val reveal: (ProjectId) -> Unit = controller::revealProject
-            if (settings.view == MainView.BOARD) {
-                // A project that was removed is not a filter any more.
-                val filter = boardFilter?.takeIf { id -> state.projects.any { it.id == id } }
-                val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
-                // "All projects" says how many agents there are whatever the filter is.
-                val agentsOnBoard = remember(state.projects, infos) { state.board(null, infos).values.sumOf { it.size } }
-                val board: @Composable (Modifier) -> Unit = { boardModifier ->
-                    AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, usages = usages, modifier = boardModifier, onOpenWindow = onOpenBoardWindow)
+                // In the panel only while it is shown and not in its own window.
+                val usageInPanel = settings.showUsage && !settings.usageInWindow
+                val usageSection: @Composable () -> Unit = {
+                    if (usageInPanel) UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
                 }
-                // Presentation mode shows the board alone, as it shows the terminals alone.
-                if (vertical) {
+                val usageBar: @Composable () -> Unit = {
+                    if (usageInPanel) UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
+                }
+                val reveal: (ProjectId) -> Unit = controller::revealProject
+                if (settings.view == MainView.BOARD) {
+                    // A project that was removed is not a filter any more.
+                    val filter = boardFilter?.takeIf { id -> state.projects.any { it.id == id } }
+                    val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
+                    // "All projects" says how many agents there are whatever the filter is.
+                    val agentsOnBoard = remember(state.projects, infos) { state.board(null, infos).values.sumOf { it.size } }
+                    val board: @Composable (Modifier) -> Unit = { boardModifier ->
+                        AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, usages = usages, modifier = boardModifier, onOpenWindow = onOpenBoardWindow)
+                    }
+                    // Presentation mode shows the board alone, as it shows the terminals alone.
+                    if (vertical) {
+                        Column(Modifier.fillMaxSize()) {
+                            if (!controller.presenting) BoardTabs(state, filter, { boardFilter = it }, states = agentStates)
+                            board(Modifier.weight(1f))
+                            if (!controller.presenting) usageBar()
+                        }
+                    } else {
+                        Row(Modifier.fillMaxSize()) {
+                            if (!controller.presenting) BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() }, agents = agentsOnBoard)
+                            board(Modifier.weight(1f))
+                        }
+                    }
+                } else if (vertical) {
                     Column(Modifier.fillMaxSize()) {
-                        if (!controller.presenting) BoardTabs(state, filter, { boardFilter = it }, states = agentStates)
-                        board(Modifier.weight(1f))
+                        // Presentation mode shows only the terminals.
+                        if (!controller.presenting) ProjectTabs(
+                            state, store,
+                            onAddProject = addProject,
+                            onOpenRecent = openRecent,
+                            onRemoveProject = { removing = it },
+                            onReveal = reveal,
+                            ides = projectIdes,
+                            onOpenIn = openProjectIn,
+                            renamingProject = renamingProject,
+                            onRenamingProject = { renamingProject = it },
+                            onNewWorkspace = { project -> renamingWorkspace = store.addWorkspace(project) },
+                            states = agentStates,
+                        )
+                        if (!controller.presenting) WorkspaceTabs(
+                            project = state.selectedProject,
+                            selectedWorkspace = state.selection.workspace,
+                            // The panes under the run that is shown are not split.
+                            selectedTerminal = state.selection.terminal.takeUnless { selectedRun?.shown == true },
+                            store = store,
+                            renamingWorkspace = renamingWorkspace,
+                            onRenamingWorkspace = { renamingWorkspace = it },
+                            onCloseWorkspace = closeWorkspace,
+                            onNewWorkspace = newWorkspace,
+                            states = agentStates,
+                            gits = gits,
+                            onWorkspaceIde = workspaceIde,
+                            onRunWorkspace = controller::openRun,
+                            run = selectedRun,
+                            runActions = runActions,
+                        )
+                        area(Modifier.weight(1f).fillMaxWidth(), false)
                         if (!controller.presenting) usageBar()
                     }
                 } else {
                     Row(Modifier.fillMaxSize()) {
-                        if (!controller.presenting) BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() }, agents = agentsOnBoard)
-                        board(Modifier.weight(1f))
+                        if (controller.presenting) {
+                            // Only the terminals, without the header of their workspace either.
+                        } else if (settings.sidebarCollapsed) {
+                            Rail(
+                                state, store, onAddProject = addProject, onOpenRecent = openRecent, states = agentStates, gits = gits,
+                                usage = {
+                                    if (usageInPanel) Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OpenSessionsLine(openSessions, UsageVariant.RAIL, hidden = settings.usageHidden)
+                                        UsageList(detectedAgents.filter { it.id in settings.usageShown }, readings, usageNow, UsageVariant.RAIL, hidden = settings.usageHidden)
+                                    }
+                                },
+                            )
+                        } else {
+                            Sidebar(
+                                state = state,
+                                store = store,
+                                onAddProject = addProject,
+                                onOpenRecent = openRecent,
+                                onRemoveProject = { removing = it },
+                                onCloseWorkspace = closeWorkspace,
+                                onReveal = reveal,
+                                ides = projectIdes,
+                                onOpenIn = openProjectIn,
+                                onWorkspaceIde = workspaceIde,
+                                onRunWorkspace = controller::openRun,
+                                renamingProject = renamingProject,
+                                onRenamingProject = { renamingProject = it },
+                                renamingWorkspace = renamingWorkspace,
+                                onRenamingWorkspace = { renamingWorkspace = it },
+                                states = agentStates,
+                                gits = gits,
+                                usage = { usageSection() },
+                            )
+                        }
+                        area(Modifier.weight(1f).fillMaxHeight(), !controller.presenting)
                     }
-                }
-            } else if (vertical) {
-                Column(Modifier.fillMaxSize()) {
-                    // Presentation mode shows only the terminals.
-                    if (!controller.presenting) ProjectTabs(
-                        state, store,
-                        onAddProject = addProject,
-                        onOpenRecent = openRecent,
-                        onRemoveProject = { removing = it },
-                        onReveal = reveal,
-                        ides = projectIdes,
-                        onOpenIn = openProjectIn,
-                        renamingProject = renamingProject,
-                        onRenamingProject = { renamingProject = it },
-                        onNewWorkspace = { project -> renamingWorkspace = store.addWorkspace(project) },
-                        states = agentStates,
-                    )
-                    if (!controller.presenting) WorkspaceTabs(
-                        project = state.selectedProject,
-                        selectedWorkspace = state.selection.workspace,
-                        // The panes under the run that is shown are not split.
-                        selectedTerminal = state.selection.terminal.takeUnless { selectedRun?.shown == true },
-                        store = store,
-                        renamingWorkspace = renamingWorkspace,
-                        onRenamingWorkspace = { renamingWorkspace = it },
-                        onCloseWorkspace = closeWorkspace,
-                        onNewWorkspace = newWorkspace,
-                        states = agentStates,
-                        gits = gits,
-                        onWorkspaceIde = workspaceIde,
-                        onRunWorkspace = controller::openRun,
-                        run = selectedRun,
-                        runActions = runActions,
-                    )
-                    area(Modifier.weight(1f).fillMaxWidth(), false)
-                    if (!controller.presenting) usageBar()
-                }
-            } else {
-                Row(Modifier.fillMaxSize()) {
-                    if (controller.presenting) {
-                        // Only the terminals, without the header of their workspace either.
-                    } else if (settings.sidebarCollapsed) {
-                        Rail(
-                            state, store, onAddProject = addProject, onOpenRecent = openRecent, states = agentStates, gits = gits,
-                            usage = {
-                                if (usageInPanel) Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    OpenSessionsLine(openSessions, UsageVariant.RAIL, hidden = settings.usageHidden)
-                                    UsageList(detectedAgents.filter { it.id in settings.usageShown }, readings, usageNow, UsageVariant.RAIL, hidden = settings.usageHidden)
-                                }
-                            },
-                        )
-                    } else {
-                        Sidebar(
-                            state = state,
-                            store = store,
-                            onAddProject = addProject,
-                            onOpenRecent = openRecent,
-                            onRemoveProject = { removing = it },
-                            onCloseWorkspace = closeWorkspace,
-                            onReveal = reveal,
-                            ides = projectIdes,
-                            onOpenIn = openProjectIn,
-                            onWorkspaceIde = workspaceIde,
-                            onRunWorkspace = controller::openRun,
-                            renamingProject = renamingProject,
-                            onRenamingProject = { renamingProject = it },
-                            renamingWorkspace = renamingWorkspace,
-                            onRenamingWorkspace = { renamingWorkspace = it },
-                            states = agentStates,
-                            gits = gits,
-                            usage = { usageSection() },
-                        )
-                    }
-                    area(Modifier.weight(1f).fillMaxHeight(), !controller.presenting)
                 }
             }
-        }
 
-        if (settings.showUsage && settings.usageInWindow) {
-            UsageWindow(
-                settings.effectiveUiScale, directories.usageWindowFile,
-                onClose = { store.updateSettings { it.copy(usageInWindow = false) } },
-            ) {
-                // As the window is shaped: a wide one has the bar of the vertical layout (the agents side by side), a tall one the list of the sidebar.
-                val windowSize = LocalWindowInfo.current.containerSize
-                if (windowSize.width > windowSize.height) {
-                    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                        UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
+            if (settings.showUsage && settings.usageInWindow) {
+                UsageWindow(
+                    settings.effectiveUiScale, directories.usageWindowFile,
+                    onClose = { store.updateSettings { it.copy(usageInWindow = false) } },
+                ) {
+                    // As the window is shaped: a wide one has the bar of the vertical layout (the agents side by side), a tall one the list of the sidebar.
+                    val windowSize = LocalWindowInfo.current.containerSize
+                    if (windowSize.width > windowSize.height) {
+                        Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                            UsageBarRow(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
+                        }
+                    } else {
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                            UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
+                        }
                     }
+                }
+            }
+            if (controller.settingsOpen) {
+                SettingsWindow(
+                    settings.effectiveUiScale, directories.settingsWindowFile, controller.settingsFocusTick,
+                    onClose = { controller.settingsOpen = false },
+                ) {
+                    SettingsContent(
+                        page = controller.settingsPage,
+                        onPage = { controller.settingsPage = it },
+                        settings = settings,
+                        onChange = store::updateSettings,
+                        schemes = ITermColorSchemes.entries,
+                        fontFamilies = families,
+                        shortcuts = shortcutMap,
+                        onShortcuts = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
+                        agents = detected.keys,
+                        onAbout = { openAbout() },
+                    )
+                }
+            }
+            if (paletteOpen) {
+                // Whether something is selected is asked when the palette opens, once: that is when there is a choice to make, and asking takes the lock
+                // of the terminal that its output is written under.
+                val hasSelection = remember { selectedSession()?.selectedText() != null }
+                val commands = remember(state, infos, handles, vertical, shortcutMap, controller.presenting, controller.teaching) {
+                    paletteCommands(
+                        state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical,
+                        hasSelection = hasSelection, presenting = controller.presenting, teaching = controller.teaching,
+                    )
+                }
+                CommandPalette(
+                    commands.entries,
+                    onRun = { entry ->
+                        paletteOpen = false
+                        // What was run is shown in presentation mode, with its shortcut when it has one, which the audience learns then.
+                        if (controller.showingKeys) controller.presentedKeys.show(entry.shortcut?.takeIf { it.isNotEmpty() }?.let { PresentedKey(it, entry.label) } ?: PresentedKey(entry.label))
+                        commands.run(entry)
+                    },
+                    onDismiss = { paletteOpen = false },
+                )
+            }
+            if (controller.searchingAll) {
+                // What was read of the terminals is kept while the popup is open, and let go of with it.
+                val engine = remember { AllTerminalsSearch() }
+                val search = remember(engine) {
+                    { query: String ->
+                        val current = store.state.value
+                        val sessions = controller.handles
+                        engine.search(query, current.searchOrder().mapNotNull { id -> sessions[id]?.session?.let { SearchTarget(id, it) } })
+                    }
+                }
+                SearchAllPopup(
+                    search = search,
+                    terminalOf = { id ->
+                        state.locate(id)?.let { location -> SearchedTerminal(describe(location.terminal).title, "${location.project.name} / ${location.workspace.name}") }
+                    },
+                    onOpen = controller::openSearchResult,
+                    onDismiss = { controller.searchingAll = false },
+                )
+            }
+            if (recentOpen) {
+                // The folders that can be opened are asked once, when the list opens.
+                val projects = remember { recent.closed(store.state.value) }
+                RecentProjectsPopup(projects, onOpen = { controller.openRecentProject(it.directory, it.name) }, onDismiss = { controller.recentOpen = false })
+            }
+            // Not in presentation mode: nothing of another terminal comes on the screen by itself during a demo. It is kept as when it is drawn, so the
+            // bell and what has been seen do not change.
+            toast?.takeIf { !controller.presenting }?.let { item ->
+                AgentToast(item, now, onClick = { openTerminal(item.terminal.id) }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
+            }
+            picking?.let { target ->
+                val chosen = when (target) {
+                    is SchemeTarget.Default -> settings.colorScheme(target.dark)
+                    is SchemeTarget.Terminal -> state.locate(target.id)?.terminal?.colorScheme
+                }
+                ColorSchemePicker(
+                    entries = ITermColorSchemes.entries,
+                    selected = chosen,
+                    // A terminal that follows the default shows the one of the application's theme now, and takes the other with it.
+                    defaultName = if (target is SchemeTarget.Terminal) defaultScheme else null,
+                    defaultLabel = if (target is SchemeTarget.Terminal) "${settings.lightColorScheme} / ${settings.darkColorScheme}" else null,
+                    mode = (target as? SchemeTarget.Default)?.dark,
+                    onMode = { mode -> picking = SchemeTarget.Default(mode) },
+                    onSelect = { name ->
+                        when (target) {
+                            is SchemeTarget.Default -> if (name != null) {
+                                store.updateSettings { if (target.dark) it.copy(darkColorScheme = name) else it.copy(lightColorScheme = name) }
+                            }
+                            is SchemeTarget.Terminal -> store.setColorScheme(target.id, name)
+                        }
+                    },
+                    onClose = { picking = null },
+                )
+            }
+            closingWorkspace?.let { id ->
+                val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == id }
+                if (workspace == null) {
+                    closingWorkspace = null
                 } else {
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                        UsageSection(detectedAgents, readings, settings.usageShown, settings.compactUsage, usageNow, setCompact, setShown, hidden = settings.usageHidden, onHidden = setHidden, refreshing = refreshingUsage, onRefresh = usage::refreshNow, openSessions = openSessions, onOpenSessions = setOpenSessions)
-                    }
+                    CloseWorkspaceDialog(
+                        workspaceName = workspace.name,
+                        terminals = workspace.layout.terminals().map { describe(it).copy(running = running(it.id)) } +
+                            listOfNotNull(runTerminals[id]?.takeIf { !it.ended }?.let(describeRun)),
+                        onConfirm = { store.closeWorkspace(id); closingWorkspace = null },
+                        onCancel = { closingWorkspace = null },
+                    )
                 }
             }
-        }
-        if (controller.settingsOpen) {
-            SettingsWindow(
-                settings.effectiveUiScale, directories.settingsWindowFile, controller.settingsFocusTick,
-                onClose = { controller.settingsOpen = false },
-            ) {
-                SettingsContent(
-                    page = controller.settingsPage,
-                    onPage = { controller.settingsPage = it },
-                    settings = settings,
-                    onChange = store::updateSettings,
-                    schemes = ITermColorSchemes.entries,
-                    fontFamilies = families,
-                    shortcuts = shortcutMap,
-                    onShortcuts = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
-                    agents = detected.keys,
-                    onAbout = { openAbout() },
-                )
-            }
-        }
-        if (paletteOpen) {
-            // Whether something is selected is asked when the palette opens, once: that is when there is a choice to make, and asking takes the lock
-            // of the terminal that its output is written under.
-            val hasSelection = remember { selectedSession()?.selectedText() != null }
-            val commands = remember(state, infos, handles, vertical, shortcutMap, controller.presenting, controller.teaching) {
-                paletteCommands(
-                    state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical,
-                    hasSelection = hasSelection, presenting = controller.presenting, teaching = controller.teaching,
-                )
-            }
-            CommandPalette(
-                commands.entries,
-                onRun = { entry ->
-                    paletteOpen = false
-                    // What was run is shown in presentation mode, with its shortcut when it has one, which the audience learns then.
-                    if (controller.showingKeys) controller.presentedKeys.show(entry.shortcut?.takeIf { it.isNotEmpty() }?.let { PresentedKey(it, entry.label) } ?: PresentedKey(entry.label))
-                    commands.run(entry)
-                },
-                onDismiss = { paletteOpen = false },
-            )
-        }
-        if (controller.searchingAll) {
-            // What was read of the terminals is kept while the popup is open, and let go of with it.
-            val engine = remember { AllTerminalsSearch() }
-            val search = remember(engine) {
-                { query: String ->
-                    val current = store.state.value
-                    val sessions = controller.handles
-                    engine.search(query, current.searchOrder().mapNotNull { id -> sessions[id]?.session?.let { SearchTarget(id, it) } })
+            closingTerminal?.let { id ->
+                val location = state.locate(id)
+                if (location == null) {
+                    closingTerminal = null
+                } else {
+                    val summary = describe(location.terminal)
+                    val confirm = { store.closeTerminal(id); closingTerminal = null }
+                    val cancel = { closingTerminal = null }
+                    if (location.workspace.layout.terminals().size == 1) CloseLastTerminalDialog(location.workspace.name, summary, confirm, cancel)
+                    else CloseTerminalDialog(summary, confirm, cancel)
                 }
             }
-            SearchAllPopup(
-                search = search,
-                terminalOf = { id ->
-                    state.locate(id)?.let { location -> SearchedTerminal(describe(location.terminal).title, "${location.project.name} / ${location.workspace.name}") }
-                },
-                onOpen = controller::openSearchResult,
-                onDismiss = { controller.searchingAll = false },
-            )
-        }
-        if (recentOpen) {
-            // The folders that can be opened are asked once, when the list opens.
-            val projects = remember { recent.closed(store.state.value) }
-            RecentProjectsPopup(projects, onOpen = { controller.openRecentProject(it.directory, it.name) }, onDismiss = { controller.recentOpen = false })
-        }
-        // Not in presentation mode: nothing of another terminal comes on the screen by itself during a demo. It is kept as when it is drawn, so the
-        // bell and what has been seen do not change.
-        toast?.takeIf { !controller.presenting }?.let { item ->
-            AgentToast(item, now, onClick = { openTerminal(item.terminal.id) }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
-        }
-        picking?.let { target ->
-            val chosen = when (target) {
-                is SchemeTarget.Default -> settings.colorScheme(target.dark)
-                is SchemeTarget.Terminal -> state.locate(target.id)?.terminal?.colorScheme
+            restartingTerminal?.let { id ->
+                val location = state.locate(id)
+                if (location == null) {
+                    restartingTerminal = null
+                } else {
+                    RestartTerminalDialog(describe(location.terminal), onConfirm = { registry.restart(id); restartingTerminal = null }, onCancel = { restartingTerminal = null })
+                }
             }
-            ColorSchemePicker(
-                entries = ITermColorSchemes.entries,
-                selected = chosen,
-                // A terminal that follows the default shows the one of the application's theme now, and takes the other with it.
-                defaultName = if (target is SchemeTarget.Terminal) defaultScheme else null,
-                defaultLabel = if (target is SchemeTarget.Terminal) "${settings.lightColorScheme} / ${settings.darkColorScheme}" else null,
-                mode = (target as? SchemeTarget.Default)?.dark,
-                onMode = { mode -> picking = SchemeTarget.Default(mode) },
-                onSelect = { name ->
-                    when (target) {
-                        is SchemeTarget.Default -> if (name != null) {
-                            store.updateSettings { if (target.dark) it.copy(darkColorScheme = name) else it.copy(lightColorScheme = name) }
+            controller.restoring?.let { request ->
+                RestoreProjectDialog(request.saved, onRestore = { controller.answerRestore(true) }, onFresh = { controller.answerRestore(false) })
+            }
+            removing?.let { id ->
+                val project = state.projects.firstOrNull { it.id == id }
+                if (project == null) removing = null else RemoveProjectDialog(project, onConfirm = { store.removeProject(id); removing = null }, onCancel = { removing = null })
+            }
+            pasting?.let { request ->
+                PasteDialog(request.text, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
+            }
+            controller.choosingIde?.let { request ->
+                val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == request.workspace }
+                if (workspace != null) {
+                    OpenFileDialog(request.file, workspace.name, ides, onOpen = controller::answerIde, onCancel = { controller.choosingIde = null })
+                }
+            }
+            controller.editingWorkspaceIde?.let { id ->
+                val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == id }
+                if (workspace != null) {
+                    WorkspaceIdeDialog(
+                        workspace.name, ides, Ide.named(workspace.ide),
+                        onChoose = { ide -> controller.setWorkspaceIde(id, ide) }, onCancel = { controller.editingWorkspaceIde = null },
+                    )
+                }
+            }
+            controller.exportingHistory?.let { id ->
+                val terminal = state.locate(id)?.terminal ?: return@let
+                // Followed while the dialog is open (the program may leave it), from the frames, which a hidden session keeps it in too; only its
+                // changes draw the window again, not every frame.
+                val frames = handles[id]?.session?.frames
+                val alternateScreen by remember(frames) { frames?.map { it.alternateScreen }?.distinctUntilChanged() ?: flowOf(false) }
+                    .collectAsState(frames?.value?.alternateScreen == true)
+                ExportHistoryDialog(describe(terminal).title, alternateScreen, controller.lastExportFormat, controller::answerExport) {
+                    controller.exportingHistory = null
+                }
+            }
+            controller.runRequest?.let { request ->
+                RunDialog(
+                    request.initial, request.directory, request.interrupts, onRun = controller::answerRun, onCancel = { controller.runRequest = null },
+                    ask = aiCommand?.let { command ->
+                        suspend {
+                            withContext(Dispatchers.IO) {
+                                AiPrompt.ask(command, RUN_COMMAND_PROMPT, java.nio.file.Path.of(request.directory), AgentDetection.knownLoginPath)
+                            }
                         }
-                        is SchemeTarget.Terminal -> store.setColorScheme(target.id, name)
-                    }
-                },
-                onClose = { picking = null },
-            )
-        }
-        closingWorkspace?.let { id ->
-            val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == id }
-            if (workspace == null) {
-                closingWorkspace = null
-            } else {
-                CloseWorkspaceDialog(
-                    workspaceName = workspace.name,
-                    terminals = workspace.layout.terminals().map { describe(it).copy(running = running(it.id)) } +
-                        listOfNotNull(runTerminals[id]?.takeIf { !it.ended }?.let(describeRun)),
-                    onConfirm = { store.closeWorkspace(id); closingWorkspace = null },
-                    onCancel = { closingWorkspace = null },
+                    },
+                    askTick = controller.askRunTick,
                 )
             }
-        }
-        closingTerminal?.let { id ->
-            val location = state.locate(id)
-            if (location == null) {
-                closingTerminal = null
-            } else {
-                val summary = describe(location.terminal)
-                val confirm = { store.closeTerminal(id); closingTerminal = null }
-                val cancel = { closingTerminal = null }
-                if (location.workspace.layout.terminals().size == 1) CloseLastTerminalDialog(location.workspace.name, summary, confirm, cancel)
-                else CloseTerminalDialog(summary, confirm, cancel)
-            }
-        }
-        restartingTerminal?.let { id ->
-            val location = state.locate(id)
-            if (location == null) {
-                restartingTerminal = null
-            } else {
-                RestartTerminalDialog(describe(location.terminal), onConfirm = { registry.restart(id); restartingTerminal = null }, onCancel = { restartingTerminal = null })
-            }
-        }
-        controller.restoring?.let { request ->
-            RestoreProjectDialog(request.saved, onRestore = { controller.answerRestore(true) }, onFresh = { controller.answerRestore(false) })
-        }
-        removing?.let { id ->
-            val project = state.projects.firstOrNull { it.id == id }
-            if (project == null) removing = null else RemoveProjectDialog(project, onConfirm = { store.removeProject(id); removing = null }, onCancel = { removing = null })
-        }
-        pasting?.let { request ->
-            PasteDialog(request.text, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
-        }
-        controller.choosingIde?.let { request ->
-            val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == request.workspace }
-            if (workspace != null) {
-                OpenFileDialog(request.file, workspace.name, ides, onOpen = controller::answerIde, onCancel = { controller.choosingIde = null })
-            }
-        }
-        controller.editingWorkspaceIde?.let { id ->
-            val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == id }
-            if (workspace != null) {
-                WorkspaceIdeDialog(
-                    workspace.name, ides, Ide.named(workspace.ide),
-                    onChoose = { ide -> controller.setWorkspaceIde(id, ide) }, onCancel = { controller.editingWorkspaceIde = null },
+            controller.stoppingRun?.let { workspace ->
+                StopRunConfirmation(
+                    runTerminals[workspace]?.command.orEmpty(),
+                    onConfirm = { controller.answerStopRun(true) }, onCancel = { controller.answerStopRun(false) },
                 )
             }
-        }
-        controller.exportingHistory?.let { id ->
-            val terminal = state.locate(id)?.terminal ?: return@let
-            // Followed while the dialog is open (the program may leave it), from the frames, which a hidden session keeps it in too; only its
-            // changes draw the window again, not every frame.
-            val frames = handles[id]?.session?.frames
-            val alternateScreen by remember(frames) { frames?.map { it.alternateScreen }?.distinctUntilChanged() ?: flowOf(false) }
-                .collectAsState(frames?.value?.alternateScreen == true)
-            ExportHistoryDialog(describe(terminal).title, alternateScreen, controller.lastExportFormat, controller::answerExport) {
-                controller.exportingHistory = null
+            controller.restartingRun?.let { workspace ->
+                RestartRunConfirmation(
+                    runTerminals[workspace]?.command.orEmpty(),
+                    onConfirm = { controller.answerRestartRun(true) }, onCancel = { controller.answerRestartRun(false) },
+                )
             }
-        }
-        controller.runRequest?.let { request ->
-            RunDialog(
-                request.initial, request.directory, request.interrupts, onRun = controller::answerRun, onCancel = { controller.runRequest = null },
-                ask = aiCommand?.let { command ->
-                    suspend {
-                        withContext(Dispatchers.IO) {
-                            AiPrompt.ask(command, RUN_COMMAND_PROMPT, java.nio.file.Path.of(request.directory), AgentDetection.knownLoginPath)
-                        }
-                    }
-                },
-                askTick = controller.askRunTick,
-            )
-        }
-        controller.stoppingRun?.let { workspace ->
-            StopRunConfirmation(
-                runTerminals[workspace]?.command.orEmpty(),
-                onConfirm = { controller.answerStopRun(true) }, onCancel = { controller.answerStopRun(false) },
-            )
-        }
-        controller.restartingRun?.let { workspace ->
-            RestartRunConfirmation(
-                runTerminals[workspace]?.command.orEmpty(),
-                onConfirm = { controller.answerRestartRun(true) }, onCancel = { controller.answerRestartRun(false) },
-            )
-        }
-        controller.confirmingRun?.let { launch ->
-            StopRunDialog(
-                runTerminals[launch.workspace]?.command.orEmpty(), launch.command,
-                onConfirm = { controller.answerRunConfirmation(true) }, onCancel = { controller.answerRunConfirmation(false) },
-            )
-        }
-        controller.exportFailure?.let { message ->
-            MessageDialog("Could not export the history", message) { controller.exportFailure = null }
-        }
-        controller.quitting?.let { request ->
-            val stopped = controller.stoppedByQuitting().map { location ->
-                describe(location.terminal).copy(running = running(location.terminal.id), place = "${location.project.name} / ${location.workspace.name}")
-            } + controller.activeRuns().mapNotNull { run ->
-                val place = state.projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == run.workspace }?.let { "${project.name} / ${it.name}" } }
-                place?.let { describeRun(run).copy(place = it) }
+            controller.confirmingRun?.let { launch ->
+                StopRunDialog(
+                    runTerminals[launch.workspace]?.command.orEmpty(), launch.command,
+                    onConfirm = { controller.answerRunConfirmation(true) }, onCancel = { controller.answerRunConfirmation(false) },
+                )
             }
-            QuitDialog(stopped, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
+            controller.exportFailure?.let { message ->
+                MessageDialog("Could not export the history", message) { controller.exportFailure = null }
+            }
+            controller.quitting?.let { request ->
+                val stopped = controller.stoppedByQuitting().map { location ->
+                    describe(location.terminal).copy(running = running(location.terminal.id), place = "${location.project.name} / ${location.workspace.name}")
+                } + controller.activeRuns().mapNotNull { run ->
+                    val place = state.projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == run.workspace }?.let { "${project.name} / ${it.name}" } }
+                    place?.let { describeRun(run).copy(place = it) }
+                }
+                QuitDialog(stopped, onConfirm = { request.answer.complete(true) }, onCancel = { request.answer.complete(false) })
+            }
+            // Over everything, the palette and the dialogs too: what the audience follows.
+            if (controller.showingKeys) PresentedKeysOverlay(controller.presentedKeys, Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp))
         }
-        // Over everything, the palette and the dialogs too: what the audience follows.
-        if (controller.showingKeys) PresentedKeysOverlay(controller.presentedKeys, Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp))
     }
 }
 

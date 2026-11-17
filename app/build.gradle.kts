@@ -175,6 +175,9 @@ compose {
             vendor = "Kodein Koders"
             // The FFM calls of ghostty-vt and the JNA calls of pty4j are restricted.
             jvmArgs += "--enable-native-access=ALL-UNNAMED"
+            // Added to the modules that Compose puts in the runtime of the bundle (java.desktop and what it needs): the git status of the
+            // terminals watches their working trees with all their folders, `ExtendedWatchEventModifier.FILE_TREE`, which is in jdk.unsupported.
+            modules("jdk.unsupported")
 
             macOS {
                 bundleID = "app.katty"

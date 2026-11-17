@@ -424,6 +424,10 @@ class SessionRegistryTest {
         assertTrue(condition(), what)
     }
 
+    // The branch that the terminal is in, as its handle says it.
+    private fun branch(id: app.katty.core.TerminalId): String? =
+        registry.handles.value.getValue(id).git.value?.takeIf { it.kind == app.katty.core.GitKind.BRANCH }?.name
+
     @Test
     fun aTerminalKnowsTheBranchItsShellIsIn() {
         val repo = kotlin.io.path.createTempDirectory("katty-registry").toRealPath().toFile()
@@ -434,7 +438,7 @@ class SessionRegistryTest {
 
             sync()
 
-            await("the branch is read") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("main", app.katty.core.GitKind.BRANCH) }
+            await("the branch is read") { branch(id) == "main" }
         } finally {
             repo.deleteRecursively()
         }
@@ -448,13 +452,39 @@ class SessionRegistryTest {
             store.addProject(repo.path)
             val id = store.state.value.selection.terminal!!
             sync()
-            await("the branch is read") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("main", app.katty.core.GitKind.BRANCH) }
+            await("the branch is read") { branch(id) == "main" }
 
             // What an agent does: the program still runs, and the shell says nothing.
             git(repo, "checkout", "-b", "feature")
 
-            await("the new branch is seen") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("feature", app.katty.core.GitKind.BRANCH) }
-            assertEquals(app.katty.core.GitInfo("feature", app.katty.core.GitKind.BRANCH), registry.gitInfos.value[id])
+            await("the new branch is seen") { branch(id) == "feature" }
+            assertEquals("feature", registry.gitInfos.value[id]?.name)
+        } finally {
+            repo.deleteRecursively()
+        }
+    }
+
+    // What an agent or an IDE does: a file of the tree is edited, a file is staged, while the shell says nothing.
+    @Test
+    fun theChangesOfTheTreeAreSeenWithoutTheShellSayingAnything() {
+        val repo = kotlin.io.path.createTempDirectory("katty-registry").toRealPath().toFile()
+        try {
+            git(repo, "init")
+            java.io.File(repo, "a.txt").writeText("a")
+            git(repo, "add", ".")
+            git(repo, "-c", "commit.gpgsign=false", "commit", "-m", "first")
+            store.addProject(repo.path)
+            val id = store.state.value.selection.terminal!!
+            sync()
+            val changes = { registry.handles.value.getValue(id).git.value?.status?.changes }
+            await("a clean tree is read") { changes() == app.katty.core.GitChanges() }
+
+            java.io.File(repo, "a.txt").writeText("changed")
+            await("an edit is seen") { changes() == app.katty.core.GitChanges(modified = 1) }
+
+            git(repo, "add", ".")
+            await("what is staged is seen") { changes() == app.katty.core.GitChanges(staged = 1) }
+            assertEquals(repo.path, registry.gitInfos.value[id]?.tree)
         } finally {
             repo.deleteRecursively()
         }
@@ -475,8 +505,8 @@ class SessionRegistryTest {
 
             sync()
 
-            await("the branch of the program's directory") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("elsewhere", app.katty.core.GitKind.BRANCH) }
-            await("the branch of the shell's once it ended") { registry.handles.value.getValue(id).git.value == app.katty.core.GitInfo("main", app.katty.core.GitKind.BRANCH) }
+            await("the branch of the program's directory") { branch(id) == "elsewhere" }
+            await("the branch of the shell's once it ended") { branch(id) == "main" }
         } finally {
             repo.deleteRecursively()
             other.deleteRecursively()

@@ -16,21 +16,57 @@ public enum class GitKind {
     DETACHED,
 }
 
+/** What git is in the middle of in a working tree, which it says by the files it leaves in its git directory until it is over. */
+public enum class GitOperation(public val label: String) {
+    MERGE("merging"),
+    REBASE("rebasing"),
+    CHERRY_PICK("cherry-picking"),
+    REVERT("reverting"),
+    BISECT("bisecting"),
+}
+
 /**
- * @param name The branch, or the first characters of the commit when [kind] is [GitKind.DETACHED].
+ * Where a working tree is: its [root], the git directory that has its `HEAD` and its index ([gitDir]: the repository's `.git`, or
+ * `.git/worktrees/<name>` for a linked working tree) and the one that its trees share ([commonDir]: the refs, the objects).
  */
-public data class GitInfo(val name: String, val kind: GitKind)
+public data class GitTree(val root: Path, val gitDir: Path, val commonDir: Path) {
+    /** Whether its git directory is not in it, as a linked working tree's or a submodule's: watching the tree does not watch it. */
+    val gitDirOutside: Boolean get() = !gitDir.startsWith(root)
+}
+
+/**
+ * @param name The branch, or the first characters of the commit when [kind] is [GitKind.DETACHED]. During a rebase, the branch that is rebased.
+ * @param operation What git is in the middle of, `null` when nothing.
+ * @param tree The root of the working tree, which tells two terminals of one tree from two of different trees on the same branch.
+ * @param status What `git status` says of the tree, `null` when it is not known (not read yet, no git, a tree that is too slow).
+ */
+public data class GitInfo(
+    val name: String,
+    val kind: GitKind,
+    val operation: GitOperation? = null,
+    val tree: String? = null,
+    val status: GitStatusReading? = null,
+)
 
 /**
  * The branch that every terminal of [workspace] is in, which is what the workspace says of itself: `null` when they are not all in the same one,
  * because one is not in a repository (or its place is not known yet), or they are in different branches, worktrees or commits. A workspace with
  * a single terminal has the one of that terminal.
  *
+ * Its changes are those of all its trees, each counted once however many terminals are in it (`null` when none is known). Where the branch is
+ * against its upstream, and what git is in the middle of, are only said when all of its terminals are in one tree: two trees of one branch name
+ * (two clones) may say different things.
+ *
  * @param gits Where each terminal is.
  */
 public fun Workspace.sharedGit(gits: Map<TerminalId, GitInfo?>): GitInfo? {
     val all = layout.terminals().map { gits[it.id] ?: return null }
-    return all.firstOrNull()?.takeIf { first -> all.all { it == first } }
+    val first = all.firstOrNull() ?: return null
+    if (!all.all { it.name == first.name && it.kind == first.kind }) return null
+    val byTree = all.distinctBy { it.tree }
+    if (byTree.size == 1) return first
+    val changes = byTree.mapNotNull { it.status?.changes }.takeIf { it.isNotEmpty() }?.reduce(GitChanges::plus)
+    return GitInfo(first.name, first.kind, status = changes?.let { GitStatusReading(it) })
 }
 
 /**
@@ -53,7 +89,8 @@ private fun realPath(path: Path): Path = try {
 
 /**
  * Reads where a folder is in a git repository from the files of git, without starting it: it is read for every pane, again whenever its
- * shell changes directory, when a command ends, and when the `HEAD` in [headDirectory] changes.
+ * shell changes directory, when a command ends, and when the files of its working tree or of its git directory change. What `git status` says
+ * is read by [GitStatusReader], which starts git.
  *
  * A linked working tree is told by its `.git` being a file that points into `worktrees/` of the repository's own; a submodule's is a file
  * too, and is a plain checkout here.
@@ -76,12 +113,12 @@ public object GitReader {
         }
     }
 
-    /**
-     * The folder that holds the `HEAD` that [read] reads for [directory] (the repository's `.git`, or `.git/worktrees/<name>` for a linked working
-     * tree), which is what changes when its branch does; `null` when [directory] is not in a repository.
-     */
-    public fun headDirectory(directory: Path): Path? = try {
-        findDotGit(directory)?.let { dotGit -> if (Files.isDirectory(dotGit)) dotGit else linkedGitDir(dotGit) }
+    /** The working tree that [directory] is in, `null` when it is in none (or a `.git` file points nowhere). */
+    public fun locate(directory: Path): GitTree? = try {
+        findDotGit(directory)?.let { dotGit ->
+            val gitDir = if (Files.isDirectory(dotGit)) dotGit else linkedGitDir(dotGit)?.takeIf(Files::isDirectory)
+            gitDir?.let { GitTree(realPath(dotGit.parent), realPath(it), commonDir(it)) }
+        }
     } catch (e: IOException) {
         null
     }
@@ -138,12 +175,32 @@ public object GitReader {
     }
 
     private fun head(gitDir: Path, linked: Boolean): GitInfo? {
+        val operation = operation(gitDir)
         val head = Files.readString(gitDir.resolve("HEAD")).trim()
+        val branchKind = if (linked) GitKind.WORKTREE else GitKind.BRANCH
         if (head.startsWith("ref:")) {
             val ref = head.removePrefix("ref:").trim()
-            val name = ref.removePrefix("refs/heads/")
-            return GitInfo(name, if (linked) GitKind.WORKTREE else GitKind.BRANCH)
+            return GitInfo(ref.removePrefix("refs/heads/"), branchKind, operation)
         }
-        return if (head.length >= COMMIT_CHARS) GitInfo(head.take(COMMIT_CHARS), GitKind.DETACHED) else null
+        // A rebase detaches HEAD: the branch that it rebases is what the user is on.
+        if (operation == GitOperation.REBASE) rebasedBranch(gitDir)?.let { return GitInfo(it, branchKind, operation) }
+        return if (head.length >= COMMIT_CHARS) GitInfo(head.take(COMMIT_CHARS), GitKind.DETACHED, operation) else null
     }
+
+    // What git leaves in the git directory while it is in the middle of something, in the order in which `git status` says them.
+    private fun operation(gitDir: Path): GitOperation? = when {
+        Files.exists(gitDir.resolve("MERGE_HEAD")) -> GitOperation.MERGE
+        Files.isDirectory(gitDir.resolve("rebase-merge")) || Files.isDirectory(gitDir.resolve("rebase-apply")) -> GitOperation.REBASE
+        Files.exists(gitDir.resolve("CHERRY_PICK_HEAD")) -> GitOperation.CHERRY_PICK
+        Files.exists(gitDir.resolve("REVERT_HEAD")) -> GitOperation.REVERT
+        Files.exists(gitDir.resolve("BISECT_LOG")) -> GitOperation.BISECT
+        else -> null
+    }
+
+    // The branch that a rebase rebases (`refs/heads/x` in `head-name`), `null` for a rebase of a detached HEAD (`detached HEAD`).
+    private fun rebasedBranch(gitDir: Path): String? =
+        sequenceOf("rebase-merge", "rebase-apply").map { gitDir.resolve(it).resolve("head-name") }.firstOrNull(Files::isRegularFile)
+            ?.let { Files.readString(it).trim() }
+            ?.takeIf { it.startsWith("refs/heads/") }
+            ?.removePrefix("refs/heads/")
 }

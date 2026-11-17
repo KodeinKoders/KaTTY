@@ -7,7 +7,9 @@ import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class GitReaderTest {
     private val root: Path = Files.createTempDirectory("katty-git").toRealPath()
@@ -23,6 +25,14 @@ class GitReaderTest {
             .directory(directory.toFile()).redirectErrorStream(true).start()
         val output = process.inputStream.readBytes().decodeToString()
         check(process.waitFor() == 0) { "git ${arguments.joinToString(" ")} failed: $output" }
+    }
+
+    // A git command that stops on a conflict, which is what is tested.
+    private fun gitFailing(directory: Path, vararg arguments: String) {
+        val process = ProcessBuilder(listOf("git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.editor=true") + arguments)
+            .directory(directory.toFile()).redirectErrorStream(true).start()
+        val output = process.inputStream.readBytes().decodeToString()
+        check(process.waitFor() != 0) { "git ${arguments.joinToString(" ")} did not stop: $output" }
     }
 
     private fun repository(): Path {
@@ -69,15 +79,79 @@ class GitReaderTest {
     }
 
     @Test
-    fun theHeadOfAFolderIsInTheGitDirectoryOfItsTree() {
+    fun aFolderIsInTheTreeOfItsRepositoryAndALinkedTreeHasItsGitDirectoryOutsideIt() {
         val repo = repository()
         val worktree = root.resolve("rate-limit-key")
         git(repo, "worktree", "add", "-b", "rate-limit-key", worktree.toString())
 
-        assertEquals(repo.resolve(".git"), GitReader.headDirectory(repo.resolve("src").createDirectories()))
-        // A linked tree has a HEAD of its own, in the repository's git directory.
-        assertEquals(repo.resolve(".git/worktrees/rate-limit-key").toRealPath(), GitReader.headDirectory(worktree)?.toRealPath())
-        assertNull(GitReader.headDirectory(root.resolve("plain").createDirectories()))
+        val main = GitReader.locate(repo.resolve("src").createDirectories())!!
+        assertEquals(GitTree(repo, repo.resolve(".git"), repo.resolve(".git")), main)
+        assertFalse(main.gitDirOutside)
+        // A linked tree has a HEAD and an index of its own, in the repository's git directory, which has the refs that they share.
+        val linked = GitReader.locate(worktree)!!
+        assertEquals(GitTree(worktree.toRealPath(), repo.resolve(".git/worktrees/rate-limit-key").toRealPath(), repo.resolve(".git")), linked)
+        assertTrue(linked.gitDirOutside)
+        assertNull(GitReader.locate(root.resolve("plain").createDirectories()))
+    }
+
+    // --- What git is in the middle of ---
+
+    @Test
+    fun aMergeThatStoppedOnAConflictIsMerging() {
+        val repo = repository()
+        git(repo, "checkout", "-b", "other")
+        repo.resolve("a.txt").writeText("other")
+        git(repo, "commit", "-am", "other")
+        git(repo, "checkout", "main")
+        repo.resolve("a.txt").writeText("main")
+        git(repo, "commit", "-am", "main")
+        gitFailing(repo, "merge", "other")
+
+        assertEquals(GitInfo("main", GitKind.BRANCH, GitOperation.MERGE), GitReader.read(repo))
+        git(repo, "merge", "--abort")
+        assertEquals(GitInfo("main", GitKind.BRANCH), GitReader.read(repo))
+    }
+
+    @Test
+    fun aRebaseThatStoppedIsOnTheBranchThatItRebases() {
+        val repo = repository()
+        git(repo, "checkout", "-b", "feature/x")
+        repo.resolve("a.txt").writeText("feature")
+        git(repo, "commit", "-am", "feature")
+        git(repo, "checkout", "main")
+        repo.resolve("a.txt").writeText("main")
+        git(repo, "commit", "-am", "main")
+        git(repo, "checkout", "feature/x")
+        gitFailing(repo, "rebase", "main")
+
+        // HEAD is detached on main's commit: the branch being rebased is what is said.
+        assertEquals(GitInfo("feature/x", GitKind.BRANCH, GitOperation.REBASE), GitReader.read(repo))
+    }
+
+    @Test
+    fun aCherryPickARevertAndABisectAreSaid() {
+        val repo = repository()
+        git(repo, "checkout", "-b", "other")
+        repo.resolve("a.txt").writeText("other")
+        git(repo, "commit", "-am", "other")
+        git(repo, "checkout", "main")
+        repo.resolve("a.txt").writeText("main")
+        git(repo, "commit", "-am", "main")
+
+        gitFailing(repo, "cherry-pick", "other")
+        assertEquals(GitOperation.CHERRY_PICK, GitReader.read(repo)?.operation)
+        git(repo, "cherry-pick", "--abort")
+
+        repo.resolve("a.txt").writeText("again")
+        git(repo, "commit", "-am", "again")
+        gitFailing(repo, "revert", "HEAD~1")
+        assertEquals(GitOperation.REVERT, GitReader.read(repo)?.operation)
+        git(repo, "revert", "--abort")
+
+        git(repo, "bisect", "start")
+        assertEquals(GitOperation.BISECT, GitReader.read(repo)?.operation)
+        git(repo, "bisect", "reset")
+        assertNull(GitReader.read(repo)?.operation)
     }
 
     @Test

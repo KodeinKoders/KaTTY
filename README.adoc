@@ -76,6 +76,10 @@ KaTTY does not send macOS notifications or badges.
 It follows a branch that an agent or your IDE checks out while a program runs.
 While a program works in another folder than its shell's, it is the branch of that folder.
 A workspace whose terminals are all in the same branch says it too, under its name in the sidebar and beside it in the tabs.
+* After the branch, the label says what `git status` says: a dot when the working tree has changes that are not committed, or how many files are staged (`+`), modified (`~`), untracked (`?`) and in conflict (`!`), as you choose in the settings (Appearance) or the palette.
+It also says how many commits the branch is ahead of its upstream and behind it (`↑2 ↓1`), and what git is in the middle of (`merging`, `rebasing`, `cherry-picking`, `reverting`, `bisecting`), with the branch being rebased rather than a commit.
+It follows the files as they change, whoever changes them (an agent, your IDE, another terminal), within a second or so, and runs your own `git` (from the `PATH` of your login shell) without ever writing its index.
+A repository where `git status` takes more than two seconds is only read again every minute and when a command ends.
 * Closing a workspace asks first when an agent in it is still working or waiting for you.
 
 How much of this each agent supports is in <<agent-compatibility,the compatibility matrix>>.

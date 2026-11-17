@@ -35,6 +35,7 @@ import app.katty.ShortcutMap
 import app.katty.core.Agent
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
+import app.katty.core.GitChangesDisplay
 import app.katty.core.LayoutMode
 import app.katty.core.MinimumContrast
 import app.katty.core.OptionKey
@@ -150,6 +151,20 @@ class SettingsPagesTest {
         assertEquals(ThemeMode.DARK, settings.theme)
         onNodeWithText("System").performClick()
         assertEquals(ThemeMode.SYSTEM, settings.theme)
+    }
+
+    @Test
+    fun theGitChangesAreSaidWithADotOrTheirCounts() = runComposeUiTest {
+        show()
+        assertEquals(GitChangesDisplay.DOT, settings.gitChanges)
+
+        clickOn("Counts")
+        waitForIdle()
+        assertEquals(GitChangesDisplay.COUNTS, settings.gitChanges)
+
+        clickOn("Dot")
+        waitForIdle()
+        assertEquals(GitChangesDisplay.DOT, settings.gitChanges)
     }
 
     @Test

@@ -49,6 +49,7 @@ import app.katty.ShortcutMap
 import app.katty.core.Agent
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
+import app.katty.core.GitChangesDisplay
 import app.katty.core.LayoutMode
 import app.katty.core.MinimumContrast
 import app.katty.core.OptionKey
@@ -267,6 +268,15 @@ private fun AppearancePage(
             settings.theme, { value -> onChange { it.copy(theme = value) } },
             Modifier.padding(horizontal = 4.dp),
         )
+    }
+    Separator()
+    Section("GIT CHANGES") {
+        Choice(
+            listOf(ChoiceOption(GitChangesDisplay.DOT, "Dot"), ChoiceOption(GitChangesDisplay.COUNTS, "Counts")),
+            settings.gitChanges, { value -> onChange { it.copy(gitChanges = value) } },
+            Modifier.padding(horizontal = 4.dp),
+        )
+        Caption("How the branch of a terminal or a workspace says that it has changes that are not committed: a dot, or how many files are staged (+), modified (~), untracked (?) and in conflict (!).")
     }
     Separator()
     Section("INTERFACE TEXT SIZE") {

@@ -8,7 +8,9 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.runComposeUiTest
+import app.katty.core.GitChanges
 import app.katty.core.GitInfo
+import app.katty.core.GitStatusReading
 import app.katty.core.GitKind
 import app.katty.core.KattyStore
 import app.katty.core.SplitDirection
@@ -57,6 +59,16 @@ class WorkspaceGitTest {
         sidebar(ids.associateWith { main })
 
         onNodeWithContentDescription("Branch main").assertExists()
+    }
+
+    // Two terminals of one tree: the workspace says its changes once, and where it is against its upstream.
+    @Test
+    fun theSidebarSaysTheChangesOfTheTreeOfAWorkspace() = runComposeUiTest {
+        val ids = terminals()
+        val inTree = GitInfo("main", GitKind.BRANCH, tree = "/dev/api", status = GitStatusReading(GitChanges(modified = 2), ahead = 1, behind = 0))
+        sidebar(ids.associateWith { inTree })
+
+        onNodeWithContentDescription("Branch main, uncommitted changes, 1 ahead").assertExists()
     }
 
     @Test

@@ -6,6 +6,7 @@ import app.katty.TerminalKeys
 import app.katty.core.Direction
 import app.katty.core.AgentInfo
 import app.katty.core.AgentState
+import app.katty.core.GitChangesDisplay
 import app.katty.core.Ide
 import app.katty.core.KattyState
 import app.katty.core.LayoutMode
@@ -81,6 +82,8 @@ class PaletteHandlers(
     val toggleAttentionSound: () -> Unit = {},
     /** Whether what is selected is copied at once. */
     val toggleCommandMarks: () -> Unit = {},
+    /** Whether the git labels say the changes with a dot or with their counts. */
+    val toggleGitChanges: () -> Unit = {},
     val toggleCopyOnSelect: () -> Unit = {},
     /** Whether bold text uses the bright colors. */
     val toggleBoldIsBright: () -> Unit = {},
@@ -378,6 +381,11 @@ fun paletteCommands(
         action = handlers.toggleAttentionSound,
     )
     command("command-marks", if (state.settings.commandMarks) "Hide command marks" else "Show command marks", action = handlers.toggleCommandMarks)
+    command(
+        "git-changes",
+        if (state.settings.gitChanges == GitChangesDisplay.DOT) "Git changes: show the counts" else "Git changes: show a dot",
+        action = handlers.toggleGitChanges,
+    )
     command("copy-on-select", if (state.settings.copyOnSelect) "Turn copy on select off" else "Turn copy on select on", action = handlers.toggleCopyOnSelect)
     command("bold-is-bright", if (state.settings.boldIsBright) "Turn bold text with bright colors off" else "Turn bold text with bright colors on", action = handlers.toggleBoldIsBright)
     command("contrast-off", "Minimum contrast: off") { handlers.setMinimumContrast(MinimumContrast.OFF) }

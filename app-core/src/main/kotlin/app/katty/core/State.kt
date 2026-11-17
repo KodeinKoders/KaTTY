@@ -101,6 +101,16 @@ public enum class ScrollbackSize(public val megabytes: Int) {
     public val bytes: Long get() = megabytes * 1_000_000L
 }
 
+/** How the git label of a terminal or a workspace says that its working tree has changes that are not committed. */
+@Serializable
+public enum class GitChangesDisplay {
+    /** A dot after the branch. */
+    DOT,
+
+    /** How many files are staged, modified, untracked and in conflict. */
+    COUNTS,
+}
+
 /** What the window shows: the terminals of the workspace, or the board of the agents of the projects. */
 @Serializable
 public enum class MainView {
@@ -132,6 +142,7 @@ public enum class MainView {
  * @param boldIsBright Whether bold text in one of the 8 normal colors is drawn in the bright one.
  * @param minimumContrast The least contrast between a text and its background.
  * @param scrollback How much history a terminal keeps. Lowering it deletes the older lines of the terminals that are open.
+ * @param gitChanges How the git labels say that a working tree has changes that are not committed.
  * @param cursorShape The cursor of the terminals, at the prompt and until a program sets its own.
  * @param cursorBlink Whether that cursor blinks.
  * @param usageShown The agents whose usage the sidebar shows, by their ids.
@@ -177,6 +188,7 @@ public data class Settings(
     val sidebarCollapsed: Boolean = false,
     val view: MainView = MainView.TERMINALS,
     val aiCommand: String? = null,
+    val gitChanges: GitChangesDisplay = GitChangesDisplay.DOT,
 ) {
     public companion object {
         public const val DEFAULT_LIGHT_COLOR_SCHEME: String = "Alabaster"

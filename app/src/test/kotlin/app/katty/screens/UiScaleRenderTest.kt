@@ -41,7 +41,10 @@ class UiScaleRenderTest {
     private fun SidebarOf(store: KattyStore) {
         val state by store.state.collectAsState()
         // The terminals of the first workspace of the second project are all in one branch: it says which.
-        val gits = state.projects.last().workspaces.first().layout.terminals().associate { it.id to app.katty.core.GitInfo("feature/auth-refactor", app.katty.core.GitKind.BRANCH) }
+        val gits = state.projects.last().workspaces.first().layout.terminals().associate { it.id to app.katty.core.GitInfo(
+            "feature/auth-refactor", app.katty.core.GitKind.BRANCH,
+            status = app.katty.core.GitStatusReading(app.katty.core.GitChanges(modified = 3), ahead = 2, behind = 0),
+        ) }
         Sidebar(state, store, onAddProject = {}, onRemoveProject = {}, onCloseWorkspace = {}, onReveal = {}, renamingProject = null, onRenamingProject = {}, renamingWorkspace = null, onRenamingWorkspace = {}, modifier = Modifier, gits = gits)
     }
 

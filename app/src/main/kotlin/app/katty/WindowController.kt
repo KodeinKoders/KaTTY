@@ -11,6 +11,7 @@ import app.katty.core.AttentionItem
 import app.katty.core.CloseDecision
 import app.katty.core.ClosedItem
 import app.katty.core.Direction
+import app.katty.core.GitChangesDisplay
 import app.katty.core.GitReader
 import app.katty.core.Ide
 import app.katty.core.KattyState
@@ -959,6 +960,9 @@ internal class WindowController(
         setBell = { mode -> store.updateSettings { it.copy(bell = mode) } },
         toggleAttentionSound = { store.updateSettings { it.copy(attentionSound = !it.attentionSound) } },
         toggleCommandMarks = { store.updateSettings { it.copy(commandMarks = !it.commandMarks) } },
+        toggleGitChanges = {
+            store.updateSettings { it.copy(gitChanges = if (it.gitChanges == GitChangesDisplay.DOT) GitChangesDisplay.COUNTS else GitChangesDisplay.DOT) }
+        },
         toggleCopyOnSelect = { store.updateSettings { it.copy(copyOnSelect = !it.copyOnSelect) } },
         toggleBoldIsBright = { store.updateSettings { it.copy(boldIsBright = !it.boldIsBright) } },
         setMinimumContrast = { contrast -> store.updateSettings { it.copy(minimumContrast = contrast) } },

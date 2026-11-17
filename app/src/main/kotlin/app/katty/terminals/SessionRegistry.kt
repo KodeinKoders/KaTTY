@@ -33,9 +33,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
@@ -177,8 +174,9 @@ class SessionRegistry(
 
     private val mutableGitInfos = MutableStateFlow<Map<TerminalId, GitInfo?>>(emptyMap())
 
-    // What tells the terminals that the branch of their repository changed.
-    private val gitHeads = GitHeadWatcher()
+    // What tells the terminals that their working tree changed, and what git says of each tree, read once for all its terminals.
+    private val gitWatcher = GitTreeWatcher()
+    private val gitTrees = GitTrees(scope, gitWatcher::watch)
 
     /**
      * Where each terminal is in git (`null` for one that is not in a repository), which is what each handle's [TerminalHandle.git] says, all in one
@@ -422,7 +420,7 @@ class SessionRegistry(
             alive.clear()
             followers.values.forEach { it.cancel() }
             followers.clear()
-            gitHeads.close()
+            gitWatcher.close()
             mutableHandles.value.also { mutableHandles.value = emptyMap() }
         }
         // The commands that run are stopped with the shells.
@@ -572,29 +570,38 @@ class SessionRegistry(
                 session.exited.filterNotNull().first()
                 session.writeToScreen("\r\n[Process completed]\r\n")
             }
-            // Where the terminal is in git: the directory of the program that runs, else the shell's, read again when it changes, when a command ends,
-            // and when the HEAD of its repository does, which is what a branch that is checked out while a program runs (an agent) changes, or in
-            // an IDE: the shell says nothing then.
-            val headChanged = Channel<Unit>(Channel.CONFLATED)
-            var watched: Path? = null
-            var watch: AutoCloseable? = null
+            // Where the terminal is in git: the working tree of the directory of the program that runs, else of the shell's, found again when
+            // either changes. What git says of the tree is read and followed by [gitTrees], for all of its terminals: when its files change (an
+            // agent or an IDE edits them, a branch is checked out, while the shell says nothing), and when a command ends here.
+            val follower = this
+            var lease: GitTrees.Lease? = null
+            var publishing: Job? = null
+            val publish = { info: GitInfo? ->
+                handle.gitState.value = info
+                whileFollowed { mutableGitInfos.update { it + (spec.id to info) } }
+            }
             try {
+                var first = true
                 merge(
-                    session.workingDirectory.map { }, programDirectory.map { }, session.events.filterIsInstance<TerminalEvent.CommandFinished>().map { },
-                    headChanged.receiveAsFlow(),
-                ).conflate().collect {
+                    session.workingDirectory.map { false }, programDirectory.map { false },
+                    session.events.filterIsInstance<TerminalEvent.CommandFinished>().map { true },
+                ).collect { commandEnded ->
                     val directory = Path.of(programDirectory.value ?: session.workingDirectory.value ?: spec.directory)
-                    val (info, head) = withContext(Dispatchers.IO) { GitReader.read(directory) to GitReader.headDirectory(directory) }
-                    if (head != watched) {
-                        watch?.close()
-                        watched = head
-                        watch = head?.let { withContext(Dispatchers.IO) { gitHeads.watch(it) { headChanged.trySend(Unit) } } }
+                    val tree = withContext(Dispatchers.IO) { GitReader.locate(directory) }
+                    if (first || tree?.root != lease?.tree?.root) {
+                        first = false
+                        publishing?.cancel()
+                        lease?.close()
+                        val held = tree?.let(gitTrees::acquire)
+                        lease = held
+                        if (held == null) publish(null) else publishing = follower.launch { held.info.collect { publish(it) } }
+                    } else if (commandEnded) {
+                        lease?.refresh()
                     }
-                    handle.gitState.value = info
-                    whileFollowed { mutableGitInfos.update { it + (spec.id to info) } }
                 }
             } finally {
-                watch?.close()
+                publishing?.cancel()
+                lease?.close()
             }
         }
         return handle

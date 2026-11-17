@@ -6,16 +6,23 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.katty.core.AgentState
+import app.katty.core.GitChanges
+import app.katty.core.GitChangesDisplay
 import app.katty.core.GitInfo
 import app.katty.core.GitKind
+import app.katty.core.GitOperation
+import app.katty.core.GitStatusReading
 import app.katty.core.SessionUsage
 import app.katty.ui.AgentGlyph
 import app.katty.ui.KattyTheme
@@ -59,6 +66,55 @@ class PaneHeaderTest {
 
         onNodeWithContentDescription("Terminal zsh").assertExists()
         assertEquals(0, onAllNodesWithContentDescription("Branch main").fetchSemanticsNodes().size)
+    }
+
+    // What `git status` says, and what git is in the middle of, after the branch: a dot or the counts, the upstream, the operation.
+    @Test
+    fun theLabelSaysTheChangesTheUpstreamAndTheOperation() = runComposeUiTest {
+        val status = GitStatusReading(GitChanges(staged = 2, modified = 1, untracked = 3), ahead = 4, behind = 0)
+        setContent {
+            KattyTheme(dark = false) {
+                Column {
+                    PaneHeader("zsh", AgentGlyph.SHELL, AgentState.IDLE, GitInfo("main", GitKind.BRANCH, status = status), Modifier.width(600.dp))
+                    CompositionLocalProvider(LocalGitChangesDisplay provides GitChangesDisplay.COUNTS) {
+                        PaneHeader("zsh", AgentGlyph.SHELL, AgentState.IDLE, GitInfo("feature/x", GitKind.BRANCH, GitOperation.REBASE, status = status), Modifier.width(600.dp))
+                    }
+                    PaneHeader("zsh", AgentGlyph.SHELL, AgentState.IDLE, GitInfo("clean", GitKind.BRANCH, status = GitStatusReading(GitChanges())), Modifier.width(600.dp))
+                }
+            }
+        }
+
+        onNodeWithContentDescription("Branch main, uncommitted changes, 4 ahead").assertExists()
+        onNodeWithContentDescription("Branch feature/x, 2 staged, 1 modified, 3 untracked, 4 ahead, rebasing").assertExists()
+        onNodeWithText("+2").assertExists()
+        onNodeWithText("~1").assertExists()
+        onNodeWithText("?3").assertExists()
+        onNodeWithText("rebasing").assertExists()
+        // Nothing is said of a clean tree, nor of a branch that is not behind.
+        onNodeWithContentDescription("Branch clean").assertExists()
+        assertEquals(0, onAllNodesWithText("↓0").fetchSemanticsNodes().size)
+    }
+
+    // Drawn to build/renders/git-labels-*.png, in a header and in the narrow column of the sidebar.
+    @Test
+    fun drawsTheGitLabelsInBothDisplays() {
+        val status = GitStatusReading(GitChanges(staged = 2, modified = 5, untracked = 1, conflicted = 1), ahead = 3, behind = 12)
+        for (isDark in listOf(false, true)) {
+            val image = render("git-labels-${if (isDark) "dark" else "light"}", 1300, 330, dark = isDark) {
+                Column(Modifier.padding(8.dp)) {
+                    for (display in GitChangesDisplay.entries) {
+                        CompositionLocalProvider(LocalGitChangesDisplay provides display) {
+                            PaneHeader("zsh", AgentGlyph.SHELL, AgentState.IDLE, GitInfo("main", GitKind.BRANCH, status = status), Modifier.fillMaxWidth())
+                            PaneHeader("Claude Code", AgentGlyph.CLAUDE, AgentState.WORKING, GitInfo("feature/a-long-branch-name", GitKind.WORKTREE, GitOperation.MERGE, status = status), Modifier.fillMaxWidth())
+                            // As narrow as the sidebar: the name is what is cut.
+                            GitLabel(GitInfo("feature/a-long-branch-name-that-does-not-fit", GitKind.BRANCH, GitOperation.REBASE, status = status), Modifier.width(220.dp), fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+            // The amber of the dot, the counts and the operation.
+            assertTrue(image.count(if (isDark) 0xE5A93D else 0xA85F00) > 50, "dark: $isDark")
+        }
     }
 
     @Test

@@ -65,4 +65,35 @@ class SharedGitTest {
 
         assertEquals(detached, workspace.sharedGit(ids.associateWith { detached }))
     }
+
+    // One tree is said as it is, however many terminals are in it: its changes, its upstream and what git is in the middle of.
+    @Test
+    fun aWorkspaceInOneTreeSaysWhatItsTreeSays() {
+        val ids = built()
+        val status = GitStatusReading(GitChanges(staged = 1, modified = 2), ahead = 3, behind = 1)
+        val info = GitInfo("main", GitKind.BRANCH, GitOperation.REBASE, tree = "/dev/api", status = status)
+
+        assertEquals(info, workspace.sharedGit(ids.associateWith { info }))
+    }
+
+    // Two clones on one branch: their changes add up, each once, and what may differ between them is not said.
+    @Test
+    fun aWorkspaceInTwoTreesOfOneBranchAddsTheirChangesUp() {
+        val ids = built()
+        val first = GitInfo("main", GitKind.BRANCH, GitOperation.MERGE, tree = "/dev/api", status = GitStatusReading(GitChanges(modified = 2), ahead = 1, behind = 0))
+        val second = GitInfo("main", GitKind.BRANCH, tree = "/dev/api-copy", status = GitStatusReading(GitChanges(untracked = 1)))
+
+        val shared = workspace.sharedGit(mapOf(ids[0] to first, ids[1] to first, ids[2] to second))!!
+
+        assertEquals(GitInfo("main", GitKind.BRANCH, status = GitStatusReading(GitChanges(modified = 2, untracked = 1))), shared)
+    }
+
+    @Test
+    fun aWorkspaceWhoseTreesAreNotReadYetHasNoChanges() {
+        val ids = built()
+        val first = GitInfo("main", GitKind.BRANCH, tree = "/dev/api")
+        val second = GitInfo("main", GitKind.BRANCH, tree = "/dev/api-copy")
+
+        assertEquals(GitInfo("main", GitKind.BRANCH), workspace.sharedGit(mapOf(ids[0] to first, ids[1] to first, ids[2] to second)))
+    }
 }
