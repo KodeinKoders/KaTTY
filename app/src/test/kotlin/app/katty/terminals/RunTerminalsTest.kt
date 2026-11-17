@@ -22,8 +22,10 @@ import kotlin.test.assertTrue
 class RunTerminalsTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val started = mutableListOf<Pair<String, String>>()
+    private val startedAt = mutableMapOf<String, Long>()
     private val runs = RunTerminals(scope, Dispatchers.Unconfined) { command, directory ->
         started += command to directory
+        startedAt[command] = System.nanoTime()
         TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", command), directory = directory, shellIntegration = false)
     }
     private val workspace = WorkspaceId("w")
@@ -35,6 +37,10 @@ class RunTerminalsTest {
     }
 
     private fun screen(session: TerminalSession) = session.frames.value.rows.joinToString("\n") { row -> row.cells.joinToString("") { it.text } }
+
+    // The session of the run of [workspace], once it has one: a run that replaces another waits for it to end first.
+    private fun sessionOf(workspace: WorkspaceId): TerminalSession =
+        runBlocking { withTimeout(15_000) { runs.terminals.first { it[workspace]?.session != null } } }.getValue(workspace).session!!
 
     private fun exitOf(session: TerminalSession): Int = runBlocking { withTimeout(15_000) { session.exited.first { it != null }!! } }
 
@@ -93,7 +99,27 @@ class RunTerminalsTest {
         assertTrue(second.shown, "A new run is shown")
         assertTrue(second.generation > first.generation)
         exitOf(first.session!!)
-        assertNull(second.session!!.exited.value)
+        assertNull(sessionOf(workspace).exited.value)
+    }
+
+    // A server that is run again must not find its port taken by the one it replaces: what the old run started, and that is still in its
+    // terminal, ends first. Here a child that ignores the hang-up, in a group of its own, and ends a second and a half after.
+    @Test
+    fun aNewRunStartsOnceWhatTheOldOneStartedHasEnded() {
+        runs.run(workspace, "set -m; trap '' HUP; sleep 1.5 & wait", "/tmp")
+        sessionOf(workspace)
+        // Time for the shell to start its sleep.
+        Thread.sleep(300)
+        val replaced = System.nanoTime()
+
+        runs.run(workspace, "sleep 31", "/tmp")
+
+        assertTrue(runs.terminals.value.getValue(workspace).waiting, "It waits for the old run")
+        val second = sessionOf(workspace)
+        assertFalse(runs.terminals.value.getValue(workspace).waiting)
+        val waitedMs = (startedAt.getValue("sleep 31") - replaced) / 1_000_000
+        assertTrue(waitedMs >= 900, "It started once the sleep of the old run had ended: after ${waitedMs}ms")
+        assertNull(second.exited.value)
     }
 
     @Test

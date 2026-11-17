@@ -22,6 +22,7 @@ class RunTerminalViewTest {
         assertEquals(RunStatus(AgentState.DONE, "Done"), runStatus(failure = null, exitCode = 0))
         assertEquals(RunStatus(AgentState.ERROR, "Failed (2)"), runStatus(failure = null, exitCode = 2))
         assertEquals(RunStatus(AgentState.ERROR, "Could not start"), runStatus(failure = "No such file", exitCode = null))
+        assertEquals(RunStatus(AgentState.IDLE, "Waiting"), runStatus(failure = null, exitCode = null, waiting = true))
     }
 
     // The question, with the red warning when a command runs, in both themes and at the smallest and biggest text: look at build/renders.

@@ -59,8 +59,9 @@ class WindowControllerRunTest {
         controller.answerRun(command)
     }
 
+    // A run that replaces another starts once the other has ended: its session comes then.
     private fun ended(workspace: app.katty.core.WorkspaceId) =
-        runBlocking { withTimeout(15_000) { runs.terminals.value.getValue(workspace).session!!.exited.first { it != null } } }
+        runBlocking { withTimeout(15_000) { runs.terminals.first { it[workspace]?.session != null }.getValue(workspace).session!!.exited.first { it != null } } }
 
     @Test
     fun commandRAsksWhatToRunInTheDirectoryOfTheSelectedTerminalStartingWithTheLastCommand() {

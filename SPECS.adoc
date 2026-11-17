@@ -364,6 +364,10 @@ While it asks, the button says "Asking…" and the field cannot be typed in; a f
 Without an AI command the button is disabled; closing the question drops an answer that has not come.
 * Running a command while one runs: the question says in red that the command that runs will be stopped, and a second question ("Stop the running command?", a red "Stop and run") confirms it.
 A command that has ended is replaced without a question.
+* A new run (⌘R over a run, ⌘⇧L on it) starts once the one it replaces has ended: its command is stopped as Stop does, and every process that it started and that is still in its terminal must be gone (a server's workers, which keep its port).
+Meanwhile the run terminal says "Waiting" in its header and "Waiting for the previous run to end…" in its body.
+What is still there 5 seconds after the stop is killed.
+What left the terminal (a daemon, and what it runs: the application that `./gradlew run` starts in Gradle's daemon) is not waited for.
 * Closing a workspace whose run terminal runs a command asks, as for a program in a terminal, and so does quitting.
 * The last command is saved (in the workspace and its project); the run terminal is not: it is not there after a new launch.
 

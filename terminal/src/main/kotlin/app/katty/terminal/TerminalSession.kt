@@ -1086,6 +1086,46 @@ public class TerminalSession private constructor(
         producer.setBoldIsBright(enabled)
     }
 
+    /** The pid of the program, which is the id of the terminal's session. */
+    internal fun programPid(): Int = process.pid().toInt()
+
+    /**
+     * Closes the session as [close] does, then waits for the processes that its program started and that are still in the terminal's session (a
+     * script's children, a server's workers, what ignored the hang-up) to end, [timeoutMs] at most, and kills the ones that are left. A process
+     * that left the session (a daemon, and what the daemon runs: the application that Gradle's `run` starts) is not waited for. It blocks, the
+     * timeout and the hang-up's grace at most: not on the thread that draws.
+     *
+     * @return Whether every process of the session had ended by itself, without being killed.
+     */
+    public fun closeAndWait(timeoutMs: Long = SESSION_END_TIMEOUT_MS): Boolean {
+        // The program is the leader of a session of its own: the session's id is its pid, and stays the session's once it has ended.
+        val session = try {
+            programPid()
+        } catch (e: UnsupportedOperationException) {
+            close()
+            return true
+        }
+        close()
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000
+        while (true) {
+            val left = try {
+                sessionPids(session)
+            } catch (e: Throwable) {
+                logger.warn("Could not list the processes of the session of a terminal", e)
+                return true
+            }
+            if (left.isEmpty()) return true
+            if (System.nanoTime() >= deadline) {
+                logger.info("Killing {} processes of a closed terminal that did not end within {}ms: {}", left.size, timeoutMs, left)
+                left.forEach(::killProcess)
+                val killedBy = System.nanoTime() + KILL_TIMEOUT_MS * 1_000_000
+                while (sessionPids(session).isNotEmpty() && System.nanoTime() < killedBy) Thread.sleep(SESSION_POLL_MS)
+                return false
+            }
+            Thread.sleep(SESSION_POLL_MS)
+        }
+    }
+
     /**
      * Ends the program if it is still running, and releases everything.
      */
@@ -1283,6 +1323,10 @@ public class TerminalSession private constructor(
         // How long a program has to end after the hang-up of [close], and how long a killed one, and the threads, have after that.
         private const val HANGUP_GRACE_MS = 300L
         private const val KILL_TIMEOUT_MS = 500L
+
+        /** How long [closeAndWait] waits for the processes of the session by default, before it kills them. */
+        public const val SESSION_END_TIMEOUT_MS: Long = 5_000L
+        private const val SESSION_POLL_MS = 50L
 
         private val STOP = ByteArray(0)
 

@@ -105,9 +105,10 @@ internal data class RunStatus(val state: AgentState, val label: String)
 
 /**
  * The status of a run whose command [failure] kept from starting, or that ended with [exitCode] (`null` while it runs): a command that ended well is
- * done, one that failed is an error with its code.
+ * done, one that failed is an error with its code. A run that is [waiting] for the processes of the one before it to end has not started yet.
  */
-internal fun runStatus(failure: String?, exitCode: Int?): RunStatus = when {
+internal fun runStatus(failure: String?, exitCode: Int?, waiting: Boolean = false): RunStatus = when {
+    waiting -> RunStatus(AgentState.IDLE, "Waiting")
     failure != null -> RunStatus(AgentState.ERROR, "Could not start")
     exitCode == null -> RunStatus(AgentState.WORKING, "Running")
     exitCode == 0 -> RunStatus(AgentState.DONE, "Done")
@@ -115,7 +116,7 @@ internal fun runStatus(failure: String?, exitCode: Int?): RunStatus = when {
 }
 
 @Composable
-private fun RunTerminal.status(): RunStatus = runStatus(failure, session?.exited?.collectAsState()?.value)
+private fun RunTerminal.status(): RunStatus = runStatus(failure, session?.exited?.collectAsState()?.value, waiting)
 
 /** The run of a workspace in the header of the workspace: what it runs and how it is doing. A click shows it over the panes, or minimizes it. */
 @Composable
@@ -242,6 +243,8 @@ internal fun RunOverlay(
                     }
                 } else if (run.failure != null) {
                     Text("Could not run the command: ${run.failure}", Modifier.padding(12.dp), color = colors.err)
+                } else if (run.waiting) {
+                    Text("Waiting for the previous run to end…", Modifier.padding(12.dp), color = colors.muted)
                 }
             }
         }

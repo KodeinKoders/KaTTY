@@ -6,6 +6,7 @@ import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -21,6 +22,7 @@ private val logger = LoggerFactory.getLogger("app.katty.terminals.RunTerminals")
  * @param shown Whether it is over the panes, or minimized into the header of the workspace.
  * @param generation Which run of the workspace it is: a new run is another session, which what shows it is made again for.
  * @param focus What gives its terminal the keyboard.
+ * @param waiting Whether it waits for the processes of the run before it to end, before it starts.
  */
 class RunTerminal(
     val workspace: WorkspaceId,
@@ -31,13 +33,16 @@ class RunTerminal(
     val shown: Boolean = true,
     val generation: Long = 0,
     val focus: FocusRequester = FocusRequester(),
+    val waiting: Boolean = false,
 ) {
     /** Whether its command has ended by itself, or never started: it is kept to be read, and a new run does not ask before it replaces it. */
     val ended: Boolean get() = failure != null || session?.exited?.value != null
 
     internal fun with(session: TerminalSession?, failure: String?) = RunTerminal(workspace, command, directory, session, failure, shown, generation, focus)
 
-    internal fun shown(shown: Boolean) = RunTerminal(workspace, command, directory, session, failure, shown, generation, focus)
+    internal fun shown(shown: Boolean) = RunTerminal(workspace, command, directory, session, failure, shown, generation, focus, waiting)
+
+    internal fun starting() = RunTerminal(workspace, command, directory, session, failure, shown, generation, focus)
 }
 
 /**
@@ -46,13 +51,18 @@ class RunTerminal(
  *
  * A run that the user stops is gone at once, and its program is hung up as a terminal that is closed; one whose command ends by itself stays, with
  * its exit code, until it is closed or replaced by the next run.
+ * **A run starts once the one before it in its workspace has ended**: its session closed and every process of its terminal's session gone
+ * (`TerminalSession.closeAndWait`: what still runs after [endTimeoutMs] is killed), so that a server that is run again does not find its port
+ * taken by the one it replaces. The work of a workspace (a start, a stop) is chained for that.
  *
  * @param starter Where a command is started: not on the thread that draws.
  * @param start Starts [command] in [directory], in a session of its own.
+ * @param endTimeoutMs How long the processes of a run that is stopped have to end before they are killed.
  */
 class RunTerminals(
     private val scope: CoroutineScope,
     private val starter: CoroutineDispatcher = Dispatchers.IO,
+    private val endTimeoutMs: Long = TerminalSession.SESSION_END_TIMEOUT_MS,
     private val start: (command: String, directory: String) -> TerminalSession,
 ) {
     private val mutableTerminals = MutableStateFlow<Map<WorkspaceId, RunTerminal>>(emptyMap())
@@ -63,6 +73,9 @@ class RunTerminals(
     private var generations = 0L
     private var visible: WorkspaceId? = null
     private var closed = false
+
+    // The last work launched for each workspace (starting its run, ending one): the next waits for it. Gone once it is done.
+    private val lastWork = mutableMapOf<WorkspaceId, Job>()
 
     /** Whether the command of the run of [workspace] is still running (or starting): what a new run stops, and asks about first. */
     fun active(workspace: WorkspaceId): Boolean = mutableTerminals.value[workspace]?.ended == false
@@ -76,8 +89,16 @@ class RunTerminals(
         if (closed) return
         mutableTerminals.value[workspace]?.let(::end)
         val generation = ++generations
-        mutableTerminals.update { it + (workspace to RunTerminal(workspace, command, directory, shown = shown, generation = generation)) }
-        scope.launch(starter) {
+        // It waits while what ran before it in the workspace has not ended.
+        val waiting = lastWork[workspace]?.isActive == true
+        mutableTerminals.update { it + (workspace to RunTerminal(workspace, command, directory, shown = shown, generation = generation, waiting = waiting)) }
+        chain(workspace, starter) {
+            synchronized(this@RunTerminals) {
+                val current = mutableTerminals.value[workspace]
+                // Stopped or replaced while it waited: nothing is started.
+                if (closed || current?.generation != generation) return@chain
+                if (current.waiting) mutableTerminals.update { it + (workspace to current.starting()) }
+            }
             val started = try {
                 Result.success(start(command, directory))
             } catch (e: Exception) {
@@ -96,7 +117,7 @@ class RunTerminals(
                     true
                 }
             }
-            if (!wanted) session?.close()
+            if (!wanted) session?.closeAndWait(endTimeoutMs)
         }
     }
 
@@ -149,9 +170,21 @@ class RunTerminals(
         return mutableTerminals.value.values.mapNotNull { it.session }.also { mutableTerminals.value = emptyMap() }
     }
 
-    // Closing waits for the program to end: not on the thread that draws.
+    // Closing waits for the program, and what it started, to end: not on the thread that draws. A run that is still starting closes its own
+    // session, which nobody wants any more, in its work, which the next one waits for too.
     private fun end(run: RunTerminal) {
         val session = run.session ?: return
-        scope.launch(Dispatchers.IO) { session.close() }
+        chain(run.workspace, Dispatchers.IO) { session.closeAndWait(endTimeoutMs) }
+    }
+
+    // Under the monitor: launches [work] once the last work of [workspace] is done.
+    private fun chain(workspace: WorkspaceId, dispatcher: CoroutineDispatcher, work: suspend () -> Unit) {
+        val before = lastWork[workspace]
+        val job = scope.launch(dispatcher) {
+            before?.join()
+            work()
+        }
+        lastWork[workspace] = job
+        job.invokeOnCompletion { synchronized(this) { if (lastWork[workspace] === job) lastWork.remove(workspace) } }
     }
 }
