@@ -92,8 +92,10 @@ class AboutWindowTest {
         // The build script and the test cannot share a value, so the root script is read: the two cannot drift.
         val declared = Regex("""version = "(\d+\.\d+)\.""").find(File(root, "build.gradle.kts").readText())?.groupValues?.get(1)
         assertEquals(declared, "$major.$minor")
-        // The patch is the number of commits that the one it was built from comes after.
-        assertEquals((git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1) - 1, patch.toInt())
+        // The patch is the number of commits that the one it was built from comes after, plus one while the working tree has changes that are not
+        // committed: the build of those changes has the version of the commit that they will be.
+        val dirty = git("status", "--porcelain", "--ignore-submodules=dirty").isNotEmpty()
+        assertEquals((git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1) - 1 + (if (dirty) 1 else 0), patch.toInt())
         assertTrue(Regex("""[0-9a-f]{7,40}|unknown""").matches(BuildConfig.GIT_COMMIT), BuildConfig.GIT_COMMIT)
         // The branch it was built on, none for a detached HEAD.
         assertEquals(git("branch", "--show-current"), BuildConfig.GIT_BRANCH)

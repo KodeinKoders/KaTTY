@@ -18,9 +18,18 @@ val commitsBefore = providers.exec {
     isIgnoreExitValue = true
 }.standardOutput.asText.map { (it.trim().toIntOrNull() ?: 1) - 1 }
 
+// A working tree with changes that are not committed (modified, staged or new files that git does not ignore) is the next commit: its patch number
+// is one more, so that a build before the commit and one after it have the same version. What changes inside the ghostty submodule is not a change of
+// this repository (its build writes there); moving it to another commit is. Only "clean" or "dirty" is printed, so that editing a file that was
+// already changed does not make the configuration cache miss: only a tree that becomes clean or dirty does.
+val uncommitted = providers.exec {
+    commandLine("sh", "-c", """[ -z "$(git status --porcelain --ignore-submodules=dirty 2>/dev/null)" ] && echo clean || echo dirty""")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim() == "dirty" }
+
 allprojects {
     group = "app.katty"
-    version = "1.0.${commitsBefore.get()}"
+    version = "1.0.${commitsBefore.get() + if (uncommitted.get()) 1 else 0}"
 }
 
 komple {
