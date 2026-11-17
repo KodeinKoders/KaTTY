@@ -53,6 +53,7 @@ class SettingsPagesTest {
     private var settings by mutableStateOf(Settings())
     private var page by mutableStateOf(SettingsPage.APPEARANCE)
     private var shortcuts by mutableStateOf(ShortcutMap.DEFAULT)
+    private var abouts = 0
 
     private fun ComposeUiTest.show(families: List<String> = listOf("Menlo", "Monaco"), defaultAiCommand: String? = DEFAULT_AI) {
         setContent {
@@ -67,6 +68,7 @@ class SettingsPagesTest {
                     shortcuts = shortcuts,
                     onShortcuts = { shortcuts = it },
                     defaultAiCommand = defaultAiCommand,
+                    onAbout = { abouts++ },
                 )
             }
         }
@@ -99,6 +101,19 @@ class SettingsPagesTest {
         onNodeWithText("FONT FAMILY").assertExists()
         onNodeWithText("Shows sequences like => and != as single glyphs.").assertExists()
         onNodeWithText("14 px").assertExists()
+    }
+
+    // At the bottom of the list of the pages, whatever page is shown.
+    @Test
+    fun theButtonAtTheBottomOfThePagesOpensTheAboutWindow() = runComposeUiTest {
+        show()
+        goTo(SettingsPage.AGENTS)
+
+        onNode(hasText("About KaTTY") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+        waitForIdle()
+
+        assertEquals(1, abouts)
+        assertEquals(SettingsPage.AGENTS, page)
     }
 
     @Test
@@ -387,7 +402,7 @@ class SettingsPagesRenderTest {
                         page, onPage = {},
                         settings = Settings(layout = LayoutMode.HORIZONTAL, theme = if (dark) ThemeMode.DARK else ThemeMode.LIGHT),
                         onChange = {}, schemes = ITermColorSchemes.entries, fontFamilies = emptyList(),
-                        shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, defaultAiCommand = "claude -p \"\$PROMPT\"",
+                        shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, defaultAiCommand = "claude -p \"\$PROMPT\"", onAbout = {},
                     )
                 }
                 // The panel of the page is drawn.
@@ -404,7 +419,7 @@ class SettingsPagesRenderTest {
             KattyTheme(false) {
                 SettingsContent(
                     SettingsPage.TERMINAL, onPage = {}, settings = Settings(), onChange = {}, schemes = emptyList(), fontFamilies = emptyList(),
-                    shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, defaultAiCommand = null,
+                    shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, defaultAiCommand = null, onAbout = {},
                 )
             }
         }

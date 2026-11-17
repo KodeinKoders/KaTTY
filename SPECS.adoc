@@ -653,6 +653,7 @@ It is not a dialog: the main window can be used while it is open.
 ⌘W closes it; it is where it was when it is opened again, and it is not opened again at launch.
 
 On its left, the list of its pages, which a click or the arrows choose; on its right, the page, with its title, which scrolls when the window is too short for it.
+At the bottom of the list, "About KaTTY", small and dim, with an icon, opens the About window.
 
 * *Appearance*:
 ** LAYOUT: Auto, Horizontal, Vertical, with "Auto uses Vertical when the window is taller than it is wide."

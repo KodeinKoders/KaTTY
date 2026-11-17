@@ -60,6 +60,7 @@ object KattyIcons {
     val Bell = KattyIcon(listOf("M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3zM6.5 14h3"))
     val Menu = KattyIcon(listOf("M2.5 4.5h11M2.5 8h11M2.5 11.5h11"))
     val Settings = KattyIcon(listOf(gear(teeth = 8, inner = 4.9f, outer = 6.6f), circle(8f, 8f, 2f)), strokeWidth = 1.2f)
+    val Info = KattyIcon(listOf(circle(8f, 8f, 6f), "M8 7.3v3.7"), listOf(circle(8f, 5.2f, .8f)))
     val ChevronDown = KattyIcon(listOf("M4 6l4 4 4-4"))
     val ChevronRight = KattyIcon(listOf("M6 4l4 4-4 4"))
     val ChevronsDown = KattyIcon(listOf("M4 3l4 4 4-4", "M4 8l4 4 4-4"))

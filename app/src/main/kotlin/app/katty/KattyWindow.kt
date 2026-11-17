@@ -668,6 +668,7 @@ internal fun KattyWindowContent(
                     shortcuts = shortcutMap,
                     onShortcuts = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
                     defaultAiCommand = defaultAi,
+                    onAbout = { openAbout() },
                 )
             }
         }

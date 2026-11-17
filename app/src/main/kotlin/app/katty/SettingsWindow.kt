@@ -13,8 +13,11 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.window.rememberWindowState
 import app.katty.core.WindowFile
 import app.katty.core.WindowGeometry
+import app.katty.ui.Katty
+import app.katty.ui.OneLine
 import app.katty.ui.UiScale
 import org.jetbrains.jewel.window.DecoratedWindow
+import org.jetbrains.jewel.window.TitleBar
 import java.nio.file.Path
 
 /** The size of the settings window the first time it is opened. */
@@ -53,7 +56,8 @@ internal fun SettingsWindow(uiScale: Float, geometryFile: Path, focusTick: Int, 
         LaunchedEffect(focusTick) { if (focusTick > 0) window.toFront() }
         // The scale is applied inside the window, which has a density of its own.
         UiScale(uiScale) {
-            ShortTitleBar("Settings")
+            // Jewel's title bar at its own height, as the main window's: a window that is used, not a panel beside it.
+            TitleBar { OneLine("Settings", color = Katty.colors.text) }
             content()
         }
     }

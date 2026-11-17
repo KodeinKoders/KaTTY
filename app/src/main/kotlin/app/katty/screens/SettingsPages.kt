@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -66,6 +67,7 @@ import app.katty.ui.KattyTextButton
 import app.katty.ui.ListKey
 import app.katty.ui.OneLine
 import app.katty.ui.SectionLabel
+import app.katty.ui.hoverHighlight
 import app.katty.ui.listKey
 import app.katty.ui.menu
 import app.katty.ui.stepped
@@ -123,6 +125,7 @@ internal fun SettingsContent(
     shortcuts: ShortcutMap,
     onShortcuts: (ShortcutMap) -> Unit,
     defaultAiCommand: String?,
+    onAbout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = Katty.colors
@@ -130,7 +133,7 @@ internal fun SettingsContent(
     var picking by remember { mutableStateOf<Boolean?>(null) }
     Box(modifier.fillMaxSize().background(colors.panel).semantics { contentDescription = "Settings" }) {
         Row(Modifier.fillMaxSize()) {
-            PageList(page, onPage)
+            PageList(page, onPage, onAbout)
             Box(Modifier.width(1.dp).fillMaxHeight().background(colors.line))
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when (page) {
@@ -167,7 +170,7 @@ internal fun SettingsContent(
 
 /** The list of the pages: a click, or the arrows while it has the focus, shows one. */
 @Composable
-private fun PageList(page: SettingsPage, onPage: (SettingsPage) -> Unit) {
+private fun PageList(page: SettingsPage, onPage: (SettingsPage) -> Unit, onAbout: () -> Unit) {
     val colors = Katty.colors
     val pages = SettingsPage.entries
     Column(
@@ -195,6 +198,19 @@ private fun PageList(page: SettingsPage, onPage: (SettingsPage) -> Unit) {
             ) {
                 OneLine(entry.title, color = colors.text)
             }
+        }
+        // At the bottom of the column, discreet: the About window, as the application menu's About item and the palette open it.
+        Spacer(Modifier.weight(1f))
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 26.dp).clip(RoundedCornerShape(6.dp))
+                .hoverHighlight()
+                .clickable(role = Role.Button, onClick = onAbout)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(KattyIcons.Info, colors.muted, size = 14.dp * uiScaleFactor())
+            OneLine("About KaTTY", color = colors.muted, fontSize = 12.sp)
         }
     }
 }

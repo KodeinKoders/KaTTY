@@ -109,7 +109,7 @@ class UiScaleRenderTest {
             draws("settings-${page.name.lowercase()}", 1640, 1300) {
                 SettingsContent(
                     page, onPage = {}, settings = Settings(layout = LayoutMode.HORIZONTAL), onChange = {}, schemes = emptyList(), fontFamilies = emptyList(),
-                    shortcuts = app.katty.ShortcutMap.DEFAULT, onShortcuts = {}, defaultAiCommand = "claude -p \"\$PROMPT\"",
+                    shortcuts = app.katty.ShortcutMap.DEFAULT, onShortcuts = {}, defaultAiCommand = "claude -p \"\$PROMPT\"", onAbout = {},
                 )
             }
         }
