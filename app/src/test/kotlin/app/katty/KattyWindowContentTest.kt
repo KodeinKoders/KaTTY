@@ -175,6 +175,22 @@ class KattyWindowContentTest {
         onAllNodesWithContentDescription("Run a command", substring = false).assertCountEquals(2)
     }
 
+    // An empty AI command turns the AI off: the question has no button to ask it.
+    @Test
+    fun theQuestionHasNoAskAiWhileTheAiIsOff() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "printf 'make run\\n'") }
+        showWindow()
+
+        shortcut(Key.R)
+        waitForIdle()
+        onAllNodesWithContentDescription("Ask the AI for the command").assertCountEquals(1)
+
+        store.updateSettings { it.copy(aiCommand = "") }
+        waitForIdle()
+        onAllNodesWithContentDescription("Ask the AI for the command").assertCountEquals(0)
+    }
+
     // Command + Enter in the question runs the command minimized into the header: the panes keep the keyboard.
     @Test
     fun commandEnterRunsTheCommandMinimized() = runComposeUiTest {

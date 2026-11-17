@@ -139,7 +139,8 @@ public enum class MainView {
  * @param usageInWindow Whether it is shown in a window of its own instead of the panel. It only counts while [showUsage] is on, and goes back to
  * `false` when the user closes that window.
  * @param aiCommand The command that asks the AI something (the run terminal asks it for the command that runs the project), with `$PROMPT` for the
- * question: see [AiPrompt]. `null` for the default, the one of the first agent that is installed ([defaultAiCommand]), which follows what is installed.
+ * question: see [AiPrompt]. `null` for the default, the one of the first agent that is installed ([defaultAiCommand]), which follows what is installed;
+ * an empty one turns the AI off (see [aiCommand]).
  * @param usageHidden The limits of those agents that are not shown, each made by [usageKey]. It is the hidden ones that are kept, so that a
  * limit that an agent starts to report later is shown.
  */

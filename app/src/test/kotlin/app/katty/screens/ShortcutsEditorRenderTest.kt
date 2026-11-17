@@ -21,7 +21,7 @@ class ShortcutsEditorRenderTest {
                 UiScale(scale) {
                     SettingsContent(
                         SettingsPage.SHORTCUTS, onPage = {}, settings = app.katty.core.Settings(), onChange = {}, schemes = emptyList(), fontFamilies = emptyList(),
-                        shortcuts = changed, onShortcuts = {}, defaultAiCommand = null, onAbout = {},
+                        shortcuts = changed, onShortcuts = {}, agents = emptySet(), onAbout = {},
                     )
                 }
             }

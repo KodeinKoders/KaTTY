@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.AppShortcut
 import app.katty.ShortcutMap
+import app.katty.core.Agent
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
 import app.katty.core.LayoutMode
@@ -55,6 +56,8 @@ import app.katty.core.ScrollbackSize
 import app.katty.core.SecureInput
 import app.katty.core.Settings
 import app.katty.core.ThemeMode
+import app.katty.core.aiAgents
+import app.katty.core.defaultAiCommand
 import app.katty.terminal.themes.ITermColorSchemeInfo
 import app.katty.ui.CheckSetting
 import app.katty.ui.Choice
@@ -98,10 +101,18 @@ enum class SettingsPage(val title: String) {
 }
 
 /**
- * What the AI command setting is for what is typed in its field: `null`, the default, for a blank field and for the default itself, so that a
- * default that changes (another agent installed) is followed.
+ * What the AI command setting is for what is typed in its field: `null`, the default, for the default itself, so that a default that changes
+ * (another agent installed) is followed; `""`, the AI turned off, for an empty field while there is a default (with none, `null` already asks
+ * nothing, and an agent installed later is offered).
  */
-internal fun aiCommandSetting(text: String, default: String?): String? = text.trim().takeIf { it.isNotEmpty() && it != default }
+internal fun aiCommandSetting(text: String, default: String?): String? {
+    val command = text.trim()
+    return when {
+        command == default -> null
+        command.isEmpty() -> if (default == null) null else ""
+        else -> command
+    }
+}
 
 /**
  * The settings window's content: the list of the pages on the left, the [page] that is shown on the right. It is the only place where the
@@ -112,7 +123,7 @@ internal fun aiCommandSetting(text: String, default: String?): String? = text.tr
  * @param schemes The color schemes that the terminals can have.
  * @param fontFamilies The monospaced families of the system, which may still be being listed.
  * @param shortcuts The shortcuts as they are bound, changed through [onShortcuts].
- * @param defaultAiCommand The AI command of the first installed agent, which is used while the setting is `null`.
+ * @param agents The agents that are installed: the AI command can be the one of any of them, and is the one of the first while the setting is `null`.
  */
 @Composable
 internal fun SettingsContent(
@@ -124,7 +135,7 @@ internal fun SettingsContent(
     fontFamilies: List<String>,
     shortcuts: ShortcutMap,
     onShortcuts: (ShortcutMap) -> Unit,
-    defaultAiCommand: String?,
+    agents: Set<Agent>,
     onAbout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -146,7 +157,7 @@ internal fun SettingsContent(
                             SettingsPage.APPEARANCE -> AppearancePage(settings, onChange, schemes, fontFamilies, onPickColorScheme = { picking = it })
                             SettingsPage.TERMINAL -> TerminalPage(settings, onChange)
                             SettingsPage.KEYBOARD -> KeyboardPage(settings, onChange)
-                            SettingsPage.AGENTS -> AgentsPage(settings, onChange, defaultAiCommand)
+                            SettingsPage.AGENTS -> AgentsPage(settings, onChange, agents)
                             SettingsPage.SHORTCUTS -> Unit
                         }
                     }
@@ -370,7 +381,7 @@ private fun KeyboardPage(settings: Settings, onChange: ((Settings) -> Settings) 
 }
 
 @Composable
-private fun AgentsPage(settings: Settings, onChange: ((Settings) -> Settings) -> Unit, defaultAiCommand: String?) {
+private fun AgentsPage(settings: Settings, onChange: ((Settings) -> Settings) -> Unit, agents: Set<Agent>) {
     Section("ATTENTION") {
         CheckSetting("Sound when an agent needs you", settings.attentionSound, { value -> onChange { it.copy(attentionSound = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
         Caption("Plays the alert sound of macOS when an agent that you are not looking at waits for you or fails.")
@@ -388,40 +399,75 @@ private fun AgentsPage(settings: Settings, onChange: ((Settings) -> Settings) ->
     }
     Separator()
     Section("AI COMMAND") {
-        AiCommandField(settings.aiCommand, defaultAiCommand) { command -> onChange { it.copy(aiCommand = command) } }
+        AiCommandField(settings.aiCommand, aiAgents(agents)) { command -> onChange { it.copy(aiCommand = command) } }
     }
 }
 
 /**
- * The AI command: a field that is the setting as it is typed (blank, or the default, is the default), and a button that goes back to the default,
- * which the field then shows as its placeholder.
+ * The AI command: a field that always shows the command in use (the default is in it while the setting is `null`), and is empty while the AI is
+ * turned off; a select above it puts the command of one of the installed [agents] in it (the first one's is the default).
  */
 @Composable
-private fun AiCommandField(current: String?, default: String?, onChange: (String?) -> Unit) {
+private fun AiCommandField(current: String?, agents: List<Agent>, onChange: (String?) -> Unit) {
     val colors = Katty.colors
-    val state = rememberTextFieldState(current.orEmpty())
+    val default = agents.firstOrNull()?.defaultAiCommand
+    val state = rememberTextFieldState(current ?: default.orEmpty())
     val latestDefault by rememberUpdatedState(default)
+    val latestCurrent by rememberUpdatedState(current)
     val latestOnChange by rememberUpdatedState(onChange)
     // Every change is kept at once: nothing is lost when the window is closed while the field has the focus.
     LaunchedEffect(state) { snapshotFlow { state.text.toString() }.drop(1).collect { latestOnChange(aiCommandSetting(it, latestDefault)) } }
+    // The agents are found after the window opens, and may be installed meanwhile: a field that follows the default shows the new one.
+    LaunchedEffect(default) {
+        if (latestCurrent == null && state.text.toString() != default.orEmpty()) state.setTextAndPlaceCursorAtEnd(default.orEmpty())
+    }
     Caption(
         "What KaTTY runs to ask an agent something, such as the command that runs a project (Ask AI, in the question of ${AppShortcut.RUN.label}). " +
             "\$PROMPT is the question, and the first line that it prints is the answer. It runs with /bin/sh, in the directory that the question is about.",
     )
-    Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextField(
-            state,
-            Modifier.weight(1f).semantics { contentDescription = "AI command" },
-            placeholder = { Text(default ?: "claude -p \"\$PROMPT\"", fontFamily = FontFamily.Monospace) },
-            textStyle = JewelTheme.defaultTextStyle.copy(fontFamily = FontFamily.Monospace),
-        )
-        KattyTextButton("Use default", { state.clearText(); onChange(null) }, description = "Use the default AI command", enabled = current != null)
-    }
+    AiAgentField(state.text.toString().trim(), agents) { state.setTextAndPlaceCursorAtEnd(it) }
+    TextField(
+        state,
+        Modifier.padding(horizontal = 4.dp, vertical = 4.dp).fillMaxWidth().semantics { contentDescription = "AI command" },
+        placeholder = { Text("Off", fontFamily = FontFamily.Monospace) },
+        textStyle = JewelTheme.defaultTextStyle.copy(fontFamily = FontFamily.Monospace),
+    )
     Text(
-        default?.let { "Default, from the first installed agent: $it" } ?: "No installed agent has a default: type one.",
+        if (agents.isEmpty()) "No installed agent has an AI command: type one. Empty, the AI is off." else "Empty, the AI is off: the run question has no Ask AI.",
         Modifier.padding(start = 8.dp, end = 8.dp, top = 2.dp),
         color = colors.muted, fontSize = 11.sp,
     )
+}
+
+/**
+ * The agent whose command is in the AI command's field ([command]: "Custom" when it is none of theirs, "Off" when it is empty), and the menu that
+ * puts one of the [agents]' commands in it, or empties it.
+ */
+@Composable
+private fun AiAgentField(command: String, agents: List<Agent>, onChoose: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val name = when {
+        command.isEmpty() -> "Off"
+        else -> agents.firstOrNull { it.defaultAiCommand == command }?.displayName ?: "Custom"
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Agent", Modifier.width(48.dp * uiScaleFactor()).padding(start = 4.dp), color = Katty.colors.muted)
+        Box(Modifier.weight(1f)) {
+            Field(name, "AI agent: $name", { open = true })
+            if (open) {
+                KattyMenu(
+                    menu {
+                        agents.forEachIndexed { index, agent ->
+                            action(agent.displayName + if (index == 0) " (default)" else "", hint = agent.defaultAiCommand) { onChoose(agent.defaultAiCommand.orEmpty()) }
+                        }
+                        if (agents.isNotEmpty()) divider()
+                        action("Off") { onChoose("") }
+                    },
+                    onDismiss = { open = false },
+                )
+            }
+        }
+    }
 }
 
 @Composable

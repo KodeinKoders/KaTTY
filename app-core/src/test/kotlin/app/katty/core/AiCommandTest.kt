@@ -19,6 +19,17 @@ class AiCommandTest {
     }
 
     @Test
+    fun theSettingFollowsTheDefaultWhenNullAndTurnsTheAiOffWhenEmpty() {
+        val installed = setOf(Agent.CODEX, Agent.CLAUDE)
+        assertEquals("claude -p \"\$PROMPT\"", aiCommand(null, installed))
+        assertNull(aiCommand(null, emptySet()))
+        assertNull(aiCommand("", installed))
+        assertNull(aiCommand("  ", installed))
+        assertEquals("make run", aiCommand("make run", installed))
+        assertEquals(listOf(Agent.CLAUDE, Agent.CODEX), aiAgents(setOf(Agent.JUNIE, Agent.CODEX, Agent.CLAUDE)), "In the order of Agent, without the ones that have none")
+    }
+
+    @Test
     fun everyDefaultTakesThePrompt() {
         for (agent in Agent.entries) agent.defaultAiCommand?.let { assertTrue("\"\$PROMPT\"" in it, "$agent: $it") }
     }

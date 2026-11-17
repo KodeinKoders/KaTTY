@@ -32,6 +32,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import app.katty.AppShortcut
 import app.katty.ShortcutMap
+import app.katty.core.Agent
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
 import app.katty.core.LayoutMode
@@ -54,8 +55,9 @@ class SettingsPagesTest {
     private var page by mutableStateOf(SettingsPage.APPEARANCE)
     private var shortcuts by mutableStateOf(ShortcutMap.DEFAULT)
     private var abouts = 0
+    private var agents by mutableStateOf(setOf(Agent.CLAUDE, Agent.CODEX))
 
-    private fun ComposeUiTest.show(families: List<String> = listOf("Menlo", "Monaco"), defaultAiCommand: String? = DEFAULT_AI) {
+    private fun ComposeUiTest.show(families: List<String> = listOf("Menlo", "Monaco")) {
         setContent {
             KattyTheme(dark = false) {
                 SettingsContent(
@@ -67,7 +69,7 @@ class SettingsPagesTest {
                     fontFamilies = families,
                     shortcuts = shortcuts,
                     onShortcuts = { shortcuts = it },
-                    defaultAiCommand = defaultAiCommand,
+                    agents = agents,
                     onAbout = { abouts++ },
                 )
             }
@@ -337,44 +339,83 @@ class SettingsPagesTest {
         assertTrue(settings.attentionSound)
     }
 
-    // The field is the setting as it is typed: blank, or the default, is the default.
+    // The text of the AI command's field.
+    private fun ComposeUiTest.aiCommandText(): String =
+        onNodeWithContentDescription("AI command").fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+
+    // The field always shows the command in use: the default is in it, the select puts an agent's command in it, and emptying it turns the AI off.
     @Test
-    fun theAiCommandIsTypedInItsFieldAndGoesBackToTheDefault() = runSkikoComposeUiTest(size = Size(1400f, 1600f)) {
+    fun theAiCommandIsInItsFieldAndAnAgentsCommandIsChosenInTheSelect() = runSkikoComposeUiTest(size = Size(1400f, 1600f)) {
         show()
         goTo(SettingsPage.AGENTS)
-        onNodeWithText("Default, from the first installed agent: $DEFAULT_AI").assertExists()
-        onNodeWithContentDescription("Use the default AI command").assertIsNotEnabled()
+        assertEquals(DEFAULT_AI, aiCommandText())
+        onNodeWithContentDescription("AI agent: Claude Code").assertExists()
 
-        onNodeWithContentDescription("AI command").performTextInput("  claude --model sonnet -p \"\$PROMPT\" ")
+        onNodeWithContentDescription("AI agent: Claude Code").performClick()
+        onNodeWithText("Codex").performClick()
         waitForIdle()
-        assertEquals("claude --model sonnet -p \"\$PROMPT\"", settings.aiCommand)
+        assertEquals(CODEX_AI, aiCommandText())
+        assertEquals(CODEX_AI, settings.aiCommand)
+        onNodeWithContentDescription("AI agent: Codex").assertExists()
 
-        onNodeWithContentDescription("Use the default AI command").assertIsEnabled().performClick()
+        onNodeWithContentDescription("AI agent: Codex").performClick()
+        onNodeWithText("Claude Code (default)").performClick()
         waitForIdle()
-        assertNull(settings.aiCommand)
-        onNodeWithContentDescription("Use the default AI command").assertIsNotEnabled()
-
-        onNodeWithContentDescription("AI command").performTextInput(DEFAULT_AI)
-        waitForIdle()
+        assertEquals(DEFAULT_AI, aiCommandText())
         assertNull(settings.aiCommand, "The default is not kept as the user's: a default that changes is followed")
-        onNodeWithContentDescription("AI command").performTextClearance()
-        onNodeWithContentDescription("AI command").performTextInput("codex exec \"\$PROMPT\"")
+
+        onNodeWithContentDescription("AI command").performTextInput(" --model sonnet")
         waitForIdle()
-        assertEquals("codex exec \"\$PROMPT\"", settings.aiCommand)
+        assertEquals("$DEFAULT_AI --model sonnet", settings.aiCommand)
+        onNodeWithContentDescription("AI agent: Custom").assertExists()
+
+        onNodeWithContentDescription("AI command").performTextClearance()
+        waitForIdle()
+        assertEquals("", settings.aiCommand, "Empty is the AI turned off")
+        onNodeWithContentDescription("AI agent: Off").assertExists()
+
+        onNodeWithContentDescription("AI agent: Off").performClick()
+        onNodeWithText("Codex").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("AI agent: Codex").performClick()
+        onNodeWithText("Off").performClick()
+        waitForIdle()
+        assertEquals("", aiCommandText())
+        assertEquals("", settings.aiCommand)
     }
 
+    // The agents are found after the window opens: a field that follows the default shows it once it is known, and one that is off stays off.
     @Test
-    fun withoutAnInstalledAgentTheAiCommandHasToBeTyped() = runComposeUiTest {
+    fun theFieldShowsTheDefaultOnceTheAgentsAreFound() = runComposeUiTest {
+        agents = emptySet()
         page = SettingsPage.AGENTS
-        show(defaultAiCommand = null)
+        show()
+        assertEquals("", aiCommandText())
+        onNodeWithText("No installed agent has an AI command: type one. Empty, the AI is off.").assertExists()
 
-        onNodeWithText("No installed agent has a default: type one.").assertExists()
+        agents = setOf(Agent.CODEX, Agent.CLAUDE)
+        waitForIdle()
+        assertEquals(DEFAULT_AI, aiCommandText())
+        assertNull(settings.aiCommand)
     }
 
     @Test
-    fun whatIsTypedIsTheSettingUnlessItIsBlankOrTheDefault() {
+    fun anAiCommandThatIsOffStaysOffWhenTheAgentsAreFound() = runComposeUiTest {
+        agents = emptySet()
+        settings = Settings(aiCommand = "")
+        page = SettingsPage.AGENTS
+        show()
+        agents = setOf(Agent.CLAUDE)
+        waitForIdle()
+        assertEquals("", aiCommandText())
+        assertEquals("", settings.aiCommand)
+    }
+
+    @Test
+    fun whatIsTypedIsTheSettingUnlessItIsTheDefaultOrEmptyWithoutADefault() {
         assertEquals("make run", aiCommandSetting("  make run \n", DEFAULT_AI))
-        assertNull(aiCommandSetting("   ", DEFAULT_AI))
+        assertEquals("", aiCommandSetting("   ", DEFAULT_AI))
+        assertNull(aiCommandSetting("   ", null))
         assertNull(aiCommandSetting(" $DEFAULT_AI ", DEFAULT_AI))
         assertEquals(DEFAULT_AI, aiCommandSetting(DEFAULT_AI, null))
     }
@@ -388,6 +429,7 @@ class SettingsPagesTest {
 
     private companion object {
         const val DEFAULT_AI = "claude -p \"\$PROMPT\""
+        const val CODEX_AI = "codex exec --skip-git-repo-check \"\$PROMPT\""
     }
 }
 
@@ -402,7 +444,7 @@ class SettingsPagesRenderTest {
                         page, onPage = {},
                         settings = Settings(layout = LayoutMode.HORIZONTAL, theme = if (dark) ThemeMode.DARK else ThemeMode.LIGHT),
                         onChange = {}, schemes = ITermColorSchemes.entries, fontFamilies = emptyList(),
-                        shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, defaultAiCommand = "claude -p \"\$PROMPT\"", onAbout = {},
+                        shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, agents = setOf(Agent.CLAUDE), onAbout = {},
                     )
                 }
                 // The panel of the page is drawn.
@@ -419,7 +461,7 @@ class SettingsPagesRenderTest {
             KattyTheme(false) {
                 SettingsContent(
                     SettingsPage.TERMINAL, onPage = {}, settings = Settings(), onChange = {}, schemes = emptyList(), fontFamilies = emptyList(),
-                    shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, defaultAiCommand = null, onAbout = {},
+                    shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, agents = emptySet(), onAbout = {},
                 )
             }
         }

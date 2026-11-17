@@ -37,7 +37,7 @@ It holds *workspaces*, and each workspace holds terminals in a layout of splits.
 * Split a terminal right or down, drag the gap between panes to resize them, maximize one pane to focus on it, and move a terminal to another workspace of its project.
 * Rename projects, workspaces and terminals, and drag projects and workspaces to reorder them.
 * Run your project from a workspace without giving it a pane: ⌘R, the play button of the workspace's header or its right-click menu asks for a command (the last one is offered again), and runs it in the directory of the selected terminal, in a terminal over the panes (⌘↩ runs it minimized).
-While the field is empty, *Ask AI* (or ⌘R again) asks your AI agent for the command that runs the project with its debug options, and puts its answer in the field for you to read before you run it (see <<ai-command>>).
+While the field is empty, *Ask AI* (or ⌘R again) asks your AI agent for the command that runs the project with its debug options, and puts its answer in the field for you to read before you run it (see <<ai-command>>; with the AI turned off, there is no *Ask AI*).
 Minimize it into the header (⌘⇧R or ⌘⇧↩) and bring it back with a click or ⌘⇧R.
 While it is shown, the shortcuts of a terminal act on it: ⌘W stops the command and closes it (it asks first while the command runs), ⌘⇧L runs the command again (it asks too), ⌘L clears it, ⌘F finds in it; the ones of the panes do nothing.
 A command that ends by itself stays there to be read, with its exit status in the header.
@@ -424,7 +424,9 @@ Antigravity needs version 1.1.11 or later.
 [#ai-command]
 * The *AI command* (the Agents page of the settings, which "AI command…" in the palette opens) is what KaTTY runs to ask an agent something, with `$PROMPT` for the question: the first line it prints is the answer.
 It is run by `/bin/sh` in the directory the question is about, with the `PATH` of your login shell.
-Until you set your own, it is the one of the first agent of the table above that is installed, in the order of the table, without a model (add `--model` to choose one):
+Until you set your own, it is the one of the first agent of the table above that is installed, in the order of the table, without a model (add `--model` to choose one).
+The field always shows the command in use: the *Agent* menu above it puts the command of another installed agent in it, and an empty field turns the AI off.
+The commands of the agents are:
 Claude Code `claude -p "$PROMPT"`, Codex `codex exec --skip-git-repo-check "$PROMPT"`, Antigravity `agy -p "$PROMPT"`, Copilot CLI `copilot -p "$PROMPT" -s`, OpenCode `opencode run "$PROMPT"`, Crush `crush run -q "$PROMPT"`, Goose `goose run --no-session -q -t "$PROMPT"`, Kilo Code `kilo run "$PROMPT"`, Pi `pi -p "$PROMPT"`, Oh My Pi `omp --print "$PROMPT"`, Cursor Agent `cursor-agent -p --output-format text "$PROMPT"`.
 Junie, Aider and Cline have none: Junie runs a whole task, Aider prints its banner and costs around the answer, and Cline's headless mode approves every action.
 Only Claude Code's was tried; the others come from each agent's documentation.

@@ -260,7 +260,7 @@ internal fun RunOverlay(
  * before it is run, and why it failed is said in red under it. Closing the question drops an answer that has not come yet.
  *
  * @param onRun Runs the command, minimized or not.
- * @param ask Asks the AI for the command; `null` when there is no AI command.
+ * @param ask Asks the AI for the command; `null` when there is no AI command, and then there is no button.
  * @param askTick A number that changes when the window asks for the AI too (⌘R while the question is open).
  */
 @Composable
@@ -338,9 +338,12 @@ internal fun RunDialog(
                         placeholder = { Text(if (asking) "Asking the AI…" else "./gradlew run") },
                         textStyle = org.jetbrains.jewel.foundation.theme.JewelTheme.defaultTextStyle.copy(fontFamily = FontFamily.Monospace),
                     )
-                    val description = if (ask == null) "No AI command: set one in the settings" else "Ask the AI for the command"
-                    Tooltip(tooltip = { Text(tooltipText(description, AppShortcut.RUN.label)) }) {
-                        KattyTextButton(if (asking) "Asking…" else "Ask AI", { askNow() }, description = description, enabled = canAsk)
+                    // No button while the AI is off (the AI command of the settings is empty).
+                    if (ask != null) {
+                        val description = "Ask the AI for the command"
+                        Tooltip(tooltip = { Text(tooltipText(description, AppShortcut.RUN.label)) }) {
+                            KattyTextButton(if (asking) "Asking…" else "Ask AI", { askNow() }, description = description, enabled = canAsk)
+                        }
                     }
                 }
                 OneLine("in ${homeShortened(directory)}", color = colors.muted, fontSize = 12.sp)

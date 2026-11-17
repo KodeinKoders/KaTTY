@@ -47,6 +47,19 @@ public val Agent.defaultAiCommand: String?
 public fun defaultAiCommand(installed: Collection<Agent>): String? =
     Agent.entries.firstOrNull { it in installed && it.defaultAiCommand != null }?.defaultAiCommand
 
+/** The agents of [installed] that have an AI command, in the order of [Agent]: the first is the one of [defaultAiCommand]. */
+public fun aiAgents(installed: Collection<Agent>): List<Agent> = Agent.entries.filter { it in installed && it.defaultAiCommand != null }
+
+/**
+ * The AI command that is used for the [setting] of the user ([Settings.aiCommand]): `null` follows the default ([defaultAiCommand] of [installed]),
+ * a blank one turns the AI off (`null`: nothing asks it), anything else is the user's own.
+ */
+public fun aiCommand(setting: String?, installed: Collection<Agent>): String? = when {
+    setting == null -> defaultAiCommand(installed)
+    setting.isBlank() -> null
+    else -> setting
+}
+
 /** What the AI answered: a command, or why there is none. */
 public sealed interface AiAnswer {
     public data class Command(val line: String) : AiAnswer

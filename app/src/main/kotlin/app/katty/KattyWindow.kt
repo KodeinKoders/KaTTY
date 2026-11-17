@@ -91,7 +91,7 @@ import app.katty.screens.RunDialog
 import app.katty.screens.StopRunDialog
 import app.katty.core.AiPrompt
 import app.katty.core.RUN_COMMAND_PROMPT
-import app.katty.core.defaultAiCommand
+import app.katty.core.aiCommand
 import app.katty.screens.StopRunConfirmation
 import app.katty.screens.RestartRunConfirmation
 import app.katty.terminals.RunTerminal
@@ -258,9 +258,9 @@ internal fun KattyWindowContent(
     val detected by produceState(emptyMap<Agent, java.nio.file.Path>(), loginPath, detectTick) {
         value = withContext(Dispatchers.IO) { AgentDetection.detect(loginPath ?: System.getenv("PATH").orEmpty()) }
     }
-    // What asks the AI: the user's command, else the one of the first installed agent (in the order of the README's table, which is Agent's).
-    val defaultAi = remember(detected) { defaultAiCommand(detected.keys) }
-    val aiCommand = settings.aiCommand ?: defaultAi
+    // What asks the AI: the user's command, else the one of the first installed agent (in the order of the README's table, which is Agent's);
+    // none when the user emptied it.
+    val aiCommand = aiCommand(settings.aiCommand, detected.keys)
     // The editors that are installed: LaunchServices knows, and is asked again when the window gets the focus, with the agents.
     val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { installedIdes() } }
     SideEffect { controller.installedIdes = installedIdes }
@@ -667,7 +667,7 @@ internal fun KattyWindowContent(
                     fontFamilies = families,
                     shortcuts = shortcutMap,
                     onShortcuts = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
-                    defaultAiCommand = defaultAi,
+                    agents = detected.keys,
                     onAbout = { openAbout() },
                 )
             }
