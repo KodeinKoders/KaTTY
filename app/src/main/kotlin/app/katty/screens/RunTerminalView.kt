@@ -92,6 +92,8 @@ class RunActions(
     val onToggle: () -> Unit = {},
     /** Stops its command, or closes it once the command has ended: it is gone. */
     val onStop: () -> Unit = {},
+    /** Runs its command again, in its place: a command that still runs is asked about, and stopped first. */
+    val onRestart: () -> Unit = {},
     val onMinimize: () -> Unit = {},
     /** Asks the user before a paste that could run commands. */
     val confirmPaste: (suspend (String) -> Boolean)? = null,
@@ -199,6 +201,7 @@ internal fun RunOverlay(
                 }
                 Text(status.label, color = status.color(), fontSize = 12.sp, maxLines = 1)
                 // At the right of the header, as the buttons of a pane are.
+                KattyIconButton(KattyIcons.Restart, "Run the command again", actions.onRestart, size = ButtonSize.COMPACT, shortcut = AppShortcut.RESTART_TERMINAL.label)
                 KattyIconButton(KattyIcons.Minimize, "Minimize the run terminal", actions.onMinimize, size = ButtonSize.COMPACT, shortcut = AppShortcut.RUN_TOGGLE.label)
                 if (ended) KattyIconButton(KattyIcons.Close, "Close the run terminal", actions.onStop, size = ButtonSize.COMPACT, shortcut = AppShortcut.CLOSE_TERMINAL.label)
                 else KattyIconButton(KattyIcons.Stop, "Stop the run", actions.onStop, size = ButtonSize.COMPACT, tint = colors.err, shortcut = AppShortcut.CLOSE_TERMINAL.label)

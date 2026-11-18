@@ -143,6 +143,30 @@ class KattyWindowContentTest {
         waitUntil(timeoutMillis = 15_000) { session.exited.value != null }
     }
 
+    // The button of its header runs the command again, in a new session: asked about while the command runs, at once once it has ended.
+    @Test
+    fun theRunIsRestartedFromItsHeader() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+        onNodeWithContentDescription("Run a command").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Command").performTextInput("sleep 30")
+        onNodeWithText("Run").performClick()
+        val workspace = state.selection.workspace!!
+        waitUntil(timeoutMillis = 15_000) { registry.runs.terminals.value[workspace]?.session != null }
+        val first = registry.runs.terminals.value.getValue(workspace)
+
+        onNodeWithContentDescription("Run the command again").performClick()
+        waitForIdle()
+        onNodeWithText("Restart run").performClick()
+        waitUntil(timeoutMillis = 15_000) {
+            registry.runs.terminals.value[workspace]?.let { it.generation != first.generation && it.session != null } == true
+        }
+        waitUntil(timeoutMillis = 15_000) { first.session!!.exited.value != null }
+        assertEquals("sleep 30", registry.runs.terminals.value.getValue(workspace).command)
+        onAllNodesWithContentDescription("Run terminal").assertCountEquals(1)
+    }
+
     // The text of the field of the question of the run.
     private fun androidx.compose.ui.test.ComposeUiTest.commandText(): String =
         onNodeWithContentDescription("Command").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text

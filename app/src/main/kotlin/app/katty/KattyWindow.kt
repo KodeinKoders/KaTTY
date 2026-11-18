@@ -336,6 +336,7 @@ internal fun KattyWindowContent(
         onRun = { state.selection.workspace?.let(controller::openRun) },
         onToggle = controller::toggleRun,
         onStop = { state.selection.workspace?.let(controller::stopRun) },
+        onRestart = { state.selection.workspace?.let(controller::restartRun) },
         onMinimize = { state.selection.workspace?.let(controller::minimizeRun) },
         confirmPaste = controller::confirmPaste,
         finding = selectedRun != null && controller.findingRun == selectedRun.workspace,
