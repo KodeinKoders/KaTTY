@@ -434,6 +434,11 @@ The field always shows the command in use: the *Agent* menu above it puts the co
 The commands of the agents are:
 Claude Code `claude -p "$PROMPT"`, Codex `codex exec --skip-git-repo-check "$PROMPT"`, Antigravity `agy -p "$PROMPT"`, Copilot CLI `copilot -p "$PROMPT" -s`, OpenCode `opencode run "$PROMPT"`, Crush `crush run -q "$PROMPT"`, Goose `goose run --no-session -q -t "$PROMPT"`, Kilo Code `kilo run "$PROMPT"`, Pi `pi -p "$PROMPT"`, Oh My Pi `omp --print "$PROMPT"`, Cursor Agent `cursor-agent -p --output-format text "$PROMPT"`.
 Junie, Aider and Cline have none: Junie runs a whole task, Aider prints its banner and costs around the answer, and Cline's headless mode approves every action.
+* When a command fails, *Ask AI why it failed* sends it, its exit code and the last 200 lines of what it printed to the AI command, and shows its explanation with a corrected command, which *Type it* types at your prompt without running it.
+It is in the right-click menu of a terminal and in the palette when its last command failed (this needs the shell integration), and in the header of the run terminal when its command failed.
+*Explain result with AI* is there instead when the last command ended otherwise: it says what the command did and what its output means.
+A right click on the bar of any command offers them too, for that command, and *Select text*, which selects its output as a click on the bar does.
+What a command printed may hold secrets: it is only sent when you ask.
 Only Claude Code's was tried; the others come from each agent's documentation.
 * Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline, Kilo Code, Oh My Pi and Cursor Agent resume their conversation.
 Codex and Pi start again with no conversation, on purpose: each can start a new conversation inside the program that runs (`/new`), nothing tells which one it is in, and coming back on an older one is worse than a new one.

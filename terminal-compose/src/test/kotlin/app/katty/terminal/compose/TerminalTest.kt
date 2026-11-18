@@ -2,6 +2,8 @@
 
 package app.katty.terminal.compose
 
+import androidx.compose.runtime.mutableStateOf
+import app.katty.terminal.TerminalCommandOutcome
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -1309,7 +1311,11 @@ class TerminalTest {
     )
 
     // Two commands that a shell with the integration would have run, and the prompt that waits for the next.
-    private fun markedScene(commandMarks: Boolean = true): Pair<ImageComposeScene, TerminalSession> {
+    private fun markedScene(
+        commandMarks: Boolean = true,
+        onMenu: ((TerminalCommandMarkMenu) -> Unit)? = null,
+        tooltip: androidx.compose.runtime.State<Boolean> = mutableStateOf(true),
+    ): Pair<ImageComposeScene, TerminalSession> {
         val session = session(
             """printf '\033]133;A\007$ ls\r\n\033]133;B\007\033]133;C\007one\r\n\033]133;D;0\007""" +
                 """\033]133;A\007$ false\r\n\033]133;B\007\033]133;C\007two\r\n\033]133;D;1\007\033]133;A\007$ '; sleep 30""",
@@ -1318,7 +1324,7 @@ class TerminalTest {
             typography = rememberTerminalTypography(androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
             Terminal(
                 session, Modifier.fillMaxSize(), padding = androidx.compose.foundation.layout.PaddingValues(start = 12.dp, top = 6.dp),
-                commandMarks = commandMarks,
+                commandMarks = commandMarks, onCommandMarkMenu = onMenu, commandMarkTooltip = tooltip.value,
             )
         }.also { scenes += it }
         scene.renderUntil("the commands") { session.frames.value.cols != 10 && session.frames.value.commandMarks.count { it.finishedAt != null } == 2 }
@@ -1384,6 +1390,71 @@ class TerminalTest {
 
         scene.renderUntil("the history to be at the start of the command") { session.frames.value.scrollbar?.offset == startRow }
         assertTrue("make test" in session.frames.value.text(0), "The prompt is at the top: ${session.frames.value.text(0)}")
+    }
+
+    // A right press on a bar is the host's, for that command, and selects nothing until the host's menu asks; one on a row with no bar is nobody's.
+    @Test
+    fun aRightPressOnTheBarOfACommandGivesItToTheHost() {
+        val menus = mutableListOf<TerminalCommandMarkMenu>()
+        val (scene, session) = markedScene(onMenu = { menus += it })
+        val right = androidx.compose.ui.input.pointer.PointerButton.Secondary
+        fun rightClick(position: Offset) {
+            scene.move(position + Offset(0f, 1f), held = false)
+            scene.move(position, held = false)
+            // The composition has the frame with both marks.
+            scene.renderFor(100)
+            scene.sendPointerEvent(PointerEventType.Press, position, button = right, buttons = androidx.compose.ui.input.pointer.PointerButtons(isSecondaryPressed = true))
+            scene.sendPointerEvent(PointerEventType.Release, position, button = right, buttons = androidx.compose.ui.input.pointer.PointerButtons())
+            scene.renderFor(100)
+        }
+
+        // The second command, which failed: its output row.
+        rightClick(marginAt(3))
+        assertEquals(1, menus.size)
+        val menu = menus.single()
+        val at = menu.position
+        assertEquals(TerminalCommandOutcome.FAILED, menu.mark.outcome)
+        assertEquals(2..3, menu.mark.top..menu.mark.bottom, "The bar of the second command")
+        // In the grid's pixels, as the terminal's own menu: left of it, on the row.
+        assertTrue(at.x < 0f && at.y > 3 * typography!!.cellHeight && at.y < 4 * typography!!.cellHeight, "$at")
+        assertEquals(null, session.selectedText(), "A right press selects nothing")
+
+        // The item of the menu that selects the output does what a click on the bar does.
+        menu.selectOutput()
+        scene.renderUntil("the output of the second command to be selected") { session.selectedText() == "two" }
+
+        rightClick(marginAt(4))
+        assertEquals(1, menus.size, "No bar on the row of the prompt that waits")
+    }
+
+    // The tooltip of a bar is drawn in the terminal's colors the other way round: a block of its foreground. The host hides it while the menu of a
+    // bar is open, which it would cover.
+    @Test
+    fun theHostCanHideTheTooltipOfTheBars() {
+        val tooltip = mutableStateOf(true)
+        val (scene, session) = markedScene(tooltip = tooltip)
+        val foreground = session.frames.value.foreground.rgb
+        fun foregroundPixels(): Int {
+            val image = Bitmap.makeFromImage(scene.render(clock.also { clock += 16_000_000 }))
+            return (0 until WIDTH).sumOf { x -> (0 until HEIGHT).count { y -> image.getColor(x, y) and 0xFFFFFF == foreground } }
+        }
+        scene.renderFor(100)
+        val without = foregroundPixels()
+
+        scene.move(marginAt(3) + Offset(0f, 1f), held = false)
+        scene.move(marginAt(3), held = false)
+        scene.renderFor(100)
+        val shown = foregroundPixels()
+        assertTrue(shown > without + 1_000, "The tooltip is shown: $without pixels of the foreground without it, $shown with it")
+
+        tooltip.value = false
+        scene.renderFor(100)
+        val hidden = foregroundPixels()
+        assertTrue(hidden < without + 100, "The tooltip is hidden: $without pixels of the foreground without it, $hidden now")
+
+        tooltip.value = true
+        scene.renderFor(100)
+        assertTrue(foregroundPixels() > without + 1_000, "And shown again when the host says so")
     }
 
     @Test

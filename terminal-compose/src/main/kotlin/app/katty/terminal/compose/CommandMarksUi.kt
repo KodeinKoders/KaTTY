@@ -36,6 +36,21 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * A right press on the bar of a command, which the host shows its menu for (`onCommandMarkMenu` of [Terminal]).
+ *
+ * @property mark The command whose bar it is.
+ * @property position Where the press was, in pixels from the top left of the grid, as the position that `onContextMenu` gives (so negative across:
+ * the bars are at the left of the grid).
+ * @property selectOutput Selects the command's output, as a click on the bar does: the terminal takes the keys, and the selection is kept for the
+ * middle click and copied when `copyOnSelect` says so.
+ */
+public class TerminalCommandMarkMenu(
+    public val mark: TerminalCommandMark,
+    public val position: Offset,
+    public val selectOutput: () -> Unit,
+)
+
 /** The width of the gutter at the left of the terminal where the marks of the commands are: a bar of this width for each command. */
 internal val COMMAND_MARK_WIDTH = 5.dp
 private val COMMAND_MARK_RADIUS = 2.dp

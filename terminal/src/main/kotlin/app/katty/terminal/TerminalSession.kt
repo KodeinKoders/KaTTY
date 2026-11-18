@@ -888,6 +888,28 @@ public class TerminalSession private constructor(
     public fun lastCommand(): TerminalCommand? = whileOpen(null) { commandMarks.last() }
 
     /**
+     * The command that [id] is the id of in a [TerminalCommandMark], as [lastCommand] gives the last one: `null` when it is forgotten (its prompt left
+     * the history, or the screen was cleared).
+     */
+    public fun command(id: Long): TerminalCommand? = whileOpen(null) { commandMarks.command(id) }
+
+    /**
+     * The output of the command that [id] is the id of in a [TerminalCommandMark], as [lastCommandOutput] gives the last one's: `null` when it is
+     * forgotten, and on the alternate screen, since libghostty reads the output on the screen that is active and the marks are the primary one's.
+     */
+    public fun commandOutput(id: Long, unwrap: Boolean = true): String? = whileOpen(null) {
+        if (terminal.activeScreen == GhosttyScreen.ALTERNATE) return@whileOpen null
+        producer.historyRead()
+        commandMarks.outputStart(id)?.let { terminal.commandOutput(it, unwrap) }
+    }
+
+    /**
+     * Whether the shell is reading a command line, on the primary screen: between the end of its prompt and the start of a command, as it marks
+     * them (OSC 133 B and C: see `shellIntegration` of [start]). Text sent then ([sendText]) is typed on that line. `false` without the shell's marks.
+     */
+    public fun atPrompt(): Boolean = whileOpen(false) { inputActive && terminal.activeScreen != GhosttyScreen.ALTERNATE }
+
+    /**
      * Moves the cursor of the line that the shell is reading to the cell at [column] and [row] of the screen, by sending it the arrow keys
      * that get there, as Ghostty does with a click: it is for a click on the command line. Only the shell that marks its input (OSC 133: see
      * `shellIntegration` of [start]) and the row of the cursor are moved: the line may be wider than the screen, and the shell is the one to

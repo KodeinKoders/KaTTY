@@ -1,8 +1,10 @@
 package app.katty.screens
 
+import app.katty.terminal.TerminalCommandOutcome
 import app.katty.AppShortcut
 import app.katty.SplitLabels
 import app.katty.TerminalKeys
+import app.katty.core.CommandQuestion
 import app.katty.core.KattyState
 import app.katty.core.TerminalId
 import app.katty.core.WorkspaceId
@@ -72,6 +74,13 @@ class ContextMenuActions(
     val selectAll: () -> Unit,
     val find: () -> Unit,
     val clearScreen: () -> Unit,
+    /**
+     * What the AI can be asked about the last command ([commandQuestionLabel]): why it failed, or what its result says when it ended otherwise;
+     * `null` when it has not ended (or there is none), or the AI is off.
+     */
+    val lastCommandQuestion: CommandQuestion? = null,
+    /** Asks the AI [lastCommandQuestion]. */
+    val askAboutLastCommand: () -> Unit = {},
 )
 
 /**
@@ -86,6 +95,37 @@ fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, pane
     divider()
     action("Find…", AppShortcut.FIND.label, onClick = actions.find)
     action("Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, onClick = actions.clearScreen)
+    actions.lastCommandQuestion?.let { question ->
+        divider()
+        action(commandQuestionLabel(question), onClick = actions.askAboutLastCommand)
+    }
     divider()
     include(paneMenu)
+}
+
+/** What the item that asks the AI [question] about a command says. */
+fun commandQuestionLabel(question: CommandQuestion): String = when (question) {
+    CommandQuestion.WHY_FAILED -> "Ask AI why it failed"
+    CommandQuestion.EXPLAIN -> "Explain result with AI"
+}
+
+/** What the AI is asked about a command that ended with [outcome]: why, when it failed, else what its result says; `null` while it runs. */
+fun commandQuestion(outcome: TerminalCommandOutcome): CommandQuestion? = when (outcome) {
+    TerminalCommandOutcome.RUNNING -> null
+    TerminalCommandOutcome.FAILED -> CommandQuestion.WHY_FAILED
+    else -> CommandQuestion.EXPLAIN
+}
+
+/**
+ * The menu of the bar of a command (its command mark), right-clicked: selecting its output, as a click on the bar does ([selectText]), then, once it
+ * has ended and while the AI is on ([ask] is not `null`), asking the AI about it: why, for a command that failed (red), else what its result says
+ * (green, or stopped).
+ */
+fun commandMarkMenu(outcome: TerminalCommandOutcome, selectText: () -> Unit, ask: (() -> Unit)?): List<MenuEntry> = menu {
+    action("Select text", onClick = selectText)
+    val question = commandQuestion(outcome)
+    if (ask != null && question != null) {
+        divider()
+        action(commandQuestionLabel(question), onClick = ask)
+    }
 }

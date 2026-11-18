@@ -60,6 +60,10 @@ class PaletteHandlers(
     val searchAll: () -> Unit = {},
     /** Clears the screen and the history of the terminal. */
     val clearScreen: () -> Unit,
+    /** Asks the AI why the last command of the terminal (or the command of the run that is shown) failed; `null` when it did not, or the AI is off. */
+    val explainFailure: (() -> Unit)? = null,
+    /** Asks the AI what the result of the last command of the terminal says; `null` when it failed or has not ended, or the AI is off. */
+    val explainResult: (() -> Unit)? = null,
     val maximize: () -> Unit,
     val colorScheme: () -> Unit,
     val toggleSidebar: () -> Unit,
@@ -279,6 +283,8 @@ fun paletteCommands(
         command("find-next", "Find next match", AppShortcut.FIND_NEXT.label, handlers.findNext)
         command("find-previous", "Find previous match", AppShortcut.FIND_PREVIOUS.label, handlers.findPrevious)
         command("clear-screen", "Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, handlers.clearScreen)
+        handlers.explainFailure?.let { command("explain-failure", commandQuestionLabel(app.katty.core.CommandQuestion.WHY_FAILED), action = it) }
+        handlers.explainResult?.let { command("explain-result", commandQuestionLabel(app.katty.core.CommandQuestion.EXPLAIN), action = it) }
         // What the terminal does with its own keys.
         if (hasSelection) command("copy", "Copy", TerminalKeys.COPY, handlers.copy)
         command("paste", "Paste", TerminalKeys.PASTE, handlers.paste)

@@ -94,6 +94,8 @@ class RunActions(
     val onStop: () -> Unit = {},
     /** Runs its command again, in its place: a command that still runs is asked about, and stopped first. */
     val onRestart: () -> Unit = {},
+    /** Asks the AI why its command failed; `null` while the AI is off. Offered only once the command has failed. */
+    val onExplain: (() -> Unit)? = null,
     val onMinimize: () -> Unit = {},
     /** Asks the user before a paste that could run commands. */
     val confirmPaste: (suspend (String) -> Boolean)? = null,
@@ -200,6 +202,7 @@ internal fun RunOverlay(
                     OneLine(homeShortened(run.directory), Modifier.weight(1f, fill = false), color = colors.muted, fontSize = 12.sp)
                 }
                 Text(status.label, color = status.color(), fontSize = 12.sp, maxLines = 1)
+                if (status.state == AgentState.ERROR) actions.onExplain?.let { explain -> KattyTextButton("Ask AI", explain, description = "Ask AI why it failed") }
                 // At the right of the header, as the buttons of a pane are.
                 KattyIconButton(KattyIcons.Restart, "Run the command again", actions.onRestart, size = ButtonSize.COMPACT, shortcut = AppShortcut.RESTART_TERMINAL.label)
                 KattyIconButton(KattyIcons.Minimize, "Minimize the run terminal", actions.onMinimize, size = ButtonSize.COMPACT, shortcut = AppShortcut.RUN_TOGGLE.label)

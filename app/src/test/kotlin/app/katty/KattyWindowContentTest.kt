@@ -58,10 +58,11 @@ class KattyWindowContentTest {
     private val store = KattyStore(newId = { "id${counter++}" })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var command = listOf("/bin/sh")
+    private var environment = emptyMap<String, String>()
     private val registry = SessionRegistry(
         store, scope, starter = Dispatchers.Unconfined,
         loadTheme = { null },
-        start = { spec, _ -> TerminalSession.start(80, 5, command = command, directory = spec.directory) },
+        start = { spec, _ -> TerminalSession.start(80, 5, command = command, environment = environment, directory = spec.directory) },
         // Not the user's shell, which reads the user's files.
         startRun = { run, directory, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", run), directory = directory, shellIntegration = false) },
     )
@@ -213,6 +214,113 @@ class KattyWindowContentTest {
         store.updateSettings { it.copy(aiCommand = "") }
         waitForIdle()
         onAllNodesWithContentDescription("Ask the AI for the command").assertCountEquals(0)
+    }
+
+    // A zsh with KaTTY's integration, which marks its commands, in a home of its own: not the user's files.
+    private fun markingShell() {
+        val home = Files.createTempDirectory("katty-home").also { Files.createFile(it.resolve(".zshrc")) }
+        command = listOf("/bin/zsh", "-l")
+        environment = mapOf("HOME" to home.toString())
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.paletteHas(label: String): Boolean {
+        assertTrue(shortcut(Key.K))
+        waitForIdle()
+        onNode(hasSetTextAction()).performTextInput(label)
+        waitForIdle()
+        return onAllNodesWithContentDescription(label, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    // The last command failed: the palette asks the AI why, with the command and its output, and its correction is typed at the prompt, not run.
+    @Test
+    fun theAiIsAskedWhyTheLastCommandFailedAndItsCorrectionIsTyped() = runComposeUiTest {
+        markingShell()
+        val asked = Files.createTempFile("katty-asked", ".txt")
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "printf '%s' \"\$PROMPT\" > '$asked'; printf 'The folder is not there.\\nCOMMAND: echo typed-by-katty\\n'") }
+        showWindow()
+        val session = registry.handles.value.values.single().session!!
+        waitUntil(timeoutMillis = 15_000) { session.atPrompt() }
+        session.sendText("ls /nonexistent-katty\r")
+        waitUntil(timeoutMillis = 15_000) { session.lastCommand()?.outcome == app.katty.terminal.TerminalCommandOutcome.FAILED && session.atPrompt() }
+
+        assertTrue(paletteHas("Ask AI why it failed"))
+        onNodeWithContentDescription("Ask AI why it failed", substring = true, useUnmergedTree = true).performClick()
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("The folder is not there.").fetchSemanticsNodes().isNotEmpty() }
+        val prompt = Files.readString(asked)
+        assertTrue("Command: ls /nonexistent-katty" in prompt && "No such file" in prompt, prompt)
+        onNodeWithContentDescription("Corrected command").assertExists()
+
+        onNodeWithText("Type it").performClick()
+        waitUntil(timeoutMillis = 15_000) { "echo typed-by-katty" in session.screenText() }
+        onAllNodesWithText("Why did it fail?").assertCountEquals(0)
+        Thread.sleep(500)
+        assertEquals("ls /nonexistent-katty", session.lastCommand()?.command, "Typed, not run")
+    }
+
+    // The last command succeeded: the palette asks the AI to explain its result, not why it failed, and nothing is corrected.
+    @Test
+    fun theAiIsAskedToExplainTheResultOfTheLastCommandThatSucceeded() = runComposeUiTest {
+        markingShell()
+        val asked = Files.createTempFile("katty-asked", ".txt")
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "printf '%s' \"\$PROMPT\" > '$asked'; printf 'It printed a word.\\n'") }
+        showWindow()
+        val session = registry.handles.value.values.single().session!!
+        waitUntil(timeoutMillis = 15_000) { session.atPrompt() }
+        session.sendText("echo explained-by-katty\r")
+        waitUntil(timeoutMillis = 15_000) { session.lastCommand()?.outcome == app.katty.terminal.TerminalCommandOutcome.SUCCEEDED && session.atPrompt() }
+
+        assertFalse(paletteHas("Ask AI why it failed"))
+        shortcut(Key.K)
+        waitForIdle()
+        assertTrue(paletteHas("Explain result with AI"))
+        onNodeWithContentDescription("Explain result with AI", substring = true, useUnmergedTree = true).performClick()
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("It printed a word.").fetchSemanticsNodes().isNotEmpty() }
+
+        onNodeWithText("What did it do?").assertExists()
+        val prompt = Files.readString(asked)
+        assertTrue("Command: echo explained-by-katty" in prompt && "Explain what the command did" in prompt, prompt)
+        onAllNodesWithContentDescription("Corrected command").assertCountEquals(0)
+    }
+
+    // The run's command failed: its header asks the AI, and the correction goes in the question of the run, to be read before it runs.
+    @Test
+    fun theAiIsAskedWhyTheRunFailedAndItsCorrectionGoesInTheQuestion() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "printf 'It exits with 3.\\nCOMMAND: exit 0\\n'") }
+        showWindow()
+        onNodeWithContentDescription("Run a command").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Command").performTextInput("echo boom; exit 3")
+        onNodeWithText("Run").performClick()
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Ask AI why it failed").fetchSemanticsNodes().isNotEmpty() }
+
+        onNodeWithContentDescription("Ask AI why it failed").performClick()
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("It exits with 3.").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Exit code 3").assertExists()
+        onNodeWithText("Put in the run question").performClick()
+        waitForIdle()
+
+        assertEquals("exit 0", commandText())
+    }
+
+    // With the AI off, nothing offers to ask it: not the palette, not the header of a run that failed.
+    @Test
+    fun nothingAsksTheAiWhileItIsOff() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "") }
+        showWindow()
+        onNodeWithContentDescription("Run a command").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Command").performTextInput("exit 3")
+        onNodeWithText("Run").performClick()
+        val workspace = state.selection.workspace!!
+        waitUntil(timeoutMillis = 15_000) { registry.runs.terminals.value[workspace]?.session?.exited?.value == 3 }
+        waitForIdle()
+
+        onAllNodesWithContentDescription("Ask AI why it failed").assertCountEquals(0)
+        assertFalse(paletteHas("Ask AI why it failed"))
     }
 
     // Command + Enter in the question runs the command minimized into the header: the panes keep the keyboard.

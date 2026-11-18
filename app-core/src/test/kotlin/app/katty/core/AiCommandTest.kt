@@ -76,4 +76,70 @@ class AiCommandTest {
         val slow = AiPrompt.ask("sleep 5", "x", directory, path = null, timeoutMs = 300)
         assertTrue(slow is AiAnswer.Failed && "within" in slow.reason, "$slow")
     }
+
+    // --- Why a command failed ---
+
+    @Test
+    fun thePromptHasTheCommandItsCodeAndTheEndOfItsOutput() {
+        val output = (1..500).joinToString("\n") { "line $it" } + "\n\n"
+
+        val prompt = commandPrompt(CommandQuestion.WHY_FAILED, CommandRun("make deploy", 2, output), directory)
+
+        assertTrue("Command: make deploy" in prompt, prompt)
+        assertTrue("Exit code: 2" in prompt, prompt)
+        assertTrue("line 500\n-----" in prompt, "The last line is kept, without the blank ones after it")
+        assertTrue("line 301\n" in prompt && "line 300\n" !in prompt, "The last $DIAGNOSIS_MAX_LINES lines")
+        assertTrue("COMMAND: none" in prompt, "It says the form of the answer")
+        assertTrue("Exit code: unknown" in commandPrompt(CommandQuestion.WHY_FAILED, CommandRun("x", null, ""), directory))
+    }
+
+    // A command that went well is explained: what it did and what its output says, with no correction asked for.
+    @Test
+    fun aCommandIsExplainedWithoutACorrection() {
+        val prompt = commandPrompt(CommandQuestion.EXPLAIN, CommandRun("git log -1", 0, "commit abc"), directory)
+
+        assertTrue("Command: git log -1" in prompt && "Exit code: 0" in prompt && "commit abc" in prompt, prompt)
+        assertTrue("Explain what the command did" in prompt, prompt)
+        assertTrue("COMMAND:" !in prompt && "failed" !in prompt, "Neither a failure nor a correction")
+    }
+
+    @Test
+    fun theEndOfALongOutputIsCutToItsCharacters() {
+        val long = (1..50).joinToString("\n") { "x".repeat(1_000) + it }
+
+        val tail = tailForPrompt(long)
+
+        assertTrue(tail.length <= DIAGNOSIS_MAX_CHARS, "${tail.length}")
+        assertTrue(tail.endsWith("x50"))
+        assertTrue(tail.lines().all { it.startsWith("xxx") }, "A line cut in its middle is left out")
+    }
+
+    @Test
+    fun theAnswerIsAnExplanationAndACorrectedCommand() {
+        assertEquals(
+            AiDiagnosis.Explained("The folder does not exist.\nIt was mistyped.", "ls /tmp"),
+            parseDiagnosis("The folder does not exist.\nIt was mistyped.\nCOMMAND: `ls /tmp`\n"),
+        )
+        assertEquals(AiDiagnosis.Explained("Nothing to fix.", null), parseDiagnosis("Nothing to fix.\nCOMMAND: none"))
+        assertEquals(AiDiagnosis.Explained("No form.", null), parseDiagnosis("No form.\n"), "Without a COMMAND line, all is the explanation")
+        assertEquals(AiDiagnosis.Explained("Fenced.", "make"), parseDiagnosis("```\nFenced.\n```\nCOMMAND: \$ make"))
+        assertEquals(AiDiagnosis.Explained("Bad.", null), parseDiagnosis("Bad.\nCOMMAND: rm -rf /\u0007"), "A control character refuses the command")
+        assertNull(parseDiagnosis("\n\n"))
+    }
+
+    @Test
+    fun theAiIsAskedWhyAndItsAnswerRead() {
+        var asked: List<String>? = null
+        val runner = CommandRunner { command, _, _ ->
+            asked = command
+            CommandResult(0, "The file is missing.\nCOMMAND: touch a.txt\n")
+        }
+
+        val diagnosis = AiPrompt.askAbout("agent \"\$PROMPT\"", CommandQuestion.WHY_FAILED, CommandRun("cat a.txt", 1, "cat: a.txt: No such file"), directory, null, runner)
+
+        assertEquals(AiDiagnosis.Explained("The file is missing.", "touch a.txt"), diagnosis)
+        assertTrue("cat: a.txt: No such file" in asked!!.last(), "The output is in the prompt of the script")
+        val failing = AiPrompt.askAbout("echo 'not logged in'; exit 3", CommandQuestion.WHY_FAILED, CommandRun("x", 1, ""), directory, path = null)
+        assertEquals(AiDiagnosis.Failed("it ended with the code 3: not logged in"), failing)
+    }
 }

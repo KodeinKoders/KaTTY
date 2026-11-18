@@ -249,6 +249,18 @@ class PaneActions(
      * does without a host.
      */
     val onOpenFile: ((TerminalId, app.katty.terminal.TerminalFilePosition) -> Unit)? = null,
+    /**
+     * What the AI can be asked about the last command of a terminal (why it failed, or what its result says), read when its menu opens: `null` while
+     * the AI is off, or when that command has not ended.
+     */
+    val lastCommandQuestion: (TerminalId) -> app.katty.core.CommandQuestion? = { null },
+    /** Asks the AI about the last command of a terminal, the question that its outcome makes. */
+    val onAskAboutLastCommand: (TerminalId) -> Unit = {},
+    /**
+     * Asks the AI about the command of a terminal whose bar of its command marks was right-clicked, by the mark's id: why it failed, or what its
+     * result says. `null` while the AI is off: the menu of a bar only selects its output then.
+     */
+    val onAskAboutCommand: ((TerminalId, Long) -> Unit)? = null,
 )
 
 @Composable

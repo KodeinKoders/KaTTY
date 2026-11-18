@@ -10,6 +10,11 @@ import app.katty.core.AgentState
 import app.katty.core.AttentionItem
 import app.katty.core.CloseDecision
 import app.katty.core.ClosedItem
+import app.katty.core.AgentDetection
+import app.katty.core.AiDiagnosis
+import app.katty.core.AiPrompt
+import app.katty.core.CommandQuestion
+import app.katty.core.CommandRun
 import app.katty.core.Direction
 import app.katty.core.GitChangesDisplay
 import app.katty.core.GitReader
@@ -52,10 +57,13 @@ import app.katty.terminals.writeExport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.file.Path
+import app.katty.screens.commandQuestion
+import app.katty.terminal.TerminalTextFormat
 import java.time.LocalDateTime
 import kotlin.math.roundToInt
 
@@ -109,6 +117,26 @@ internal data class IdeRequest(val workspace: WorkspaceId, val file: TerminalFil
  * the command that runs will be stopped when [interrupts].
  */
 internal data class RunRequest(val workspace: WorkspaceId, val directory: String, val initial: String, val interrupts: Boolean)
+
+/** Where the command that the AI is asked about ran: a terminal, or the run of a workspace. */
+internal sealed interface CommandTarget {
+    data class Terminal(val id: TerminalId) : CommandTarget
+
+    data class Run(val workspace: WorkspaceId) : CommandTarget
+}
+
+/**
+ * The question to the AI about the command [run], in [directory]: [question] is why it failed or what it did, and [answer] is `null` while it is
+ * asked. [note] says why the correction could not be typed (the shell is not at its prompt any more).
+ */
+internal data class Diagnosis(
+    val target: CommandTarget,
+    val question: CommandQuestion,
+    val run: CommandRun,
+    val directory: String,
+    val answer: AiDiagnosis? = null,
+    val note: String? = null,
+)
 
 /** A run that the user asked for, over the panes or [minimized], which stops the command that runs: they confirm it first. */
 internal data class RunLaunch(val workspace: WorkspaceId, val command: String, val directory: String, val minimized: Boolean = false)
@@ -220,6 +248,13 @@ internal class WindowController(
     // A number that changes when the question of the run is to ask the AI for the command (⌘R while it is open): the question has the field.
     var askRunTick by mutableIntStateOf(0)
 
+    /** The AI command in use (`aiCommand` of the settings and the installed agents), `null` while the AI is off: the window keeps it here. */
+    var aiCommand: String? = null
+
+    // Why a command failed, as the AI is asked it, and what asks it.
+    var diagnosing by mutableStateOf<Diagnosis?>(null)
+    private var diagnosisJob: Job? = null
+
     // The workspace whose run terminal has its find bar open.
     var findingRun by mutableStateOf<WorkspaceId?>(null)
 
@@ -274,7 +309,7 @@ internal class WindowController(
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
             quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null ||
-            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null
+            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null || diagnosing != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -409,14 +444,14 @@ internal class WindowController(
      * Asks what to run in the run terminal of [workspace], which is shown: in the directory of its terminal that is selected, or that would be, with
      * the command that it, else its project, ran last. When a command runs there, the question says that it will be stopped.
      */
-    fun openRun(workspace: WorkspaceId) {
+    fun openRun(workspace: WorkspaceId, initial: String? = null) {
         runs ?: return
         val current = state
         val target = current.projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == workspace } } ?: return
         if (current.selection.workspace != workspace || current.settings.view != MainView.TERMINALS) goToWorkspace(workspace)
         val terminal = (if (current.selection.workspace == workspace) current.selection.terminal else null) ?: target.terminalToFocus()
         val directory = target.layout.terminals().firstOrNull { it.id == terminal }?.directory ?: return
-        runRequest = RunRequest(workspace, directory, current.runCommandFor(workspace), interrupts = runs.active(workspace))
+        runRequest = RunRequest(workspace, directory, initial ?: current.runCommandFor(workspace), interrupts = runs.active(workspace))
     }
 
     /**
@@ -749,6 +784,122 @@ internal class WindowController(
         }
     }
 
+    /**
+     * What the AI can be asked about the last command of [id]: why it failed, or what its result says when it ended otherwise; `null` while the AI is
+     * off, or when that command has not ended (or there is none). It takes the session's lock.
+     */
+    fun lastCommandQuestion(id: TerminalId): CommandQuestion? {
+        if (aiCommand == null) return null
+        return handles[id]?.session?.lastCommand()?.outcome?.let(::commandQuestion)
+    }
+
+    /** Whether the AI can be asked why the command of the run of [workspace] failed: it is on, and the command could not start or ended with an error. */
+    fun runFailed(workspace: WorkspaceId): Boolean {
+        val run = runOf(workspace) ?: return false
+        return aiCommand != null && (run.failure != null || (run.session?.exited?.value ?: 0) != 0)
+    }
+
+    /**
+     * Asks the AI about the last command of [id], with its line, its exit code and the end of its output: why it failed, or what its result says when
+     * it ended otherwise. The dialog opens at once.
+     */
+    fun explainLastCommand(id: TerminalId) {
+        val session = handles[id]?.session ?: return
+        val directory = session.workingDirectory.value ?: state.locate(id)?.terminal?.directory ?: return
+        scope.launch {
+            // Under the session's lock, which the reader writes under: not on the thread that draws.
+            val (command, output) = withContext(Dispatchers.IO) { session.lastCommand() to session.lastCommandOutput() }
+            val question = command?.outcome?.let(::commandQuestion) ?: return@launch
+            ask(CommandTarget.Terminal(id), question, command.toRun(output), directory)
+        }
+    }
+
+    /**
+     * Asks the AI about the command of [id] that the mark [markId] is the bar of: why it failed, for one that failed, else what it did. Its line, its
+     * exit code and the end of its output are sent; the dialog opens at once.
+     */
+    fun explainCommand(id: TerminalId, markId: Long) {
+        val session = handles[id]?.session ?: return
+        val directory = session.workingDirectory.value ?: state.locate(id)?.terminal?.directory ?: return
+        scope.launch {
+            val (command, output) = withContext(Dispatchers.IO) { session.command(markId) to session.commandOutput(markId) }
+            val question = command?.outcome?.let(::commandQuestion) ?: return@launch
+            ask(CommandTarget.Terminal(id), question, command.toRun(output), directory)
+        }
+    }
+
+    private fun app.katty.terminal.TerminalCommand.toRun(output: String?) = CommandRun(command ?: "(not known)", exitCode, output.orEmpty())
+
+    /** Asks the AI why the command of the run of [workspace] failed: it has no marks, its whole text is its output, of which the end is sent. */
+    fun explainRunFailure(workspace: WorkspaceId) {
+        val run = runOf(workspace) ?: return
+        scope.launch {
+            val output = run.failure ?: withContext(Dispatchers.IO) { run.session?.history(TerminalTextFormat.PLAIN)?.text.orEmpty() }
+            ask(CommandTarget.Run(workspace), CommandQuestion.WHY_FAILED, CommandRun(run.command, run.session?.exited?.value, output), run.directory)
+        }
+    }
+
+    /** Asks the AI again, the same question: its last answer failed. */
+    fun retryDiagnosis() {
+        val diagnosis = diagnosing ?: return
+        ask(diagnosis.target, diagnosis.question, diagnosis.run, diagnosis.directory)
+    }
+
+    /** Closes the dialog, and forgets an answer that has not come: the agent's process is not killed, it ends by itself or at its time limit. */
+    fun closeDiagnosis() {
+        diagnosisJob?.cancel()
+        diagnosisJob = null
+        diagnosing = null
+    }
+
+    /**
+     * Puts the corrected command where it can be run, never running it: typed on the command line of the terminal, only while its shell waits
+     * for one (it would otherwise be the input of the program that runs); in the question of the run, for the run.
+     */
+    fun typeCorrection() {
+        val diagnosis = diagnosing ?: return
+        val command = (diagnosis.answer as? AiDiagnosis.Explained)?.command ?: return
+        when (val target = diagnosis.target) {
+            is CommandTarget.Terminal -> {
+                val session = handles[target.id]?.session ?: return
+                if (!session.atPrompt()) {
+                    diagnosing = diagnosis.copy(note = "The shell is not waiting for a command: copy it instead.")
+                    return
+                }
+                closeDiagnosis()
+                session.sendText(command)
+                openTerminal(target.id)
+            }
+            is CommandTarget.Run -> {
+                closeDiagnosis()
+                openRun(target.workspace, initial = command)
+            }
+        }
+    }
+
+    // What asks the AI about the command, for the run that is shown or the selected terminal: why it failed ([question] WHY_FAILED), or what the
+    // result of the terminal's last command says (EXPLAIN); `null` when that is not the question. Read once, when the palette opens, as what is
+    // selected is.
+    private fun askAboutCommandHere(question: CommandQuestion): (() -> Unit)? {
+        if (!onTerminals) return null
+        shownRun()?.let { run ->
+            return if (question == CommandQuestion.WHY_FAILED && runFailed(run.workspace)) ({ explainRunFailure(run.workspace) }) else null
+        }
+        val id = state.selection.terminal ?: return null
+        return if (lastCommandQuestion(id) == question) ({ explainLastCommand(id) }) else null
+    }
+
+    private fun ask(target: CommandTarget, question: CommandQuestion, run: CommandRun, directory: String) {
+        val template = aiCommand ?: return
+        diagnosisJob?.cancel()
+        val asked = Diagnosis(target, question, run, directory)
+        diagnosing = asked
+        diagnosisJob = scope.launch {
+            val answer = withContext(Dispatchers.IO) { AiPrompt.askAbout(template, question, run, Path.of(directory), AgentDetection.knownLoginPath) }
+            if (diagnosing == asked) diagnosing = asked.copy(answer = answer)
+        }
+    }
+
     // What the terminal is called, as its pane says it.
     private fun terminalTitle(terminal: TerminalId): String {
         val handle = handles[terminal]
@@ -946,6 +1097,8 @@ internal class WindowController(
         find = { onTerminals { shownRun()?.let { findingRun = it.workspace } ?: openFind(state.selection.terminal) } },
         searchAll = ::searchAll,
         clearScreen = { onTerminals { selectedSession()?.clearScreen() } },
+        explainFailure = askAboutCommandHere(CommandQuestion.WHY_FAILED),
+        explainResult = askAboutCommandHere(CommandQuestion.EXPLAIN),
         maximize = { onTerminals { maximize() } },
         colorScheme = { state.selection.terminal?.let { picking = SchemeTarget.Terminal(it) } },
         toggleSidebar = ::toggleSidebar,

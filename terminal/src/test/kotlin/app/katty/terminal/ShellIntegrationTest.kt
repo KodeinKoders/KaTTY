@@ -129,6 +129,55 @@ class ShellIntegrationTest {
         await("the directory of the first prompt") { session.workingDirectory.value == directory.toRealPath().toString() }
     }
 
+    // What a host types for the user only goes on a command line: at the prompt, not while a program runs, nor without the shell's marks.
+    private fun saysWhetherItIsAtItsPrompt(shell: String) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, emptyHome(), directory)
+        await("the prompt") { session.atPrompt() }
+
+        session.sendText("sleep 30\r")
+        await("the command runs") { session.foregroundProcessName() == "sleep" }
+        assertEquals(false, session.atPrompt(), "A program runs")
+
+        val plain = start(shell, emptyHome(), directory, shellIntegration = false)
+        await("the shell without its marks prints") { plain.screen().isNotBlank() }
+        assertEquals(false, plain.atPrompt(), "Without the marks, nothing says it reads a command")
+        session.close()
+        plain.close()
+    }
+
+    @Test
+    fun zshSaysWhetherItIsAtItsPrompt() = saysWhetherItIsAtItsPrompt("/bin/zsh")
+
+    @Test
+    fun bashSaysWhetherItIsAtItsPrompt() = saysWhetherItIsAtItsPrompt("/bin/bash")
+
+    // A command that is not the last is read by the id of its mark: its line, its exit code, its output.
+    private fun givesACommandAndItsOutputByItsMark(shell: String) {
+        val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
+        val session = start(shell, emptyHome(), directory)
+        await("the first prompt") { session.atPrompt() }
+        val events = session.collectEvents()
+        session.sendText("printf 'first\\n'; false\r")
+        await("the end of the first command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
+        session.sendText("echo second\r")
+        await("the end of the second command") { events.count { it is TerminalEvent.PromptStarted } >= 2 }
+        await("both marks") { session.frames.value.commandMarks.count { it.finishedAt != null } >= 2 }
+
+        val first = session.frames.value.commandMarks.first()
+        val command = session.command(first.id)
+        assertEquals("printf 'first\\n'; false", command?.command)
+        assertEquals(1, command?.exitCode)
+        assertEquals("first", session.commandOutput(first.id))
+        assertEquals(null, session.command(Long.MAX_VALUE), "No such mark")
+    }
+
+    @Test
+    fun zshGivesACommandAndItsOutputByItsMark() = givesACommandAndItsOutputByItsMark("/bin/zsh")
+
+    @Test
+    fun bashGivesACommandAndItsOutputByItsMark() = givesACommandAndItsOutputByItsMark("/bin/bash")
+
     private fun givesTheOutputOfTheLastCommand(shell: String) {
         val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
         val session = start(shell, emptyHome(), directory)

@@ -1,6 +1,7 @@
 package app.katty.screens
 
 import app.katty.core.WorkspaceId
+import app.katty.terminal.TerminalCommandOutcome
 import app.katty.ui.MenuAction
 import app.katty.ui.MenuDivider
 import app.katty.ui.MenuEntry
@@ -221,5 +222,37 @@ class TerminalMenusTest {
         listOf("Copy", "Paste", "Select all", "Find…", "Clear screen and scrollback").forEach { entries.action(it).onClick() }
 
         assertEquals(listOf("copy", "paste", "selectAll", "find", "clear"), calls)
+    }
+
+    // The bar of any command selects its output; once it has ended, and while the AI is on, it also asks why it failed (red) or what its result says.
+    @Test
+    fun theMenuOfABarSelectsItsOutputAndAsksWhyOrWhat() {
+        val calls = mutableListOf<String>()
+        fun entries(outcome: TerminalCommandOutcome, ai: Boolean = true) =
+            commandMarkMenu(outcome, selectText = { calls += "select" }, ask = if (ai) ({ calls += "ask" }) else null).filterIsInstance<app.katty.ui.MenuAction>()
+        fun labels(outcome: TerminalCommandOutcome, ai: Boolean = true) = entries(outcome, ai).map { it.label }
+
+        assertEquals(listOf("Select text", "Ask AI why it failed"), labels(TerminalCommandOutcome.FAILED))
+        assertEquals(listOf("Select text", "Explain result with AI"), labels(TerminalCommandOutcome.SUCCEEDED))
+        assertEquals(listOf("Select text", "Explain result with AI"), labels(TerminalCommandOutcome.STOPPED))
+        assertEquals(listOf("Select text"), labels(TerminalCommandOutcome.RUNNING), "A command that runs has no result yet")
+        assertEquals(listOf("Select text"), labels(TerminalCommandOutcome.FAILED, ai = false), "The AI is off")
+
+        entries(TerminalCommandOutcome.FAILED).forEach { it.onClick() }
+        assertEquals(listOf("select", "ask"), calls)
+    }
+
+    // The right click of a terminal asks the AI about its last command, the question that its outcome makes.
+    @Test
+    fun theMenuOfATerminalAsksAboutItsLastCommand() {
+        fun labels(question: app.katty.core.CommandQuestion?) = terminalContextMenu(
+            hasSelection = false,
+            actions = ContextMenuActions({}, {}, {}, {}, {}, lastCommandQuestion = question),
+            paneMenu = emptyList(),
+        ).filterIsInstance<app.katty.ui.MenuAction>().map { it.label }
+
+        assertTrue("Ask AI why it failed" in labels(app.katty.core.CommandQuestion.WHY_FAILED))
+        assertTrue("Explain result with AI" in labels(app.katty.core.CommandQuestion.EXPLAIN))
+        assertTrue(labels(null).none { "AI" in it })
     }
 }

@@ -118,6 +118,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
     val handle = context.handles[spec.id]
     val shape = RoundedCornerShape(PANE_RADIUS)
     var contextAt by remember { mutableStateOf<IntOffset?>(null) }
+    // The bar of a command that was right-clicked: its menu selects the command's output, and asks the AI about it.
+    var markMenu by remember { mutableStateOf<app.katty.terminal.compose.TerminalCommandMarkMenu?>(null) }
     // The exit code of the shell once it has ended: `null` while it runs.
     val exitCode = handle?.session?.exited?.collectAsState()?.value
 
@@ -243,10 +245,24 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         focusRequester = handle.focus,
                         focusOnStart = false,
                         onContextMenu = { at -> contextAt = IntOffset(at.x.toInt(), at.y.toInt()) },
+                        onCommandMarkMenu = { markMenu = it },
+                        // The tooltip of the bar would cover its menu.
+                        commandMarkTooltip = markMenu == null,
                         confirmPaste = context.actions.confirmPaste,
                         onOpenFile = context.actions.onOpenFile?.let { open -> { file -> open(spec.id, file) } },
                     )
                     }
+                }
+                markMenu?.let { request ->
+                    KattyMenu(
+                        commandMarkMenu(
+                            request.mark.outcome,
+                            selectText = request.selectOutput,
+                            ask = context.actions.onAskAboutCommand?.let { ask -> { ask(spec.id, request.mark.id) } },
+                        ),
+                        onDismiss = { markMenu = null },
+                        offset = IntOffset(request.position.x.toInt(), request.position.y.toInt()),
+                    )
                 }
                 contextAt?.let { at ->
                     KattyMenu(
@@ -258,6 +274,9 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                                 selectAll = session::selectAll,
                                 find = { context.actions.onFind(spec.id) },
                                 clearScreen = session::clearScreen,
+                                // Read when the menu opens: the last command is what it is then.
+                                lastCommandQuestion = remember(at) { context.actions.lastCommandQuestion(spec.id) },
+                                askAboutLastCommand = { context.actions.onAskAboutLastCommand(spec.id) },
                             ),
                             paneMenu = menuEntries(),
                         ),

@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.terminal.KeyInput
+import app.katty.terminal.TerminalCommandMark
 import app.katty.terminal.TerminalKey
 import app.katty.terminal.TerminalClipboardLocation
 import app.katty.terminal.TerminalEvent
@@ -147,6 +148,11 @@ import kotlin.math.roundToInt
  * is added to the left of [padding], **and only while the primary screen is shown**: a program on the alternate screen has the room that it had without
  * the marks. The host says `false` for a program that fills the terminal without it. The pointer over it shows how the command went, when it started
  * and how long it took, and a click on it selects the command's output. It needs the shell's marks.
+ * @param onCommandMarkMenu Called when a right press is on the bar of a command, with that mark, where the press was and what selects the command's
+ * output as a click on the bar does ([TerminalCommandMarkMenu]). The host shows its menu for that command there. Without it a right press on a bar does
+ * nothing.
+ * @param commandMarkTooltip Whether the pointer over a bar shows what the command was. The host says `false` while the menu of a bar is open, which the
+ * tooltip would cover.
  * @param onOpenFile Opens the file of a link that names one ([TerminalLink.file]: a path written in the text, such as `src/Foo.kt:42` in what a
  * compiler printed, or a `file://` address), at its line, in an editor. Without it such a link goes to [onOpenLink] as its `file://` address,
  * which the default shows in the Finder.
@@ -180,6 +186,8 @@ public fun Terminal(
     copyRichText: Boolean = false,
     optionClickMovesCursor: Boolean = true,
     commandMarks: Boolean = false,
+    onCommandMarkMenu: ((TerminalCommandMarkMenu) -> Unit)? = null,
+    commandMarkTooltip: Boolean = true,
     onOpenFile: ((TerminalFilePosition) -> Unit)? = null,
     acceptDrops: Boolean = true,
 ) {
@@ -279,6 +287,19 @@ public fun Terminal(
     val latestCopyOnSelect = rememberUpdatedState(copyOnSelect)
     val latestOptionClick = rememberUpdatedState(optionClickMovesCursor)
     val primary = primarySelection
+    // What a click on the bar of a command does, and the item of its menu: the terminal takes the keys, and the output is selected as a selection
+    // that the pointer made is (kept for the middle click, and copied when it is asked).
+    val selectOutput: (Long) -> Unit = remember(session, primary, focusRequester) {
+        { id ->
+            focusRequester.requestFocus()
+            if (session.selectCommandOutput(id)) {
+                session.selectedText()?.let {
+                    primary.text = it
+                    if (latestCopyOnSelect.value) copySelected()
+                }
+            }
+        }
+    }
     val links = remember(session) { LinkInteraction() }
     // The marks are in the padding, which the terminal's own pointer handler does not see: another one, on the whole terminal, has them.
     val markInteraction = remember(session) { CommandMarkInteraction() }
@@ -304,6 +325,7 @@ public fun Terminal(
     )
     val contextMenu = remember(session) { ContextMenuGesture() }
     val latestContextMenu = rememberUpdatedState(onContextMenu)
+    val latestCommandMarkMenu = rememberUpdatedState(onCommandMarkMenu)
     val openLink = rememberUpdatedState(onOpenLink)
     val openFile = rememberUpdatedState(onOpenFile)
     val wheel = remember(session) { WheelScroller() }
@@ -474,17 +496,19 @@ public fun Terminal(
                                     continue
                                 }
                                 val change = event.changes.firstOrNull() ?: continue
-                                val press = event.type == PointerEventType.Press && event.button == PointerButton.Primary
+                                val pressed = event.type == PointerEventType.Press
+                                val menu = latestCommandMarkMenu.value.takeIf { pressed && event.button == PointerButton.Secondary }
+                                val press = pressed && (event.button == PointerButton.Primary || menu != null)
                                 val mark = markInteraction.handle(
                                     change.position.x, change.position.y, press, latestFrame.value.commandMarks, markGutter, markTop,
                                     latestTypography.value.cellHeight,
-                                ) ?: continue
-                                focusRequester.requestFocus()
-                                if (session.selectCommandOutput(mark.id)) {
-                                    session.selectedText()?.let {
-                                        primary.text = it
-                                        if (latestCopyOnSelect.value) copySelected()
-                                    }
+                                )?: continue
+                                if (menu != null) {
+                                    // The grid's coordinates, as the menu of the terminal has them.
+                                    val at = Offset(change.position.x - gridLeft, change.position.y - markTop)
+                                    menu(TerminalCommandMarkMenu(mark, at) { selectOutput(mark.id) })
+                                } else {
+                                    selectOutput(mark.id)
                                 }
                                 event.changes.forEach { it.consume() }
                             }
@@ -711,7 +735,7 @@ public fun Terminal(
     )
 
     // What the mark under the pointer says. A popup takes no room: it is in a layer of its own.
-    val hoveredMark = frame.commandMarks.firstOrNull { it.id == markInteraction.hovered }
+    val hoveredMark = frame.commandMarks.firstOrNull { it.id == markInteraction.hovered }.takeIf { commandMarkTooltip }
     if (markGutter > 0f && hoveredMark != null) {
         // A command that runs says how long for: the time moves on while the pointer stays.
         var now by remember(hoveredMark.id) { mutableStateOf(Instant.now()) }

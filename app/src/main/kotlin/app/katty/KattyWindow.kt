@@ -32,6 +32,7 @@ import app.katty.core.usageKey
 import app.katty.core.AgentState
 import app.katty.core.OPEN_SESSIONS_KEY
 import app.katty.core.openSessionsCost
+import app.katty.screens.CommandAnswerDialog
 import app.katty.screens.LocalGitChangesDisplay
 import app.katty.screens.OpenSessionsLine
 import app.katty.core.Agent
@@ -263,6 +264,7 @@ internal fun KattyWindowContent(
     // What asks the AI: the user's command, else the one of the first installed agent (in the order of the README's table, which is Agent's);
     // none when the user emptied it.
     val aiCommand = aiCommand(settings.aiCommand, detected.keys)
+    SideEffect { controller.aiCommand = aiCommand }
     // The editors that are installed: LaunchServices knows, and is asked again when the window gets the focus, with the agents.
     val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { installedIdes() } }
     SideEffect { controller.installedIdes = installedIdes }
@@ -337,6 +339,7 @@ internal fun KattyWindowContent(
         onToggle = controller::toggleRun,
         onStop = { state.selection.workspace?.let(controller::stopRun) },
         onRestart = { state.selection.workspace?.let(controller::restartRun) },
+        onExplain = aiCommand?.let { { state.selection.workspace?.let(controller::explainRunFailure) } },
         onMinimize = { state.selection.workspace?.let(controller::minimizeRun) },
         confirmPaste = controller::confirmPaste,
         finding = selectedRun != null && controller.findingRun == selectedRun.workspace,
@@ -515,6 +518,9 @@ internal fun KattyWindowContent(
                                 confirmPaste = confirmPaste,
                                 onPaste = pasteInto,
                                 onOpenFile = if (ides.isEmpty()) null else controller::openFile,
+                                lastCommandQuestion = controller::lastCommandQuestion,
+                                onAskAboutLastCommand = controller::explainLastCommand,
+                                onAskAboutCommand = if (aiCommand == null) null else controller::explainCommand,
                                 onInteraction = interacted,
                                 onExportHistory = controller::exportHistory,
                             ),
@@ -840,7 +846,17 @@ internal fun KattyWindowContent(
                     onConfirm = { controller.answerStopRun(true) }, onCancel = { controller.answerStopRun(false) },
                 )
             }
-            controller.restartingRun?.let { workspace ->
+            controller.diagnosing?.let { diagnosis ->
+            CommandAnswerDialog(
+                diagnosis.question, diagnosis.run, diagnosis.answer, diagnosis.note,
+                typeLabel = if (diagnosis.target is CommandTarget.Run) "Put in the run question" else "Type it",
+                onType = controller::typeCorrection,
+                onCopy = ::copyToClipboard,
+                onRetry = controller::retryDiagnosis,
+                onClose = controller::closeDiagnosis,
+            )
+        }
+        controller.restartingRun?.let { workspace ->
                 RestartRunConfirmation(
                     runTerminals[workspace]?.command.orEmpty(),
                     onConfirm = { controller.answerRestartRun(true) }, onCancel = { controller.answerRestartRun(false) },

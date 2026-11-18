@@ -30,6 +30,7 @@ import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.rightClick
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.input.key.Key
@@ -68,6 +69,9 @@ class WorkspaceAreaTest {
     }
 
     private val closed = mutableListOf<app.katty.core.TerminalId>()
+    private var lastQuestion: app.katty.core.CommandQuestion? = null
+    private val explained = mutableListOf<app.katty.core.TerminalId>()
+    private val askedAbout = mutableListOf<Long>()
     private var infos by androidx.compose.runtime.mutableStateOf(emptyMap<app.katty.core.TerminalId, app.katty.core.AgentInfo>())
     private var renaming by androidx.compose.runtime.mutableStateOf<app.katty.core.TerminalId?>(null)
 
@@ -89,6 +93,9 @@ class WorkspaceAreaTest {
                             onClose = { closed += it },
                             destinations = emptyList(),
                             onMove = { _, _ -> },
+                            lastCommandQuestion = { lastQuestion },
+                            onAskAboutLastCommand = { explained += it },
+                            onAskAboutCommand = { _, mark -> askedAbout += mark },
                         ),
                     )
                 }
@@ -276,6 +283,103 @@ class WorkspaceAreaTest {
         onNodeWithText("Split right").assertExists()
         onNodeWithText("Close terminal").assertExists()
         assertEquals(first, store.state.value.selection.terminal)
+    }
+
+    // The AI is asked about the last command once it has ended, why it failed or what its result says, and the menu asks which when it opens.
+    @Test
+    fun aRightClickOffersToAskTheAiAboutTheLastCommand() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+        waitUntil(timeoutMillis = 5_000) { registry.handles.value[terminal]?.session != null }
+        waitForIdle()
+
+        onRoot().performMouseInput { rightClick(center) }
+        waitForIdle()
+        onNodeWithText("Copy").assertExists()
+        onAllNodesWithText("Ask AI why it failed").assertCountEquals(0)
+        onAllNodesWithText("Explain result with AI").assertCountEquals(0)
+        // The menu is a root of its own: Escape goes to it.
+        onAllNodes(androidx.compose.ui.test.isRoot()).onLast().performKeyInput { pressKey(Key.Escape) }
+        waitForIdle()
+        onAllNodes(androidx.compose.ui.test.isRoot()).assertCountEquals(1)
+
+        lastQuestion = app.katty.core.CommandQuestion.EXPLAIN
+        onRoot().performMouseInput { rightClick(center) }
+        waitForIdle()
+        onAllNodesWithText("Ask AI why it failed").assertCountEquals(0)
+        onNodeWithText("Explain result with AI").performClick()
+        waitForIdle()
+        assertEquals(listOf(terminal), explained)
+
+        lastQuestion = app.katty.core.CommandQuestion.WHY_FAILED
+        onRoot().performMouseInput { rightClick(center) }
+        waitForIdle()
+        onAllNodesWithText("Explain result with AI").assertCountEquals(0)
+        onNodeWithText("Ask AI why it failed").performClick()
+        waitForIdle()
+        assertEquals(listOf(terminal, terminal), explained)
+    }
+
+    // The menu of the bar of a command is not under the bar's tooltip, which goes while it is open; it selects the command's output, as a click on
+    // the bar does, and asks the AI about it.
+    @Test
+    fun theMenuOfTheBarOfACommandHidesItsTooltipAndSelectsItsOutput() = runComposeUiTest {
+        store.addProject("/tmp")
+        val terminal = store.state.value.selection.terminal!!
+        show()
+        waitUntil(timeoutMillis = 5_000) { registry.handles.value[terminal]?.session != null }
+        val session = registry.handles.value[terminal]!!.session!!
+        // What a shell with the integration sends around a command (this one has none) and at the next prompt, and its output: blocks, which show where the
+        // grid is.
+        session.sendText("printf '\\033]133;A\\007$ ls\\r\\n\\033]133;B\\007\\033]133;C\\007\\u2588\\u2588\\u2588\\u2588\\r\\n\\033]133;D;0\\007\\033]133;A\\007'\r")
+        waitUntil(timeoutMillis = 10_000) {
+            val frame = session.frames.value
+            frame.commandMarks.any { it.finishedAt != null } && frame.rows.any { row -> row.cells.count { it.text == "█" } == 4 }
+        }
+        waitForIdle()
+
+        // The blocks are the longest run of the foreground on a line of pixels: the bar is in the gutter at their left, 5 dp wide, which is at the left
+        // of the padding.
+        val image = onRoot().captureToImage().toPixelMap()
+        val foreground = session.frames.value.foreground.rgb
+        fun rgb(x: Int, y: Int) = image[x, y].let { (it.red * 255 + .5f).toInt() shl 16 or ((it.green * 255 + .5f).toInt() shl 8) or (it.blue * 255 + .5f).toInt() }
+        fun longestRun(y: Int): Pair<Int, Int> {
+            var best = 0 to 0
+            var start = -1
+            for (x in 0..image.width) {
+                if (x < image.width && rgb(x, y) == foreground) {
+                    if (start < 0) start = x
+                } else if (start >= 0) {
+                    if (x - start > best.second) best = start to x - start
+                    start = -1
+                }
+            }
+            return best
+        }
+        // Under the header, whose lines are of that color across the pane.
+        val headerBottom = (onAllNodes(hasContentDescription("Terminal ", substring = true)).onFirst().getBoundsInRoot().bottom.value * density.density).toInt()
+        val runs = (0 until image.height).map { if (it < headerBottom) 0 to 0 else longestRun(it).takeIf { run -> run.second < image.width / 4 } ?: (0 to 0) }
+        val longest = runs.maxOf { it.second }
+        val blockRows = runs.indices.filter { runs[it].second == longest }
+        val bar = androidx.compose.ui.geometry.Offset(runs[blockRows.first()].first - (TERMINAL_PADDING.value + 2.5f) * density.density, blockRows.average().toFloat())
+
+        onRoot().performMouseInput {
+            moveTo(bar + androidx.compose.ui.geometry.Offset(0f, 1f))
+            moveTo(bar)
+        }
+        waitForIdle()
+        onNodeWithText("Succeeded").assertExists()
+
+        // The tooltip is a root of its own: the window's is the first.
+        onAllNodes(androidx.compose.ui.test.isRoot()).onFirst().performMouseInput { rightClick(bar) }
+        waitForIdle()
+        onNodeWithText("Select text").assertExists()
+        onNodeWithText("Explain result with AI").assertExists()
+        onAllNodesWithText("Succeeded").assertCountEquals(0)
+
+        onNodeWithText("Select text").performClick()
+        waitUntil(timeoutMillis = 5_000) { session.selectedText() == "████" }
     }
 
     @Test

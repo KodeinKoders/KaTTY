@@ -152,6 +152,9 @@ internal class CommandMarks(
     /** The last command that started, with what is known of it now: its line once it is read, its end once it ended. */
     fun last(): TerminalCommand? = commands.lastOrNull()?.let { TerminalCommand(it.line, it.exitCode, it.startedAt, it.finishedAt) }
 
+    /** The command [id], as [last] gives one, or `null` when it is forgotten. */
+    fun command(id: Long): TerminalCommand? = commands.firstOrNull { it.id == id }?.let { TerminalCommand(it.line, it.exitCode, it.startedAt, it.finishedAt) }
+
     /** Where the output of the command [id] starts, or `null` when it is forgotten. */
     fun outputStart(id: Long): GhosttyTrackedRef? = commands.firstOrNull { it.id == id }?.output
 

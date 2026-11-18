@@ -87,10 +87,7 @@ public object AiPrompt {
         runner: CommandRunner = ProcessCommandRunner,
         timeoutMs: Long = TIMEOUT_MS,
     ): AiAnswer {
-        val searchPath = path ?: System.getenv("PATH").orEmpty()
-        val script = "PROMPT=${quoted(prompt)}; export PROMPT; PATH=${quoted(searchPath)}; export PATH\n$template"
-        val result = runner.run(listOf("/bin/sh", "-c", script), directory, timeoutMs)
-            ?: return AiAnswer.Failed("it did not answer within ${timeoutMs / 1000} seconds, or could not be started")
+        val result = run(template, prompt, directory, path, runner, timeoutMs) ?: return AiAnswer.Failed(noAnswer(timeoutMs))
         val line = aiCommandLine(result.output)
         return when {
             result.exitCode != 0 -> AiAnswer.Failed("it ended with the code ${result.exitCode}" + (line?.let { ": $it" } ?: ""))
@@ -98,6 +95,38 @@ public object AiPrompt {
             else -> AiAnswer.Command(line)
         }
     }
+
+    /**
+     * Asks the AI [question] about the command [run], as [ask] runs it ([commandPrompt]), and reads its answer ([parseDiagnosis]): an explanation,
+     * and, for a command that failed, a corrected command when it has one.
+     */
+    public fun askAbout(
+        template: String,
+        question: CommandQuestion,
+        run: CommandRun,
+        directory: Path,
+        path: String?,
+        runner: CommandRunner = ProcessCommandRunner,
+        timeoutMs: Long = TIMEOUT_MS,
+    ): AiDiagnosis {
+        val result = run(template, commandPrompt(question, run, directory), directory, path, runner, timeoutMs)
+            ?: return AiDiagnosis.Failed(noAnswer(timeoutMs))
+        val diagnosis = parseDiagnosis(result.output)
+        return when {
+            result.exitCode != 0 -> AiDiagnosis.Failed("it ended with the code ${result.exitCode}" + (aiCommandLine(result.output)?.let { ": $it" } ?: ""))
+            diagnosis == null -> AiDiagnosis.Failed("it printed nothing")
+            else -> diagnosis
+        }
+    }
+
+    // Runs [template] with [prompt] as `$PROMPT`: `null` when it could not be started or did not end in [timeoutMs].
+    private fun run(template: String, prompt: String, directory: Path, path: String?, runner: CommandRunner, timeoutMs: Long): CommandResult? {
+        val searchPath = path ?: System.getenv("PATH").orEmpty()
+        val script = "PROMPT=${quoted(prompt)}; export PROMPT; PATH=${quoted(searchPath)}; export PATH\n$template"
+        return runner.run(listOf("/bin/sh", "-c", script), directory, timeoutMs)
+    }
+
+    private fun noAnswer(timeoutMs: Long) = "it did not answer within ${timeoutMs / 1000} seconds, or could not be started"
 
     // A word of the shell in single quotes, which keep everything as it is but a single quote.
     private fun quoted(text: String): String = "'" + text.replace("'", "'\\''") + "'"
@@ -116,3 +145,79 @@ public fun aiCommandLine(output: String): String? =
         ?.removePrefix("$ ")
         ?.trim()
         ?.takeIf { it.isNotEmpty() }
+
+/**
+ * A command that ran, as it is told to the AI: its line, its exit code (`null` when it is not known, or it could not start), and what it printed,
+ * of which only the end is sent ([tailForPrompt]).
+ */
+public data class CommandRun(val command: String, val exitCode: Int?, val output: String)
+
+/** What the AI is asked about a command: why it failed, or what it did and what its output says. */
+public enum class CommandQuestion {
+    WHY_FAILED,
+    EXPLAIN,
+}
+
+/** What the AI said of a command: an explanation and, for one that failed, a corrected command; or why it said nothing. */
+public sealed interface AiDiagnosis {
+    public data class Explained(val explanation: String, val command: String?) : AiDiagnosis
+
+    public data class Failed(val reason: String) : AiDiagnosis
+}
+
+/** How many of the last lines of the output of a command that failed are sent to the AI. */
+public const val DIAGNOSIS_MAX_LINES: Int = 200
+
+/** How many characters of them at most, from the end. */
+public const val DIAGNOSIS_MAX_CHARS: Int = 12_000
+
+/**
+ * The end of [output] that is sent to the AI: its last [DIAGNOSIS_MAX_LINES] lines and [DIAGNOSIS_MAX_CHARS] characters, without the blank lines
+ * that end it. What a command prints when it fails is at its end.
+ */
+public fun tailForPrompt(output: String): String {
+    val lines = output.trimEnd().lines().takeLast(DIAGNOSIS_MAX_LINES).joinToString("\n")
+    return if (lines.length <= DIAGNOSIS_MAX_CHARS) lines else lines.takeLast(DIAGNOSIS_MAX_CHARS).substringAfter('\n')
+}
+
+/**
+ * What the AI is asked about the command [run] in [directory]: [question], and the form of the answer that [parseDiagnosis] reads (an explanation,
+ * and, for one that failed, a last line `COMMAND:` with a corrected command or `none`).
+ */
+public fun commandPrompt(question: CommandQuestion, run: CommandRun, directory: Path): String = buildString {
+    appendLine(
+        when (question) {
+            CommandQuestion.WHY_FAILED -> "A command run in a terminal on macOS, in the directory $directory, failed."
+            CommandQuestion.EXPLAIN -> "A command was run in a terminal on macOS, in the directory $directory."
+        },
+    )
+    appendLine("Command: ${run.command}")
+    appendLine(run.exitCode?.let { "Exit code: $it" } ?: "Exit code: unknown")
+    appendLine("The end of what it printed:")
+    appendLine("-----")
+    appendLine(tailForPrompt(run.output))
+    appendLine("-----")
+    when (question) {
+        CommandQuestion.WHY_FAILED -> {
+            appendLine("Explain why it failed, in plain text and at most 5 sentences, without markdown.")
+            append("Then, on a last line of its own, write COMMAND: followed by a corrected command that would work, on one line, or COMMAND: none when there is none.")
+        }
+        CommandQuestion.EXPLAIN -> append("Explain what the command did and what its output says, in plain text and at most 6 sentences, without markdown.")
+    }
+}
+
+/**
+ * What the AI answered to [commandPrompt]: its last line that starts with `COMMAND:` is the corrected command (without backticks nor a `$ `; `none`,
+ * nothing, or a command with a control character is none), and the rest, without the lines of a code fence, is the explanation. `null` when it
+ * said nothing.
+ */
+public fun parseDiagnosis(output: String): AiDiagnosis.Explained? {
+    val lines = output.lines().map { it.trimEnd() }.filterNot { it.trim().startsWith("```") }
+    val commandIndex = lines.indexOfLast { it.trim().startsWith("COMMAND:") }
+    val command = lines.getOrNull(commandIndex)?.trim()?.removePrefix("COMMAND:")?.trim()
+        ?.removeSurrounding("`")?.removePrefix("$ ")?.trim()
+        ?.takeIf { it.isNotEmpty() && !it.equals("none", ignoreCase = true) && it.none { char -> char.isISOControl() } }
+    val explanation = lines.filterIndexed { index, _ -> index != commandIndex }.joinToString("\n").trim()
+    if (explanation.isEmpty() && command == null) return null
+    return AiDiagnosis.Explained(explanation, command)
+}
