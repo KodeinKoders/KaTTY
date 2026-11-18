@@ -33,6 +33,7 @@ import app.katty.core.AgentState
 import app.katty.core.OPEN_SESSIONS_KEY
 import app.katty.core.openSessionsCost
 import app.katty.screens.CommandAnswerDialog
+import app.katty.screens.CommandRequestDialog
 import app.katty.screens.LocalGitChangesDisplay
 import app.katty.screens.OpenSessionsLine
 import app.katty.core.Agent
@@ -520,6 +521,8 @@ internal fun KattyWindowContent(
                                 onOpenFile = if (ides.isEmpty()) null else controller::openFile,
                                 lastCommandQuestion = controller::lastCommandQuestion,
                                 onAskAboutLastCommand = controller::explainLastCommand,
+                                canRequestCommand = controller::canRequestCommand,
+                                onRequestCommand = controller::openCommandRequest,
                                 onAskAboutCommand = if (aiCommand == null) null else controller::explainCommand,
                                 onInteraction = interacted,
                                 onExportHistory = controller::exportHistory,
@@ -854,6 +857,15 @@ internal fun KattyWindowContent(
                 onCopy = ::copyToClipboard,
                 onRetry = controller::retryDiagnosis,
                 onClose = controller::closeDiagnosis,
+            )
+        }
+        controller.requestingCommand?.let { request ->
+            CommandRequestDialog(
+                request.directory, request.shell, request.answer, request.asking, request.note,
+                onAsk = controller::askForCommand,
+                onType = controller::typeRequestedCommand,
+                onCopy = ::copyToClipboard,
+                onClose = controller::closeCommandRequest,
             )
         }
         controller.restartingRun?.let { workspace ->

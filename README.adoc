@@ -215,6 +215,9 @@ Escape is never used by the window, except to close what is open in front of it 
 | ⌘⇧F
 | Search in all terminals
 
+| ⌘I
+| Ask the AI for a command, to be typed at the prompt
+
 | ⌘F2
 | Rename the terminal
 
@@ -438,6 +441,8 @@ Junie, Aider and Cline have none: Junie runs a whole task, Aider prints its bann
 It is in the right-click menu of a terminal and in the palette when its last command failed (this needs the shell integration), and in the header of the run terminal when its command failed.
 *Explain result with AI* is there instead when the last command ended otherwise: it says what the command did and what its output means.
 A right click on the bar of any command offers them too, for that command, and *Select text*, which selects its output as a click on the bar does.
+* *Ask AI for a command* (⌘I, the palette, or a right click in a terminal) asks for a command described in plain words, such as "find the files over 100 MB changed this week".
+Your request, the shell and the directory are sent to the AI command, and the command it gives is shown, to be changed if need be, then typed at your prompt by *Type it*, without running it.
 What a command printed may hold secrets: it is only sent when you ask.
 Only Claude Code's was tried; the others come from each agent's documentation.
 * Claude Code, Antigravity, Copilot CLI, Junie, OpenCode, Crush, Aider, Goose, Cline, Kilo Code, Oh My Pi and Cursor Agent resume their conversation.

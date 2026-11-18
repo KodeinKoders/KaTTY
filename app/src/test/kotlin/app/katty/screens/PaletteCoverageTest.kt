@@ -39,6 +39,8 @@ class PaletteCoverageTest {
         copy = { calls += "copy" }, paste = { calls += "paste" }, selectAll = { calls += "selectAll" },
         previousPrompt = { calls += "previousPrompt" }, nextPrompt = { calls += "nextPrompt" },
         scrollPageUp = { calls += "pageUp" }, scrollPageDown = { calls += "pageDown" }, scrollToTop = { calls += "top" }, scrollToBottom = { calls += "bottom" },
+        // The AI is on: what asks it for a command is there.
+        askForCommand = { calls += "askForCommand" },
         // A run that is minimized: its command is there only while the workspace has one, and the panes' commands only while it is not shown.
         runTerminal = RunCommandState(shown = false, ended = false),
     )

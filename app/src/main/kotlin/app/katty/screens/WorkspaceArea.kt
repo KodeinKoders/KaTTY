@@ -256,6 +256,10 @@ class PaneActions(
     val lastCommandQuestion: (TerminalId) -> app.katty.core.CommandQuestion? = { null },
     /** Asks the AI about the last command of a terminal, the question that its outcome makes. */
     val onAskAboutLastCommand: (TerminalId) -> Unit = {},
+    /** Whether the AI can be asked for a command to type in a terminal (it is on), read when its menu opens. */
+    val canRequestCommand: (TerminalId) -> Boolean = { false },
+    /** Opens the question that asks the AI for a command, in plain words, to type in a terminal. */
+    val onRequestCommand: (TerminalId) -> Unit = {},
     /**
      * Asks the AI about the command of a terminal whose bar of its command marks was right-clicked, by the mark's id: why it failed, or what its
      * result says. `null` while the AI is off: the menu of a bar only selects its output then.

@@ -277,6 +277,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                                 // Read when the menu opens: the last command is what it is then.
                                 lastCommandQuestion = remember(at) { context.actions.lastCommandQuestion(spec.id) },
                                 askAboutLastCommand = { context.actions.onAskAboutLastCommand(spec.id) },
+                                askForCommand = { context.actions.onRequestCommand(spec.id) }
+                                    .takeIf { remember(at) { context.actions.canRequestCommand(spec.id) } },
                             ),
                             paneMenu = menuEntries(),
                         ),

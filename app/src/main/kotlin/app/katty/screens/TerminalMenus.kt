@@ -81,6 +81,8 @@ class ContextMenuActions(
     val lastCommandQuestion: CommandQuestion? = null,
     /** Asks the AI [lastCommandQuestion]. */
     val askAboutLastCommand: () -> Unit = {},
+    /** Asks the AI for a command described in plain words, to type at the prompt; `null` while the AI is off. */
+    val askForCommand: (() -> Unit)? = null,
 )
 
 /**
@@ -95,9 +97,10 @@ fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, pane
     divider()
     action("Find…", AppShortcut.FIND.label, onClick = actions.find)
     action("Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, onClick = actions.clearScreen)
-    actions.lastCommandQuestion?.let { question ->
+    if (actions.askForCommand != null || actions.lastCommandQuestion != null) {
         divider()
-        action(commandQuestionLabel(question), onClick = actions.askAboutLastCommand)
+        actions.askForCommand?.let { action("Ask AI for a command…", AppShortcut.ASK_AI_COMMAND.label, onClick = it) }
+        actions.lastCommandQuestion?.let { action(commandQuestionLabel(it), onClick = actions.askAboutLastCommand) }
     }
     divider()
     include(paneMenu)

@@ -24,6 +24,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -282,6 +283,75 @@ class KattyWindowContentTest {
         val prompt = Files.readString(asked)
         assertTrue("Command: echo explained-by-katty" in prompt && "Explain what the command did" in prompt, prompt)
         onAllNodesWithContentDescription("Corrected command").assertCountEquals(0)
+    }
+
+    // A command asked for in plain words: ⌘I asks the AI for it, its command is shown and can be changed, and Type it puts it on the command line
+    // without running it.
+    @Test
+    fun theAiIsAskedForACommandWhichIsTypedAtThePromptAndNotRun() = runComposeUiTest {
+        markingShell()
+        val asked = Files.createTempFile("katty-asked", ".txt")
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "printf '%s' \"\$PROMPT\" > '$asked'; printf '```sh\\necho made-by-katty\\n```\\n'") }
+        showWindow()
+        val session = registry.handles.value.values.single().session!!
+        waitUntil(timeoutMillis = 15_000) { session.atPrompt() }
+
+        assertTrue(shortcut(Key.I))
+        waitForIdle()
+        onNodeWithContentDescription("Request").performTextInput("say hello")
+        onNodeWithContentDescription("Request").performKeyInput { pressKey(Key.Enter) }
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Command").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("echo made-by-katty", commandText())
+        val prompt = Files.readString(asked)
+        assertTrue("say hello" in prompt && "zsh shell" in prompt && directories.support.toString() in prompt, prompt)
+
+        // The user changes it before it is typed.
+        onNodeWithContentDescription("Command").performTextReplacement("echo edited-by-katty")
+        onNodeWithText("Type it").performClick()
+        waitUntil(timeoutMillis = 15_000) { "echo edited-by-katty" in session.screenText() }
+        onAllNodesWithContentDescription("Ask AI for a command").assertCountEquals(0)
+        Thread.sleep(500)
+        assertEquals(null, session.lastCommand(), "Typed, not run")
+    }
+
+    // While a program has the terminal, what is typed would be its input: the command is not typed, and the dialog says why.
+    @Test
+    fun aCommandIsNotTypedWhileAProgramRuns() = runComposeUiTest {
+        markingShell()
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "printf 'echo late'") }
+        showWindow()
+        val session = registry.handles.value.values.single().session!!
+        waitUntil(timeoutMillis = 15_000) { session.atPrompt() }
+        session.sendText("sleep 30\r")
+        waitUntil(timeoutMillis = 15_000) { session.lastCommand()?.outcome == app.katty.terminal.TerminalCommandOutcome.RUNNING }
+
+        assertTrue(shortcut(Key.I))
+        waitForIdle()
+        onNodeWithContentDescription("Request").performTextInput("anything")
+        onNodeWithText("Ask").performClick()
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Command").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Type it").performClick()
+        waitForIdle()
+
+        onNodeWithText("The shell is not waiting for a command: copy it instead.").assertExists()
+        onNodeWithContentDescription("Ask AI for a command").assertExists()
+        assertTrue("echo late" !in session.screenText())
+    }
+
+    // With the AI off, neither the shortcut nor the palette asks it for a command.
+    @Test
+    fun noCommandIsAskedForWhileTheAiIsOff() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        store.updateSettings { it.copy(aiCommand = "") }
+        showWindow()
+        waitUntil(timeoutMillis = 15_000) { registry.handles.value.values.singleOrNull()?.session != null }
+
+        assertTrue(shortcut(Key.I))
+        waitForIdle()
+        onAllNodesWithContentDescription("Ask AI for a command").assertCountEquals(0)
+        assertFalse(paletteHas("Ask AI for a command"))
     }
 
     // The run's command failed: its header asks the AI, and the correction goes in the question of the run, to be read before it runs.

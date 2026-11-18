@@ -255,4 +255,21 @@ class TerminalMenusTest {
         assertTrue("Explain result with AI" in labels(app.katty.core.CommandQuestion.EXPLAIN))
         assertTrue(labels(null).none { "AI" in it })
     }
+
+    // The AI is asked for a command from the right click of a terminal while it is on, and the item says its shortcut.
+    @Test
+    fun theMenuOfATerminalAsksTheAiForACommandWhileItIsOn() {
+        var asked = 0
+        fun entries(ai: Boolean) = terminalContextMenu(
+            hasSelection = false,
+            actions = ContextMenuActions({}, {}, {}, {}, {}, askForCommand = if (ai) ({ asked++ }) else null),
+            paneMenu = emptyList(),
+        ).filterIsInstance<app.katty.ui.MenuAction>()
+
+        val item = entries(ai = true).single { it.label == "Ask AI for a command…" }
+        assertEquals("⌘I", item.shortcut)
+        item.onClick()
+        assertEquals(1, asked)
+        assertTrue(entries(ai = false).none { "AI" in it.label })
+    }
 }

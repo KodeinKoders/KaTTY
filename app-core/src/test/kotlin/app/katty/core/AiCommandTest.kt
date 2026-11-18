@@ -142,4 +142,22 @@ class AiCommandTest {
         val failing = AiPrompt.askAbout("echo 'not logged in'; exit 3", CommandQuestion.WHY_FAILED, CommandRun("x", 1, ""), directory, path = null)
         assertEquals(AiDiagnosis.Failed("it ended with the code 3: not logged in"), failing)
     }
+
+    // --- A command asked for in plain words ---
+
+    @Test
+    fun thePromptForACommandHasTheRequestTheShellAndTheDirectory() {
+        val prompt = commandRequestPrompt("  find the files over 100 MB modified this week\n", "zsh", directory)
+
+        assertTrue("find the files over 100 MB modified this week\n" in prompt, prompt)
+        assertTrue("zsh shell on macOS" in prompt && directory.toString() in prompt, prompt)
+        assertTrue("one single line" in prompt, "It says the form of the answer")
+    }
+
+    @Test
+    fun aCommandWithAControlCharacterCannotBeTyped() {
+        assertTrue(isTypable("find . -size +100M"))
+        kotlin.test.assertFalse(isTypable("rm -rf build\u001b[A"), "An escape is a key for the shell")
+        kotlin.test.assertFalse(isTypable("  "))
+    }
 }

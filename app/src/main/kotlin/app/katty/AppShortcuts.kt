@@ -105,6 +105,7 @@ internal enum class AppShortcut(val group: ShortcutGroup, val title: String, val
 
     /** Opens the search of every terminal's history, and closes it. */
     SEARCH_ALL(ShortcutGroup.TERMINAL, "Search in all terminals", listOf(cmd(Awt.VK_F, shift = true))),
+    ASK_AI_COMMAND(ShortcutGroup.TERMINAL, "Ask AI for a command", listOf(cmd(Awt.VK_I))),
     RENAME_TERMINAL(ShortcutGroup.PANES, "Rename the terminal", listOf(cmd(Awt.VK_F2))),
     RENAME_WORKSPACE(ShortcutGroup.PROJECTS, "Rename the workspace", listOf(cmd(Awt.VK_F2, shift = true))),
 

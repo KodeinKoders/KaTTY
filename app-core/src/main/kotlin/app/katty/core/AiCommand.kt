@@ -216,8 +216,27 @@ public fun parseDiagnosis(output: String): AiDiagnosis.Explained? {
     val commandIndex = lines.indexOfLast { it.trim().startsWith("COMMAND:") }
     val command = lines.getOrNull(commandIndex)?.trim()?.removePrefix("COMMAND:")?.trim()
         ?.removeSurrounding("`")?.removePrefix("$ ")?.trim()
-        ?.takeIf { it.isNotEmpty() && !it.equals("none", ignoreCase = true) && it.none { char -> char.isISOControl() } }
+        ?.takeIf { it.isNotEmpty() && !it.equals("none", ignoreCase = true) && isTypable(it) }
     val explanation = lines.filterIndexed { index, _ -> index != commandIndex }.joinToString("\n").trim()
     if (explanation.isEmpty() && command == null) return null
     return AiDiagnosis.Explained(explanation, command)
+}
+
+/**
+ * Whether a command that an AI gave can be typed on a command line: it has no control character, which the shell would take for a key (an escape,
+ * a Return that runs what is before it).
+ */
+public fun isTypable(command: String): Boolean = command.isNotBlank() && command.none { it.isISOControl() }
+
+/**
+ * What the AI is asked for a command that does what the user describes ([request]), in [shell] on macOS, run in [directory]: the command alone, on
+ * one line, since it is typed on the command line as it is.
+ */
+public fun commandRequestPrompt(request: String, shell: String, directory: Path): String = buildString {
+    appendLine("Give me one command for the $shell shell on macOS, to be run in the directory $directory, that does this:")
+    appendLine(request.trim())
+    append(
+        "Your output will be typed as-is on the command line. Do not print anything else but the command, on one single line, " +
+            "without decoration and without explanation.",
+    )
 }

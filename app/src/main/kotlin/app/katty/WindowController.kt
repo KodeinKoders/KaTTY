@@ -15,6 +15,9 @@ import app.katty.core.AiDiagnosis
 import app.katty.core.AiPrompt
 import app.katty.core.CommandQuestion
 import app.katty.core.CommandRun
+import app.katty.core.AiAnswer
+import app.katty.core.commandRequestPrompt
+import app.katty.core.isTypable
 import app.katty.core.Direction
 import app.katty.core.GitChangesDisplay
 import app.katty.core.GitReader
@@ -138,6 +141,19 @@ internal data class Diagnosis(
     val note: String? = null,
 )
 
+/**
+ * A command that the AI is asked for in plain words, to be typed in the terminal [terminal], whose shell is [shell] in [directory]: [answer] is the
+ * last answer (`null` before the first), [asking] is whether a question is on its way, and [note] says why the command could not be typed.
+ */
+internal data class CommandRequest(
+    val terminal: TerminalId,
+    val directory: String,
+    val shell: String,
+    val answer: AiAnswer? = null,
+    val asking: Boolean = false,
+    val note: String? = null,
+)
+
 /** A run that the user asked for, over the panes or [minimized], which stops the command that runs: they confirm it first. */
 internal data class RunLaunch(val workspace: WorkspaceId, val command: String, val directory: String, val minimized: Boolean = false)
 
@@ -255,6 +271,10 @@ internal class WindowController(
     var diagnosing by mutableStateOf<Diagnosis?>(null)
     private var diagnosisJob: Job? = null
 
+    // A command asked for in plain words, as the AI is asked for it, and what asks it.
+    var requestingCommand by mutableStateOf<CommandRequest?>(null)
+    private var requestJob: Job? = null
+
     // The workspace whose run terminal has its find bar open.
     var findingRun by mutableStateOf<WorkspaceId?>(null)
 
@@ -309,7 +329,7 @@ internal class WindowController(
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
             quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null ||
-            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null || diagnosing != null
+            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null || diagnosing != null || requestingCommand != null
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -560,6 +580,8 @@ internal class WindowController(
             AppShortcut.FIND -> findingRun = run.workspace
             AppShortcut.FIND_NEXT -> stepRunFind(run, forward = true)
             AppShortcut.FIND_PREVIOUS -> stepRunFind(run, forward = false)
+            // The run is no shell: there is no command line to type a command on.
+            AppShortcut.ASK_AI_COMMAND -> Unit
             AppShortcut.SPLIT_MAIN, AppShortcut.SPLIT_OTHER, AppShortcut.RESIZE_LEFT, AppShortcut.RESIZE_RIGHT, AppShortcut.RESIZE_UP, AppShortcut.RESIZE_DOWN,
             AppShortcut.FOCUS_LEFT, AppShortcut.FOCUS_RIGHT, AppShortcut.FOCUS_UP, AppShortcut.FOCUS_DOWN, AppShortcut.RENAME_TERMINAL, AppShortcut.PANE_NUMBER,
             -> Unit
@@ -877,6 +899,62 @@ internal class WindowController(
         }
     }
 
+    /** Whether the AI can be asked for a command to type in [id]: it is on, and the terminal has a shell. */
+    fun canRequestCommand(id: TerminalId): Boolean = aiCommand != null && handles[id]?.session != null
+
+    /**
+     * Opens the question that asks the AI for a command, in plain words, to type in [id]: nothing while the AI is off. The command is for the shell of
+     * the terminal, in the directory it is in.
+     */
+    fun openCommandRequest(id: TerminalId) {
+        if (!canRequestCommand(id)) return
+        val handle = handles[id] ?: return
+        val directory = handle.session?.workingDirectory?.value ?: state.locate(id)?.terminal?.directory ?: return
+        requestJob?.cancel()
+        requestingCommand = CommandRequest(id, directory, handle.shellName)
+    }
+
+    /** Asks the AI for a command that does what [request] says; the answer replaces the last one. */
+    fun askForCommand(request: String) {
+        val asked = requestingCommand ?: return
+        val template = aiCommand ?: return
+        if (request.isBlank()) return
+        requestJob?.cancel()
+        val pending = asked.copy(asking = true, note = null)
+        requestingCommand = pending
+        requestJob = scope.launch {
+            val answer = withContext(Dispatchers.IO) {
+                val directory = Path.of(asked.directory)
+                when (val answer = AiPrompt.ask(template, commandRequestPrompt(request, asked.shell, directory), directory, AgentDetection.knownLoginPath)) {
+                    is AiAnswer.Command -> if (isTypable(answer.line)) answer else AiAnswer.Failed("it gave a command with control characters")
+                    is AiAnswer.Failed -> answer
+                }
+            }
+            if (requestingCommand == pending) requestingCommand = pending.copy(answer = answer, asking = false)
+        }
+    }
+
+    /** Types [command] on the command line of the terminal, never running it: only while its shell waits for a command. */
+    fun typeRequestedCommand(command: String) {
+        val request = requestingCommand ?: return
+        if (!isTypable(command)) return
+        val session = handles[request.terminal]?.session ?: return
+        if (!session.atPrompt()) {
+            requestingCommand = request.copy(note = "The shell is not waiting for a command: copy it instead.")
+            return
+        }
+        closeCommandRequest()
+        session.sendText(command)
+        openTerminal(request.terminal)
+    }
+
+    /** Closes the question, and forgets an answer that has not come: the agent's process is not killed, it ends by itself or at its time limit. */
+    fun closeCommandRequest() {
+        requestJob?.cancel()
+        requestJob = null
+        requestingCommand = null
+    }
+
     // What asks the AI about the command, for the run that is shown or the selected terminal: why it failed ([question] WHY_FAILED), or what the
     // result of the terminal's last command says (EXPLAIN); `null` when that is not the question. Read once, when the palette opens, as what is
     // selected is.
@@ -1010,6 +1088,7 @@ internal class WindowController(
             AppShortcut.CLEAR_SCREEN -> onTerminal { handles[it]?.session?.clearScreen() }
             AppShortcut.FIND -> onTerminals { openFind(terminal) }
             AppShortcut.SEARCH_ALL -> if (searchingAll) searchingAll = false else searchAll()
+            AppShortcut.ASK_AI_COMMAND -> onTerminal(::openCommandRequest)
             AppShortcut.RENAME_TERMINAL -> renameTerminal()
             AppShortcut.RENAME_WORKSPACE -> renameWorkspace()
             AppShortcut.WORKSPACE_PREVIOUS -> stepWorkspace(-1)
@@ -1099,6 +1178,7 @@ internal class WindowController(
         clearScreen = { onTerminals { selectedSession()?.clearScreen() } },
         explainFailure = askAboutCommandHere(CommandQuestion.WHY_FAILED),
         explainResult = askAboutCommandHere(CommandQuestion.EXPLAIN),
+        askForCommand = state.selection.terminal?.takeIf { onTerminals && shownRun() == null && canRequestCommand(it) }?.let { id -> { openCommandRequest(id) } },
         maximize = { onTerminals { maximize() } },
         colorScheme = { state.selection.terminal?.let { picking = SchemeTarget.Terminal(it) } },
         toggleSidebar = ::toggleSidebar,

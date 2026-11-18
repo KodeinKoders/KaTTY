@@ -64,6 +64,8 @@ class PaletteHandlers(
     val explainFailure: (() -> Unit)? = null,
     /** Asks the AI what the result of the last command of the terminal says; `null` when it failed or has not ended, or the AI is off. */
     val explainResult: (() -> Unit)? = null,
+    /** Asks the AI for a command to type in the terminal, described in plain words; `null` while the AI is off, or for the run. */
+    val askForCommand: (() -> Unit)? = null,
     val maximize: () -> Unit,
     val colorScheme: () -> Unit,
     val toggleSidebar: () -> Unit,
@@ -285,6 +287,7 @@ fun paletteCommands(
         command("clear-screen", "Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, handlers.clearScreen)
         handlers.explainFailure?.let { command("explain-failure", commandQuestionLabel(app.katty.core.CommandQuestion.WHY_FAILED), action = it) }
         handlers.explainResult?.let { command("explain-result", commandQuestionLabel(app.katty.core.CommandQuestion.EXPLAIN), action = it) }
+        handlers.askForCommand?.let { command("ask-ai-command", "Ask AI for a command…", AppShortcut.ASK_AI_COMMAND.label, it) }
         // What the terminal does with its own keys.
         if (hasSelection) command("copy", "Copy", TerminalKeys.COPY, handlers.copy)
         command("paste", "Paste", TerminalKeys.PASTE, handlers.paste)
