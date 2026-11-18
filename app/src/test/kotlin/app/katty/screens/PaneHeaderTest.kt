@@ -13,6 +13,9 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,6 +96,47 @@ class PaneHeaderTest {
         // Nothing is said of a clean tree, nor of a branch that is not behind.
         onNodeWithContentDescription("Branch clean").assertExists()
         assertEquals(0, onAllNodesWithText("↓0").fetchSemanticsNodes().size)
+    }
+
+    // The tooltip says it all in words, whichever way the label says it: the whole name, the operation, the changes and the upstream.
+    @Test
+    fun theTooltipOfTheGitLabelSaysItAllInWords() = runComposeUiTest {
+        val status = GitStatusReading(GitChanges(staged = 2, modified = 1, untracked = 3, conflicted = 1), ahead = 4, behind = 2, upstream = "origin/feature/x")
+        setContent {
+            KattyTheme(dark = false) {
+                GitLabel(GitInfo("feature/x", GitKind.BRANCH, GitOperation.REBASE, tree = "/dev/api", status = status), Modifier.width(300.dp))
+            }
+        }
+
+        onNodeWithContentDescription("Branch feature/x", substring = true).performMouseInput { moveTo(center) }
+
+        waitUntilAtLeastOneExists(hasText("2 staged, 1 modified, 3 untracked, 1 in conflict"), timeoutMillis = 5_000)
+        onNodeWithText("Branch feature/x").assertExists()
+        onNodeWithText("Rebasing").assertExists()
+        onNodeWithText("4 commits ahead of origin/feature/x, 2 behind").assertExists()
+    }
+
+    @Test
+    fun theTooltipSaysWhatIsKnownOfTheUpstream() {
+        val tree = "/dev/api"
+        assertEquals(
+            listOf("Branch main", "No uncommitted changes", "Up to date with origin/main"),
+            gitTooltip(GitInfo("main", GitKind.BRANCH, tree = tree, status = GitStatusReading(GitChanges(), 0, 0, "origin/main"))),
+        )
+        assertEquals(
+            listOf("Worktree spike", "1 modified", "No upstream branch"),
+            gitTooltip(GitInfo("spike", GitKind.WORKTREE, tree = tree, status = GitStatusReading(GitChanges(modified = 1)))),
+        )
+        assertEquals(
+            listOf("Branch main", "No uncommitted changes", "1 commit behind origin/main"),
+            gitTooltip(GitInfo("main", GitKind.BRANCH, tree = tree, status = GitStatusReading(GitChanges(), 0, 1, "origin/main"))),
+        )
+        // A detached HEAD has no upstream to speak of, and a tree whose status is not known says only where it is.
+        assertEquals(
+            listOf("Commit a1b2c3d (detached)", "Bisecting", "No uncommitted changes"),
+            gitTooltip(GitInfo("a1b2c3d", GitKind.DETACHED, GitOperation.BISECT, tree = tree, status = GitStatusReading(GitChanges()))),
+        )
+        assertEquals(listOf("Branch main"), gitTooltip(GitInfo("main", GitKind.BRANCH, tree = tree)))
     }
 
     // Drawn to build/renders/git-labels-*.png, in a header and in the narrow column of the sidebar.

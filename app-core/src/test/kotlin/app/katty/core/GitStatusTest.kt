@@ -31,7 +31,7 @@ class GitStatusTest {
             """.trimIndent(),
         )
 
-        assertEquals(GitStatusReading(GitChanges(), ahead = 0, behind = 0), reading)
+        assertEquals(GitStatusReading(GitChanges(), ahead = 0, behind = 0, upstream = "origin/main"), reading)
         assert(reading.changes.isEmpty)
     }
 
@@ -53,7 +53,7 @@ class GitStatusTest {
             """.trimIndent(),
         )
 
-        assertEquals(GitStatusReading(GitChanges(staged = 3, modified = 2, untracked = 2, conflicted = 1), ahead = 3, behind = 1), reading)
+        assertEquals(GitStatusReading(GitChanges(staged = 3, modified = 2, untracked = 2, conflicted = 1), ahead = 3, behind = 1, upstream = "origin/feature/test"), reading)
     }
 
     @Test
@@ -61,6 +61,14 @@ class GitStatusTest {
         val reading = parseGitStatus("# branch.oid abc\n# branch.head main\n? x\n")
 
         assertEquals(GitStatusReading(GitChanges(untracked = 1)), reading)
+    }
+
+    // A branch whose upstream was deleted: git names it, and says nothing of where the branch is against it.
+    @Test
+    fun anUpstreamThatIsGoneIsNoUpstream() {
+        val reading = parseGitStatus("# branch.oid abc\n# branch.head feature\n# branch.upstream origin/feature\n")
+
+        assertEquals(GitStatusReading(GitChanges()), reading)
     }
 
     // --- The git that is run ---
@@ -144,7 +152,7 @@ class GitStatusTest {
         git(clone, "add", ".")
         git(clone, "commit", "-m", "local again")
 
-        assertEquals(GitStatusReading(GitChanges(), ahead = 2, behind = 1), read(clone))
+        assertEquals(GitStatusReading(GitChanges(), ahead = 2, behind = 1, upstream = "origin/main"), read(clone))
     }
 
     @Test

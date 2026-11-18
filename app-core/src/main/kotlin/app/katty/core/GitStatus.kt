@@ -17,13 +17,14 @@ public data class GitChanges(val staged: Int = 0, val modified: Int = 0, val unt
 }
 
 /**
- * What `git status` says of a working tree: its [changes], and how many commits its branch is [ahead] of its upstream and [behind] it, `null` both
- * when it has no upstream (or is no branch).
+ * What `git status` says of a working tree: its [changes], and how many commits its branch is [ahead] of its [upstream] (`origin/main`) and [behind]
+ * it, `null` all three when it has no upstream (or is no branch).
  */
-public data class GitStatusReading(val changes: GitChanges, val ahead: Int? = null, val behind: Int? = null)
+public data class GitStatusReading(val changes: GitChanges, val ahead: Int? = null, val behind: Int? = null, val upstream: String? = null)
 
 /**
- * Reads what `git status --porcelain=v2 --branch` printed: `# branch.ab +N -M` for the upstream, a line for each file that is not clean (`1` and
+ * Reads what `git status --porcelain=v2 --branch` printed: `# branch.upstream` and `# branch.ab +N -M` for the upstream (the name without the
+ * counts is an upstream that is gone, which is no upstream), a line for each file that is not clean (`1` and
  * `2`, whose two letters say what is staged and what is modified, `.` for nothing; `u`, unmerged; `?`, untracked), and nothing for the others.
  */
 public fun parseGitStatus(output: String): GitStatusReading {
@@ -33,8 +34,10 @@ public fun parseGitStatus(output: String): GitStatusReading {
     var conflicted = 0
     var ahead: Int? = null
     var behind: Int? = null
+    var upstream: String? = null
     for (line in output.lineSequence()) {
         when {
+            line.startsWith("# branch.upstream ") -> upstream = line.removePrefix("# branch.upstream ").trim().takeIf { it.isNotEmpty() }
             line.startsWith("# branch.ab ") -> for (part in line.removePrefix("# branch.ab ").split(' ')) {
                 when {
                     part.startsWith('+') -> ahead = part.drop(1).toIntOrNull()
@@ -49,7 +52,7 @@ public fun parseGitStatus(output: String): GitStatusReading {
             line.startsWith("? ") -> untracked++
         }
     }
-    return GitStatusReading(GitChanges(staged, modified, untracked, conflicted), ahead, behind)
+    return GitStatusReading(GitChanges(staged, modified, untracked, conflicted), ahead, behind, upstream.takeIf { ahead != null || behind != null })
 }
 
 /**
