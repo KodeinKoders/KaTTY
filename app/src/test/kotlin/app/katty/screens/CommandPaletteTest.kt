@@ -344,6 +344,16 @@ class CommandPaletteTest {
         assertEquals(listOf("project ${state.projects.first().id.value}"), calls.map { it.replace(Regex("^selectProject "), "project ") })
     }
 
+    // The folder of a project in the home is written from ~, as the sidebar writes it: the palette showed the user's name in it.
+    @Test
+    fun theFolderOfAProjectIsWrittenFromTheHome() {
+        store.addProject("/Users/ada/Code/api")
+        store.addProject("/opt/tools")
+        val entries = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = handlers, home = "/Users/ada").entries
+
+        assertEquals(listOf("~/Code/api", "/opt/tools"), entries.filter { it.group == PaletteGroup.PROJECTS }.map { it.context })
+    }
+
     @Test
     fun theProjectCommandsAreThereForTheSelectedProjectAndMovesOnlyWhereThereIsRoom() {
         store.addProject("/dev/api-gateway")

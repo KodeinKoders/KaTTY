@@ -246,8 +246,9 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         focusOnStart = false,
                         onContextMenu = { at -> contextAt = IntOffset(at.x.toInt(), at.y.toInt()) },
                         onCommandMarkMenu = { markMenu = it },
-                        // The tooltip of the bar would cover its menu.
-                        commandMarkTooltip = markMenu == null,
+                        // The tooltip of the bar would cover its menu, and anything that opens over the terminals (a dialog, the palette, a list): it is
+                        // a popup of its own, drawn over the window, and the pointer that stays on the bar would keep it there.
+                        commandMarkTooltip = markMenu == null && context.focusTerminals,
                         confirmPaste = context.actions.confirmPaste,
                         onOpenFile = context.actions.onOpenFile?.let { open -> { file -> open(spec.id, file) } },
                     )

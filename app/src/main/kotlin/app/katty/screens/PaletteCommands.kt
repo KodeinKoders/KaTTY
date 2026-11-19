@@ -218,6 +218,7 @@ fun paletteCommands(
     hasSelection: Boolean = false,
     presenting: Boolean = false,
     teaching: Boolean = false,
+    home: String = System.getProperty("user.home"),
 ): PaletteCommands {
     val entries = ArrayList<PaletteEntry>()
     val actions = HashMap<String, () -> Unit>()
@@ -227,7 +228,10 @@ fun paletteCommands(
     }
 
     for (project in state.projects) {
-        add(PaletteEntry("project:${project.id.value}", PaletteGroup.PROJECTS, project.name, project.directory)) { handlers.selectProject(project.id) }
+        // The folder with ~ for the home, as the sidebar and the recent projects write it: the user's name has no use there, and is better not shown.
+        add(PaletteEntry("project:${project.id.value}", PaletteGroup.PROJECTS, project.name, project.directory.abbreviatedHome(home))) {
+            handlers.selectProject(project.id)
+        }
     }
     for (project in state.projects) for (workspace in project.workspaces) {
         add(PaletteEntry("workspace:${workspace.id.value}", PaletteGroup.WORKSPACES, workspace.name, project.name)) { handlers.openWorkspace(workspace.id) }

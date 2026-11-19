@@ -74,6 +74,8 @@ class WorkspaceAreaTest {
     private val askedAbout = mutableListOf<Long>()
     private var infos by androidx.compose.runtime.mutableStateOf(emptyMap<app.katty.core.TerminalId, app.katty.core.AgentInfo>())
     private var renaming by androidx.compose.runtime.mutableStateOf<app.katty.core.TerminalId?>(null)
+    // Something open over the terminals (a dialog, the palette): they do not take the keyboard then.
+    private var overlay by androidx.compose.runtime.mutableStateOf(false)
 
     private fun androidx.compose.ui.test.ComposeUiTest.show() {
         registry.sync(store.state.value)
@@ -85,7 +87,7 @@ class WorkspaceAreaTest {
                 val workspace = state.selectedWorkspace
                 if (workspace != null) {
                     WorkspaceArea(
-                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = true, maximized = state.selection.maximized, infos = infos,
+                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = !overlay, maximized = state.selection.maximized, infos = infos,
                         actions = PaneActions(
                             renaming = renaming,
                             onRename = { renaming = it },
@@ -323,15 +325,16 @@ class WorkspaceAreaTest {
 
     // The menu of the bar of a command is not under the bar's tooltip, which goes while it is open; it selects the command's output, as a click on
     // the bar does, and asks the AI about it.
-    @Test
-    fun theMenuOfTheBarOfACommandHidesItsTooltipAndSelectsItsOutput() = runComposeUiTest {
+    /**
+     * A shell's command that succeeded, in the only pane, and where its bar is: what a shell with the integration sends around a command (this one has
+     * none) and at the next prompt, and its output: blocks, which show where the grid is.
+     */
+    private fun ComposeUiTest.aCommandAndItsBar(): Pair<TerminalSession, androidx.compose.ui.geometry.Offset> {
         store.addProject("/tmp")
         val terminal = store.state.value.selection.terminal!!
         show()
         waitUntil(timeoutMillis = 5_000) { registry.handles.value[terminal]?.session != null }
         val session = registry.handles.value[terminal]!!.session!!
-        // What a shell with the integration sends around a command (this one has none) and at the next prompt, and its output: blocks, which show where the
-        // grid is.
         session.sendText("printf '\\033]133;A\\007$ ls\\r\\n\\033]133;B\\007\\033]133;C\\007\\u2588\\u2588\\u2588\\u2588\\r\\n\\033]133;D;0\\007\\033]133;A\\007'\r")
         waitUntil(timeoutMillis = 10_000) {
             val frame = session.frames.value
@@ -364,6 +367,20 @@ class WorkspaceAreaTest {
         val blockRows = runs.indices.filter { runs[it].second == longest }
         val bar = androidx.compose.ui.geometry.Offset(runs[blockRows.first()].first - (TERMINAL_PADDING.value + 2.5f) * density.density, blockRows.average().toFloat())
 
+        return session to bar
+    }
+
+    private fun ComposeUiTest.hover(at: androidx.compose.ui.geometry.Offset) {
+        onAllNodes(androidx.compose.ui.test.isRoot()).onFirst().performMouseInput {
+            moveTo(at + androidx.compose.ui.geometry.Offset(0f, 1f))
+            moveTo(at)
+        }
+        waitForIdle()
+    }
+
+    @Test
+    fun theMenuOfTheBarOfACommandHidesItsTooltipAndSelectsItsOutput() = runComposeUiTest {
+        val (session, bar) = aCommandAndItsBar()
         onRoot().performMouseInput {
             moveTo(bar + androidx.compose.ui.geometry.Offset(0f, 1f))
             moveTo(bar)
@@ -380,6 +397,23 @@ class WorkspaceAreaTest {
 
         onNodeWithText("Select text").performClick()
         waitUntil(timeoutMillis = 5_000) { session.selectedText() == "████" }
+    }
+
+    // The tooltip of the bar is a popup over the window: a dialog that opens while the pointer is on the bar (the bar's menu asks the AI, and its
+    // answer opens over the pane) had it over it.
+    @Test
+    fun theTooltipOfTheBarGoesWhileSomethingIsOpenOverTheTerminals() = runComposeUiTest {
+        val (_, bar) = aCommandAndItsBar()
+        hover(bar)
+        onNodeWithText("Succeeded").assertExists()
+
+        overlay = true
+        waitForIdle()
+        onAllNodesWithText("Succeeded").assertCountEquals(0)
+
+        overlay = false
+        hover(bar)
+        onNodeWithText("Succeeded").assertExists()
     }
 
     @Test
