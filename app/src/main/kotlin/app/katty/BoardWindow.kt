@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isMetaPressed
@@ -26,6 +27,8 @@ import org.jetbrains.jewel.window.DecoratedWindow
 import app.katty.core.AgentInfo
 import app.katty.core.AgentStates
 import app.katty.core.AgentState
+import app.katty.core.FinishedCommand
+import app.katty.core.attention
 import app.katty.core.SessionUsage
 import app.katty.core.KattyState
 import app.katty.core.Orientation
@@ -100,7 +103,7 @@ fun BoardWindow(
         onPreviewKeyEvent = { event ->
             val close = event.type == KeyEventType.KeyDown && event.isMetaPressed && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W
             if (close) closeByUser()
-            close
+            close || jumpFromTheBoardWindow(event, store.state.value, tracker.infos.value, tracker.finishedCommands.value) { bridge.openTerminal.tryEmit(it) }
         },
     ) {
         LaunchedEffect(focusTick) { if (focusTick > 0) window.toFront() }
@@ -130,6 +133,26 @@ fun BoardWindow(
             BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, usages = usages)
         }
     }
+}
+
+/**
+ * The shortcut that jumps to the next terminal that needs the user, when the board window has the keyboard: coming back to the application gives it
+ * to the window that was in front last, and the shortcuts of the main window are the main window's. The terminal is opened as a card that is clicked
+ * is ([open]: the main window goes to it, comes to the front and gives it the keyboard); with none that needs the user, nothing happens, as in the
+ * main window. The state is read when the key is pressed ([state], [infos], [commands]), not from the last drawing.
+ *
+ * @return Whether [event] was that shortcut, which is then the window's, whether or not a terminal needed the user.
+ */
+internal fun jumpFromTheBoardWindow(
+    event: KeyEvent,
+    state: KattyState,
+    infos: Map<TerminalId, AgentInfo>,
+    commands: Map<TerminalId, FinishedCommand>,
+    open: (TerminalId) -> Unit,
+): Boolean {
+    if (event.appShortcut() != AppShortcut.JUMP_TO_WAITING) return false
+    state.attention(infos, commands).next(state, state.selection.terminal)?.let(open)
+    return true
 }
 
 /**
