@@ -3,6 +3,10 @@ package app.katty.terminals
 import androidx.compose.ui.focus.FocusRequester
 import app.katty.core.Agent
 import app.katty.core.CursorShape
+import app.katty.core.EnvironmentChange
+import app.katty.core.EnvironmentResolution
+import app.katty.core.Environments
+import app.katty.core.environmentOf
 import app.katty.core.GitInfo
 import app.katty.core.GitReader
 import app.katty.core.KattyState
@@ -117,6 +121,8 @@ class TerminalHandle(
  * @param savedTerminals The terminals of the projects that were removed and whose state is kept (`RecentProjects.savedTerminals`), which have that set
  * before their project is gone from the store.
  * @param startRun Starts the command of a run terminal ([runs]) in a directory.
+ * @param resolveEnvironment What the environment of a workspace (see `Environments`), by its name, changes in the environment of its shells, read
+ * each time a shell starts: a file that was edited is read again. Tests give their own folders.
  */
 class SessionRegistry(
     private val store: KattyStore,
@@ -124,16 +130,19 @@ class SessionRegistry(
     private val loadTheme: (String) -> TerminalTheme? = ::loadColorScheme,
     shellIntegration: Path? = null,
     private val starter: CoroutineDispatcher = Dispatchers.IO,
-    private val start: (TerminalSpec, TerminalTheme?) -> TerminalSession = { spec, theme -> startShell(spec, theme, shellIntegration, store.state.value.settings) },
+    private val start: (TerminalSpec, TerminalTheme?, EnvironmentChange) -> TerminalSession = { spec, theme, environment ->
+        startShell(spec, theme, shellIntegration, store.state.value.settings, environment)
+    },
     private val snapshots: TerminalSnapshotStore? = null,
-    private val startRestored: (TerminalSpec, TerminalTheme?, TerminalSnapshot) -> TerminalSession = { spec, theme, snapshot ->
-        startShell(spec, theme, shellIntegration, store.state.value.settings, snapshot)
+    private val startRestored: (TerminalSpec, TerminalTheme?, TerminalSnapshot, EnvironmentChange) -> TerminalSession = { spec, theme, snapshot, environment ->
+        startShell(spec, theme, shellIntegration, store.state.value.settings, environment, snapshot)
     },
     private val autosaveMillis: Long = AUTOSAVE_MS,
     private val savedTerminals: StateFlow<Set<TerminalId>> = MutableStateFlow(emptySet()),
-    private val startRun: (command: String, directory: String, TerminalTheme?) -> TerminalSession = { command, directory, theme ->
-        startCommand(command, directory, theme, store.state.value.settings)
+    private val startRun: (command: String, directory: String, TerminalTheme?, EnvironmentChange) -> TerminalSession = { command, directory, theme, environment ->
+        startCommand(command, directory, theme, store.state.value.settings, environment)
     },
+    private val resolveEnvironment: (String?) -> EnvironmentResolution = { Environments.resolve(it, store.state.value.settings.environmentDirectories) },
 ) {
     private val mutableHandles = MutableStateFlow<Map<TerminalId, TerminalHandle>>(emptyMap())
 
@@ -224,7 +233,27 @@ class SessionRegistry(
      * The run terminals of the workspaces (see [RunTerminals]): their sessions take the settings of the terminals, and the color scheme of the
      * application's theme, as the terminals that have none of their own do.
      */
-    val runs: RunTerminals = RunTerminals(scope, starter) { command, directory -> startRun(command, directory, theme(store.state.value.settings.colorScheme(dark))) }
+    val runs: RunTerminals = RunTerminals(scope, starter) { workspace, command, directory ->
+        val environment = environmentChange(store.state.value.environmentOf(workspace), "the run of ${workspace.value}")
+        startRun(command, directory, theme(store.state.value.settings.colorScheme(dark)), environment)
+    }
+
+    /**
+     * What the environment [name] changes for the shells that start with it, read now: nothing for none, or one that has no file (which is logged).
+     * Only names are logged, never values.
+     */
+    private fun environmentChange(name: String?, of: String): EnvironmentChange = when (val resolution = resolveEnvironment(name)) {
+        EnvironmentResolution.Standard -> EnvironmentChange.NONE
+        is EnvironmentResolution.Missing -> {
+            logger.warn("The environment {} of {} has no file: it starts without it", resolution.name, of)
+            EnvironmentChange.NONE
+        }
+        is EnvironmentResolution.Resolved -> {
+            for (problem in resolution.problems) logger.info("Environment {}: {} at {}:{}{}", resolution.name, problem.kind, problem.file, problem.line ?: "-", problem.variable?.let { " ($it)" }.orEmpty())
+            logger.info("Environment {} for {}: {} variables, {} taken out", resolution.name, of, resolution.change.variables.size, resolution.change.unset.size)
+            resolution.change
+        }
+    }
 
     // The scheme that the runs were last given.
     private var runScheme: String? = null
@@ -281,7 +310,7 @@ class SessionRegistry(
             val scheme = place.terminal.colorScheme ?: state.settings.colorScheme(dark)
             if (id !in current && id !in starting) {
                 // Where it starts is only worked out for a terminal that is new: it asks the file system.
-                begin(startingPlace(place.terminal, place.project.directory), scheme, generations[id] ?: 0)
+                begin(startingPlace(place.terminal, place.project.directory), scheme, generations[id] ?: 0, place.workspace.environment)
             } else if (schemes[id] != scheme) {
                 schemes[id] = scheme
                 current[id]?.session?.let { session -> scope.launch(starter) { theme(scheme)?.let(session::setTheme) } }
@@ -403,7 +432,29 @@ class SessionRegistry(
         mutableHandles.value = mutableHandles.value - id
         val generation = (generations[id] ?: 0) + 1
         generations[id] = generation
-        begin(spec, spec.colorScheme ?: state.settings.colorScheme(dark), generation)
+        begin(spec, spec.colorScheme ?: state.settings.colorScheme(dark), generation, location.workspace.environment)
+        applyVisibility()
+    }
+
+    /**
+     * Ends the shells of the terminals [ids] and starts others in their places, with the environment that their workspaces have now: what changing
+     * the environment of a workspace does. Unlike [restart], each one goes on where it was: in its folder, with what it showed, and with the program
+     * that ran over its shell typed again, as at launch (an agent comes back on its conversation).
+     */
+    @Synchronized
+    fun restartWithEnvironment(ids: Collection<TerminalId>) {
+        val state = store.state.value
+        for (id in ids) {
+            val location = state.locate(id) ?: continue
+            val old = mutableHandles.value[id] ?: continue
+            val spec = startingPlace(location.terminal, location.project.directory)
+            // What it shows is given to the new shell; [stop] also leaves what ran over it in the store, since its poll can write no more.
+            stop(old, keepContents = true)
+            mutableHandles.value = mutableHandles.value - id
+            val generation = (generations[id] ?: 0) + 1
+            generations[id] = generation
+            begin(spec, spec.colorScheme ?: state.settings.colorScheme(dark), generation, location.workspace.environment)
+        }
         applyVisibility()
     }
 
@@ -440,14 +491,16 @@ class SessionRegistry(
         if (!closed.await(CLOSE_ALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)) logger.warn("Some sessions did not close within {}ms", CLOSE_ALL_TIMEOUT_MS)
     }
 
-    // Starts the shell of [spec] on [starter], and publishes its handle once it has started, if the terminal still wants it. Under the monitor.
-    private fun begin(spec: TerminalSpec, scheme: String, generation: Int) {
+    // Starts the shell of [spec] on [starter], with the [environment] of its workspace, and publishes its handle once it has started, if the terminal
+    // still wants it. Under the monitor.
+    private fun begin(spec: TerminalSpec, scheme: String, generation: Int, environment: String?) {
         schemes[spec.id] = scheme
         val token = ++starts
         starting[spec.id] = token
         scope.launch(starter) {
             val started = try {
-                Result.success(startWithContents(spec, theme(scheme)))
+                // Read when it starts, not under the monitor: it reads files.
+                Result.success(startWithContents(spec, theme(scheme), environmentChange(environment, spec.id.value)))
             } catch (e: Exception) {
                 logger.error("Could not start the shell of {}", spec.id.value, e)
                 Result.failure(e)
@@ -476,14 +529,14 @@ class SessionRegistry(
 
     // Starts the shell of [spec], with what the terminal showed when there is a snapshot of it. A snapshot that cannot be restored is deleted, and the shell
     // starts without it: a terminal never fails to start for its history.
-    private suspend fun startWithContents(spec: TerminalSpec, theme: TerminalTheme?): TerminalSession {
-        val snapshot = snapshotOf(spec.id) ?: return start(spec, theme)
+    private suspend fun startWithContents(spec: TerminalSpec, theme: TerminalTheme?, environment: EnvironmentChange): TerminalSession {
+        val snapshot = snapshotOf(spec.id) ?: return start(spec, theme, environment)
         return try {
-            startRestored(spec, theme, snapshot)
+            startRestored(spec, theme, snapshot, environment)
         } catch (e: TerminalSnapshotException) {
             logger.warn("The snapshot of {} could not be restored: its shell starts without it", spec.id.value, e)
             snapshots?.delete(spec.id)
-            start(spec, theme)
+            start(spec, theme, environment)
         }
     }
 
@@ -623,7 +676,9 @@ class SessionRegistry(
         if (!done.await(CLOSE_ALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)) logger.warn("Some snapshots were not saved within {}ms", CLOSE_ALL_TIMEOUT_MS)
     }
 
-    private fun stop(handle: TerminalHandle) {
+    // Stops following [handle] and closes its shell. With [keepContents], what it shows is kept in memory for the shell that takes its place, as for a
+    // terminal that is closed and can be opened again.
+    private fun stop(handle: TerminalHandle, keepContents: Boolean = false) {
         alive.remove(handle.id)?.let { flag -> synchronized(flag) { flag.set(false) } }
         followers.remove(handle.id)?.cancel()
         mutableProcessNames.update { it - handle.id }
@@ -651,7 +706,7 @@ class SessionRegistry(
         snapshots?.let { store -> scope.launch(Dispatchers.IO) { store.delete(handle.id) } }
         // A terminal that was closed and can be opened again keeps what it shows now, in memory, for when it is (not one that is started again: it is in
         // the store still). Before its shell is hung up.
-        val kept = if (contentsKept == true && handle.id in store.reopenableTerminals()) CompletableDeferred<ByteArray?>().also { closedContents[handle.id] = it } else null
+        val kept = if (contentsKept == true && (keepContents || handle.id in store.reopenableTerminals())) CompletableDeferred<ByteArray?>().also { closedContents[handle.id] = it } else null
         // Closing waits for the shell to end: not on the thread that draws.
         scope.launch(Dispatchers.IO) {
             try {
@@ -743,16 +798,24 @@ private fun TerminalSession.apply(preferences: TerminalPreferences, before: Term
  * interactive one (`-l -i -c`), so that it has what the user's files set (the `PATH` of `.zshrc`, its aliases), and ends with it, with its exit code.
  * No prompt is drawn and the shell integration is not needed: there is no prompt.
  */
-internal fun startCommand(command: String, directory: String, theme: TerminalTheme?, settings: Settings): TerminalSession {
+internal fun startCommand(command: String, directory: String, theme: TerminalTheme?, settings: Settings, environment: EnvironmentChange = EnvironmentChange.NONE): TerminalSession {
     val shell = System.getenv("SHELL")?.takeIf { it.isNotBlank() } ?: "/bin/zsh"
     return TerminalSession.start(
         cols = 80, rows = 24, command = listOf(shell, "-l", "-i", "-c", command), directory = directory.takeIf { File(it).isDirectory }, theme = theme,
+        environment = environment.variables, unsetEnvironment = environment.unset,
         shellIntegration = false, cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
         boldIsBright = settings.boldIsBright, scrollbackMaxBytes = settings.scrollback.bytes,
     )
 }
 
-private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegration: Path?, settings: Settings, snapshot: TerminalSnapshot? = null): TerminalSession {
+private fun startShell(
+    spec: TerminalSpec,
+    theme: TerminalTheme?,
+    shellIntegration: Path?,
+    settings: Settings,
+    environment: EnvironmentChange,
+    snapshot: TerminalSnapshot? = null,
+): TerminalSession {
     // A folder that is gone is not a reason for the terminal to have no shell: it starts in the user's home.
     // The program that ran over the shell is typed in the new one, in the folder it was in, which is the folder that the shell goes back to when
     // it ends.
@@ -761,6 +824,7 @@ private fun startShell(spec: TerminalSpec, theme: TerminalTheme?, shellIntegrati
     return TerminalSession.start(
         // At the size that the old terminal had, so that its content is reflowed once, when the pane gives the real size, and not twice.
         cols = snapshot?.cols ?: 80, rows = snapshot?.rows ?: 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY),
+        environment = environment.variables, unsetEnvironment = environment.unset,
         cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
         boldIsBright = settings.boldIsBright, scrollbackMaxBytes = settings.scrollback.bytes,
         snapshot = snapshot, restoredNote = snapshot?.let { "Restored session: ${RESTORED_FORMAT.format(Instant.ofEpochMilli(it.createdAt).atZone(ZoneId.systemDefault()))}" },

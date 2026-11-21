@@ -59,7 +59,7 @@ class WorkspaceAreaTest {
     private val registry = SessionRegistry(
         store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null },
         // An interactive zsh with no startup files: what a user has, so that its name is the terminal's.
-        start = { spec, _ -> TerminalSession.start(80, 10, command = listOf("/bin/zsh", "-f", "-i"), directory = spec.directory, shellIntegration = false) },
+        start = { spec, _, _ -> TerminalSession.start(80, 10, command = listOf("/bin/zsh", "-f", "-i"), directory = spec.directory, shellIntegration = false) },
     )
 
     @AfterTest

@@ -25,7 +25,7 @@ class WindowControllerRunTest {
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val runs = RunTerminals(scope, Dispatchers.Unconfined) { command, directory ->
+    private val runs = RunTerminals(scope, Dispatchers.Unconfined) { _, command, directory ->
         TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", command), directory = directory, shellIntegration = false)
     }
     private val platform = object : WindowPlatform {

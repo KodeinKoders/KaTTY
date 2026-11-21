@@ -63,9 +63,9 @@ class KattyWindowContentTest {
     private val registry = SessionRegistry(
         store, scope, starter = Dispatchers.Unconfined,
         loadTheme = { null },
-        start = { spec, _ -> TerminalSession.start(80, 5, command = command, environment = environment, directory = spec.directory) },
+        start = { spec, _, _ -> TerminalSession.start(80, 5, command = command, environment = environment, directory = spec.directory) },
         // Not the user's shell, which reads the user's files.
-        startRun = { run, directory, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", run), directory = directory, shellIntegration = false) },
+        startRun = { run, directory, _, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", run), directory = directory, shellIntegration = false) },
     )
     private val tracker = AgentTracker(scope)
     private val usage = SessionUsageTracker(scope, emptyMap(), { emptyMap() }, { null }, { null })

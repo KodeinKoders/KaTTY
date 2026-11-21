@@ -56,14 +56,14 @@ class RunTerminal(
  * taken by the one it replaces. The work of a workspace (a start, a stop) is chained for that.
  *
  * @param starter Where a command is started: not on the thread that draws.
- * @param start Starts [command] in [directory], in a session of its own.
+ * @param start Starts [command] in [directory], in a session of its own, for a run of the workspace it is given (whose environment it has).
  * @param endTimeoutMs How long the processes of a run that is stopped have to end before they are killed.
  */
 class RunTerminals(
     private val scope: CoroutineScope,
     private val starter: CoroutineDispatcher = Dispatchers.IO,
     private val endTimeoutMs: Long = TerminalSession.SESSION_END_TIMEOUT_MS,
-    private val start: (command: String, directory: String) -> TerminalSession,
+    private val start: (workspace: WorkspaceId, command: String, directory: String) -> TerminalSession,
 ) {
     private val mutableTerminals = MutableStateFlow<Map<WorkspaceId, RunTerminal>>(emptyMap())
 
@@ -100,7 +100,7 @@ class RunTerminals(
                 if (current.waiting) mutableTerminals.update { it + (workspace to current.starting()) }
             }
             val started = try {
-                Result.success(start(command, directory))
+                Result.success(start(workspace, command, directory))
             } catch (e: Exception) {
                 logger.error("Could not run {} in {}", command, directory, e)
                 Result.failure(e)

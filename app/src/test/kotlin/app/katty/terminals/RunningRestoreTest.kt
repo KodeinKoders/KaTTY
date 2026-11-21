@@ -32,7 +32,7 @@ class RunningRestoreTest {
     private val registry = SessionRegistry(
         store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined,
         loadTheme = { null },
-        start = { spec, _ ->
+        start = { spec, _, _ ->
             TerminalSession.start(
                 80, 10,
                 command = listOf("/bin/zsh", "-l"),

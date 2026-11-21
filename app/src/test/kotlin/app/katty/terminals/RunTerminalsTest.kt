@@ -23,7 +23,7 @@ class RunTerminalsTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val started = mutableListOf<Pair<String, String>>()
     private val startedAt = mutableMapOf<String, Long>()
-    private val runs = RunTerminals(scope, Dispatchers.Unconfined) { command, directory ->
+    private val runs = RunTerminals(scope, Dispatchers.Unconfined) { _, command, directory ->
         started += command to directory
         startedAt[command] = System.nanoTime()
         TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", command), directory = directory, shellIntegration = false)
@@ -147,7 +147,7 @@ class RunTerminalsTest {
 
     @Test
     fun aCommandThatCannotStartSaysWhy() {
-        val failing = RunTerminals(scope, Dispatchers.Unconfined) { _, _ -> error("no such shell") }
+        val failing = RunTerminals(scope, Dispatchers.Unconfined) { _, _, _ -> error("no such shell") }
 
         failing.run(workspace, "make", "/tmp")
 
@@ -162,8 +162,8 @@ class RunTerminalsTest {
         val commands = mutableListOf<String>()
         val registry = SessionRegistry(
             store, scope, starter = Dispatchers.Unconfined, loadTheme = { null },
-            start = { spec, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), directory = spec.directory) },
-            startRun = { command, directory, _ ->
+            start = { spec, _, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), directory = spec.directory) },
+            startRun = { command, directory, _, _ ->
                 commands += command
                 TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", command), directory = directory, shellIntegration = false)
             },

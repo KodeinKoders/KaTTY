@@ -49,7 +49,7 @@ class RestoreTest {
             val started = mutableMapOf<String, String>()
             val registry = SessionRegistry(
                 second, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null },
-                start = { spec, _ ->
+                start = { spec, _, _ ->
                     started[spec.id.value] = spec.directory
                     TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory)
                 },
