@@ -130,6 +130,36 @@ fun CloseTerminalDialog(terminal: TerminalSummary, onConfirm: () -> Unit, onCanc
     )
 }
 
+/**
+ * Asked before the shells of [workspaces] start again with [environment] (`null`: none): each one goes on in its folder, with what it showed and
+ * what ran over it typed again, but what a program was in the middle of is lost. The [terminals] that run something are listed. [later]: the
+ * other button keeps the environment they have ("Later"); otherwise it cancels the change.
+ */
+@Composable
+fun RestartWorkspacesDialog(
+    workspaces: List<String>,
+    environment: String?,
+    terminals: List<TerminalSummary>,
+    later: Boolean,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val what = if (workspaces.size == 1) "“${workspaces.single()}”" else "${workspaces.size} workspaces"
+    val with = environment?.let { "the environment “$it”" } ?: "no environment"
+    ConfirmDialog(
+        title = "Restart $what with $with?",
+        message = "Their shells start again where they were, with what ran in them typed again." +
+            (if (terminals.isEmpty()) "" else " " + stoppedByClosing(terminals)) +
+            (if (later) " Later, they keep the one they have, until “Use project environment” in their menu." else ""),
+        confirmLabel = "Restart now",
+        cancelLabel = if (later) "Later" else "Cancel",
+        destructive = terminals.isNotEmpty(),
+        onConfirm = onConfirm,
+        onCancel = onCancel,
+        details = if (terminals.isEmpty()) null else ({ terminals.forEach { SummaryRow(it) } }),
+    )
+}
+
 /** Asked before a terminal is restarted while a program runs in it: the program is stopped and a new shell takes its place. */
 @Composable
 fun RestartTerminalDialog(terminal: TerminalSummary, onConfirm: () -> Unit, onCancel: () -> Unit) {

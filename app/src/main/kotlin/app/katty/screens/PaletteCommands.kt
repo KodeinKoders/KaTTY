@@ -32,6 +32,10 @@ data class RunCommandState(val shown: Boolean, val ended: Boolean)
 /** What the commands of the palette do: the window gives them, since it is what holds the dialogs and the selection. */
 class PaletteHandlers(
     val addProject: () -> Unit,
+    /** The environments that exist, which the selected project and workspace can be given: one command each. */
+    val environments: Set<String> = emptySet(),
+    val setProjectEnvironment: (String?) -> Unit = {},
+    val setWorkspaceEnvironment: (String?) -> Unit = {},
     /** Opens the list of the projects that were opened before and are not open now. */
     val openRecent: () -> Unit = {},
     /** Opens what was closed last again, and what the palette calls it; `null` when nothing was closed lately. */
@@ -264,6 +268,15 @@ fun paletteCommands(
         if (index > 0) command("project-up", "Move project up") { handlers.moveProject(-1) }
         if (index < state.projects.lastIndex) command("project-down", "Move project down") { handlers.moveProject(1) }
         command("remove-project", "Remove project…", AppShortcut.REMOVE_PROJECT.label, handlers.removeProject)
+        // One command for each environment that it does not have: "Project environment: sunday".
+        for (name in listOf<String?>(null) + handlers.environments.sorted()) {
+            if (name != project.environment) command("project-environment:${name.orEmpty()}", "Project environment: ${name ?: "None"}") { handlers.setProjectEnvironment(name) }
+        }
+    }
+    state.selectedWorkspace?.let { workspace ->
+        for (name in listOf<String?>(null) + handlers.environments.sorted()) {
+            if (name != workspace.environment) command("workspace-environment:${name.orEmpty()}", "Workspace environment: ${name ?: "None"}") { handlers.setWorkspaceEnvironment(name) }
+        }
     }
     if (hasWorkspace) {
         command("rename-workspace", "Rename workspace", AppShortcut.RENAME_WORKSPACE.label, handlers.renameWorkspace)

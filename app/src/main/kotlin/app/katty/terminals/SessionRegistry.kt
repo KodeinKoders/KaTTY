@@ -258,6 +258,12 @@ class SessionRegistry(
     // The scheme that the runs were last given.
     private var runScheme: String? = null
 
+    /** The environments that the folders of the settings have, for the menus, the settings and the badges of both windows. */
+    val environments: EnvironmentCatalog = EnvironmentCatalog(scope, { store.state.value.settings.environmentDirectories })
+
+    // The folders of the environments at the last sync: the catalog is read again when they change.
+    private var environmentDirectories: List<String>? = null
+
     // Whether the application was dark at the last sync: the terminals that have no scheme of their own take the one of that mode, and so does one
     // that is started again.
     @Volatile
@@ -277,6 +283,11 @@ class SessionRegistry(
         var next = current
 
         syncSnapshots(wanted, state.settings.restoreContents)
+
+        if (state.settings.environmentDirectories != environmentDirectories) {
+            if (environmentDirectories != null) environments.refresh()
+            environmentDirectories = state.settings.environmentDirectories
+        }
 
         forgetClosedContents(wanted)
 

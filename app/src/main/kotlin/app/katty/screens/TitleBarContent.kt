@@ -25,6 +25,8 @@ import app.katty.ui.Katty
 import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import app.katty.ui.OneLine
+import app.katty.ui.EnvironmentPill
+import app.katty.core.environmentBadge
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.TitleBarScope
 
@@ -47,6 +49,7 @@ fun TitleBarScope.TitleBarContent(
     teaching: Boolean = false,
     onStopTeaching: () -> Unit = {},
     trailing: @Composable () -> Unit = {},
+    environments: Set<String>? = null,
 ) {
     val colors = Katty.colors
     Row(Modifier.align(Alignment.Start).padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -58,9 +61,11 @@ fun TitleBarScope.TitleBarContent(
             Text("KaTTY", color = colors.text, fontWeight = FontWeight.SemiBold)
         } else {
             OneLine(project.name, color = colors.text, fontSize = androidx.compose.ui.unit.TextUnit.Unspecified)
+            environments?.let { project.environmentBadge(it) }?.let { EnvironmentPill(it) }
             state.selectedWorkspace?.let { workspace ->
                 Text("/", color = colors.muted)
                 OneLine(workspace.name, color = colors.text)
+                environments?.let { workspace.environmentBadge(project, it) }?.let { EnvironmentPill(it) }
             }
         }
     }

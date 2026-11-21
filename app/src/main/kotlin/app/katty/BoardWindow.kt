@@ -130,7 +130,8 @@ fun BoardWindow(
             ShortTitleBar("Agent board")
             val size = LocalWindowInfo.current.containerSize
             val vertical = state.settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
-            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, usages = usages)
+            val environments by registry.environments.listing.collectAsState()
+            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, usages = usages, environments = environments.names)
         }
     }
 }
@@ -169,6 +170,7 @@ fun BoardWindowContent(
     onOpen: (TerminalId) -> Unit,
     modifier: Modifier = Modifier,
     usages: Map<TerminalId, SessionUsage> = emptyMap(),
+    environments: Set<String>? = null,
 ) {
     var chosen by remember { mutableStateOf<ProjectId?>(null) }
     // A project that was removed is not a filter any more.
@@ -177,6 +179,6 @@ fun BoardWindowContent(
     val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
     Column(modifier.fillMaxSize()) {
         BoardTabs(state, filter, { chosen = it }, states = agentStates)
-        AgentBoard(columns, handles, now, vertical, onOpen, Modifier.weight(1f), usages = usages)
+        AgentBoard(columns, handles, now, vertical, onOpen, Modifier.weight(1f), usages = usages, environments = environments)
     }
 }

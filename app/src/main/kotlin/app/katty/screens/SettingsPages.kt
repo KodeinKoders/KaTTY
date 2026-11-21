@@ -49,6 +49,8 @@ import app.katty.ShortcutMap
 import app.katty.core.Agent
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
+import app.katty.core.EnvironmentListing
+import app.katty.core.Environments
 import app.katty.core.GitChangesDisplay
 import app.katty.core.LayoutMode
 import app.katty.core.MinimumContrast
@@ -65,6 +67,7 @@ import app.katty.ui.Choice
 import app.katty.ui.ChoiceOption
 import app.katty.ui.Icon
 import app.katty.ui.Katty
+import app.katty.ui.KattyIconButton
 import app.katty.ui.KattyIcons
 import app.katty.ui.KattyMenu
 import app.katty.ui.KattyTextButton
@@ -99,7 +102,21 @@ enum class SettingsPage(val title: String) {
     KEYBOARD("Keyboard"),
     SHORTCUTS("Shortcuts"),
     AGENTS("Agents"),
+    ENVIRONMENTS("Environments"),
 }
+
+/**
+ * What the Environments page does that is not a setting: [onRefresh] reads the folders again (when the page opens), [onAddFolder] asks for a folder
+ * to add, [onOpenFolder] shows one in the Finder (made if it is not there), and [onApplyDefault] gives the default environment to the
+ * [projectsWithoutEnvironment] projects that have none.
+ */
+internal class EnvironmentActions(
+    val projectsWithoutEnvironment: Int = 0,
+    val onRefresh: () -> Unit = {},
+    val onAddFolder: () -> Unit = {},
+    val onOpenFolder: (String) -> Unit = {},
+    val onApplyDefault: () -> Unit = {},
+)
 
 /**
  * What the AI command setting is for what is typed in its field: `null`, the default, for the default itself, so that a default that changes
@@ -125,6 +142,7 @@ internal fun aiCommandSetting(text: String, default: String?): String? {
  * @param fontFamilies The monospaced families of the system, which may still be being listed.
  * @param shortcuts The shortcuts as they are bound, changed through [onShortcuts].
  * @param agents The agents that are installed: the AI command can be the one of any of them, and is the one of the first while the setting is `null`.
+ * @param environments The environments found in the folders of the settings.
  */
 @Composable
 internal fun SettingsContent(
@@ -139,6 +157,9 @@ internal fun SettingsContent(
     agents: Set<Agent>,
     onAbout: () -> Unit,
     modifier: Modifier = Modifier,
+    environments: EnvironmentListing = EnvironmentListing.EMPTY,
+    environmentActions: EnvironmentActions = EnvironmentActions(),
+    overlay: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
     // The theme whose color scheme is being chosen: `true` for the dark one.
@@ -159,6 +180,7 @@ internal fun SettingsContent(
                             SettingsPage.TERMINAL -> TerminalPage(settings, onChange)
                             SettingsPage.KEYBOARD -> KeyboardPage(settings, onChange)
                             SettingsPage.AGENTS -> AgentsPage(settings, onChange, agents)
+                            SettingsPage.ENVIRONMENTS -> EnvironmentsPage(settings, onChange, environments, environmentActions)
                             SettingsPage.SHORTCUTS -> Unit
                         }
                     }
@@ -177,6 +199,8 @@ internal fun SettingsContent(
                 onClose = { picking = null },
             )
         }
+        // A question that what is done on a page asks (the default environment applied), over the whole window.
+        overlay()
     }
 }
 
@@ -478,6 +502,103 @@ private fun AiAgentField(command: String, agents: List<Agent>, onChoose: (String
             }
         }
     }
+}
+
+/**
+ * The environments: the folders they are read from, in their order; the one that new projects are given; and the ones that were found, with their
+ * files and, under a file that has lines that are not read, how many. Never a value, nor the text of a line: the files hold secrets.
+ */
+@Composable
+private fun EnvironmentsPage(settings: Settings, onChange: ((Settings) -> Settings) -> Unit, listing: EnvironmentListing, actions: EnvironmentActions) {
+    val colors = Katty.colors
+    val latestActions by rememberUpdatedState(actions)
+    // The files are not watched: they are read again when the page is shown.
+    LaunchedEffect(Unit) { latestActions.onRefresh() }
+    val folders = settings.environmentDirectories
+    Section("FOLDERS") {
+        Caption("An environment is a file named after it, kodein.env for kodein, in one of these folders. When several have it, they are read in this order and the last one wins.")
+        folders.forEachIndexed { index, folder ->
+            fun moved(by: Int) = onChange { it.copy(environmentDirectories = it.environmentDirectories.toMutableList().apply { add(index + by, removeAt(index)) }) }
+            Row(Modifier.padding(start = 8.dp, end = 4.dp).heightIn(min = 28.dp), verticalAlignment = Alignment.CenterVertically) {
+                OneLine(folder, Modifier.weight(1f), color = colors.text)
+                KattyIconButton(KattyIcons.ChevronUp, "Move $folder up", { moved(-1) }, enabled = index > 0)
+                KattyIconButton(KattyIcons.ChevronDown, "Move $folder down", { moved(1) }, enabled = index < folders.lastIndex)
+                KattyIconButton(KattyIcons.Folder, "Open $folder", { actions.onOpenFolder(folder) })
+                KattyIconButton(KattyIcons.Close, "Remove $folder", { onChange { it.copy(environmentDirectories = it.environmentDirectories.filterIndexed { i, _ -> i != index }) } })
+            }
+        }
+        Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            KattyTextButton("Add folder…", actions.onAddFolder)
+            if (folders != listOf(Environments.DEFAULT_DIRECTORY)) {
+                KattyTextButton("Reset", { onChange { it.copy(environmentDirectories = listOf(Environments.DEFAULT_DIRECTORY)) } }, description = "Reset the folders")
+            }
+        }
+    }
+    Separator()
+    Section("DEFAULT ENVIRONMENT") {
+        DefaultEnvironmentField(settings.defaultEnvironment, listing.names) { name -> onChange { it.copy(defaultEnvironment = name) } }
+        Caption("A project that is added gets it, and keeps it when this changes. Its shells are started with it.")
+        val count = actions.projectsWithoutEnvironment
+        if (settings.defaultEnvironment != null && count > 0) {
+            val projects = if (count == 1) "1 project has" else "$count projects have"
+            Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                OneLine("$projects no environment.", Modifier.weight(1f), color = colors.muted)
+                KattyTextButton("Apply", actions.onApplyDefault, description = "Apply the default environment to the projects that have none")
+            }
+        }
+    }
+    Separator()
+    Section("FOUND") {
+        if (listing.environments.isEmpty()) {
+            Caption("None yet. A line such as CLAUDE_CONFIG_DIR=~/.claude-kodein in kodein.env gives the shells of its projects another Claude Code account.")
+        }
+        for (environment in listing.environments) {
+            Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 2.dp).semantics(mergeDescendants = true) {}) {
+                OneLine(environment.name, color = colors.text)
+                for (file in environment.files) {
+                    OneLine(homeAbbreviated(file.path.toString()), Modifier.padding(start = 12.dp), color = colors.muted, fontSize = 11.sp)
+                    val problem = when {
+                        file.unreadable -> "⚠ Cannot be read"
+                        file.ignoredLines == 1 -> "⚠ 1 line ignored (line ${file.firstIgnoredLine})"
+                        file.ignoredLines > 1 -> "⚠ ${file.ignoredLines} lines ignored (line ${file.firstIgnoredLine})"
+                        else -> null
+                    }
+                    if (problem != null) OneLine(problem, Modifier.padding(start = 12.dp), color = colors.err, fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+/** The default environment: "None", or one of the [names] that exist; one that has no file any more says so. */
+@Composable
+private fun DefaultEnvironmentField(current: String?, names: Set<String>, onChoose: (String?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = when {
+        current == null -> "None"
+        current !in names -> "$current (not found)"
+        else -> current
+    }
+    Box {
+        Field(label, "Default environment: $label", { open = true })
+        if (open) {
+            KattyMenu(
+                menu {
+                    action("None", checked = current == null) { onChoose(null) }
+                    if (names.isNotEmpty()) divider()
+                    for (name in names) action(name, checked = name == current) { onChoose(name) }
+                },
+                onDismiss = { open = false },
+            )
+        }
+    }
+}
+
+/** [path] with the home folder written `~`. */
+internal fun homeAbbreviated(path: String, home: String = System.getProperty("user.home")): String = when {
+    path == home -> "~"
+    path.startsWith("$home/") -> "~" + path.removePrefix(home)
+    else -> path
 }
 
 @Composable

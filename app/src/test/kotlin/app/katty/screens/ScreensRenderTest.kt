@@ -31,6 +31,66 @@ class ScreensRenderTest {
         Sidebar(state, store, onAddProject = {}, onRemoveProject = {}, onCloseWorkspace = {}, onReveal = {}, renamingProject = null, onRenamingProject = {}, renamingWorkspace = null, onRenamingWorkspace = {}, modifier = Modifier)
     }
 
+    // Projects with environments: a client's, the default one, none, and one whose file is gone; a workspace that kept the default after its project
+    // changed, and one with none in a project that has one.
+    private fun storeWithEnvironments(): KattyStore {
+        var n = 0
+        val store = KattyStore(newId = { "id${n++}" })
+        store.updateSettings { it.copy(defaultEnvironment = "claude-kodein") }
+        store.addProject("/Users/me/dev/web-client")
+        val sunday = store.addProject("/Users/me/dev/sunday-app")
+        store.setProjectEnvironment(sunday, "sunday")
+        store.addWorkspace(sunday, "payments")
+        val gone = store.addProject("/Users/me/dev/old-client")
+        store.setProjectEnvironment(gone, "acme")
+        store.updateSettings { it.copy(defaultEnvironment = null) }
+        store.addProject("/Users/me/dev/scratch")
+        val standard = store.state.value.projects.first { it.id == sunday }.workspaces.last().id
+        store.setWorkspacesEnvironment(setOf(standard), null)
+        store.selectWorkspace(store.state.value.projects.first { it.id == sunday }.workspaces.first().id)
+        return store
+    }
+
+    @Composable
+    private fun SidebarWithEnvironments(store: KattyStore) {
+        val state by store.state.collectAsState()
+        Sidebar(
+            state, store, onAddProject = {}, onRemoveProject = {}, onCloseWorkspace = {}, onReveal = {}, renamingProject = null, onRenamingProject = {},
+            renamingWorkspace = null, onRenamingWorkspace = {}, modifier = Modifier,
+            environments = EnvironmentControls(available = setOf("claude-kodein", "claude-perso", "sunday")),
+        )
+    }
+
+    @Test
+    fun drawsTheEnvironmentsOfTheProjectsAndWorkspacesInBothThemes() {
+        render("sidebar-environments-light", 560, 700) { SidebarWithEnvironments(storeWithEnvironments()) }
+        render("sidebar-environments-dark", 560, 700, dark = true) { SidebarWithEnvironments(storeWithEnvironments()) }
+    }
+
+    @Test
+    fun drawsTheEnvironmentsPageInBothThemes() {
+        val root = java.nio.file.Files.createTempDirectory("katty-environments-render")
+        try {
+            val shared = root.resolve("environments").also { java.nio.file.Files.createDirectories(it) }
+            val secrets = root.resolve("secrets").also { java.nio.file.Files.createDirectories(it) }
+            java.nio.file.Files.writeString(shared.resolve("claude-kodein.env"), "CLAUDE_CONFIG_DIR=~/.claude-kodein")
+            java.nio.file.Files.writeString(shared.resolve("claude-perso.env"), "CLAUDE_CONFIG_DIR=~/.claude-perso\nunset ANTHROPIC_API_KEY")
+            java.nio.file.Files.writeString(secrets.resolve("claude-perso.env"), "GH_TOKEN=x\nnot a line\nB=\$(whoami)")
+            val settings = app.katty.core.Settings(environmentDirectories = listOf(shared.toString(), secrets.toString()), defaultEnvironment = "claude-kodein")
+            val listing = app.katty.core.Environments.list(settings.environmentDirectories)
+            for (dark in listOf(false, true)) {
+                render("settings-environments-${if (dark) "dark" else "light"}", 900, 1400, dark = dark) {
+                    SettingsContent(
+                        SettingsPage.ENVIRONMENTS, {}, settings, {}, emptyList(), emptyList(), app.katty.ShortcutMap.DEFAULT, {}, emptySet(), {},
+                        environments = listing, environmentActions = EnvironmentActions(projectsWithoutEnvironment = 2),
+                    )
+                }
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun drawsTheSidebarInBothThemes() {
         val light = render("sidebar-light", 560, 900) { SidebarOf(store()) }

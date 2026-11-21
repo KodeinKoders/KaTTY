@@ -22,6 +22,7 @@ import app.katty.core.Direction
 import app.katty.core.EnvironmentChange
 import app.katty.core.Environments
 import app.katty.core.environmentOf
+import app.katty.screens.homeAbbreviated
 import app.katty.core.GitChangesDisplay
 import app.katty.core.GitReader
 import app.katty.core.Ide
@@ -122,6 +123,18 @@ internal data class IdeRequest(val workspace: WorkspaceId, val file: TerminalFil
  * The question of what the run terminal of [workspace] runs, in [directory]: it starts with [initial], the command that was run last, and says that
  * the command that runs will be stopped when [interrupts].
  */
+/**
+ * The shells of [workspaces] to start again with [environment]. [later]: the change is made already (a project's), and declining leaves the
+ * workspaces with the environment they have; otherwise (a workspace's) declining cancels it. [fromSettings]: asked from the settings window, which
+ * shows it.
+ */
+internal data class EnvironmentRestart(
+    val workspaces: Set<WorkspaceId>,
+    val environment: String?,
+    val later: Boolean,
+    val fromSettings: Boolean = false,
+)
+
 internal data class RunRequest(val workspace: WorkspaceId, val directory: String, val initial: String, val interrupts: Boolean)
 
 /** Where the command that the AI is asked about ran: a terminal, or the run of a workspace. */
@@ -200,7 +213,14 @@ internal class WindowController(
     private val environmentOf: (WorkspaceId) -> EnvironmentChange = { id ->
         Environments.resolve(store.state.value.environmentOf(id), store.state.value.settings.environmentDirectories).change
     },
+    // Starts the shells of terminals again with the environment of their workspace (`SessionRegistry.restartWithEnvironment`).
+    private val restartWithEnvironment: (Collection<TerminalId>) -> Unit = {},
 ) {
+    /** A change of environment that starts shells again, waiting for the user's answer (see [answerEnvironmentRestart]). */
+    var environmentRestart by mutableStateOf<EnvironmentRestart?>(null)
+
+    /** The environments that exist, which the palette offers. */
+    var environmentNames: Set<String> = emptySet()
     var renamingWorkspace by mutableStateOf<WorkspaceId?>(null)
     var renamingProject by mutableStateOf<ProjectId?>(null)
     var renamingTerminal by mutableStateOf<TerminalId?>(null)
@@ -336,7 +356,8 @@ internal class WindowController(
     val blockingDialog: Boolean by derivedStateOf {
         picking != null || closingWorkspace != null || closingTerminal != null || restartingTerminal != null || removing != null || pasting != null ||
             quitting != null || recentOpen || restoring != null || choosingIde != null || editingWorkspaceIde != null || exportingHistory != null || exportFailure != null ||
-            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null || diagnosing != null || requestingCommand != null
+            runRequest != null || confirmingRun != null || stoppingRun != null || restartingRun != null || diagnosing != null || requestingCommand != null ||
+            environmentRestart?.fromSettings == false
     }
 
     /** Whether anything is over the terminals, which then do not take the keyboard. */
@@ -462,6 +483,72 @@ internal class WindowController(
     // Closing asks first when a program, or an agent that is active, would be stopped, and does not otherwise: the command of its run is one.
     fun closeWorkspace(id: WorkspaceId) {
         if (state.closeWorkspaceDecision(id, ::stateOf, ::running) == CloseDecision.NOW && runs?.active(id) != true) store.closeWorkspace(id) else closingWorkspace = id
+    }
+
+    // ----- Environments
+
+    /**
+     * Gives the workspace [id] the environment [environment] (`null` for none): its shells are started again with it, each where it was. Asked first
+     * when a program, or an agent that is active, would be stopped.
+     */
+    fun setWorkspaceEnvironment(id: WorkspaceId, environment: String?) {
+        val workspace = state.projects.flatMap { it.workspaces }.firstOrNull { it.id == id } ?: return
+        if (workspace.environment == environment) return
+        val request = EnvironmentRestart(setOf(id), environment, later = false)
+        if (state.closeWorkspaceDecision(id, ::stateOf, ::running) == CloseDecision.NOW) startAgain(request) else environmentRestart = request
+    }
+
+    /** Gives the workspace [id] the environment of its project, as [setWorkspaceEnvironment] does. */
+    fun useProjectEnvironment(id: WorkspaceId) {
+        val project = state.projects.firstOrNull { project -> project.workspaces.any { it.id == id } } ?: return
+        setWorkspaceEnvironment(id, project.environment)
+    }
+
+    /**
+     * Gives the project [id] the environment [environment] (`null` for none), which its new workspaces get. The ones that had its environment are
+     * offered to start again with the new one, now or later: later, they keep theirs.
+     */
+    fun setProjectEnvironment(id: ProjectId, environment: String?) {
+        val following = store.setProjectEnvironment(id, environment)
+        if (following.isNotEmpty()) environmentRestart = EnvironmentRestart(following, environment, later = true)
+    }
+
+    /** Gives the default environment to every project that has none, as the settings' "Apply" does, and offers their workspaces to start again. */
+    fun applyDefaultEnvironment() {
+        val default = state.settings.defaultEnvironment ?: return
+        val following = store.applyEnvironmentToProjectsWithout(default)
+        if (following.isNotEmpty()) environmentRestart = EnvironmentRestart(following, default, later = true, fromSettings = true)
+    }
+
+    /** The answer to [environmentRestart]: [now] starts the shells again; otherwise nothing changes (for a workspace) or they keep theirs (later). */
+    fun answerEnvironmentRestart(now: Boolean) {
+        val request = environmentRestart ?: return
+        environmentRestart = null
+        if (now) startAgain(request)
+    }
+
+    private fun startAgain(request: EnvironmentRestart) {
+        store.setWorkspacesEnvironment(request.workspaces, request.environment)
+        val terminals = state.projects.flatMap { it.workspaces }.filter { it.id in request.workspaces }.flatMap { workspace -> workspace.layout.terminals().map { it.id } }
+        restartWithEnvironment(terminals)
+    }
+
+    /** Asks for a folder of environments, and adds it after the others: its files are read last, and win. */
+    fun addEnvironmentFolder() {
+        val folder = platform.chooseFolder("Add environments folder", null) ?: return
+        val written = homeAbbreviated(folder)
+        store.updateSettings { if (written in it.environmentDirectories) it else it.copy(environmentDirectories = it.environmentDirectories + written) }
+    }
+
+    /** Shows the folder of environments [folder] (the first of the settings by default) in the Finder, made first when it is not there yet. */
+    fun openEnvironmentsFolder(folder: String? = state.settings.environmentDirectories.firstOrNull()) {
+        val path = Environments.expandHome(folder ?: Environments.DEFAULT_DIRECTORY)
+        try {
+            java.nio.file.Files.createDirectories(Path.of(path))
+        } catch (e: java.io.IOException) {
+            org.slf4j.LoggerFactory.getLogger("app.katty.WindowController").warn("Could not make {}", path, e)
+        }
+        platform.reveal(path)
     }
 
     /** The run terminal of [workspace], when it has one. */
@@ -1177,6 +1264,9 @@ internal class WindowController(
     /** What the palette runs: the same actions as the shortcuts, under the same rules. */
     fun paletteHandlers(worktree: String? = selectedWorktree(), closed: ClosedItem? = store.lastClosed()): PaletteHandlers = PaletteHandlers(
         addProject = ::addProject,
+        environments = environmentNames,
+        setProjectEnvironment = { name -> state.selection.project?.let { setProjectEnvironment(it, name) } },
+        setWorkspaceEnvironment = { name -> state.selection.workspace?.let { setWorkspaceEnvironment(it, name) } },
         // What would come back, read when the palette's commands are made.
         reopenClosed = closed?.let { { reopenClosed() } },
         reopenLabel = reopenLabel(closed),

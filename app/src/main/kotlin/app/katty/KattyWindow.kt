@@ -44,6 +44,11 @@ import app.katty.core.KattyDirectories
 import app.katty.core.UsageService
 import app.katty.core.usageSources
 import app.katty.core.Environments
+import app.katty.core.isActive
+import app.katty.core.projectsWithoutEnvironment
+import app.katty.screens.EnvironmentActions
+import app.katty.screens.EnvironmentControls
+import app.katty.screens.RestartWorkspacesDialog
 import app.katty.core.KattyStore
 import app.katty.core.KattyState
 import app.katty.core.MainView
@@ -220,7 +225,7 @@ internal fun KattyWindowContent(
             override fun openBoardWindow() = openBoardWindow()
             override fun openAbout() = openAbout()
         }
-        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen, tracker::markSeen, recent, registry.runs)
+        WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen, tracker::markSeen, recent, registry.runs, restartWithEnvironment = registry::restartWithEnvironment)
     }
     SideEffect {
         controller.handles = handles
@@ -306,7 +311,19 @@ internal fun KattyWindowContent(
     val now = rememberNow()
     val usageNow = java.time.Instant.ofEpochMilli(now)
     val windowFocused = LocalWindowInfo.current.isWindowFocused
-    LaunchedEffect(windowFocused) { if (windowFocused) detectTick++ }
+    LaunchedEffect(windowFocused) { if (windowFocused) { detectTick++; registry.environments.refresh() } }
+    // The environments that exist, read again with what is installed: the files may have been edited meanwhile.
+    val environmentListing by registry.environments.listing.collectAsState()
+    // What the projects and workspaces show of their environments, and what changes them, wherever they are listed.
+    val environmentControls = EnvironmentControls(
+        available = environmentListing.names,
+        onMenu = registry.environments::refresh,
+        setProject = controller::setProjectEnvironment,
+        setWorkspace = controller::setWorkspaceEnvironment,
+        useProjectEnvironment = controller::useProjectEnvironment,
+        openFolder = { controller.openEnvironmentsFolder() },
+    )
+    SideEffect { controller.environmentNames = environmentListing.names }
     // Seen: what a terminal finished or failed at stays until the user does something with it (types or clicks in it, or goes to it from the bell,
     // the board, the palette or a notice), not as soon as it is in front of them: coming back to the window shows it, and the bell must still say
     // it.
@@ -466,6 +483,7 @@ internal fun KattyWindowContent(
             boardTitle = state.projects.firstOrNull { it.id == boardFilter }?.name ?: "All projects",
             compactPalette = vertical,
             onPalette = { paletteOpen = !paletteOpen },
+            environments = environmentListing.names,
             trailing = {
                 Box {
                     AttentionBell(attention.count, { attentionOpen = !attentionOpen }, waiting = attention.needsYou.isNotEmpty())
@@ -564,7 +582,7 @@ internal fun KattyWindowContent(
                     // "All projects" says how many agents there are whatever the filter is.
                     val agentsOnBoard = remember(state.projects, infos) { state.board(null, infos).values.sumOf { it.size } }
                     val board: @Composable (Modifier) -> Unit = { boardModifier ->
-                        AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, usages = usages, modifier = boardModifier, onOpenWindow = onOpenBoardWindow)
+                        AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, usages = usages, modifier = boardModifier, onOpenWindow = onOpenBoardWindow, environments = environmentListing.names)
                     }
                     // Presentation mode shows the board alone, as it shows the terminals alone.
                     if (vertical) {
@@ -594,6 +612,7 @@ internal fun KattyWindowContent(
                             onRenamingProject = { renamingProject = it },
                             onNewWorkspace = { project -> renamingWorkspace = store.addWorkspace(project) },
                             states = agentStates,
+                            environments = environmentControls,
                         )
                         if (!controller.presenting) WorkspaceTabs(
                             project = state.selectedProject,
@@ -611,6 +630,7 @@ internal fun KattyWindowContent(
                             onRunWorkspace = controller::openRun,
                             run = selectedRun,
                             runActions = runActions,
+                            environments = environmentControls,
                         )
                         area(Modifier.weight(1f).fillMaxWidth(), false)
                         if (!controller.presenting) usageBar()
@@ -621,7 +641,7 @@ internal fun KattyWindowContent(
                             // Only the terminals, without the header of their workspace either.
                         } else if (settings.sidebarCollapsed) {
                             Rail(
-                                state, store, onAddProject = addProject, onOpenRecent = openRecent, states = agentStates, gits = gits,
+                                state, store, onAddProject = addProject, onOpenRecent = openRecent, states = agentStates, gits = gits, environments = environmentListing.names,
                                 usage = {
                                     if (usageInPanel) Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                         OpenSessionsLine(openSessions, UsageVariant.RAIL, hidden = settings.usageHidden)
@@ -649,6 +669,7 @@ internal fun KattyWindowContent(
                                 states = agentStates,
                                 gits = gits,
                                 usage = { usageSection() },
+                                environments = environmentControls,
                             )
                         }
                         area(Modifier.weight(1f).fillMaxHeight(), !controller.presenting)
@@ -674,6 +695,24 @@ internal fun KattyWindowContent(
                     }
                 }
             }
+            // Starting the shells of workspaces again with another environment: the terminals where something runs are listed.
+            val environmentRestartDialog: @Composable (EnvironmentRestart) -> Unit = { request ->
+                val workspaces = state.projects.flatMap { it.workspaces }.filter { it.id in request.workspaces }
+                if (workspaces.isEmpty()) {
+                    controller.environmentRestart = null
+                } else {
+                    RestartWorkspacesDialog(
+                        workspaces = workspaces.map { it.name },
+                        environment = request.environment,
+                        terminals = workspaces.flatMap { it.layout.terminals() }.map { describe(it).copy(running = running(it.id)) }
+                            .filter { it.running || it.state.isActive() },
+                        later = request.later,
+                        onConfirm = { controller.answerEnvironmentRestart(now = true) },
+                        onCancel = { controller.answerEnvironmentRestart(now = false) },
+                    )
+                }
+            }
+            controller.environmentRestart?.takeIf { !it.fromSettings }?.let { environmentRestartDialog(it) }
             if (controller.settingsOpen) {
                 SettingsWindow(
                     settings.effectiveUiScale, directories.settingsWindowFile, controller.settingsFocusTick,
@@ -690,6 +729,15 @@ internal fun KattyWindowContent(
                         onShortcuts = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
                         agents = detected.keys,
                         onAbout = { openAbout() },
+                        environments = environmentListing,
+                        environmentActions = EnvironmentActions(
+                            projectsWithoutEnvironment = state.projectsWithoutEnvironment().size,
+                            onRefresh = registry.environments::refresh,
+                            onAddFolder = controller::addEnvironmentFolder,
+                            onOpenFolder = { controller.openEnvironmentsFolder(it) },
+                            onApplyDefault = controller::applyDefaultEnvironment,
+                        ),
+                        overlay = { controller.environmentRestart?.takeIf { it.fromSettings }?.let { environmentRestartDialog(it) } },
                     )
                 }
             }
