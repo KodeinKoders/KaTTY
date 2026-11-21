@@ -19,6 +19,9 @@ import app.katty.core.AiAnswer
 import app.katty.core.commandRequestPrompt
 import app.katty.core.isTypable
 import app.katty.core.Direction
+import app.katty.core.EnvironmentChange
+import app.katty.core.Environments
+import app.katty.core.environmentOf
 import app.katty.core.GitChangesDisplay
 import app.katty.core.GitReader
 import app.katty.core.Ide
@@ -193,6 +196,10 @@ internal class WindowController(
     private val markSeen: (TerminalId) -> Unit = {},
     private val recent: RecentProjects? = null,
     private val runs: RunTerminals? = null,
+    // What the environment of a workspace changes for the AI asked from it: read from its files, off the UI thread. Tests give their own.
+    private val environmentOf: (WorkspaceId) -> EnvironmentChange = { id ->
+        Environments.resolve(store.state.value.environmentOf(id), store.state.value.settings.environmentDirectories).change
+    },
 ) {
     var renamingWorkspace by mutableStateOf<WorkspaceId?>(null)
     var renamingProject by mutableStateOf<ProjectId?>(null)
@@ -899,6 +906,9 @@ internal class WindowController(
         }
     }
 
+    /** What the environment of the workspace [id] changes, read from its files: for the AI asked from it. Not on the UI thread. */
+    fun environmentFor(id: WorkspaceId): EnvironmentChange = environmentOf(id)
+
     /** Whether the AI can be asked for a command to type in [id]: it is on, and the terminal has a shell. */
     fun canRequestCommand(id: TerminalId): Boolean = aiCommand != null && handles[id]?.session != null
 
@@ -922,10 +932,13 @@ internal class WindowController(
         requestJob?.cancel()
         val pending = asked.copy(asking = true, note = null)
         requestingCommand = pending
+        // The agent of the account of the terminal's workspace.
+        val workspace = state.locate(asked.terminal)?.workspace?.id
         requestJob = scope.launch {
             val answer = withContext(Dispatchers.IO) {
                 val directory = Path.of(asked.directory)
-                when (val answer = AiPrompt.ask(template, commandRequestPrompt(request, asked.shell, directory), directory, AgentDetection.knownLoginPath)) {
+                val environment = workspace?.let(environmentOf) ?: EnvironmentChange.NONE
+                when (val answer = AiPrompt.ask(template, commandRequestPrompt(request, asked.shell, directory), directory, AgentDetection.knownLoginPath, environment = environment)) {
                     is AiAnswer.Command -> if (isTypable(answer.line)) answer else AiAnswer.Failed("it gave a command with control characters")
                     is AiAnswer.Failed -> answer
                 }
@@ -972,8 +985,16 @@ internal class WindowController(
         diagnosisJob?.cancel()
         val asked = Diagnosis(target, question, run, directory)
         diagnosing = asked
+        // The agent of the account of the workspace that the command ran in.
+        val workspace = when (target) {
+            is CommandTarget.Terminal -> state.locate(target.id)?.workspace?.id
+            is CommandTarget.Run -> target.workspace
+        }
         diagnosisJob = scope.launch {
-            val answer = withContext(Dispatchers.IO) { AiPrompt.askAbout(template, question, run, Path.of(directory), AgentDetection.knownLoginPath) }
+            val answer = withContext(Dispatchers.IO) {
+                val environment = workspace?.let(environmentOf) ?: EnvironmentChange.NONE
+                AiPrompt.askAbout(template, question, run, Path.of(directory), AgentDetection.knownLoginPath, environment = environment)
+            }
             if (diagnosing == asked) diagnosing = asked.copy(answer = answer)
         }
     }

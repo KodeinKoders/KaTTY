@@ -43,6 +43,7 @@ import app.katty.core.AttentionItem
 import app.katty.core.KattyDirectories
 import app.katty.core.UsageService
 import app.katty.core.usageSources
+import app.katty.core.Environments
 import app.katty.core.KattyStore
 import app.katty.core.KattyState
 import app.katty.core.MainView
@@ -273,7 +274,13 @@ internal fun KattyWindowContent(
     val ides = installedIdes.keys.toList()
     val projectIdes = ides.filter { it.forProjects }
     val usageScope = rememberCoroutineScope()
-    val sources = remember(detected) { usageSources(detected, directories.usageDirectory) }
+    // The usage of the account of the default environment, read again at each reading: the default may change, and its file be edited.
+    val sources = remember(detected) {
+        usageSources(detected, directories.usageDirectory) {
+            val settings = store.state.value.settings
+            Environments.resolve(settings.defaultEnvironment, settings.environmentDirectories).change
+        }
+    }
     // Only the agents that KaTTY can read a usage from are offered by the usage panel.
     val detectedAgents = Agent.entries.filter { it in sources }
     val usage = remember(sources) { UsageService(usageScope, sources) }
@@ -836,7 +843,10 @@ internal fun KattyWindowContent(
                     ask = aiCommand?.let { command ->
                         suspend {
                             withContext(Dispatchers.IO) {
-                                AiPrompt.ask(command, RUN_COMMAND_PROMPT, java.nio.file.Path.of(request.directory), AgentDetection.knownLoginPath)
+                                AiPrompt.ask(
+                                    command, RUN_COMMAND_PROMPT, java.nio.file.Path.of(request.directory), AgentDetection.knownLoginPath,
+                                    environment = controller.environmentFor(request.workspace),
+                                )
                             }
                         }
                     },

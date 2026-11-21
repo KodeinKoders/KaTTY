@@ -47,6 +47,12 @@ public class CommandResult(public val exitCode: Int, public val output: String)
 public fun interface CommandRunner {
     /** `null` when it could not be started, or did not end in [timeoutMs]. */
     public fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult?
+
+    /**
+     * Runs [command] with what [environment] changes in the environment of the application: an environment of KaTTY (see [Environments]). It goes
+     * to the process, never into the command line, which others can read. A runner that does not override it runs [command] without it.
+     */
+    public fun run(command: List<String>, directory: Path, timeoutMs: Long, environment: EnvironmentChange): CommandResult? = run(command, directory, timeoutMs)
 }
 
 /**
@@ -54,10 +60,13 @@ public fun interface CommandRunner {
  * started (an MCP server, a helper), which would otherwise go on with nobody to end it.
  */
 public object ProcessCommandRunner : CommandRunner {
-    override fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult? =
+    override fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult? = run(command, directory, timeoutMs, EnvironmentChange.NONE)
+
+    override fun run(command: List<String>, directory: Path, timeoutMs: Long, environment: EnvironmentChange): CommandResult? =
         try {
             Files.createDirectories(directory)
             val process = ProcessBuilder(command).directory(directory.toFile())
+                .also { environment.applyTo(it.environment()) }
                 .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()
@@ -94,10 +103,19 @@ public object ProcessCommandRunner : CommandRunner {
     private const val OUTPUT_GRACE_MS = 500L
 }
 
-/** `claude -p /usage`: Claude Code prints its usage without a turn, as text. */
-public class ClaudeUsageSource(private val executable: Path, private val directory: Path, private val runner: CommandRunner = ProcessCommandRunner) : UsageSource {
+/**
+ * `claude -p /usage`: Claude Code prints its usage without a turn, as text.
+ *
+ * @param environment What the command is run with, asked at each reading: the default environment of the settings, whose account it reads.
+ */
+public class ClaudeUsageSource(
+    private val executable: Path,
+    private val directory: Path,
+    private val runner: CommandRunner = ProcessCommandRunner,
+    private val environment: () -> EnvironmentChange = { EnvironmentChange.NONE },
+) : UsageSource {
     override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
-        runner.run(listOf(executable.toString(), "-p", "/usage", "--output-format", "json"), directory, TIMEOUT_MS)
+        runner.run(listOf(executable.toString(), "-p", "/usage", "--output-format", "json"), directory, TIMEOUT_MS, environment())
             ?.takeIf { it.exitCode == 0 }?.let { UsageParsers.claude(it.output) }
     }
 
@@ -110,11 +128,16 @@ public class ClaudeUsageSource(private val executable: Path, private val directo
  * `agy -p /usage`: Antigravity prints its quota as JSON, and from version 1.1.11 without a turn: before that the command is a message to the
  * model, which costs, so older versions are not asked.
  */
-public class AntigravityUsageSource(private val executable: Path, private val directory: Path, private val runner: CommandRunner = ProcessCommandRunner) : UsageSource {
+public class AntigravityUsageSource(
+    private val executable: Path,
+    private val directory: Path,
+    private val runner: CommandRunner = ProcessCommandRunner,
+    private val environment: () -> EnvironmentChange = { EnvironmentChange.NONE },
+) : UsageSource {
     override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
         val version = runner.run(listOf(executable.toString(), "--version"), directory, 5_000)?.takeIf { it.exitCode == 0 }?.output ?: return@withContext null
         if (!isAtLeast(version, MINIMUM)) return@withContext null
-        runner.run(listOf(executable.toString(), "-p", "/usage", "--output-format", "json", "--print-timeout", "20s"), directory, 30_000)
+        runner.run(listOf(executable.toString(), "-p", "/usage", "--output-format", "json", "--print-timeout", "20s"), directory, 30_000, environment())
             ?.takeIf { it.exitCode == 0 }?.let { UsageParsers.antigravity(it.output) }
     }
 
@@ -136,11 +159,17 @@ public class AntigravityUsageSource(private val executable: Path, private val di
  *
  * @param command What starts the server: the program, and its argument.
  */
-public class CodexUsageSource(private val command: List<String>, private val directory: Path, private val timeoutMs: Long = 20_000) : UsageSource {
+public class CodexUsageSource(
+    private val command: List<String>,
+    private val directory: Path,
+    private val timeoutMs: Long = 20_000,
+    private val environment: () -> EnvironmentChange = { EnvironmentChange.NONE },
+) : UsageSource {
     override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
         try {
             Files.createDirectories(directory)
-            val process = ProcessBuilder(command).directory(directory.toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+            val process = ProcessBuilder(command).directory(directory.toFile()).redirectError(ProcessBuilder.Redirect.DISCARD)
+                .also { environment().applyTo(it.environment()) }.start()
             // Reading a line waits for as long as the server is silent: ending the process is what ends the wait.
             val watchdog = Thread {
                 try {
@@ -338,13 +367,14 @@ public class OmpUsageSource internal constructor(
     private val runner: CommandRunner,
     private val clock: () -> Instant,
     private val zone: ZoneId,
+    private val environment: () -> EnvironmentChange = { EnvironmentChange.NONE },
 ) : UsageSource {
-    public constructor(executable: Path, directory: Path) : this(
-        executable, directory, Path.of(System.getProperty("user.home"), ".omp", "stats.db"), ProcessCommandRunner, Instant::now, ZoneId.systemDefault(),
+    public constructor(executable: Path, directory: Path, environment: () -> EnvironmentChange = { EnvironmentChange.NONE }) : this(
+        executable, directory, Path.of(System.getProperty("user.home"), ".omp", "stats.db"), ProcessCommandRunner, Instant::now, ZoneId.systemDefault(), environment,
     )
 
     override suspend fun read(): UsageReading? = withContext(Dispatchers.IO) {
-        runner.run(listOf(executable.toString(), "stats", "-j"), directory, TIMEOUT_MS)?.takeIf { it.exitCode == 0 } ?: return@withContext null
+        runner.run(listOf(executable.toString(), "stats", "-j"), directory, TIMEOUT_MS, environment())?.takeIf { it.exitCode == 0 } ?: return@withContext null
         val spend = SqliteDatabase.read(database) { db ->
             spendPeriods(clock(), zone).map { (label, since) ->
                 UsageSpend(label, db.query("SELECT COALESCE(SUM(cost_total), 0) FROM messages WHERE timestamp >= ?", since) { it.double(0) ?: 0.0 }.first())
@@ -358,14 +388,23 @@ public class OmpUsageSource internal constructor(
     }
 }
 
-/** The sources of the agents that are installed, which have a command that reports their usage. */
-public fun usageSources(detected: Map<Agent, Path>, directory: Path): Map<Agent, UsageSource> = buildMap {
-    detected[Agent.CLAUDE]?.let { put(Agent.CLAUDE, ClaudeUsageSource(it, directory)) }
-    detected[Agent.ANTIGRAVITY]?.let { put(Agent.ANTIGRAVITY, AntigravityUsageSource(it, directory)) }
-    detected[Agent.CODEX]?.let { put(Agent.CODEX, CodexUsageSource(listOf(it.toString(), "app-server"), directory)) }
+/**
+ * The sources of the agents that are installed, which have a command that reports their usage.
+ *
+ * @param environment What their commands are run with, asked at each reading: the default environment of the settings, so that the account that
+ * is read is the one that most projects use.
+ */
+public fun usageSources(
+    detected: Map<Agent, Path>,
+    directory: Path,
+    environment: () -> EnvironmentChange = { EnvironmentChange.NONE },
+): Map<Agent, UsageSource> = buildMap {
+    detected[Agent.CLAUDE]?.let { put(Agent.CLAUDE, ClaudeUsageSource(it, directory, environment = environment)) }
+    detected[Agent.ANTIGRAVITY]?.let { put(Agent.ANTIGRAVITY, AntigravityUsageSource(it, directory, environment = environment)) }
+    detected[Agent.CODEX]?.let { put(Agent.CODEX, CodexUsageSource(listOf(it.toString(), "app-server"), directory, environment = environment)) }
     // It has no allowance: what it spent is read from its database.
     detected[Agent.OPENCODE]?.let { put(Agent.OPENCODE, OpenCodeUsageSource()) }
     // It has no allowance either: what it spent is read from its statistics database, which its own command brings up to date.
-    detected[Agent.OMP]?.let { put(Agent.OMP, OmpUsageSource(it, directory)) }
+    detected[Agent.OMP]?.let { put(Agent.OMP, OmpUsageSource(it, directory, environment)) }
     detected[Agent.KILO]?.let { put(Agent.KILO, OpenCodeUsageSource(OpenCodeStore.kilo(), Instant::now, ZoneId.systemDefault(), Agent.KILO)) }
 }

@@ -143,6 +143,19 @@ class AiCommandTest {
         assertEquals(AiDiagnosis.Failed("it ended with the code 3: not logged in"), failing)
     }
 
+    @Test
+    fun theAiIsRunWithTheEnvironmentOfTheWorkspaceButItsOwnPath() {
+        // One that this process has, taken out.
+        val inherited = System.getenv().keys.sorted().first { it.matches(Regex("[A-Z][A-Z_]*")) && it !in setOf("PATH", "PWD", "OLDPWD", "SHLVL", "HOME", "LANG") }
+        val environment = EnvironmentChange(mapOf("FOO" to "bar", "PATH" to "/nowhere"), setOf(inherited))
+
+        val answer = AiPrompt.ask(
+            "printf '%s %s %s' \"\$FOO\" \"\${$inherited-gone}\" \"\$PATH\"", "?", directory, path = "/usr/bin:/bin", environment = environment,
+        )
+
+        assertEquals(AiAnswer.Command("bar gone /usr/bin:/bin"), answer)
+    }
+
     // --- A command asked for in plain words ---
 
     @Test
