@@ -14,6 +14,8 @@ internal enum class ClipboardShortcut {
 
 internal val isMac: Boolean = System.getProperty("os.name").orEmpty().startsWith("Mac")
 
+internal val isWindows: Boolean = System.getProperty("os.name").orEmpty().startsWith("Windows")
+
 /**
  * The keys that copy and paste: Command and C or V on macOS, and Control and Shift and C or V elsewhere, where Control and C
  * is the program's own (an interrupt). Nothing else must be held. They are the terminal's: the program is told nothing of

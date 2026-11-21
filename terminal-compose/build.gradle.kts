@@ -21,8 +21,19 @@ tasks.withType<Test>().configureEach {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
+// The tests that do not run on Windows, and why: the others run there.
+val notOnWindows = mapOf(
+    "app.katty.terminal.compose.TerminalTest" to "76 of its 78 tests start their terminal with /bin/sh, which TestProgram of terminal's tests would replace",
+    "app.katty.terminal.compose.TerminalDropTest" to "the paths of a Unix system, and /bin/sh",
+    "app.katty.terminal.compose.CommandMarksUiTest.theTooltipOfACommandThatWasStoppedSaysSoAndHowLongItRan" to "no job is stopped on Windows",
+    "app.katty.terminal.compose.TerminalViewTest.aCommandThatWasStoppedIsYellowAndNotRed" to "no job is stopped on Windows",
+)
+
 tasks.test {
-    filter { excludeTestsMatching(secureKeyboardTests) }
+    filter {
+        excludeTestsMatching(secureKeyboardTests)
+        if (System.getProperty("os.name").startsWith("Windows")) notOnWindows.keys.forEach(::excludeTestsMatching)
+    }
 }
 
 val secureKeyboardTest = tasks.register<Test>("secureKeyboardTest") {

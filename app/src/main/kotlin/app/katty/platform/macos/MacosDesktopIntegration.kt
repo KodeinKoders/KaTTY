@@ -12,5 +12,14 @@ internal object MacosDesktopIntegration : DesktopIntegration {
 
     override fun openFile(ide: Ide, application: String, file: TerminalFilePosition) = openFileInApplication(ide, application, file)
 
+    // The Finder, through AWT: it shows the file selected in its folder.
+    override fun reveal(path: String) {
+        try {
+            java.awt.Desktop.getDesktop().browseFileDirectory(java.io.File(path))
+        } catch (e: Exception) {
+            org.slf4j.LoggerFactory.getLogger(MacosDesktopIntegration::class.java).warn("Could not show {} in the Finder", path, e)
+        }
+    }
+
     override fun disablePressAndHold() = app.katty.platform.macos.disablePressAndHold()
 }

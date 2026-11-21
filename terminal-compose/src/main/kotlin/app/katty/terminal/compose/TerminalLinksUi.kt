@@ -116,15 +116,18 @@ internal class LinkInteraction {
 // What a link may open from here: addresses that a program can write, which a program could use to start anything else.
 private val BROWSED_SCHEMES = setOf("http", "https", "mailto", "ftp")
 
+// The path of a drive in a `file://` address: `/C:/Users/me`.
+private val WINDOWS_DRIVE_PATH = Regex("/[A-Za-z]:(/.*)?")
+
 /** What clicking a link does, which [linkAction] decides. */
 internal sealed interface LinkAction {
     /** The system opens the address: its browser, its mail program. */
     data class Browse(val uri: URI) : LinkAction
 
-    /** The Finder opens the folder. */
+    /** The Finder (File Explorer) opens the folder. */
     data class OpenFolder(val folder: File) : LinkAction
 
-    /** The Finder shows the file, selected in its folder: it is not opened. */
+    /** The Finder (File Explorer) shows the file, selected in its folder: it is not opened. */
     data class Reveal(val file: File) : LinkAction
 
     /** Nothing is opened. */
@@ -137,7 +140,7 @@ internal sealed interface LinkAction {
  * shown in the Finder instead, and only a folder (with no extension: a bundle such as `X.app` is a folder that would run) is opened there.
  * A file of another machine, one that is not there, and any other scheme are refused.
  */
-internal fun linkAction(url: String): LinkAction {
+internal fun linkAction(url: String, windows: Boolean = isWindows): LinkAction {
     val uri = try {
         URI(url)
     } catch (_: Exception) {
@@ -149,7 +152,8 @@ internal fun linkAction(url: String): LinkAction {
             val host = uri.host ?: uri.authority
             if (!host.isNullOrEmpty() && host != "localhost") return LinkAction.Refuse("the file is on another machine")
             val path = uri.path?.takeIf { it.isNotEmpty() } ?: return LinkAction.Refuse("it names no file")
-            val file = File(path)
+            // On Windows the path of a drive comes after a slash (`file:///C:/Users/me`), which is no path of the system.
+            val file = File(if (windows && WINDOWS_DRIVE_PATH.matches(path)) path.substring(1) else path)
             when {
                 !file.exists() -> LinkAction.Refuse("there is no such file")
                 file.isDirectory && file.extension.isEmpty() -> LinkAction.OpenFolder(file)
@@ -177,7 +181,14 @@ internal fun openInBrowser(url: String) {
             val supported = when (action) {
                 is LinkAction.Browse -> desktop?.isSupported(Desktop.Action.BROWSE)?.also { if (it) desktop.browse(action.uri) }
                 is LinkAction.OpenFolder -> desktop?.isSupported(Desktop.Action.OPEN)?.also { if (it) desktop.open(action.folder) }
-                is LinkAction.Reveal -> desktop?.isSupported(Desktop.Action.BROWSE_FILE_DIR)?.also { if (it) desktop.browseFileDirectory(action.file) }
+                // Windows has no `BROWSE_FILE_DIR`: File Explorer shows a file selected in its folder with `/select,`, and opens nothing. The
+                // path is an argument of its own: Java puts one that has a space in quotes, and File Explorer does not read `"/select,C:\a b"`.
+                is LinkAction.Reveal -> if (isWindows) {
+                    ProcessBuilder("explorer.exe", "/select,", action.file.absolutePath).start()
+                    true
+                } else {
+                    desktop?.isSupported(Desktop.Action.BROWSE_FILE_DIR)?.also { if (it) desktop.browseFileDirectory(action.file) }
+                }
                 is LinkAction.Refuse -> true
             }
             if (supported != true) logger.warn("Not opening {}: this system has no way to", url)

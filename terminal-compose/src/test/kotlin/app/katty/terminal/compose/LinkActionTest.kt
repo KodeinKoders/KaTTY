@@ -25,6 +25,9 @@ class LinkActionTest {
         }
     }
 
+    // The path of [file] in a `file://` address, as a program writes it: on Windows its drive after a slash, and slashes (`/C:/Users/me`).
+    private fun addressPath(file: File): String = if (isWindows) "/" + file.path.replace('\\', '/') else file.path
+
     @Test
     fun aFileIsShownInTheFinderAndNeverOpened() {
         // An application, a script that the Finder would run, and a plain file: none is opened.
@@ -34,7 +37,7 @@ class LinkActionTest {
 
         assertEquals(LinkAction.Reveal(application), linkAction(application.toURI().toString()))
         assertEquals(LinkAction.Reveal(script), linkAction(script.toURI().toString()))
-        assertEquals(LinkAction.Reveal(text), linkAction("file://localhost${text.path}"))
+        assertEquals(LinkAction.Reveal(text), linkAction("file://localhost${addressPath(text)}"))
     }
 
     @Test
@@ -44,7 +47,7 @@ class LinkActionTest {
         assertEquals(LinkAction.OpenFolder(folder), linkAction(folder.toURI().toString()))
         // Its name is percent-encoded in the address.
         val spaced = file("my project", folder = true)
-        assertEquals(LinkAction.OpenFolder(spaced), linkAction("file://${spaced.path.replace(" ", "%20")}"))
+        assertEquals(LinkAction.OpenFolder(spaced), linkAction("file://${addressPath(spaced).replace(" ", "%20")}"))
     }
 
     @Test

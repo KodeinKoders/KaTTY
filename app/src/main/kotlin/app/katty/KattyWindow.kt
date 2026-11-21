@@ -973,15 +973,5 @@ internal fun RestoreProjectDialog(saved: Project, onRestore: () -> Unit, onFresh
 private fun programName(running: RunningCommand): String =
     running.agent?.let(Agent::byId)?.displayName ?: running.argv.firstOrNull()?.let(::programName).orEmpty()
 
-internal fun revealInFileManager(directory: String) {
-    val file = File(directory)
-    try {
-        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
-            Desktop.getDesktop().browseFileDirectory(file)
-        } else {
-            Desktop.getDesktop().open(file)
-        }
-    } catch (e: Exception) {
-        org.slf4j.LoggerFactory.getLogger("app.katty.KattyWindow").warn("Could not show {} in the file manager", directory, e)
-    }
-}
+// The folder, selected in its own: the file manager of the system shows it, and opens nothing (see DesktopIntegration.reveal).
+internal fun revealInFileManager(directory: String) = desktopIntegration.reveal(directory)
