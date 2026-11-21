@@ -720,7 +720,7 @@ A hidden file, `.env` alone, and a name with a `/` or a control character are no
 * A file is in the dotenv format, one line each:
 ** `NAME=value`, `export NAME=value`, with blanks around `=` allowed; `#` starts a comment, at the start of a line or after a blank in an unquoted value.
 ** A value in single quotes is as it is; in double quotes, `\n`, `\t`, `\r`, `\"`, `\\` and `\$` stand for what they are, and it may go on over lines; an unquoted value ends at the end of its line.
-** In double quotes and unquoted, `${NAME}` and `$NAME` are the value of a line above (of this file or of an earlier one), else of the environment of KaTTY; one that is not defined is empty, and is logged by its name.
+** In double quotes and unquoted, `${NAME}` and `$NAME` are the value of a line above (of this file or of an earlier one), else of the environment of KaTTY; one that is not defined is empty, and its line is logged (not its name, which may be a piece of a value: a password with a `$` in it is written in single quotes).
 ** A `~` or `~/` that starts an unquoted value is the home folder.
 ** `unset NAME OTHER` takes variables out of the environment of KaTTY and of the lines above; a line below can set them again.
 * A line that is none of these, an unterminated quote, `$(…)`, `${NAME:-…}`, and a variable that KaTTY sets itself (`TERM`, `COLORTERM`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `KATTY_…`) are ignored, as one line each; the others are read.
@@ -735,6 +735,7 @@ Its workspaces that had its environment are offered to start again with the new 
 Later, they keep theirs.
 * Changing the environment of a workspace (its menu, the palette, "Use project environment", the dialog above) starts its shells again at once, or asks first when a program runs or an agent is active ("Restart “name” with …?", Cancel and "Restart now").
 Each new shell starts where the old one was, with what it showed, and with the program that ran over it typed again, as at launch; a run that is running is not started again, and the next run has the new environment.
+A Claude Code whose `CLAUDE_CONFIG_DIR` changes is started on a new conversation: the other account does not have the one it was in.
 * The environment of a workspace is kept: its shells have it at the next launch too.
 * A project that is opened again from the recent ones keeps its environments.
 * A terminal that is moved to another workspace keeps the environment it was started with until it is started again.

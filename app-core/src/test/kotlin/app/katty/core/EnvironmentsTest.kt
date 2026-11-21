@@ -133,7 +133,7 @@ class EnvironmentsTest {
         val resolution = resolved("env")
 
         assertEquals("xy", resolution.change.variables["A"])
-        assertEquals(listOf(EnvironmentProblem(shared.resolve("env.env"), 1, UNDEFINED_REFERENCE, "NOPE")), resolution.problems)
+        assertEquals(listOf(EnvironmentProblem(shared.resolve("env.env"), 1, UNDEFINED_REFERENCE)), resolution.problems, "Not by its name")
     }
 
     @Test
@@ -220,7 +220,7 @@ class EnvironmentsTest {
     @Test
     fun nothingThatIsReportedHoldsAValue() {
         val secret = "s3cr3t"
-        write(shared, "env.env", "SECRET=$secret\n$secret\nX=\"$secret\nY=\$($secret)\nZ='$secret' $secret\nW=\${$secret:-x}\nV=\${NOPE}$secret")
+        write(shared, "env.env", "SECRET=$secret\n$secret\nX=\"$secret\nY=\$($secret)\nZ='$secret' $secret\nW=\${$secret:-x}\nV=\${NOPE}$secret\nP=pre\$$secret\nQ=\"\${$secret}\"")
 
         val resolution = resolved("env")
         val listing = Environments.list(directories, home)
@@ -230,7 +230,7 @@ class EnvironmentsTest {
         assertFalse(secret in resolution.change.toString())
         assertFalse(secret in resolution.problems.toString())
         assertFalse(secret in listing.toString())
-        assertEquals(listOf(2, 3, 4, 5, 6, 7), resolution.problems.map { it.line })
+        assertEquals(listOf(2, 3, 4, 5, 6, 7, 8, 9), resolution.problems.map { it.line })
     }
 
     @Test

@@ -264,6 +264,12 @@ class SessionRegistry(
     // The folders of the environments at the last sync: the catalog is read again when they change.
     private var environmentDirectories: List<String>? = null
 
+    // The `CLAUDE_CONFIG_DIR` that the shell of each terminal was started with (see [claudeConfigDir]). Under the monitor.
+    private val claudeDirs = HashMap<TerminalId, String?>()
+
+    // What a terminal that is started again with another environment had before.
+    private class Before(val claudeConfigDir: String?)
+
     // Whether the application was dark at the last sync: the terminals that have no scheme of their own take the one of that mode, and so does one
     // that is started again.
     @Volatile
@@ -316,6 +322,7 @@ class SessionRegistry(
         starting.keys.retainAll(wanted)
         // And which shell a terminal that is gone was at: not in [stop], since [restart] reads it after stopping the old shell.
         generations.keys.retainAll(wanted)
+        claudeDirs.keys.retainAll(wanted)
         for (place in terminals) {
             val id = place.terminal.id
             val scheme = place.terminal.colorScheme ?: state.settings.colorScheme(dark)
@@ -457,14 +464,18 @@ class SessionRegistry(
         val state = store.state.value
         for (id in ids) {
             val location = state.locate(id) ?: continue
-            val old = mutableHandles.value[id] ?: continue
+            val old = mutableHandles.value[id]
+            // One whose shell is still starting is started again too: the one that starts is closed when it has (its token is not the latest).
+            if (old == null && id !in starting) continue
             val spec = startingPlace(location.terminal, location.project.directory)
             // What it shows is given to the new shell; [stop] also leaves what ran over it in the store, since its poll can write no more.
-            stop(old, keepContents = true)
-            mutableHandles.value = mutableHandles.value - id
+            if (old != null) {
+                stop(old, keepContents = true)
+                mutableHandles.value = mutableHandles.value - id
+            }
             val generation = (generations[id] ?: 0) + 1
             generations[id] = generation
-            begin(spec, spec.colorScheme ?: state.settings.colorScheme(dark), generation, location.workspace.environment)
+            begin(spec, spec.colorScheme ?: state.settings.colorScheme(dark), generation, location.workspace.environment, Before(claudeDirs[id]))
         }
         applyVisibility()
     }
@@ -502,15 +513,23 @@ class SessionRegistry(
         if (!closed.await(CLOSE_ALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)) logger.warn("Some sessions did not close within {}ms", CLOSE_ALL_TIMEOUT_MS)
     }
 
-    // Starts the shell of [spec] on [starter], with the [environment] of its workspace, and publishes its handle once it has started, if the terminal
+    // Starts the shell of [place] on [starter], with the [environment] of its workspace, and publishes its handle once it has started, if the terminal
     // still wants it. Under the monitor.
-    private fun begin(spec: TerminalSpec, scheme: String, generation: Int, environment: String?) {
-        schemes[spec.id] = scheme
+    private fun begin(place: TerminalSpec, scheme: String, generation: Int, environment: String?, before: Before? = null) {
+        schemes[place.id] = scheme
         val token = ++starts
-        starting[spec.id] = token
+        starting[place.id] = token
         scope.launch(starter) {
             // Read when it starts, not under the monitor: it reads files.
-            val change = environmentChange(environment, spec.id.value)
+            val change = environmentChange(environment, place.id.value)
+            val claudeDir = claudeConfigDir(change)
+            // A Claude Code started again under another account would not find its conversation, which is the other account's: it starts a new one.
+            val running = place.running
+            val spec = if (before != null && running?.agent == Agent.CLAUDE.id && running.agentSession != null && before.claudeConfigDir != claudeDir) {
+                place.copy(running = running.copy(agentSession = null)).also { store.setRunning(place.id, it.running) }
+            } else {
+                place
+            }
             val started = try {
                 Result.success(startWithContents(spec, theme(scheme), change))
             } catch (e: Exception) {
@@ -524,7 +543,8 @@ class SessionRegistry(
                     false
                 } else {
                     starting.remove(spec.id)
-                    val handle = session?.let { follow(spec, it, generation, claudeConfigDir(change)) }
+                    if (session != null) claudeDirs[spec.id] = claudeDir
+                    val handle = session?.let { follow(spec, it, generation, claudeDir) }
                         ?: TerminalHandle(spec.id, null, started.exceptionOrNull()?.let { it.message ?: it.toString() }, generation)
                     // What was chosen while it started: the settings as they are now, not as the last sync saw them.
                     session?.apply(store.state.value.settings.toPreferences(), null)

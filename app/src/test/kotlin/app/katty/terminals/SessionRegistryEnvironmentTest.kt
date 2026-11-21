@@ -100,6 +100,35 @@ class SessionRegistryEnvironmentTest {
     }
 
     @Test
+    fun aClaudeStartedAgainUnderAnotherAccountStartsANewConversation() {
+        environments.resolve("kodein.env").writeText("CLAUDE_CONFIG_DIR=/claude-kodein")
+        environments.resolve("kodein-too.env").writeText("CLAUDE_CONFIG_DIR=/claude-kodein\nFOO=too")
+        environments.resolve("perso.env").writeText("CLAUDE_CONFIG_DIR=/claude-perso")
+        store.updateSettings { it.copy(defaultEnvironment = "kodein") }
+        store.addProject(project)
+        val id = terminal
+        val claude = RunningCommand(listOf("claude"), directory = project, agent = "claude", agentSession = "f65d7eb8-beec-40e0-9c07-40c1b1a56ba2")
+        store.setRunning(id, claude)
+        sync()
+        session(id).awaitText("FOO=none end")
+        val workspace = store.state.value.selection.workspace!!
+
+        fun restartWith(environment: String, foo: String) {
+            val before = registry.handles.value.getValue(id).session
+            store.setWorkspacesEnvironment(setOf(workspace), environment)
+            registry.restartWithEnvironment(listOf(id))
+            await("the new shell") { registry.handles.value[id]?.session.let { it != null && it !== before } }
+            session(id).awaitText("FOO=$foo end")
+        }
+
+        restartWith("kodein-too", "too")
+        assertEquals(claude, starts.last().spec.running, "The same account: its conversation")
+        restartWith("perso", "none")
+        assertEquals(claude.copy(agentSession = null), starts.last().spec.running, "Another account: not its conversation")
+        assertEquals(null, store.state.value.locate(id)!!.terminal.running!!.agentSession, "Nor at the next launch")
+    }
+
+    @Test
     fun claudeIsLookedForInTheConfigDirThatTheShellWasGiven() {
         assertEquals("/x", claudeConfigDir(EnvironmentChange(mapOf("CLAUDE_CONFIG_DIR" to "/x"), emptySet())))
         assertEquals(null, claudeConfigDir(EnvironmentChange(emptyMap(), setOf("CLAUDE_CONFIG_DIR"))), "Taken out: ~/.claude")

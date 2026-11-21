@@ -128,10 +128,11 @@ unset ANTHROPIC_API_KEY
 ----
 +
 `${NAME}` uses a variable above or of your environment, `~` is your home, and `unset` takes a variable out.
+A value with a `$` of its own, such as a password, goes in single quotes: `PASSWORD='Tr0ub4dor$Horse'`.
 * Choose the environment of a project in its right-click menu (*Environment*), or in the command palette.
 A new project gets the default one of the settings, and keeps it.
 * A badge says it, next to the project, in the title bar and on the cards of the board.
-Changing it offers to restart the shells of its workspaces, where they were and with what ran in them; a workspace that you keep on another one shows its own badge.
+Changing it offers to restart the shells of its workspaces, where they were and with what ran in them (a Claude Code that changes account starts a new conversation); a workspace that you keep on another one shows its own badge.
 * The AI that KaTTY asks from a terminal uses that terminal's account, and a Claude Code is resumed from the folder of its `CLAUDE_CONFIG_DIR`.
 * KaTTY never shows a value of these files: the settings list the environments, their files, and the lines that could not be read.
 

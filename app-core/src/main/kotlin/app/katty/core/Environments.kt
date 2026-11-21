@@ -42,7 +42,10 @@ public enum class EnvironmentProblemKind {
     /** A variable that KaTTY sets itself (see [Environments.isReserved]). The line is ignored. */
     RESERVED_VARIABLE,
 
-    /** `${NAME}` of a variable that is not defined, which is then empty. The line is not ignored. */
+    /**
+     * `${NAME}` or `$NAME` of a variable that is not defined, which is then empty. The line is not ignored, and the name is not reported: an
+     * unquoted or double-quoted value with a `$` in it (a password) reads one, which is a piece of the value.
+     */
     UNDEFINED_REFERENCE,
 
     /** The file could not be read. It is left out. */
@@ -219,7 +222,8 @@ public object Environments {
                                     is Part.Text -> append(part.text)
                                     is Part.Reference -> {
                                         val resolved = variables[part.name] ?: base[part.name]?.takeUnless { part.name in unset }
-                                        if (resolved == null) problems += EnvironmentProblem(file, entry.line, EnvironmentProblemKind.UNDEFINED_REFERENCE, part.name)
+                                        // Not by its name: in `PASSWORD=Tr0ub4dor$Horse`, the "reference" is a piece of the secret.
+                                        if (resolved == null) problems += EnvironmentProblem(file, entry.line, EnvironmentProblemKind.UNDEFINED_REFERENCE)
                                         append(resolved.orEmpty())
                                     }
                                 }
