@@ -1,3 +1,6 @@
+import java.io.ByteArrayOutputStream
+import javax.inject.Inject
+
 plugins {
     alias(libs.plugins.buildconfig) apply false
     alias(libs.plugins.compose.multiplatform) apply false
@@ -21,11 +24,22 @@ val commitsBefore = providers.exec {
 // A working tree with changes that are not committed (modified, staged or new files that git does not ignore) is the next commit: its patch number
 // is one more, so that a build before the commit and one after it have the same version. What changes inside the ghostty submodule is not a change of
 // this repository (its build writes there); moving it to another commit is. Only "clean" or "dirty" is printed, so that editing a file that was
-// already changed does not make the configuration cache miss: only a tree that becomes clean or dirty does.
-val uncommitted = providers.exec {
-    commandLine("sh", "-c", """[ -z "$(git status --porcelain --ignore-submodules=dirty 2>/dev/null)" ] && echo clean || echo dirty""")
-    isIgnoreExitValue = true
-}.standardOutput.asText.map { it.trim() == "dirty" }
+// already changed does not make the configuration cache miss: only a tree that becomes clean or dirty does. That is why it is a value source: the
+// configuration cache keeps what it computes, not what git prints. It runs git itself, not a shell, which Windows does not have.
+abstract class UncommittedChanges @Inject constructor(private val exec: ExecOperations) : ValueSource<Boolean, ValueSourceParameters.None> {
+    override fun obtain(): Boolean {
+        val status = ByteArrayOutputStream()
+        val result = exec.exec {
+            commandLine("git", "status", "--porcelain", "--ignore-submodules=dirty")
+            standardOutput = status
+            errorOutput = ByteArrayOutputStream()
+            isIgnoreExitValue = true
+        }
+        return result.exitValue == 0 && status.toString().isNotBlank()
+    }
+}
+
+val uncommitted = providers.of(UncommittedChanges::class) {}
 
 allprojects {
     group = "app.katty"
