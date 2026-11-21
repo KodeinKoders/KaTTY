@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.core.isWindows
 import app.katty.ui.uiScaleFactor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -264,6 +265,10 @@ private const val PREVIEW_TEXT =
         "\u001b[36minfo\u001b[0m Ran 24 tests in 1.8s\r\n" +
         "\u001b[35m❯\u001b[0m "
 
+// What the preview runs: a program that waits and prints nothing. Windows has no `sleep`; PowerShell, which every Windows has, waits.
+private val PREVIEW_PROGRAM =
+    if (isWindows) listOf("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep", "86400") else listOf("/bin/sleep", "86400")
+
 /** The selected scheme in a terminal that runs nothing and is written to, and the swatches of its palette. */
 @Composable
 private fun SchemePreview(entry: ITermColorSchemeInfo?, modifier: Modifier) {
@@ -275,7 +280,7 @@ private fun SchemePreview(entry: ITermColorSchemeInfo?, modifier: Modifier) {
     val session by produceState<TerminalSession?>(null) {
         val started = withContext(Dispatchers.IO) {
             val theme = initialScheme?.let { name -> runCatching { ITermColorSchemes.load(name) }.getOrNull() }
-            TerminalSession.start(cols = 60, rows = 12, command = listOf("/bin/sleep", "86400"), shellIntegration = false, theme = theme)
+            TerminalSession.start(cols = 60, rows = 12, command = PREVIEW_PROGRAM, shellIntegration = false, theme = theme)
                 .also { it.writeToScreen(PREVIEW_TEXT) }
         }
         value = started

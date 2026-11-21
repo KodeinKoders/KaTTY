@@ -2,6 +2,8 @@
 
 package app.katty.screens
 
+import app.katty.Shortcuts
+import app.katty.MAC_SHORTCUTS
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -52,9 +54,19 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettingsPagesTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private var settings by mutableStateOf(Settings())
     private var page by mutableStateOf(SettingsPage.APPEARANCE)
-    private var shortcuts by mutableStateOf(ShortcutMap.DEFAULT)
+    private var shortcuts by mutableStateOf(MAC_SHORTCUTS)
     private var abouts = 0
     private var agents by mutableStateOf(setOf(Agent.CLAUDE, Agent.CODEX))
 
@@ -450,6 +462,16 @@ class SettingsPagesTest {
 
 /** Each page of the settings, drawn in `build/renders` (`settings-*.png`) in both themes: look at them. */
 class SettingsPagesRenderTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     @Test
     fun drawsEveryPageInBothThemes() {
         for (dark in listOf(false, true)) {
@@ -459,7 +481,7 @@ class SettingsPagesRenderTest {
                         page, onPage = {},
                         settings = Settings(layout = LayoutMode.HORIZONTAL, theme = if (dark) ThemeMode.DARK else ThemeMode.LIGHT),
                         onChange = {}, schemes = ITermColorSchemes.entries, fontFamilies = emptyList(),
-                        shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, agents = setOf(Agent.CLAUDE), onAbout = {},
+                        shortcuts = MAC_SHORTCUTS, onShortcuts = {}, agents = setOf(Agent.CLAUDE), onAbout = {},
                     )
                 }
                 // The panel of the page is drawn.
@@ -476,7 +498,7 @@ class SettingsPagesRenderTest {
             KattyTheme(false) {
                 SettingsContent(
                     SettingsPage.TERMINAL, onPage = {}, settings = Settings(), onChange = {}, schemes = emptyList(), fontFamilies = emptyList(),
-                    shortcuts = ShortcutMap.DEFAULT, onShortcuts = {}, agents = emptySet(), onAbout = {},
+                    shortcuts = MAC_SHORTCUTS, onShortcuts = {}, agents = emptySet(), onAbout = {},
                 )
             }
         }

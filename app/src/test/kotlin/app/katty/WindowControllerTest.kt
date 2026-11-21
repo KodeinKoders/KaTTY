@@ -26,6 +26,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WindowControllerTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
     private val restarted = mutableListOf<TerminalId>()

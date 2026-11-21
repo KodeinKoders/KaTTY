@@ -2,6 +2,9 @@
 
 package app.katty.screens
 
+import app.katty.ShortcutMap
+import app.katty.Shortcuts
+import app.katty.MAC_SHORTCUTS
 import androidx.compose.ui.input.key.Key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -23,6 +26,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class CloseDialogsTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private fun summary(id: String, title: String, glyph: AgentGlyph, state: AgentState) = TerminalSummary(TerminalId(id), title, glyph, state)
 
     private val terminals = listOf(

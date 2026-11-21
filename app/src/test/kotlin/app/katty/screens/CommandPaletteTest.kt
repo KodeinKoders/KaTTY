@@ -2,6 +2,9 @@
 
 package app.katty.screens
 
+import app.katty.ShortcutMap
+import app.katty.Shortcuts
+import app.katty.MAC_SHORTCUTS
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
@@ -35,6 +38,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CommandPaletteTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private val entries = listOf(
         PaletteEntry("w1", PaletteGroup.WORKSPACES, "refactor-auth", "api-gateway"),
         PaletteEntry("w2", PaletteGroup.WORKSPACES, "release-notes", "api-gateway"),
@@ -60,7 +73,7 @@ class CommandPaletteTest {
 
     @Test
     fun theFooterSaysTheKeysThatTheUserBoundThePaletteTo() = runComposeUiTest {
-        app.katty.Shortcuts.map = app.katty.ShortcutMap.DEFAULT.with(app.katty.AppShortcut.PALETTE, app.katty.KeyBinding(java.awt.event.KeyEvent.VK_P, shift = true))
+        app.katty.Shortcuts.map = app.katty.MAC_SHORTCUTS.with(app.katty.AppShortcut.PALETTE, app.katty.KeyBinding(java.awt.event.KeyEvent.VK_P, shift = true))
         try {
             setContent { KattyTheme(false) { CommandPalette(entries, onRun = {}, onDismiss = {}) } }
 
@@ -68,7 +81,7 @@ class CommandPaletteTest {
             onNodeWithText("P").assertExists()
             onNodeWithText("K").assertDoesNotExist()
         } finally {
-            app.katty.Shortcuts.map = app.katty.ShortcutMap.DEFAULT
+            app.katty.Shortcuts.map = app.katty.MAC_SHORTCUTS
         }
     }
 

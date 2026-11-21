@@ -168,7 +168,7 @@ class AiCommandTest {
         val prompt = commandRequestPrompt("  find the files over 100 MB modified this week\n", "zsh", directory)
 
         assertTrue("find the files over 100 MB modified this week\n" in prompt, prompt)
-        assertTrue("zsh shell on macOS" in prompt && directory.toString() in prompt, prompt)
+        assertTrue("zsh shell on $systemName" in prompt && directory.toString() in prompt, prompt)
         assertTrue("one single line" in prompt, "It says the form of the answer")
     }
 

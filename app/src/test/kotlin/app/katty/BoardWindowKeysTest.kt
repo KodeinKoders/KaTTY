@@ -19,6 +19,16 @@ import kotlin.test.assertTrue
 
 /** The shortcuts of the main window that the board window has too: coming back to the application may give it the keyboard. */
 class BoardWindowKeysTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
     private val state get() = store.state.value

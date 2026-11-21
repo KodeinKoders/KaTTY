@@ -1,5 +1,8 @@
 package app.katty.screens
 
+import app.katty.ShortcutMap
+import app.katty.Shortcuts
+import app.katty.MAC_SHORTCUTS
 import app.katty.core.WorkspaceId
 import app.katty.terminal.TerminalCommandOutcome
 import app.katty.ui.MenuAction
@@ -12,6 +15,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class TerminalMenusTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private val calls = mutableListOf<String>()
 
     private val menuActions = TerminalMenuActions(

@@ -2,6 +2,9 @@
 
 package app.katty.screens
 
+import app.katty.ShortcutMap
+import app.katty.Shortcuts
+import app.katty.MAC_SHORTCUTS
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -40,6 +43,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class AttentionPanelTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private val now = 10_000_000_000L
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })

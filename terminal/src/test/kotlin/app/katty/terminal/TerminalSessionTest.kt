@@ -57,6 +57,19 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun whatTheHostWritesBeforeTheProgramPrintsStaysAndTheProgramWritesAfterIt() {
+        // The preview of the color schemes writes its text in a terminal whose program prints nothing: ConPTY, which starts a console of its
+        // own, must not clear it.
+        val session = start("sleep 1; printf ready; sleep 30")
+        session.writeToScreen("from the host\r\n")
+
+        val frame = session.awaitFrame { "ready" in it.text() }
+
+        assertEquals("from the host", frame.text(0))
+        assertEquals("ready", frame.text(1))
+    }
+
+    @Test
     fun publishesWhatTheProgramWrites() {
         val session = start("printf hello")
 

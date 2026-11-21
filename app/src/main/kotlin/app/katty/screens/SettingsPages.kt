@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.core.isWindows
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -433,7 +434,7 @@ private fun AiCommandField(current: String?, agents: List<Agent>, onChange: (Str
     }
     Caption(
         "What KaTTY runs to ask an agent something, such as the command that runs a project (Ask AI, in the question of ${AppShortcut.RUN.label}). " +
-            "\$PROMPT is the question, and the first line that it prints is the answer. It runs with /bin/sh, in the directory that the question is about.",
+            "\$PROMPT is the question, and the first line that it prints is the answer. It runs with ${if (isWindows) "PowerShell" else "/bin/sh"}, in the directory that the question is about.",
     )
     AiAgentField(state.text.toString().trim(), agents) { state.setTextAndPlaceCursorAtEnd(it) }
     TextField(

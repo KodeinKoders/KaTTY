@@ -22,7 +22,8 @@ class TerminalPlatformTest {
     fun anUnknownSystemKnowsNothingAndStillEndsAProgram() {
         // A program that waits, on whatever system runs the test: the unknown platform is what a system without its own gets.
         val waits = if (System.getProperty("os.name").startsWith("Windows")) arrayOf("cmd.exe", "/c", "ping -n 30 127.0.0.1 > nul") else arrayOf("/bin/sh", "-c", "sleep 30")
-        val process = PtyProcessBuilder(waits).setConsole(false).start()
+        // In ConPTY, as the sessions start their programs: pty4j's winpty took more than 5 s to end one once, with other tests running.
+        val process = PtyProcessBuilder(waits).setConsole(false).setUseWinConPty(true).start()
         try {
             val platform = UnknownTerminalPlatform
             assertFalse(platform.pty.readingPassword(process))

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.nio.file.ClosedWatchServiceException
 import java.nio.file.FileSystems
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardWatchEventKinds.ENTRY_CREATE
 import java.nio.file.StandardWatchEventKinds.ENTRY_DELETE
@@ -154,7 +155,7 @@ internal class GitTreeWatcher(private val fileTree: Boolean = true) : AutoClosea
             val events = key.pollEvents()
             key.reset()
             val registration = synchronized(this) { byKey[key] } ?: continue
-            if (events.none { it.kind() == OVERFLOW || isRelevant(registration.role, it.context() as? Path) }) continue
+            if (events.none { it.kind() == OVERFLOW || isRelevant(registration, it.kind(), it.context() as? Path) }) continue
             val listeners = synchronized(this) { registration.listeners.toList() }
             for (listener in listeners) {
                 try {
@@ -190,10 +191,13 @@ internal class GitTreeWatcher(private val fileTree: Boolean = true) : AutoClosea
          * Whether an event of [path] (relative to what is watched, as the service gives it; `null` when it does not say) may change the status:
          * a file of the tree, or one of [GIT_DIR_FILES] of a git directory, but no lock. What git-status-watch's `is_relevant` does.
          */
-        private fun isRelevant(role: Role, path: Path?): Boolean {
+        private fun isRelevant(registration: Registration, kind: WatchEvent.Kind<*>, path: Path?): Boolean {
             path ?: return true
             if (path.fileName?.toString()?.endsWith(".lock") == true) return false
-            return when (role) {
+            // Windows tells a folder whose entries changed as modified (`.git` when an object is written in `.git/objects`: measured), which says
+            // nothing of its own: what changed in it is told for itself, when the folders of the tree are watched.
+            if (kind == ENTRY_MODIFY && registration.recursive && Files.isDirectory(registration.directory.resolve(path))) return false
+            return when (registration.role) {
                 Role.TREE -> path.getName(0).toString() != ".git" || path.nameCount == 1 || path.getName(1).toString() in GIT_DIR_FILES
                 Role.GIT_DIR, Role.COMMON_DIR -> path.getName(0).toString() in GIT_DIR_FILES
                 Role.REFS -> true
