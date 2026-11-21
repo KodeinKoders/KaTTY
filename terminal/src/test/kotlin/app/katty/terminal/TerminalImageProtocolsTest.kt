@@ -19,7 +19,7 @@ class TerminalImageProtocolsTest {
     }
 
     private fun start(script: String, rows: Int = 5): TerminalSession =
-        TerminalSession.start(80, rows, command = listOf("/bin/sh", "-c", script), shellIntegration = false).also { sessions += it }
+        TerminalSession.start(80, rows, command = sh(script), shellIntegration = false).also { sessions += it }
 
     private fun TerminalFrame.text(row: Int): String = rows[row].cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd()
 

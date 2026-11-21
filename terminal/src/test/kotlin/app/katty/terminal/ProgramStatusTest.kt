@@ -194,7 +194,7 @@ class ProgramStatusTest {
     private fun b64(text: String) = Base64.getEncoder().encodeToString(text.toByteArray())
 
     private fun start(script: String, rows: Int = 5): TerminalSession =
-        TerminalSession.start(80, rows, command = listOf("/bin/sh", "-c", script), shellIntegration = false).also { sessions += it }
+        TerminalSession.start(80, rows, command = sh(script), shellIntegration = false).also { sessions += it }
 
     private fun <T> TerminalSession.await(what: String, flow: kotlinx.coroutines.flow.Flow<T>, condition: (T) -> Boolean): T = runBlocking {
         try {

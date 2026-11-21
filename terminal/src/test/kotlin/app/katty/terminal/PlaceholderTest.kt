@@ -142,7 +142,7 @@ class PlaceholderTest {
             it.deleteOnExit()
             it.writeBytes(output.toByteArray())
         }
-        return TerminalSession.start(80, rows, command = listOf("/bin/sh", "-c", "cat ${file.path}; sleep 30"), shellIntegration = false)
+        return TerminalSession.start(80, rows, command = sh("cat '${file.path}'; sleep 30"), shellIntegration = false)
             .also { sessions += it }
     }
 

@@ -20,7 +20,6 @@ class TerminalSnapshotTest {
         sessions.forEach { it.close() }
     }
 
-    private fun sh(script: String) = listOf("/bin/sh", "-c", script)
 
     private fun start(script: String, rows: Int = 6, cols: Int = 80, snapshot: TerminalSnapshot? = null, directory: String? = null, note: String? = null): TerminalSession =
         TerminalSession.start(cols, rows, command = sh(script), snapshot = snapshot, directory = directory, shellIntegration = false, restoredNote = note).also { sessions += it }
@@ -47,7 +46,9 @@ class TerminalSnapshotTest {
 
     // A session that has printed 200 lines, set a title and said where it is, and waits.
     private fun oldSession(directory: String = "/tmp"): TerminalSession {
-        val session = start("""seq 1 200; printf '\033]2;old title\007\033]7;file://localhost$directory\007'; sleep 30""")
+        // The address of a path of Windows has its drive after a slash (`file://localhost/C:/Users/me`), and no backslash, which printf would read.
+        val path = if (testsOnWindows && Regex("[A-Za-z]:.*").matches(directory)) "/" + directory.replace('\\', '/') else directory
+        val session = start("""seq 1 200; printf '\033]2;old title\007\033]7;file://localhost$path\007'; sleep 30""")
         session.awaitFrame { frame -> frame.rows.any { frame.text(frame.rows.indexOf(it)) == "200" } }
         await("the title and the directory") { session.title.value == "old title" && session.workingDirectory.value == directory }
         return session

@@ -1410,7 +1410,7 @@ public class TerminalSession private constructor(
         public fun start(
             cols: Int,
             rows: Int,
-            command: List<String> = listOf(System.getenv("SHELL") ?: "/bin/zsh", "-l"),
+            command: List<String> = defaultShell(),
             environment: Map<String, String> = emptyMap(),
             directory: String? = null,
             cursorBlink: Boolean = true,
@@ -1442,8 +1442,8 @@ public class TerminalSession private constructor(
             env["TERM_PROGRAM"] = TERMINAL_NAME
             env.remove("TERM_PROGRAM_VERSION")
             env.putAll(environment)
-            // An application opened from the Finder has no locale: the shell would read what is typed as ASCII.
-            ensureUtf8Locale(env)
+            // An application opened from the Finder has no locale: the shell would read what is typed as ASCII. Windows has no such variable.
+            if (!isWindows) ensureUtf8Locale(env)
             val applied = if (shellIntegration) ShellIntegration.apply(command, env, shellIntegrationDirectory) else null
             val argv = applied?.argv ?: command
             val shell = ShellIntegration.shellOf(command)
@@ -1456,6 +1456,9 @@ public class TerminalSession private constructor(
                 .setEnvironment(env)
                 .setDirectory(startIn)
                 .setConsole(false)
+                // On Windows, ConPTY: pty4j's default there is winpty, which drops the OSC sequences (prompt marks, directory, links,
+                // clipboard), the Kitty graphics and the synchronized output, and makes 24-bit colors 16. Unix ignores it.
+                .setUseWinConPty(true)
                 .setInitialColumns(cols)
                 .setInitialRows(rows)
                 .start()

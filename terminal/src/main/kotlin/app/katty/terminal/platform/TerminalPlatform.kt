@@ -2,11 +2,12 @@ package app.katty.terminal.platform
 
 import app.katty.terminal.ForegroundCommand
 import app.katty.terminal.platform.macos.MacosTerminalPlatform
+import app.katty.terminal.platform.windows.WindowsTerminalPlatform
 import com.pty4j.PtyProcess
 import java.io.IOException
 
 // What the terminal asks of the system it runs on, which each system does its own way: one implementation for each, in a package of its own
-// (`macos`, with what macOS shares with other Unix systems in `posix`), chosen once by [terminalPlatform]. Nothing outside this package uses an
+// (`macos`, with what macOS shares with other Unix systems in `posix`, and `windows`), chosen once by [terminalPlatform]. Nothing outside this package uses an
 // implementation directly (PlatformBoundaryTest checks it). A system that has none gets [UnknownTerminalPlatform], on which what needs the
 // system is simply not there.
 
@@ -65,5 +66,6 @@ internal interface TerminalPlatform {
 /** The implementation of the system the terminal runs on. */
 internal val terminalPlatform: TerminalPlatform = when {
     System.getProperty("os.name").orEmpty().startsWith("Mac") -> MacosTerminalPlatform
+    System.getProperty("os.name").orEmpty().startsWith("Windows") -> WindowsTerminalPlatform
     else -> UnknownTerminalPlatform
 }

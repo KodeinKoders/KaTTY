@@ -72,7 +72,7 @@ class RegexSearchTest {
     // ---- In a session ----
 
     private fun start(script: String) =
-        TerminalSession.start(40, 8, command = listOf("/bin/sh", "-c", script)).also { sessions += it }
+        TerminalSession.start(40, 8, command = sh(script)).also { sessions += it }
 
     private fun TerminalFrame.text() =
         rows.joinToString("\n") { row -> row.cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd() }

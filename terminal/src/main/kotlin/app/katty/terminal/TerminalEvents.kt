@@ -93,8 +93,13 @@ public data class TerminalFilePosition(val path: String, val line: Int? = null, 
 /**
  * The directory that the shell reported (OSC 7), as a path: a `file://host/path` URI of this machine is turned into its path, with the
  * percent-encoding removed, and a bare path is kept. `null` when there is none, and for a directory of another machine ([isRemoteDirectory]).
+ * On [windows], the path of a drive in a URI (`file://host/C:/Users/me`) is the Windows path (`C:\Users\me`).
  */
-internal fun decodeWorkingDirectory(reported: String, isLocal: (String) -> Boolean = { isThisMachine(it) }): String? {
+internal fun decodeWorkingDirectory(
+    reported: String,
+    isLocal: (String) -> Boolean = { isThisMachine(it) },
+    windows: Boolean = isWindows,
+): String? {
     if (reported.isEmpty()) return null
     if (!reported.startsWith("file://")) return reported
     val rest = reported.removePrefix("file://")
@@ -103,8 +108,12 @@ internal fun decodeWorkingDirectory(reported: String, isLocal: (String) -> Boole
     if (!isLocal(if (slash < 0) rest else rest.substring(0, slash))) return null
     val path = if (slash < 0) "" else rest.substring(slash)
     if (path.isEmpty()) return null
-    return percentDecode(path)
+    val decoded = percentDecode(path)
+    return if (windows && WINDOWS_DRIVE.matches(decoded)) decoded.substring(1).replace('/', '\\') else decoded
 }
+
+// The path of a URI that names a drive of Windows: a slash, its letter and a colon, then the rest of the path or nothing.
+private val WINDOWS_DRIVE = Regex("/[A-Za-z]:(/.*)?")
 
 /**
  * Whether the directory that the shell reported is on another machine: the shell of a server that the user went to with `ssh` reports its

@@ -116,7 +116,7 @@ class FileLinksTest {
     fun theSessionLooksForAPathInTheDirectoryThatTheShellReported() {
         val foo = file("src/Foo.kt")
         val script = "printf '\\033]7;file://localhost$root\\007e: src/Foo.kt:42:5 bad\\r\\nsrc/Bar.kt:1\\r\\nbuild  src\\r\\nEND'; sleep 30"
-        TerminalSession.start(40, 6, command = listOf("/bin/sh", "-c", script), shellIntegration = false).use { session ->
+        TerminalSession.start(40, 6, command = sh(script), shellIntegration = false).use { session ->
             runBlocking {
                 withTimeout(15_000) {
                     session.frames.first { frame -> frame.rows[3].cells.take(3).joinToString("") { it.text } == "END" }

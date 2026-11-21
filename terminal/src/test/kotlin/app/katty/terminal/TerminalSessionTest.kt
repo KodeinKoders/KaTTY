@@ -37,7 +37,7 @@ class TerminalSessionTest {
 
     // A shell script instead of the login shell, so that what the program does is known.
     private fun start(script: String, cols: Int = 80, rows: Int = 5): TerminalSession =
-        TerminalSession.start(cols, rows, command = listOf("/bin/sh", "-c", script)).also { sessions += it }
+        TerminalSession.start(cols, rows, command = sh(script)).also { sessions += it }
 
     private fun TerminalFrame.text(row: Int): String =
         rows[row].cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd()
@@ -203,7 +203,7 @@ class TerminalSessionTest {
     @Test
     fun startsWithTheColorsOfTheTheme() {
         val session = TerminalSession.start(
-            80, 5, command = listOf("/bin/sh", "-c", """printf 'a\033[31mb\033[44mc'; sleep 30"""), theme = theme,
+            80, 5, command = sh("""printf 'a\033[31mb\033[44mc'; sleep 30"""), theme = theme,
         ).also { sessions += it }
 
         val frame = session.awaitFrame { it.text(0) == "abc" }
@@ -635,7 +635,7 @@ class TerminalSessionTest {
     fun theFrameHasTheColorsOfTheThemeForWhatIsSelected() {
         val themed = theme.copy(selection = TerminalColor(0x445566), selectedText = TerminalColor(0xAABBCC))
 
-        val session = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), theme = themed).also { sessions += it }
+        val session = TerminalSession.start(80, 5, command = sh("sleep 30"), theme = themed).also { sessions += it }
 
         val frame = session.frames.value
         assertEquals(TerminalColor(0x445566), frame.selectionColor)
@@ -998,7 +998,7 @@ class TerminalSessionTest {
         session.writeToScreen("\u001b[2 q")
         assertEquals(false, session.awaitFrame { !it.cursor.blinking }.cursor.blinking, "A steady cursor is what the program asked for")
 
-        val steady = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), cursorBlink = false).also { sessions += it }
+        val steady = TerminalSession.start(80, 5, command = sh("sleep 30"), cursorBlink = false).also { sessions += it }
         assertEquals(false, steady.awaitFrame { true }.cursor.blinking)
     }
 
@@ -1220,7 +1220,7 @@ class TerminalSessionTest {
     ): TerminalSession {
         val script = "stty raw -echo; echo ready; head -c1 >/dev/null; $writes"
         val session = TerminalSession.start(
-            80, rows, command = listOf("/bin/sh", "-c", script), clipboardWrite = clipboardWrite, clipboardReader = clipboardReader,
+            80, rows, command = sh(script), clipboardWrite = clipboardWrite, clipboardReader = clipboardReader,
             cursorBlink = cursorBlink,
         ).also { sessions += it }
         session.awaitFrame { "ready" in it.text() }
@@ -1390,7 +1390,7 @@ class TerminalSessionTest {
     @Test
     fun scrollsToThePreviousPromptTheShellMarked() {
         val session = startThatWaits(
-            """i=0; while [ ${'$'}i -lt 60 ]; do printf '\033]133;A\007prompt %s\r\n' ${'$'}i; i=${'$'}((i+1)); done; sleep 30""",
+            """printf '\033]133;A\007prompt %s\r\n' ${(0 until 60).joinToString(" ")}; sleep 30""",
         )
         session.paste("x")
         val bottom = session.awaitFrame { it.scrollbar?.atBottom == true && "prompt 59" in it.text() }.scrollbar!!
@@ -1569,7 +1569,7 @@ class TerminalSessionTest {
 
     @Test
     fun showingASessionAgainProducesAFrameWithWhatHappenedWhileItWasHidden() {
-        val session = startThatWaits("""i=0; while [ ${'$'}i -lt 100 ]; do printf 'line %s\r\n' ${'$'}i; i=${'$'}((i+1)); done; sleep 30""", rows = 5)
+        val session = startThatWaits("""printf 'line %s\r\n' ${(0 until 100).joinToString(" ")}; sleep 30""", rows = 5)
         Thread.sleep(150)
 
         session.setVisible(false)
@@ -1637,7 +1637,7 @@ class TerminalSessionTest {
         scrollbackMaxBytes: Long = 10_000_000L,
         imageStorageLimitBytes: Long = 320_000_000L,
     ): TerminalSession = TerminalSession.start(
-        80, rows, command = listOf("/bin/sh", "-c", script), cursorShape = cursorShape,
+        80, rows, command = sh(script), cursorShape = cursorShape,
         scrollbackMaxBytes = scrollbackMaxBytes, imageStorageLimitBytes = imageStorageLimitBytes,
     ).also { sessions += it }
 
@@ -1657,7 +1657,7 @@ class TerminalSessionTest {
     @Test
     fun theHollowBlockIsNotACursorShapeToStartWith() {
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
-            TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), cursorShape = TerminalCursorShape.BLOCK_HOLLOW)
+            TerminalSession.start(80, 5, command = sh("sleep 30"), cursorShape = TerminalCursorShape.BLOCK_HOLLOW)
         }
     }
 
@@ -1786,7 +1786,8 @@ class TerminalSessionTest {
     // 200 rows, of which the 3rd, the 51st and the 121st have the word in them.
     private fun searchSession(): TerminalSession {
         val session = start(
-            """i=0; while [ ${'$'}i -lt 200 ]; do if [ ${'$'}i -eq 2 ] || [ ${'$'}i -eq 50 ] || [ ${'$'}i -eq 120 ]; then echo row ${'$'}i needle; else echo row ${'$'}i; fi; i=${'$'}((i+1)); done; sleep 30""",
+            // Two hundred rows, three of which have the needle.
+            "printf '%s\\n' " + (0 until 200).joinToString(" ") { if (it in setOf(2, 50, 120)) "'row $it needle'" else "'row $it'" } + "; sleep 30",
             rows = 6,
         )
         session.resize(80, 6, 10, 20)
@@ -1863,7 +1864,7 @@ class TerminalSessionTest {
     @Test
     fun aMatchThatWrapsIsOneOnEachOfItsRows() {
         // The word starts two columns before the edge of the 80.
-        val session = startThatWaits("""printf '\r\n'; printf 'x%.0s' ${'$'}(seq 1 77); printf 'needle\r\n'; sleep 30""")
+        val session = startThatWaits("""printf '\r\n'; printf '${"x".repeat(77)}'; printf 'needle\r\n'; sleep 30""")
         session.search.setQuery("needle")
         session.paste("x")
 
@@ -1981,7 +1982,7 @@ class ForegroundProcessTest {
 
     @Test
     fun isNothingOnceTheProgramHasEnded() {
-        val session = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "exit 0"), shellIntegration = false).also { sessions += it }
+        val session = TerminalSession.start(80, 5, command = sh("exit 0"), shellIntegration = false).also { sessions += it }
 
         await("the end") { session.exited.value != null }
 

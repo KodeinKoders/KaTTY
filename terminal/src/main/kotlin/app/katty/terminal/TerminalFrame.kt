@@ -276,9 +276,9 @@ private fun commandOutcome(finishedAt: Instant?, exitCode: Int?): TerminalComman
     else -> TerminalCommandOutcome.FAILED
 }
 
-// What a shell says of a job that was stopped: 128 and the signal (SIGSTOP 17, SIGTSTP 18, SIGTTIN 21, SIGTTOU 22: the numbers of macOS, the only
-// platform of the terminal). A program that exits with one of these codes itself is taken for one that was stopped.
-private val STOPPED_EXIT_CODES = setOf(128 + 17, 128 + 18, 128 + 21, 128 + 22)
+// What a shell says of a job that was stopped: 128 and the signal (SIGSTOP 17, SIGTSTP 18, SIGTTIN 21, SIGTTOU 22: the numbers of macOS). A
+// program that exits with one of these codes itself is taken for one that was stopped. Windows stops no job: none is.
+private val STOPPED_EXIT_CODES = if (isWindows) emptySet() else setOf(128 + 17, 128 + 18, 128 + 21, 128 + 22)
 
 /**
  * Where the viewport is in what can be scrolled, in rows: what a scrollbar draws.

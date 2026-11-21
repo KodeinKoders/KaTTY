@@ -133,6 +133,14 @@ class TerminalLinksTest {
     }
 
     @Test
+    fun theDirectoryOfADriveOfWindowsIsItsWindowsPath() {
+        assertEquals("C:\\Users\\me\\a b", decodeWorkingDirectory("file://localhost/C:/Users/me/a%20b", windows = true))
+        assertEquals("D:", decodeWorkingDirectory("file:///D:", windows = true))
+        assertEquals("/Users/me", decodeWorkingDirectory("file:///Users/me", windows = true), "Not a drive")
+        assertEquals("/C:/Users/me", decodeWorkingDirectory("file:///C:/Users/me", windows = false), "Not on Windows")
+    }
+
+    @Test
     fun aDirectoryOfThisMachineIsOneWhateverItsNameIsWritten() {
         val name = localHostName()!!
         assertEquals("/tmp", decodeWorkingDirectory("file://$name/tmp"))

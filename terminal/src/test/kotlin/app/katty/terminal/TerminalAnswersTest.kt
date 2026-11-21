@@ -25,7 +25,7 @@ class TerminalAnswersTest {
     }
 
     private fun start(script: String, rows: Int = 5, theme: TerminalTheme? = null): TerminalSession =
-        TerminalSession.start(80, rows, command = listOf("/bin/sh", "-c", script), theme = theme).also { sessions += it }
+        TerminalSession.start(80, rows, command = sh(script), theme = theme).also { sessions += it }
 
     private fun TerminalFrame.text(): String =
         rows.joinToString("\n") { row -> row.cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd() }
@@ -134,7 +134,7 @@ class TerminalAnswersTest {
     @Test
     fun boldTextInANormalColorIsInTheBrightOneWhenAsked() {
         val session = TerminalSession.start(
-            80, 5, command = listOf("/bin/sh", "-c", """printf '\033[31mn\033[1mb\033[0;1;38;2;1;2;3mt\033[0;1mp'; sleep 30"""),
+            80, 5, command = sh("""printf '\033[31mn\033[1mb\033[0;1;38;2;1;2;3mt\033[0;1mp'; sleep 30"""),
             boldIsBright = true,
         ).also { sessions += it }
 

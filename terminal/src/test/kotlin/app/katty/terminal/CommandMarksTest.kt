@@ -33,7 +33,7 @@ class CommandMarksTest {
 
     // A program that writes what a shell with the integration does: the prompt (A), the end of it (B), the start of the output (C) and its end (D).
     private fun shell(script: String, rows: Int = 8): TerminalSession =
-        TerminalSession.start(40, rows, command = listOf("/bin/sh", "-c", "$script; sleep 30")).also { sessions += it }
+        TerminalSession.start(40, rows, command = sh("$script; sleep 30")).also { sessions += it }
 
     private val a = """\033]133;A\007"""
     private val b = """\033]133;B\007"""

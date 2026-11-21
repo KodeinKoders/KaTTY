@@ -19,7 +19,7 @@ class WrappedLinksTest {
 
     // [script] writes what is to be looked at and then "END" on the last row.
     private fun start(script: String, rows: Int = 8): TerminalSession {
-        val session = TerminalSession.start(20, rows, command = listOf("/bin/sh", "-c", "$script; printf '\\033[$rows;1HEND'; sleep 30"), shellIntegration = false)
+        val session = TerminalSession.start(20, rows, command = sh("$script; printf '\\033[$rows;1HEND'; sleep 30"), shellIntegration = false)
         sessions += session
         runBlocking {
             withTimeout(15_000) { session.frames.first { f -> f.rows[rows - 1].cells.take(3).joinToString("") { it.text } == "END" } }
@@ -109,7 +109,7 @@ class WrappedLinksTest {
     @Test
     fun aLinkIsFoundWithinTheRowsThatAreLookedAtEvenWhenTheLineGoesOnForScreens() {
         // The line is 40 rows long: only some of them are read for the address on the first.
-        val session = start("printf 'x https://kodein.net/a '; i=0; while [ \$i -lt 38 ]; do printf 'yyyyyyyyyyyyyyyyyyyy'; i=\$((i+1)); done", rows = 40)
+        val session = start("printf 'x https://kodein.net/a '; printf '${"y".repeat(20 * 38)}'", rows = 40)
 
         assertEquals("https://kodein.net/a", session.linkAt(5, 0)?.url)
         assertNull(session.linkAt(5, 30), "Nothing there")
