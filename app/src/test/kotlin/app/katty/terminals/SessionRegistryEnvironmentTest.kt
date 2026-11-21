@@ -100,6 +100,13 @@ class SessionRegistryEnvironmentTest {
     }
 
     @Test
+    fun claudeIsLookedForInTheConfigDirThatTheShellWasGiven() {
+        assertEquals("/x", claudeConfigDir(EnvironmentChange(mapOf("CLAUDE_CONFIG_DIR" to "/x"), emptySet())))
+        assertEquals(null, claudeConfigDir(EnvironmentChange(emptyMap(), setOf("CLAUDE_CONFIG_DIR"))), "Taken out: ~/.claude")
+        assertEquals(System.getenv("CLAUDE_CONFIG_DIR")?.ifEmpty { null }, claudeConfigDir(EnvironmentChange.NONE), "The application's")
+    }
+
+    @Test
     fun aShellOfAWorkspaceWithNoEnvironmentIsGivenNothing() {
         environments.resolve("demo.env").writeText("FOO=bar")
         store.addProject(project)

@@ -16,6 +16,8 @@ public object AgentResume {
     /**
      * The id of the conversation that the agent [agent] is in, which runs as [pid] since [startedAtMillis], or `null` when it cannot be told
      * or the agent has no way to resume by id. [home] is the user's home.
+     * [claudeConfigDir] is where Claude Code keeps its files when its `CLAUDE_CONFIG_DIR` names one (an environment of KaTTY gives it to the shells of a
+     * workspace): `~/.claude` when it is `null`.
      *
      * Each agent says it in a file of its own, none of them documented, so each can stop working with a new version (there is then no id,
      * and the agent starts a new conversation). The id is only given when the conversation has a message (one with none has nothing to
@@ -94,10 +96,11 @@ public object AgentResume {
         argv: List<String> = emptyList(),
         ompSession: (String, Long, String?, List<String>) -> String? = { directory, startedAt, terminal, arguments -> OmpStore().sessionFor(directory, startedAt, terminal, arguments) },
         cursorSession: (String, Long, List<String>) -> String? = { directory, startedAt, arguments -> CursorStore().sessionFor(directory, startedAt, arguments) },
+        claudeConfigDir: File? = null,
     ): String? =
         when (agent) {
             Agent.ANTIGRAVITY -> antigravitySessionId(pid, home, openFiles)
-            Agent.CLAUDE -> claudeSessionId(pid, startedAtMillis, home)
+            Agent.CLAUDE -> claudeSessionId(pid, startedAtMillis, claudeConfigDir ?: home.resolve(".claude"))
             Agent.JUNIE -> junieSessionId(pid, startedAtMillis, home)
             Agent.COPILOT -> copilotSessionId(pid, startedAtMillis, home)
             // What the program said of itself (the session it reported working or waiting) is the terminal's own; its directory and times are a guess.
@@ -116,8 +119,9 @@ public object AgentResume {
             else -> null
         }
 
-    private fun claudeSessionId(pid: Int, startedAtMillis: Long, home: File): String? {
-        val file = home.resolve(".claude/sessions/$pid.json")
+    // [root] is `~/.claude`, or the folder that `CLAUDE_CONFIG_DIR` names, where it keeps its sessions instead.
+    private fun claudeSessionId(pid: Int, startedAtMillis: Long, root: File): String? {
+        val file = root.resolve("sessions/$pid.json")
         val record = try {
             Json.parseToJsonElement(file.readText()).jsonObject
         } catch (_: Exception) {
@@ -127,7 +131,7 @@ public object AgentResume {
         // A file of an older process that had this pid: this one writes its own at start.
         val startedAt = (record["startedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull
         if (startedAt != null && isOlder(startedAt, startedAtMillis)) return null
-        val projects = home.resolve(".claude/projects")
+        val projects = root.resolve("projects")
         // Its folder is named after the directory it ran in, every character that is not a letter or a digit a dash: one stat. A name that
         // was made another way is looked for in all of them.
         val directory = record.string("cwd")?.replace(NOT_ALPHANUMERIC, "-")

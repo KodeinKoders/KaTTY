@@ -498,9 +498,10 @@ class SessionRegistry(
         val token = ++starts
         starting[spec.id] = token
         scope.launch(starter) {
+            // Read when it starts, not under the monitor: it reads files.
+            val change = environmentChange(environment, spec.id.value)
             val started = try {
-                // Read when it starts, not under the monitor: it reads files.
-                Result.success(startWithContents(spec, theme(scheme), environmentChange(environment, spec.id.value)))
+                Result.success(startWithContents(spec, theme(scheme), change))
             } catch (e: Exception) {
                 logger.error("Could not start the shell of {}", spec.id.value, e)
                 Result.failure(e)
@@ -512,7 +513,7 @@ class SessionRegistry(
                     false
                 } else {
                     starting.remove(spec.id)
-                    val handle = session?.let { follow(spec, it, generation) }
+                    val handle = session?.let { follow(spec, it, generation, claudeConfigDir(change)) }
                         ?: TerminalHandle(spec.id, null, started.exceptionOrNull()?.let { it.message ?: it.toString() }, generation)
                     // What was chosen while it started: the settings as they are now, not as the last sync saw them.
                     session?.apply(store.state.value.settings.toPreferences(), null)
@@ -541,7 +542,8 @@ class SessionRegistry(
     }
 
     // The handle of the shell that started, with what follows it. Under the monitor.
-    private fun follow(spec: TerminalSpec, session: TerminalSession, generation: Int): TerminalHandle {
+    // [claudeConfigDir] is the `CLAUDE_CONFIG_DIR` that the shell was started with, where a Claude Code that runs in it keeps its sessions.
+    private fun follow(spec: TerminalSpec, session: TerminalSession, generation: Int, claudeConfigDir: String?): TerminalHandle {
         val handle = TerminalHandle(spec.id, session, generation = generation, shellName = shellName())
         // Where the shell goes is where it starts the next time.
         val flag = AtomicBoolean(true).also { alive[spec.id] = it }
@@ -588,7 +590,7 @@ class SessionRegistry(
                     if (mutableProcessNames.value[spec.id] != name || spec.id !in mutableProcessNames.value) whileFollowed { mutableProcessNames.update { it + (spec.id to name) } }
                     // What the program is, to be started again: with what the shell is for the program that is not there (a name that is not known says nothing).
                     if (name != null) {
-                        var running = command?.let { withContext(Dispatchers.IO) { it.toRunning(reportedSession = reportedSession.get(), lookups = lookups) } }
+                        var running = command?.let { withContext(Dispatchers.IO) { it.toRunning(reportedSession = reportedSession.get(), lookups = lookups, claudeConfigDir = claudeConfigDir) } }
                         // An agent that only guesses its conversation by its directory cannot tell it from another's when another terminal runs the same agent there:
                         // it comes back on none (an OpenCode, unless it reported its session, guesses as well).
                         var ambiguous = false
@@ -749,6 +751,12 @@ private const val PROCESS_POLL_MS = 500L
 private const val RESTORE_GRACE_MS = 15_000L
 
 private fun shellName(): String = File(System.getenv("SHELL") ?: "/bin/zsh").name.ifEmpty { "shell" }
+
+/** The `CLAUDE_CONFIG_DIR` of a shell started with [change]: what it sets, else the application's unless it takes it out. */
+internal fun claudeConfigDir(change: EnvironmentChange): String? = change.variables[CLAUDE_CONFIG_DIR]
+    ?: System.getenv(CLAUDE_CONFIG_DIR)?.takeIf { CLAUDE_CONFIG_DIR !in change.unset && it.isNotEmpty() }
+
+private const val CLAUDE_CONFIG_DIR = "CLAUDE_CONFIG_DIR"
 
 /**
  * Where a shell starts: where the terminal last was, if that folder is still there, else the folder of its project, else (for [startShell])

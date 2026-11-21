@@ -16,6 +16,7 @@ private const val MAX_COMMAND_CHARS = 2000
  * @param searchPath Where the shell looks for programs (as `PATH`): the login shell's when it was read ([AgentDetection.knownLoginPath]), which
  * the application's is not when it was opened from the Finder.
  * @param lookups What was found of the conversation before, for a terminal that is asked again and again: by default it is looked for each time.
+ * @param claudeConfigDir The `CLAUDE_CONFIG_DIR` that the terminal's shell was started with, where Claude Code keeps its sessions; `null` for none.
  * @param sessionId The id of the conversation that the agent [Agent] runs as the pid, which started at the time; by default [AgentResume.sessionId],
  * through [lookups] when there are.
  */
@@ -23,8 +24,14 @@ public fun ForegroundCommand.toRunning(
     reportedSession: String? = null,
     searchPath: String = AgentDetection.knownLoginPath ?: System.getenv("PATH").orEmpty(),
     lookups: SessionLookups? = null,
+    claudeConfigDir: String? = null,
     sessionId: (Agent, Int, Long) -> String? = { agent, pid, startedAt ->
-        val find = { AgentResume.sessionId(agent, pid, startedAt, cwd = directory, groupPids = groupPids, reportedSession = reportedSession, tty = tty, argv = argv) }
+        val find = {
+            AgentResume.sessionId(
+                agent, pid, startedAt, cwd = directory, groupPids = groupPids, reportedSession = reportedSession, tty = tty, argv = argv,
+                claudeConfigDir = claudeConfigDir?.let(::File),
+            )
+        }
         if (lookups != null) lookups.sessionOf(agent, pid, startedAt, reportedSession, find) else find()
     },
 ): RunningCommand? {
