@@ -1,5 +1,6 @@
 package app.katty.terminal
 
+import app.katty.terminal.platform.macos.parseProcessArguments
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test

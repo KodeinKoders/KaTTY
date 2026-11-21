@@ -1,36 +1,15 @@
 package app.katty.terminal
 
-import java.lang.foreign.Arena
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.ValueLayout
-import java.lang.invoke.MethodHandle
-
-private const val NAME_BYTES = 256L
-
-// `int gethostname(char *name, size_t namelen)`.
-private val gethostname: MethodHandle by lazy {
-    libc("gethostname", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG))
-}
+import app.katty.terminal.platform.terminalPlatform
 
 // What the shells of this machine put in the address of their directory (`$HOST`, `$HOSTNAME`, `hostname`), as it was last read. It is read again
 // when an address does not match it ([isThisMachine]): the name is the network's when the user has not set one, so it changes with the Wi-Fi, and a
 // shell started after that has the new one.
 @Volatile
-private var hostName: String? = readHostName()
-
-private fun readHostName(): String? {
-    return try {
-        Arena.ofConfined().use { arena ->
-            val buffer = arena.allocate(NAME_BYTES)
-            if (gethostname.invokeExact(buffer, NAME_BYTES) as Int == 0) buffer.getString(0).takeIf { it.isNotEmpty() } else null
-        }
-    } catch (e: Throwable) {
-        null
-    }
-}
+private var hostName: String? = terminalPlatform.hostName()
 
 /**
- * The name of this machine, as the system has it (`gethostname`), or `null` when it cannot be known: the last one that was read. Not
+ * The name of this machine, as the system has it (`gethostname` on a Unix system), or `null` when it cannot be known: the last one that was read. Not
  * `InetAddress.getLocalHost()`, which asks the network and can take seconds: it is asked on the thread that reads a program's output.
  */
 internal fun localHostName(): String? = hostName
@@ -47,7 +26,7 @@ internal fun localHostName(): String? = hostName
 internal fun isThisMachine(
     host: String,
     remembered: () -> String? = ::localHostName,
-    current: () -> String? = ::readHostName,
+    current: () -> String? = terminalPlatform::hostName,
     remember: (String) -> Unit = { hostName = it },
 ): Boolean {
     val before = remembered()

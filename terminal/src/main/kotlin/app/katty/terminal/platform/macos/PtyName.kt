@@ -1,5 +1,6 @@
-package app.katty.terminal
+package app.katty.terminal.platform.macos
 
+import app.katty.terminal.platform.posix.ioctl
 import java.lang.foreign.Arena
 import java.lang.foreign.Linker
 

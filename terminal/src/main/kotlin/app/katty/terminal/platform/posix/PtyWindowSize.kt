@@ -1,15 +1,11 @@
-package app.katty.terminal
+package app.katty.terminal.platform.posix
 
 import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
 import java.lang.foreign.Linker
 import java.lang.foreign.ValueLayout
 
-private val logger = LoggerFactory.getLogger("app.katty.terminal.PtyWindowSize")
-
-// ioctl(TIOCSWINSZ): the request that sets the window size of a pty, which is the one that programs read with
-// TIOCGWINSZ. It is `_IOW('t', 103, struct winsize)`, and it is the value of macOS (it is 0x5414 on Linux).
-private const val TIOCSWINSZ = 0x80087467L
+private val logger = LoggerFactory.getLogger("app.katty.terminal.platform.posix.PtyWindowSize")
 
 private const val MAX_UNSIGNED_SHORT = 0xFFFF
 
@@ -18,7 +14,8 @@ private const val MAX_UNSIGNED_SHORT = 0xFFFF
 private var warned = false
 
 /**
- * Sets the window size of the pty whose master is [fd], in cells and in pixels, and returns whether it worked.
+ * Sets the window size of the pty whose master is [fd], in cells and in pixels, and returns whether it worked. [request] is the system's
+ * `TIOCSWINSZ`: the request that sets the window size of a pty, which is the one that programs read with `TIOCGWINSZ`.
  *
  * pty4j only sets the size in cells: the fields in pixels stay at 0, and the programs that read them from
  * the pty (`kitten icat`, `timg`…) could not size what they draw. The kernel sends the program a SIGWINCH
@@ -26,7 +23,7 @@ private var warned = false
  *
  * It never throws: the caller has the size in cells to fall back to.
  */
-internal fun setPtyWindowSize(fd: Int, cols: Int, rows: Int, widthPx: Int, heightPx: Int): Boolean =
+internal fun setPtyWindowSize(fd: Int, request: Long, cols: Int, rows: Int, widthPx: Int, heightPx: Int): Boolean =
     try {
         Arena.ofConfined().use { arena ->
             // struct winsize { unsigned short ws_row, ws_col, ws_xpixel, ws_ypixel; }
@@ -37,7 +34,7 @@ internal fun setPtyWindowSize(fd: Int, cols: Int, rows: Int, widthPx: Int, heigh
             size.setAtIndex(ValueLayout.JAVA_SHORT, 3, heightPx.coerceIn(0, MAX_UNSIGNED_SHORT).toShort())
 
             val state = arena.allocate(Linker.Option.captureStateLayout())
-            val result = ioctl.invokeExact(state, fd, TIOCSWINSZ, size) as Int
+            val result = ioctl.invokeExact(state, fd, request, size) as Int
             if (result != 0 && !warned) {
                 warned = true
                 logger.warn("ioctl(TIOCSWINSZ) failed with errno {}", state.get(ValueLayout.JAVA_INT, errnoOffset))

@@ -1,5 +1,6 @@
 package app.katty.terminal
 
+import app.katty.terminal.platform.terminalPlatform
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,8 +19,8 @@ class SessionProcessesTest {
     private fun started(script: String, processes: Int): TerminalSession {
         val session = TerminalSession.start(80, 10, command = listOf("/bin/sh", "-c", script), shellIntegration = false).also { sessions += it }
         val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000
-        while (sessionPids(session.programPid()).size < processes) {
-            check(System.nanoTime() < deadline) { "Still waiting for $processes processes, the session has ${sessionPids(session.programPid())}" }
+        while (terminalPlatform.processes.sessionPids(session.programPid()).size < processes) {
+            check(System.nanoTime() < deadline) { "Still waiting for $processes processes, the session has ${terminalPlatform.processes.sessionPids(session.programPid())}" }
             Thread.sleep(20)
         }
         return session
@@ -29,7 +30,7 @@ class SessionProcessesTest {
     fun theSessionHasTheProgramAndWhatItStarted() {
         val session = started("sleep 30 & sleep 31 & wait", processes = 3)
 
-        val pids = sessionPids(session.programPid())
+        val pids = terminalPlatform.processes.sessionPids(session.programPid())
 
         assertEquals(3, pids.size, "The shell and its two sleeps: $pids")
         assertTrue(session.programPid() in pids)
@@ -47,7 +48,7 @@ class SessionProcessesTest {
         val elapsedMs = (System.nanoTime() - start) / 1_000_000
         assertTrue(ended, "It ended by itself")
         assertTrue(elapsedMs >= 800, "It waited for the sleep: ${elapsedMs}ms")
-        assertTrue(sessionPids(pid).isEmpty(), "Nothing is left: ${sessionPids(pid)}")
+        assertTrue(terminalPlatform.processes.sessionPids(pid).isEmpty(), "Nothing is left: ${terminalPlatform.processes.sessionPids(pid)}")
     }
 
     @Test
@@ -61,7 +62,7 @@ class SessionProcessesTest {
         val elapsedMs = (System.nanoTime() - start) / 1_000_000
         assertFalse(ended, "It was killed")
         assertTrue(elapsedMs < 3_000, "It did not wait for the sleep: ${elapsedMs}ms")
-        assertTrue(sessionPids(pid).isEmpty(), "Nothing is left: ${sessionPids(pid)}")
+        assertTrue(terminalPlatform.processes.sessionPids(pid).isEmpty(), "Nothing is left: ${terminalPlatform.processes.sessionPids(pid)}")
     }
 
     @Test

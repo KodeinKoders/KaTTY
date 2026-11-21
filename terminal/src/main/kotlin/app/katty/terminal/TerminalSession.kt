@@ -16,10 +16,10 @@ import app.katty.ghostty.GhosttySelectionGesture
 import app.katty.ghostty.GhosttyRenderState
 import app.katty.ghostty.GhosttyTerminal
 import app.katty.ghostty.GhosttyTrackedRef
+import app.katty.terminal.platform.terminalPlatform
 import com.pty4j.PtyProcess
 import com.pty4j.PtyProcessBuilder
 import com.pty4j.WinSize
-import com.pty4j.unix.UnixPtyProcess
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -83,7 +83,7 @@ public class TerminalSession private constructor(
 
     private val closed = AtomicBoolean(false)
 
-    // Guards the master side of the pty, which [close] closes: see [withPty].
+    // Guards the master side of the pty, which [close] closes: see [whilePtyOpen].
     private val ptyLock = ReentrantReadWriteLock()
     private var ptyClosed = false
 
@@ -124,7 +124,7 @@ public class TerminalSession private constructor(
         override val theme: TerminalTheme? get() = this@TerminalSession.theme
         override fun commandSpans(): List<CommandSpan> = this@TerminalSession.commandMarks.spans()
         override fun unselect() = this@TerminalSession.unselect()
-        override fun readingPassword(): Boolean = withPty(false) { fd -> isPtyReadingPassword(fd) }
+        override fun readingPassword(): Boolean = whilePtyOpen(false) { terminalPlatform.pty.readingPassword(process) }
     })
 
     private val sessionSearch: SessionSearch get() = producer.search
@@ -1000,7 +1000,7 @@ public class TerminalSession private constructor(
      */
     public fun foregroundProcessName(): String? {
         if (exitCode.value != null) return null
-        return withPty(null) { fd -> app.katty.terminal.foregroundProcessName(fd) }
+        return whilePtyOpen(null) { terminalPlatform.processes.foregroundProcessName(process) }
     }
 
     /**
@@ -1010,18 +1010,17 @@ public class TerminalSession private constructor(
      */
     public fun foregroundCommand(): ForegroundCommand? {
         if (exitCode.value != null) return null
-        return withPty(null) { fd -> app.katty.terminal.foregroundCommand(fd, process.pid().toInt()) }
+        return whilePtyOpen(null) { terminalPlatform.processes.foregroundCommand(process) }
     }
 
     /**
-     * Runs [block] with the master side of the pty, or gives [default] once the session is closed. The calls on it are system calls that are not
-     * made under the terminal's lock: this lock keeps [close] from closing the descriptor while one has it, which would make it act on another file
-     * that took its number.
+     * Runs [block], which asks the system about the pty, or gives [default] once the session is closed. The calls on it are system calls that are
+     * not made under the terminal's lock: this lock keeps [close] from closing the pty while one uses it, which would make it act on another file
+     * that took the number of its descriptor.
      */
-    private inline fun <T> withPty(default: T, block: (Int) -> T): T = ptyLock.read {
+    private inline fun <T> whilePtyOpen(default: T, block: () -> T): T = ptyLock.read {
         if (ptyClosed) return default
-        val fd = (process as? UnixPtyProcess)?.pty?.masterFD?.takeIf { it >= 0 } ?: return default
-        block(fd)
+        block()
     }
 
     /** The text that is selected, for the caller to copy, as [format] says (the characters only by default), or `null` when nothing is. */
@@ -1044,10 +1043,10 @@ public class TerminalSession private constructor(
             this.cellHeightPx = cellHeightPx
         }
         // pty4j only passes the size in cells to the program, not the one in pixels: the session sets the whole size,
-        // and leaves pty4j's way for what is not a Unix pty or what the ioctl refused.
+        // and leaves pty4j's way for a system that cannot, or what the system refused.
         ptyLock.read {
             if (ptyClosed) return
-            val done = withPty(false) { fd -> setPtyWindowSize(fd, cols, rows, cols * cellWidthPx, rows * cellHeightPx) }
+            val done = terminalPlatform.pty.setWindowSize(process, cols, rows, cols * cellWidthPx, rows * cellHeightPx)
             if (!done) process.winSize = WinSize(cols, rows)
         }
         producer.request()
@@ -1131,7 +1130,7 @@ public class TerminalSession private constructor(
         val deadline = System.nanoTime() + timeoutMs * 1_000_000
         while (true) {
             val left = try {
-                sessionPids(session)
+                terminalPlatform.processes.sessionPids(session)
             } catch (e: Throwable) {
                 logger.warn("Could not list the processes of the session of a terminal", e)
                 return true
@@ -1139,9 +1138,9 @@ public class TerminalSession private constructor(
             if (left.isEmpty()) return true
             if (System.nanoTime() >= deadline) {
                 logger.info("Killing {} processes of a closed terminal that did not end within {}ms: {}", left.size, timeoutMs, left)
-                left.forEach(::killProcess)
+                left.forEach(terminalPlatform.processes::kill)
                 val killedBy = System.nanoTime() + KILL_TIMEOUT_MS * 1_000_000
-                while (sessionPids(session).isNotEmpty() && System.nanoTime() < killedBy) Thread.sleep(SESSION_POLL_MS)
+                while (terminalPlatform.processes.sessionPids(session).isNotEmpty() && System.nanoTime() < killedBy) Thread.sleep(SESSION_POLL_MS)
                 return false
             }
             Thread.sleep(SESSION_POLL_MS)
@@ -1171,7 +1170,7 @@ public class TerminalSession private constructor(
         ptyLock.write {
             ptyClosed = true
             try {
-                (process as? UnixPtyProcess)?.pty?.close()
+                terminalPlatform.pty.closePty(process)
             } catch (e: IOException) {
                 logger.debug("Could not close the pty", e)
             }
@@ -1194,7 +1193,7 @@ public class TerminalSession private constructor(
     // A hang-up, as a terminal whose window closes sends: an interactive shell ignores SIGTERM, and on a hang-up it saves its history and hangs
     // up its jobs. What does not end soon is killed.
     private fun endProgram() {
-        (process as? UnixPtyProcess)?.hangup() ?: process.destroy()
+        terminalPlatform.pty.hangUp(process)
         if (!process.waitFor(HANGUP_GRACE_MS, TimeUnit.MILLISECONDS)) {
             logger.debug("The program did not end within {}ms of the hang-up, killing it", HANGUP_GRACE_MS)
             process.destroyForcibly()
