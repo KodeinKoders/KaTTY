@@ -63,9 +63,9 @@ public class GhosttyAllocatorVtable {
         private static final FunctionDescriptor $DESC = FunctionDescriptor.of(
             GhosttyVt.C_POINTER,
             GhosttyVt.C_POINTER,
-            GhosttyVt.C_LONG,
+            GhosttyVt.C_LONG_LONG,
             GhosttyVt.C_CHAR,
-            GhosttyVt.C_LONG
+            GhosttyVt.C_LONG_LONG
         );
 
         /**
@@ -167,10 +167,10 @@ public class GhosttyAllocatorVtable {
             GhosttyVt.C_BOOL,
             GhosttyVt.C_POINTER,
             GhosttyVt.C_POINTER,
-            GhosttyVt.C_LONG,
+            GhosttyVt.C_LONG_LONG,
             GhosttyVt.C_CHAR,
-            GhosttyVt.C_LONG,
-            GhosttyVt.C_LONG
+            GhosttyVt.C_LONG_LONG,
+            GhosttyVt.C_LONG_LONG
         );
 
         /**
@@ -272,10 +272,10 @@ public class GhosttyAllocatorVtable {
             GhosttyVt.C_POINTER,
             GhosttyVt.C_POINTER,
             GhosttyVt.C_POINTER,
-            GhosttyVt.C_LONG,
+            GhosttyVt.C_LONG_LONG,
             GhosttyVt.C_CHAR,
-            GhosttyVt.C_LONG,
-            GhosttyVt.C_LONG
+            GhosttyVt.C_LONG_LONG,
+            GhosttyVt.C_LONG_LONG
         );
 
         /**
@@ -376,9 +376,9 @@ public class GhosttyAllocatorVtable {
         private static final FunctionDescriptor $DESC = FunctionDescriptor.ofVoid(
             GhosttyVt.C_POINTER,
             GhosttyVt.C_POINTER,
-            GhosttyVt.C_LONG,
+            GhosttyVt.C_LONG_LONG,
             GhosttyVt.C_CHAR,
-            GhosttyVt.C_LONG
+            GhosttyVt.C_LONG_LONG
         );
 
         /**

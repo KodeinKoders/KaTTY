@@ -35,11 +35,11 @@ public class GhosttyClipboardRead {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("location"),
         MemoryLayout.paddingLayout(4),
         GhosttyVt.C_POINTER.withName("mimes"),
-        GhosttyVt.C_LONG.withName("mimes_len"),
+        GhosttyVt.C_LONG_LONG.withName("mimes_len"),
         GhosttyVt.C_BOOL.withName("list"),
         MemoryLayout.paddingLayout(7),
         GhosttyString.layout().withName("name"),

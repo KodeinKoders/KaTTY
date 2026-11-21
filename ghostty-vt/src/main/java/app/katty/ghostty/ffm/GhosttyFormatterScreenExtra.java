@@ -32,7 +32,7 @@ public class GhosttyFormatterScreenExtra {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_BOOL.withName("cursor"),
         GhosttyVt.C_BOOL.withName("style"),
         GhosttyVt.C_BOOL.withName("hyperlink"),

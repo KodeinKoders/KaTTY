@@ -30,10 +30,10 @@ public class GhosttyTerminalSelectLineOptions {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyGridRef.layout().withName("ref"),
         GhosttyVt.C_POINTER.withName("whitespace"),
-        GhosttyVt.C_LONG.withName("whitespace_len"),
+        GhosttyVt.C_LONG_LONG.withName("whitespace_len"),
         GhosttyVt.C_BOOL.withName("semantic_prompt_boundary"),
         MemoryLayout.paddingLayout(7)
     ).withName("$anon$203:9");

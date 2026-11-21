@@ -29,7 +29,7 @@ public class GhosttySelection {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyGridRef.layout().withName("start"),
         GhosttyGridRef.layout().withName("end"),
         GhosttyVt.C_BOOL.withName("rectangle"),

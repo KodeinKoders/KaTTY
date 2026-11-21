@@ -31,7 +31,7 @@ public class GhosttyFormatterTerminalOptions {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("emit"),
         GhosttyVt.C_BOOL.withName("unwrap"),
         GhosttyVt.C_BOOL.withName("trim"),

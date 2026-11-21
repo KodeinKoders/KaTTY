@@ -28,7 +28,7 @@ public class GhosttyTerminalProgressReport {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("state"),
         GhosttyVt.C_CHAR.withName("progress"),
         MemoryLayout.paddingLayout(3)

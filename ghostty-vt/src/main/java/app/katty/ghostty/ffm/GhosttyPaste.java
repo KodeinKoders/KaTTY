@@ -32,11 +32,11 @@ public class GhosttyPaste {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("location"),
         GhosttyVt.C_INT.withName("source"),
         GhosttyVt.C_POINTER.withName("mimes"),
-        GhosttyVt.C_LONG.withName("mimes_len"),
+        GhosttyVt.C_LONG_LONG.withName("mimes_len"),
         GhosttyMimeReader.layout().withName("reader"),
         GhosttyVt.C_BOOL.withName("allow_unsafe"),
         MemoryLayout.paddingLayout(7)

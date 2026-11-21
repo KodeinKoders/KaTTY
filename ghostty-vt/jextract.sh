@@ -23,8 +23,33 @@ if ! command -v "$JEXTRACT" > /dev/null; then
     exit 1
 fi
 
+# One set of bindings serves every platform, which only holds while the headers never use C's `long`: it is 64 bits on macOS and Linux and 32 on
+# Windows, and no layout fits both. The other types are the same size everywhere (size_t is 64 bits on all three, as an unsigned long on macOS and
+# Linux and an unsigned long long on Windows), so jextract's only difference between them is the name of the constant it gives size_t.
+LONGS=$(perl -0777 -ne '
+    s{/\*.*?\*/}{}gs; s{//[^\n]*}{}g;
+    while (/\blong\b/g) {
+        my ($before, $after) = (substr($_, 0, pos($_) - 4), substr($_, pos($_)));
+        print "$ARGV\n" unless $before =~ /\blong\s*$/ || $after =~ /^\s*long\b/;
+    }
+' $(find "$INCLUDE/ghostty" -name '*.h') | sort -u)
+if [ -n "$LONGS" ]; then
+    echo "These headers use C's long, whose size differs between Windows (32 bits) and macOS or Linux (64 bits):" >&2
+    echo "$LONGS" >&2
+    echo "One set of bindings cannot serve both any more: see ghostty-vt/jextract.sh." >&2
+    exit 1
+fi
+
+# Only what libghostty's own headers declare: not the types of the system headers they include (macOS's __darwin_* and pthread types, the
+# typedefs of stdint.h…), which differ from one system to the next and which nothing uses. This is jextract's way of filtering: list every
+# symbol with the header that declares it, keep the ones we want, and give the list back.
+INCLUDES=$(mktemp)
+trap 'rm -f "$INCLUDES" "$INCLUDES.all"' EXIT
+"$JEXTRACT" --dump-includes "$INCLUDES.all" -I "$INCLUDE" "$INCLUDE/ghostty/vt.h" 2> /dev/null
+grep -E "^--include-[a-z]+ .*# header: .*/$INCLUDE/ghostty/" "$INCLUDES.all" | sed 's/ *#.*//' > "$INCLUDES"
+
 # No --library option: the generated code looks symbols up with SymbolLookup.loaderLookup(), which
-# finds them once NativeLibrary has called System.load on the dylib. Hardcoding a library name or
+# finds them once NativeLibrary has called System.load on the library. Hardcoding a library name or
 # path here would bypass the classpath-resource loading.
 rm -rf "$JAVA_OUT/app/katty/ghostty/ffm"
 "$JEXTRACT" \
@@ -32,7 +57,19 @@ rm -rf "$JAVA_OUT/app/katty/ghostty/ffm"
     --target-package app.katty.ghostty.ffm \
     --header-class-name GhosttyVt \
     -I "$INCLUDE" \
+    @"$INCLUDES" \
     "$INCLUDE/ghostty/vt.h"
+
+# jextract names the layout of size_t after the C type it is on the machine that runs it: C_LONG on macOS and Linux, C_LONG_LONG on Windows. Both
+# are 64 bits, but C_LONG is declared as `(OfLong) canonicalLayouts().get("long")`, which is an int on Windows: the cast fails there, and so does
+# every class of the bindings. C_LONG_LONG is 64 bits everywhere.
+FFM="$JAVA_OUT/app/katty/ghostty/ffm"
+perl -ni -e 'print unless /\bC_LONG\s*=/' "$FFM/GhosttyVt\$shared.java"
+perl -pi -e 's/\bC_LONG\b/C_LONG_LONG/g' "$FFM"/*.java
+if grep -lw C_LONG "$FFM"/*.java; then
+    echo "C_LONG is still used by the files above." >&2
+    exit 1
+fi
 
 # The key enum values are implicit (sequential) in the header, so jextract only exposes them as
 # individual constants. GhosttyKey is generated from the same list, and takes each code from the

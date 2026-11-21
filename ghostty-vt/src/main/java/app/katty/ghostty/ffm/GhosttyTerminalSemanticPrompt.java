@@ -32,7 +32,7 @@ public class GhosttyTerminalSemanticPrompt {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("kind"),
         GhosttyVt.C_INT.withName("prompt_kind"),
         GhosttyVt.C_BOOL.withName("has_exit_code"),

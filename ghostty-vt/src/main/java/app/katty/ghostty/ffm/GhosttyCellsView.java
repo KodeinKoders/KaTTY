@@ -28,7 +28,7 @@ public class GhosttyCellsView {
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         GhosttyVt.C_POINTER.withName("ptr"),
-        GhosttyVt.C_LONG.withName("len")
+        GhosttyVt.C_LONG_LONG.withName("len")
     ).withName("$anon$65:9");
 
     /**

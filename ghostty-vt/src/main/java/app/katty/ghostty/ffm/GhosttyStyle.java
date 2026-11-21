@@ -38,7 +38,7 @@ public class GhosttyStyle {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyStyleColor.layout().withName("fg_color"),
         GhosttyStyleColor.layout().withName("bg_color"),
         GhosttyStyleColor.layout().withName("underline_color"),

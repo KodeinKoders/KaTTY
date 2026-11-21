@@ -35,7 +35,7 @@ public final class GhosttySysDecodePngFn {
         GhosttyVt.C_POINTER,
         GhosttyVt.C_POINTER,
         GhosttyVt.C_POINTER,
-        GhosttyVt.C_LONG,
+        GhosttyVt.C_LONG_LONG,
         GhosttyVt.C_POINTER
     );
 

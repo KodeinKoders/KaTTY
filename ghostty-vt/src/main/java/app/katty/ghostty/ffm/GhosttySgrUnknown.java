@@ -30,9 +30,9 @@ public class GhosttySgrUnknown {
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         GhosttyVt.C_POINTER.withName("full_ptr"),
-        GhosttyVt.C_LONG.withName("full_len"),
+        GhosttyVt.C_LONG_LONG.withName("full_len"),
         GhosttyVt.C_POINTER.withName("partial_ptr"),
-        GhosttyVt.C_LONG.withName("partial_len")
+        GhosttyVt.C_LONG_LONG.withName("partial_len")
     ).withName("$anon$119:9");
 
     /**

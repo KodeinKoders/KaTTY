@@ -34,9 +34,9 @@ public final class GhosttySysLogFn {
         GhosttyVt.C_POINTER,
         GhosttyVt.C_INT,
         GhosttyVt.C_POINTER,
-        GhosttyVt.C_LONG,
+        GhosttyVt.C_LONG_LONG,
         GhosttyVt.C_POINTER,
-        GhosttyVt.C_LONG
+        GhosttyVt.C_LONG_LONG
     );
 
     /**

@@ -34,11 +34,11 @@ public class GhosttyClipboardWrite {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("location"),
         MemoryLayout.paddingLayout(4),
         GhosttyVt.C_POINTER.withName("contents"),
-        GhosttyVt.C_LONG.withName("contents_len"),
+        GhosttyVt.C_LONG_LONG.withName("contents_len"),
         GhosttyString.layout().withName("name"),
         GhosttyVt.C_BOOL.withName("granted"),
         GhosttyVt.C_BOOL.withName("can_remember"),

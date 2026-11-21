@@ -29,10 +29,10 @@ public class GhosttyTerminalSelectWordOptions {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyGridRef.layout().withName("ref"),
         GhosttyVt.C_POINTER.withName("boundary_codepoints"),
-        GhosttyVt.C_LONG.withName("boundary_codepoints_len")
+        GhosttyVt.C_LONG_LONG.withName("boundary_codepoints_len")
     ).withName("$anon$152:9");
 
     /**

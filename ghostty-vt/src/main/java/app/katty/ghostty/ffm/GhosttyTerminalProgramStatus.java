@@ -33,7 +33,7 @@ public class GhosttyTerminalProgramStatus {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("state"),
         GhosttyVt.C_INT.withName("kind"),
         GhosttyVt.C_CHAR.withName("progress"),

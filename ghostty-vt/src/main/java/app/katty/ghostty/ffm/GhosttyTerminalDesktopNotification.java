@@ -28,7 +28,7 @@ public class GhosttyTerminalDesktopNotification {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyString.layout().withName("title"),
         GhosttyString.layout().withName("body")
     ).withName("$anon$1331:9");

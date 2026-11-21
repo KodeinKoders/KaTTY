@@ -29,9 +29,9 @@ public class GhosttyTerminalScrollViewportValue {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.unionLayout(
-        GhosttyVt.C_LONG.withName("delta"),
-        GhosttyVt.C_LONG.withName("row"),
-        GhosttyVt.C_LONG.withName("delta_prompt"),
+        GhosttyVt.C_LONG_LONG.withName("delta"),
+        GhosttyVt.C_LONG_LONG.withName("row"),
+        GhosttyVt.C_LONG_LONG.withName("delta_prompt"),
         MemoryLayout.sequenceLayout(2, GhosttyVt.C_LONG_LONG).withName("_padding")
     ).withName("$anon$341:9");
 

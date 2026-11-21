@@ -34,7 +34,7 @@ public class GhosttyRenderStateCursor {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_BOOL.withName("viewport_has_value"),
         MemoryLayout.paddingLayout(1),
         GhosttyVt.C_SHORT.withName("viewport_x"),

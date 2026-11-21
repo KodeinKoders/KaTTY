@@ -31,7 +31,7 @@ public class GhosttyRenderStateColors {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyColorRgb.layout().withName("background"),
         GhosttyColorRgb.layout().withName("foreground"),
         GhosttyColorRgb.layout().withName("cursor"),

@@ -29,8 +29,8 @@ public class GhosttyBuffer {
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
         GhosttyVt.C_POINTER.withName("ptr"),
-        GhosttyVt.C_LONG.withName("cap"),
-        GhosttyVt.C_LONG.withName("len")
+        GhosttyVt.C_LONG_LONG.withName("cap"),
+        GhosttyVt.C_LONG_LONG.withName("len")
     ).withName("$anon$290:9");
 
     /**

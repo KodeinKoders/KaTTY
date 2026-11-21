@@ -32,13 +32,13 @@ public class GhosttyClipboardReadReply {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("result"),
         MemoryLayout.paddingLayout(4),
         GhosttyVt.C_POINTER.withName("contents"),
-        GhosttyVt.C_LONG.withName("contents_len"),
+        GhosttyVt.C_LONG_LONG.withName("contents_len"),
         GhosttyVt.C_POINTER.withName("available"),
-        GhosttyVt.C_LONG.withName("available_len"),
+        GhosttyVt.C_LONG_LONG.withName("available_len"),
         GhosttyVt.C_BOOL.withName("remember"),
         MemoryLayout.paddingLayout(7)
     ).withName("$anon$1169:9");

@@ -33,7 +33,7 @@ public class GhosttyFormatterTerminalExtra {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_BOOL.withName("palette"),
         GhosttyVt.C_BOOL.withName("modes"),
         GhosttyVt.C_BOOL.withName("scrolling_region"),

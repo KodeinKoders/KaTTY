@@ -32,8 +32,8 @@ public class GhosttyTerminalWriteStop {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
-        GhosttyVt.C_LONG.withName("consumed"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("consumed"),
         GhosttyVt.C_INT.withName("reached"),
         GhosttyVt.C_INT.withName("kind"),
         GhosttyVt.C_INT.withName("introducer"),

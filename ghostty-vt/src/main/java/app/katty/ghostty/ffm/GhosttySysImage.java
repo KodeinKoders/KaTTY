@@ -32,7 +32,7 @@ public class GhosttySysImage {
         GhosttyVt.C_INT.withName("width"),
         GhosttyVt.C_INT.withName("height"),
         GhosttyVt.C_POINTER.withName("data"),
-        GhosttyVt.C_LONG.withName("data_len")
+        GhosttyVt.C_LONG_LONG.withName("data_len")
     ).withName("$anon$58:9");
 
     /**

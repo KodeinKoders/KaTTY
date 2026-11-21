@@ -34,7 +34,7 @@ public class GhosttyMouseEncoderSize {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("screen_width"),
         GhosttyVt.C_INT.withName("screen_height"),
         GhosttyVt.C_INT.withName("cell_width"),

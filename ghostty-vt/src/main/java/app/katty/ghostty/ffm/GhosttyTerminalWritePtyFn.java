@@ -34,7 +34,7 @@ public final class GhosttyTerminalWritePtyFn {
         GhosttyVt.C_POINTER,
         GhosttyVt.C_POINTER,
         GhosttyVt.C_POINTER,
-        GhosttyVt.C_LONG
+        GhosttyVt.C_LONG_LONG
     );
 
     /**

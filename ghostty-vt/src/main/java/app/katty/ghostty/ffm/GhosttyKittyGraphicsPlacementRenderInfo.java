@@ -37,7 +37,7 @@ public class GhosttyKittyGraphicsPlacementRenderInfo {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_INT.withName("pixel_width"),
         GhosttyVt.C_INT.withName("pixel_height"),
         GhosttyVt.C_INT.withName("grid_cols"),

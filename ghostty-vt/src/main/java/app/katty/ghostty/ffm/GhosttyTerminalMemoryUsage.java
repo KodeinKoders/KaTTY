@@ -39,7 +39,7 @@ public class GhosttyTerminalMemoryUsage {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_BOOL.withName("compression_supported"),
         MemoryLayout.paddingLayout(7),
         GhosttyVt.C_LONG_LONG.withName("primary_pages"),

@@ -28,7 +28,7 @@ public class GhosttyRenderStateRowSelection {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_SHORT.withName("start_x"),
         GhosttyVt.C_SHORT.withName("end_x"),
         MemoryLayout.paddingLayout(4)

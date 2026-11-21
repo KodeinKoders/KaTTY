@@ -29,7 +29,7 @@ public class GhosttyGridRef {
     }
 
     private static final GroupLayout $LAYOUT = MemoryLayout.structLayout(
-        GhosttyVt.C_LONG.withName("size"),
+        GhosttyVt.C_LONG_LONG.withName("size"),
         GhosttyVt.C_POINTER.withName("node"),
         GhosttyVt.C_SHORT.withName("x"),
         GhosttyVt.C_SHORT.withName("y"),

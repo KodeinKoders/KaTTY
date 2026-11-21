@@ -31,7 +31,7 @@ public class GhosttyDeviceAttributesPrimary {
         GhosttyVt.C_SHORT.withName("conformance_level"),
         MemoryLayout.sequenceLayout(64, GhosttyVt.C_SHORT).withName("features"),
         MemoryLayout.paddingLayout(6),
-        GhosttyVt.C_LONG.withName("num_features")
+        GhosttyVt.C_LONG_LONG.withName("num_features")
     ).withName("$anon$91:9");
 
     /**
