@@ -443,3 +443,43 @@ public object Environments {
         return parts
     }
 }
+
+/** What the badge of an environment says: its [label], and whether no folder has it ([missing]), which its shells then start without. */
+public data class EnvironmentBadge(val label: String, val missing: Boolean = false) {
+    public companion object {
+        /** The label of a workspace with no environment in a project that has one. */
+        public const val STANDARD: String = "standard"
+    }
+}
+
+private fun badgeOf(environment: String, available: Set<String>) = EnvironmentBadge(environment, environment !in available)
+
+/** The badge of the project: its environment, none when it has none. [available] are the environments that exist. */
+public fun Project.environmentBadge(available: Set<String>): EnvironmentBadge? = environment?.let { badgeOf(it, available) }
+
+/**
+ * The badge of the workspace in its [project]: none when it has the project's environment, [EnvironmentBadge.STANDARD] when it has none and its
+ * project has one, else its own.
+ */
+public fun Workspace.environmentBadge(project: Project, available: Set<String>): EnvironmentBadge? = when (environment) {
+    project.environment -> null
+    null -> EnvironmentBadge(EnvironmentBadge.STANDARD)
+    else -> badgeOf(environment, available)
+}
+
+/**
+ * The badge of a terminal of the workspace, alone (a card of the board): the workspace's environment, [EnvironmentBadge.STANDARD] when it has
+ * none and its [project] has one, and none when neither has one.
+ */
+public fun Workspace.terminalEnvironmentBadge(project: Project, available: Set<String>): EnvironmentBadge? = when {
+    environment != null -> badgeOf(environment, available)
+    project.environment != null -> EnvironmentBadge(EnvironmentBadge.STANDARD)
+    else -> null
+}
+
+/** The environment of the workspace [id], `null` when it has none or there is no such workspace. */
+public fun KattyState.environmentOf(id: WorkspaceId): String? =
+    projects.firstNotNullOfOrNull { project -> project.workspaces.firstOrNull { it.id == id } }?.environment
+
+/** The projects that have no environment: the ones that the settings' "Apply" gives the default one. */
+public fun KattyState.projectsWithoutEnvironment(): List<Project> = projects.filter { it.environment == null }

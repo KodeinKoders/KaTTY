@@ -154,6 +154,9 @@ public enum class MainView {
  * an empty one turns the AI off (see [aiCommand]).
  * @param usageHidden The limits of those agents that are not shown, each made by [usageKey]. It is the hidden ones that are kept, so that a
  * limit that an agent starts to report later is shown.
+ * @param environmentDirectories The folders where the environments are looked for (see [Environments]), in the order their files are read in, with
+ * `~` for the home folder.
+ * @param defaultEnvironment The environment that a project is given when it is added, `null` for none.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -189,6 +192,8 @@ public data class Settings(
     val view: MainView = MainView.TERMINALS,
     val aiCommand: String? = null,
     val gitChanges: GitChangesDisplay = GitChangesDisplay.DOT,
+    val environmentDirectories: List<String> = listOf(Environments.DEFAULT_DIRECTORY),
+    val defaultEnvironment: String? = null,
 ) {
     public companion object {
         public const val DEFAULT_LIGHT_COLOR_SCHEME: String = "Alabaster"
