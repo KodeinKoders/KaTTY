@@ -21,13 +21,22 @@ public class TypedCommand(public val argv: List<String>, public val run: Boolean
 private val BARE = Regex("[A-Za-z0-9_@%+=:,./-]+")
 private const val NOT_FIRST = "=%"
 
+// What PowerShell reads as a word of its own: not `@` (splatting), `,` (an array), `%` (ForEach-Object as a command), `=`, nor a backtick (its
+// escape). The backslash is no escape there, and a path has them.
+private val POWERSHELL_BARE = Regex("[A-Za-z0-9_+:./\\\\-]+")
+
+// The quotes of PowerShell: the typographic ones are quotes too, and are doubled as the plain one is.
+private val POWERSHELL_QUOTES = "'\u2018\u2019\u201A\u201B"
+
 /**
- * [argv] as one line for the shell [shell] (its name: `zsh`, `bash`, `fish`), or `null` when it holds a control character: it would be taken for
- * a key of the line editor, and what is typed here must only be text. A word that is not made of safe characters is in single quotes, the one
- * quoting that every shell reads the same, with the single quote and, for fish, the backslash escaped.
+ * [argv] as one line for the shell [shell] (its name: `zsh`, `bash`, `fish`, `pwsh`, `powershell`), or `null` when it holds a control character:
+ * it would be taken for a key of the line editor, and what is typed here must only be text. A word that is not made of safe characters is in
+ * single quotes, the one quoting that every shell reads the same, with the single quote and, for fish, the backslash escaped. PowerShell doubles
+ * its quotes, and runs a program whose name is quoted with `&`: a quoted string alone is a value that it prints.
  */
 internal fun shellLine(argv: List<String>, shell: String): String? {
     if (argv.any { word -> word.any { it.isISOControl() } }) return null
+    if (shell == "pwsh" || shell == "powershell") return powerShellLine(argv)
     val fish = shell == "fish"
     return argv.joinToString(" ") { word ->
         when {
@@ -37,6 +46,17 @@ internal fun shellLine(argv: List<String>, shell: String): String? {
             else -> "'" + word.replace("'", "'\\''") + "'"
         }
     }
+}
+
+private fun powerShellLine(argv: List<String>): String {
+    val words = argv.map { word ->
+        when {
+            word.isEmpty() -> "''"
+            POWERSHELL_BARE.matches(word) -> word
+            else -> "'" + word.fold(StringBuilder()) { quoted, char -> quoted.append(char).also { if (char in POWERSHELL_QUOTES) it.append(char) } } + "'"
+        }
+    }
+    return if (words[0].startsWith("'")) "& " + words.joinToString(" ") else words.joinToString(" ")
 }
 
 /** The bytes to type for [this] in [shell], or `null` when the line cannot be typed safely. */

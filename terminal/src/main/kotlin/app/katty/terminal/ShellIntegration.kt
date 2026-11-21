@@ -5,6 +5,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.util.Base64
 
 private val logger = LoggerFactory.getLogger(ShellIntegration::class.java)
 
@@ -22,6 +23,9 @@ private val logger = LoggerFactory.getLogger(ShellIntegration::class.java)
  *   other terminals use, is not read by the bash 3.2 of macOS.)
  * - fish: KaTTY's directory is put in front of `XDG_DATA_DIRS`, and fish reads the `vendor_conf.d` of the directories in it before
  *   the user's configuration. The script takes the directory out again, and sets itself up at the first prompt.
+ * - PowerShell (`pwsh`, and Windows PowerShell's `powershell`): the script is given as a command, `-NoExit -EncodedCommand`, which runs after
+ *   the user's profile and leaves the shell open. No file is written for it: Windows PowerShell does not run script files by default (its
+ *   execution policy is `Restricted`), and an encoded command needs no quoting.
  *
  * Other shells, and a shell that is started with other arguments than a login or an interactive one (a `-c` command, a
  * script), are left as they are.
@@ -78,11 +82,28 @@ internal object ShellIntegration {
     // The directory of the scripts, [directory] or the temporary one, once they are there; null when they cannot be.
     private fun root(directory: Path?): Path? = (directory ?: temporary)?.takeIf(::prepare)
 
-    /** The name of the shell that [command] starts as a login or interactive shell, or `null` for any other command. */
+    /**
+     * The name of the shell that [command] starts as a login or interactive shell, or `null` for any other command: `pwsh` or `powershell` for
+     * PowerShell, whatever its case and without `.exe`, started with no option but `-NoLogo` or `-Login`.
+     */
     fun shellOf(command: List<String>): String? {
         val program = command.firstOrNull() ?: return null
-        if (!command.drop(1).all { it == "-l" || it == "--login" || it == "-i" }) return null
-        return File(program).name.removePrefix("-")
+        val name = File(program).name.removePrefix("-").let { if (it.endsWith(".exe", ignoreCase = true)) it.dropLast(4) else it }
+        val powerShell = name.lowercase().takeIf { it in POWERSHELLS }
+        val options = if (powerShell != null) POWERSHELL_OPTIONS else UNIX_OPTIONS
+        if (!command.drop(1).all { it.lowercase() in options }) return null
+        return powerShell ?: name
+    }
+
+    private val POWERSHELLS = setOf("pwsh", "powershell")
+    private val POWERSHELL_OPTIONS = setOf("-nologo", "-login", "-l")
+    private val UNIX_OPTIONS = setOf("-l", "--login", "-i")
+
+    // The script of PowerShell as the command that runs it: UTF-16LE in Base64, which is what -EncodedCommand reads.
+    private val powerShellCommand: String by lazy {
+        val script = ShellIntegration::class.java.getResourceAsStream("$RESOURCES/pwsh/katty.ps1")?.use { it.readBytes().decodeToString() }
+            ?: error("The resource pwsh/katty.ps1 is missing")
+        Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE))
     }
 
     /**
@@ -126,6 +147,8 @@ internal object ShellIntegration {
                 environment["XDG_DATA_DIRS"] = "$root:${existing ?: "/usr/local/share:/usr/share"}"
                 Applied(command, installed = true)
             }
+
+            "pwsh", "powershell" -> Applied(command + listOf("-NoExit", "-EncodedCommand", powerShellCommand), installed = true)
 
             else -> untouched
         }

@@ -1459,6 +1459,10 @@ public class TerminalSession private constructor(
                 // On Windows, ConPTY: pty4j's default there is winpty, which drops the OSC sequences (prompt marks, directory, links,
                 // clipboard), the Kitty graphics and the synchronized output, and makes 24-bit colors 16. Unix ignores it.
                 .setUseWinConPty(true)
+                // ConPTY takes its console for empty, with the cursor at the top, and draws the line that the shell edits at absolute
+                // positions: below a restored terminal's content, PowerShell's line was drawn over it (measured). With this it asks the
+                // terminal where the cursor is when it starts (`CSI 6 n`, which libghostty answers), and starts there.
+                .setConPtyInheritCursor(true)
                 .setInitialColumns(cols)
                 .setInitialRows(rows)
                 .start()
