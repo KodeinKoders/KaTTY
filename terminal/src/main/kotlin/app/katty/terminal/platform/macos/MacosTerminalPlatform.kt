@@ -26,7 +26,7 @@ internal object MacosTerminalPlatform : TerminalPlatform {
         override fun foregroundCommand(process: PtyProcess): ForegroundCommand? =
             masterOf(process)?.let { foregroundCommand(it, process.pid().toInt()) }
 
-        override fun sessionPids(session: Int): List<Int> = app.katty.terminal.platform.macos.sessionPids(session)
+        override fun sessionPids(session: Int, since: Long): List<Int> = app.katty.terminal.platform.macos.sessionPids(session)
 
         override fun kill(pid: Int) = killProcess(pid)
 

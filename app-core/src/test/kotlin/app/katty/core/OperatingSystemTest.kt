@@ -5,7 +5,9 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class OperatingSystemTest {
     private fun folder(): Path = Files.createTempDirectory("katty-bin").also { it.toFile().deleteOnExit() }
@@ -31,5 +33,20 @@ class OperatingSystemTest {
 
         assertEquals(second.resolve("git"), findExecutable("git", "$first:$second", windows = false), "A file that cannot be run is not the program")
         assertNull(findExecutable("git", "$first", windows = false))
+    }
+
+    @Test
+    fun aProgramIsKnownByTheSameNameOnEverySystem() {
+        assertEquals("vim", programName("/usr/bin/vim"))
+        assertEquals("claude", programName("claude.exe"))
+        assertEquals("script.sh", programName("script.sh"))
+        if (isWindows) assertEquals("vim", programName("C:\\Tools\\vim.exe"))
+    }
+
+    @Test
+    fun aProgramOfWindowsIsRecognizedAndStartedAgainAsOnAUnixSystem() {
+        assertEquals(Agent.CLAUDE, Agent.fromCommand(listOf("claude.exe", "--model", "opus")))
+        assertTrue(RestorePolicy().runs(listOf("vim.exe", "notes.txt")))
+        assertFalse(RestorePolicy().runs(listOf("sudo.exe", "vim")))
     }
 }

@@ -30,7 +30,7 @@ class TerminalPlatformTest {
             assertFalse(platform.pty.setWindowSize(process, 80, 24, 640, 384))
             assertNull(platform.processes.foregroundProcessName(process))
             assertNull(platform.processes.foregroundCommand(process))
-            assertEquals(emptyList(), platform.processes.sessionPids(process.pid().toInt()))
+            assertEquals(emptyList(), platform.processes.sessionPids(process.pid().toInt(), 0L))
             assertEquals(emptyList(), platform.processes.openFilePaths(process.pid().toInt()))
             assertNull(platform.hostName())
 

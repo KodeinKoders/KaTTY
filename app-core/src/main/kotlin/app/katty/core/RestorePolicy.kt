@@ -1,6 +1,5 @@
 package app.katty.core
 
-import java.io.File
 
 /**
  * Which programs a restored terminal runs by itself, and which it only types and leaves for the user to run: starting a program again
@@ -18,7 +17,7 @@ public class RestorePolicy(extra: Set<String> = emptySet()) {
      * connect ([onlyConnects]): a command after the host would run on the other machine again.
      */
     public fun runs(argv: List<String>): Boolean {
-        val program = argv.firstOrNull()?.let { File(it).name } ?: return false
+        val program = argv.firstOrNull()?.let(::programName) ?: return false
         val agent = Agent.entries.firstOrNull { program in it.names }
         return when {
             program in NEVER -> false

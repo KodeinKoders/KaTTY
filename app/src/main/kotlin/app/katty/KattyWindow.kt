@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
+import app.katty.core.programName
 import app.katty.core.usageKey
 import app.katty.platform.desktopIntegration
 import app.katty.core.AgentState
@@ -970,7 +971,7 @@ internal fun RestoreProjectDialog(saved: Project, onRestore: () -> Unit, onFresh
 
 // What a program that runs again is called: its agent's name, else its command.
 private fun programName(running: RunningCommand): String =
-    running.agent?.let(Agent::byId)?.displayName ?: running.argv.firstOrNull()?.substringAfterLast('/').orEmpty()
+    running.agent?.let(Agent::byId)?.displayName ?: running.argv.firstOrNull()?.let(::programName).orEmpty()
 
 internal fun revealInFileManager(directory: String) {
     val file = File(directory)

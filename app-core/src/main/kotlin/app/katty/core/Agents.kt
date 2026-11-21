@@ -2,7 +2,6 @@ package app.katty.core
 
 import app.katty.terminal.TerminalProgramState
 import app.katty.terminal.TerminalProgramStatus
-import java.io.File
 
 // The programs that run an agent that is a script: the script is the agent.
 private val INTERPRETER = Regex("(?i)(python[0-9.]*|node)")
@@ -103,9 +102,9 @@ public enum class Agent(
         public fun fromCommand(argv: List<String>): Agent? {
             // Whatever the launcher is called (`cursor-agent`, `agent`), the script it runs says whose it is.
             entries.firstOrNull { agent -> agent.scriptContains != null && argv.drop(1).any { it.endsWith("/index.js") && agent.scriptContains in it } }?.let { return it }
-            val program = argv.firstOrNull()?.let { File(it).name } ?: return null
+            val program = argv.firstOrNull()?.let(::programName) ?: return null
             if (!INTERPRETER.matches(program)) return fromProcess(program)
-            return argv.getOrNull(1)?.let { File(it).name }?.let { script -> entries.firstOrNull { it.interpreted && script in it.names } }
+            return argv.getOrNull(1)?.let(::programName)?.let { script -> entries.firstOrNull { it.interpreted && script in it.names } }
         }
     }
 }

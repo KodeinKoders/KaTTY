@@ -44,8 +44,13 @@ internal interface ProcessInspector {
     /** The program that has the pty, `null` when it is the shell itself (the [process]) or when it cannot be known. */
     fun foregroundCommand(process: PtyProcess): ForegroundCommand?
 
-    /** The pids of the processes of the session whose leader was [session]: empty once they have all ended. Throws when the system refuses. */
-    fun sessionPids(session: Int): List<Int>
+    /**
+     * The pids of the processes of the session whose leader was [session], which started at [since] (milliseconds since the epoch, as
+     * `ProcessHandle.Info.startInstant` says it): empty once they have all ended. A system without sessions (Windows) takes the processes that
+     * the leader started, and the ones they started, which [since] tells from those that were given a pid of theirs again. Throws when the
+     * system refuses.
+     */
+    fun sessionPids(session: Int, since: Long): List<Int>
 
     /** Kills [pid], which ignored the hang-up and was waited for long enough. */
     fun kill(pid: Int)

@@ -1126,11 +1126,13 @@ public class TerminalSession private constructor(
             close()
             return true
         }
+        // When the leader started, read while it runs: what tells the processes of the session from others that are given a pid of theirs later.
+        val since = ProcessHandle.of(session.toLong()).flatMap { it.info().startInstant() }.map { it.toEpochMilli() }.orElse(0L)
         close()
         val deadline = System.nanoTime() + timeoutMs * 1_000_000
         while (true) {
             val left = try {
-                terminalPlatform.processes.sessionPids(session)
+                terminalPlatform.processes.sessionPids(session, since)
             } catch (e: Throwable) {
                 logger.warn("Could not list the processes of the session of a terminal", e)
                 return true
@@ -1140,7 +1142,7 @@ public class TerminalSession private constructor(
                 logger.info("Killing {} processes of a closed terminal that did not end within {}ms: {}", left.size, timeoutMs, left)
                 left.forEach(terminalPlatform.processes::kill)
                 val killedBy = System.nanoTime() + KILL_TIMEOUT_MS * 1_000_000
-                while (terminalPlatform.processes.sessionPids(session).isNotEmpty() && System.nanoTime() < killedBy) Thread.sleep(SESSION_POLL_MS)
+                while (terminalPlatform.processes.sessionPids(session, since).isNotEmpty() && System.nanoTime() < killedBy) Thread.sleep(SESSION_POLL_MS)
                 return false
             }
             Thread.sleep(SESSION_POLL_MS)

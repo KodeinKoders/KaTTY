@@ -25,7 +25,7 @@ internal object UnknownTerminalPlatform : TerminalPlatform {
 
         override fun foregroundCommand(process: PtyProcess): ForegroundCommand? = null
 
-        override fun sessionPids(session: Int): List<Int> = emptyList()
+        override fun sessionPids(session: Int, since: Long): List<Int> = emptyList()
 
         override fun kill(pid: Int) {}
 

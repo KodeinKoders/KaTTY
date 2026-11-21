@@ -45,3 +45,9 @@ public fun findExecutable(name: String, searchPath: String, windows: Boolean = i
     }
     return null
 }
+
+/**
+ * The name of the program at [path], as a command line names it (`/usr/bin/vim`, `C:\Tools\vim.exe`): its file's name, without the `.exe` of
+ * Windows, so that a program is known by the same name on every system (`vim`, `claude`).
+ */
+public fun programName(path: String): String = java.io.File(path).name.let { if (it.endsWith(".exe", ignoreCase = true)) it.dropLast(4) else it }
