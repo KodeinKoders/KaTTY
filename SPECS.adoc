@@ -63,6 +63,9 @@ The user starts agents, and manages git worktrees, from the shell.
 
 | State
 | What a terminal is doing, as the application shows it: Nothing (idle), Working, Needs input, Done, and a failure.
+
+| Environment
+| A named set of variables that the shells of a workspace are started with, read from the dotenv files of that name, see <<environments>>.
 |===
 
 
@@ -77,10 +80,10 @@ Every project, workspace, terminal and split has an id that is made when it is c
 | Entity | Content
 
 | Project
-| An id, a name (the folder's name by default), the path of its folder, its workspaces in order, and whether it is open (listed with its workspaces in the sidebar).
+| An id, a name (the folder's name by default), the path of its folder, its workspaces in order, whether it is open (listed with its workspaces in the sidebar), and the name of the environment that its new workspaces get (`null` for none).
 
 | Workspace
-| An id, a name, and a tree of panes.
+| An id, a name, a tree of panes, and the name of the environment that its shells are started with (`null` for none).
 
 | Split
 | An id, a direction (`ROW`: first side on the left; `COLUMN`: first side above), a ratio (the share of the first side), two sides.
@@ -256,6 +259,7 @@ It is written to `state.json.tmp`, then moved over `state.json`.
 ** a file of a later version is moved to `state.json.version-<n>` and the state is empty;
 ** fields that the application does not know are ignored.
 * The application never writes over a file that it could not read.
+* Of the environments, the state only keeps names: the folders, the default one, and the one of each project and workspace; never a variable or a value.
 * The window is kept apart, in `window.json` of the same folder (never in `state.json`, which it would make change at every move):
 ** its position and size as a floating window, in dp, and its mode: floating, maximized or full screen; a window that is minimized is not kept;
 ** while the window is maximized or full screen the position and size that are kept are the floating ones from before, which it goes back to when it is restored;
@@ -272,6 +276,7 @@ It is written to `state.json.tmp`, then moved over `state.json`.
 * Every terminal of every project has its shell running, whether its workspace is shown or not.
 * The shell is the user's login shell (`$SHELL -l`), with `TERM=xterm-256color` and `COLORTERM=truecolor`, and KaTTY's shell integration for zsh and bash.
 * A shell starts in the terminal's directory if that folder exists, else in its project's folder if that exists, else in the user's home.
+* A shell, and a run, is started with the environment of its workspace, read from its files when it starts, see <<environments>>.
 * The terminals that are not on the screen are paused: they produce no frames, keep running, and keep being followed.
 While the board is shown, no terminal is on the screen.
 * Closing a terminal ends its shell.
@@ -602,10 +607,13 @@ For teaching: the keys are shown as in presentation mode, and nothing else chang
 | Menu | Items, in order
 
 | Project (right click on a project row or tab)
-| New workspace ⌘N, Rename project… F2, Reveal in file manager, — , Remove project… (red).
+| New workspace ⌘N, Rename project… F2, Reveal in file manager, Open in › (the installed IDEs), Environment › (with the current one as its value), — , Remove project… (red).
 
 | Workspace (right click on a workspace row or tab)
-| Run a command… ⌘R, Rename workspace F2, — , Close workspace ⌘⇧W (red).
+| Run a command… ⌘R, Rename workspace F2, Default IDE…, Environment › (with the current one as its value), Use project environment (with the project's as its value; only when the workspace has another), — , Close workspace ⌘⇧W (red).
+
+| Environment › (of a project or a workspace)
+| None, — , the environments that exist by name (one that has no file says "(not found)"), the current one checked, — , Open environments folder.
 
 | Terminal (the "…" of a pane, or a right click anywhere on its header, which also focuses it)
 | Rename terminal, Use process name (only when the terminal has a name of its own), — , Split right ⌘D, Split down ⌘⇧D, — , Move to workspace › (the other workspaces of the project, by their name; absent when the project has no other), Color scheme (with its value, "Default" or the scheme's name), — , Copy working directory, Export history…, — , Close terminal ⌘W (red).
@@ -673,6 +681,12 @@ At the bottom of the list, "About KaTTY", small and dim, with an icon, opens the
 "AI command…" in the palette opens the settings on this page.
 ** The AI command is a command line with `$PROMPT` for the question, run by `/bin/sh` with the `PATH` of the login shell; the first line of its output, outside code fences and backticks, is the answer.
 Its default is the one of the first installed agent in the order of the README's agent table (Junie, Aider and Cline have none), and follows what is installed until the user sets one.
+* *Environments*, see <<environments>>:
+** FOLDERS: the folders that the environments are read from, in their order (`~/.config/KaTTY/environments` by default), each with up, down, open (made first when it is not there) and remove; "Add folder…" adds one last, with the home written `~`; "Reset" puts the default back.
+** DEFAULT ENVIRONMENT: a field with None and the environments that exist ("name (not found)" for one that has no file); while some projects have none, "N projects have no environment." and Apply, which gives it to them and asks about their workspaces as a change of a project's environment does, in the settings window.
+** FOUND: each environment with its files, and under a file that has lines that are not read "⚠ N lines ignored (line X)", X being the first of them, or "⚠ Cannot be read".
+No value, no variable name and no text of a line is shown.
+The page reads the folders again when it opens.
 
 A change applies at once to every terminal.
 A family that cannot be loaded gives the bundled font.
@@ -694,6 +708,64 @@ They are listed once, in the background.
 
 
 [#attention]
+[#environments]
+== Environments
+
+An environment is what the shells of a workspace are given on top of the environment that KaTTY was started with: an account of an agent (`CLAUDE_CONFIG_DIR`), a token, a `PATH`.
+
+=== Files
+
+* The environment `name` is every file `name.env` of the folders of the settings, read in their order: a variable of a later file wins over the same one of an earlier file.
+A hidden file, `.env` alone, and a name with a `/` or a control character are not environments.
+* A file is in the dotenv format, one line each:
+** `NAME=value`, `export NAME=value`, with blanks around `=` allowed; `#` starts a comment, at the start of a line or after a blank in an unquoted value.
+** A value in single quotes is as it is; in double quotes, `\n`, `\t`, `\r`, `\"`, `\\` and `\$` stand for what they are, and it may go on over lines; an unquoted value ends at the end of its line.
+** In double quotes and unquoted, `${NAME}` and `$NAME` are the value of a line above (of this file or of an earlier one), else of the environment of KaTTY; one that is not defined is empty, and is logged by its name.
+** A `~` or `~/` that starts an unquoted value is the home folder.
+** `unset NAME OTHER` takes variables out of the environment of KaTTY and of the lines above; a line below can set them again.
+* A line that is none of these, an unterminated quote, `$(…)`, `${NAME:-…}`, and a variable that KaTTY sets itself (`TERM`, `COLORTERM`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `KATTY_…`) are ignored, as one line each; the others are read.
+`ZDOTDIR` and `XDG_DATA_DIRS` can be set: the shell integration keeps the user's.
+* What is reported of a file (in the settings, in the log) is a file, a line number, a kind and at most a variable's name: never a value, nor the text of a line.
+
+=== Who has which
+
+* A project gets the default environment of the settings when it is added, and keeps it when the default changes; a new workspace gets its project's.
+* Changing the environment of a project changes what its new workspaces get.
+Its workspaces that had its environment are offered to start again with the new one: "Restart N workspaces with the environment “name”?", with the terminals where something runs, Later and "Restart now".
+Later, they keep theirs.
+* Changing the environment of a workspace (its menu, the palette, "Use project environment", the dialog above) starts its shells again at once, or asks first when a program runs or an agent is active ("Restart “name” with …?", Cancel and "Restart now").
+Each new shell starts where the old one was, with what it showed, and with the program that ran over it typed again, as at launch; a run that is running is not started again, and the next run has the new environment.
+* The environment of a workspace is kept: its shells have it at the next launch too.
+* A project that is opened again from the recent ones keeps its environments.
+* A terminal that is moved to another workspace keeps the environment it was started with until it is started again.
+
+=== Shells
+
+* The variables are put in the environment of the shell's process before it starts; the startup files of the shell (`.zprofile`, `.zshrc`) run after, and what they set wins.
+* An environment that has no file starts its shells without it, and the log says so.
+* The files are read each time a shell starts: an edited file is for the shells that start after.
+* The `CLAUDE_CONFIG_DIR` of a shell (its environment's, else KaTTY's unless the environment takes it out) is where its Claude Code's session is looked for, to resume it at the next launch.
+The folders of the other agents are not followed.
+
+=== Other uses
+
+* The AI command, asked from a terminal or a run, has the environment of its workspace; its `PATH` is still the login shell's.
+* The usage of the agents is read with the default environment of the settings.
+
+=== Badges
+
+* A project has a badge with the name of its environment, none when it has none.
+* A workspace has one when its environment is not its project's: its own, or "standard" (muted) when it has none.
+* A card of the board has the environment of its terminal's workspace ("standard" when it has none and its project has one).
+* They are in the sidebar, the tabs of the vertical layout, the title bar, the list of the rail and the cards of the board (both windows).
+* A badge is a small pill in a color made from the name (the same at every launch), red with a tooltip when the environment has no file.
+* The list of the environments that exist is read when the application starts, when a window gets the focus, when a menu that lists them or the settings' page opens, and when the folders change.
+
+=== Palette
+
+"Project environment: name" and "Workspace environment: name" for each environment that the selected project or workspace does not have, and "None".
+
+
 == Attention
 
 * A command that the shell ran (OSC 133, which needs the shell integration) and that ends in a terminal the user is not looking at is kept for the bell until it is seen, failed or not, however long it ran.
