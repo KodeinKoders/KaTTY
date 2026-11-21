@@ -2,6 +2,7 @@ package app.katty
 
 import java.awt.event.KeyEvent as Awt
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -9,13 +10,22 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/** The shortcuts of a Mac, whatever the system that runs the tests: [PcShortcutsTest] has a PC's. */
 class ShortcutBindingsTest {
+    private val mac = KeyboardStyle.MAC
+    private val macDefaults = ShortcutMap.defaults(mac)
+
+    @BeforeTest
+    fun useAMac() {
+        Shortcuts.map = macDefaults
+    }
+
     @AfterTest
     fun restore() {
         Shortcuts.map = ShortcutMap.DEFAULT
     }
 
-    private val map = ShortcutMap.DEFAULT
+    private val map = macDefaults
 
     private fun lookup(map: ShortcutMap, key: Int, meta: Boolean = true, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) =
         map.lookup(key, meta, ctrl, alt, shift)
@@ -45,16 +55,16 @@ class ShortcutBindingsTest {
     @Test
     fun noTwoDefaultsAreTheSameKeys() {
         val seen = HashMap<KeyBinding, AppShortcut>()
-        for (shortcut in AppShortcut.entries) for (binding in shortcut.defaults) {
+        for (shortcut in AppShortcut.entries) for (binding in shortcut.defaults(mac)) {
             // The digit families are one binding each for the modifiers: they cannot collide with one another either.
             val other = seen.put(binding, shortcut)
-            assertTrue(other == null, "$shortcut and $other are both ${binding.label}")
+            assertTrue(other == null, "$shortcut and $other are both ${binding.label(mac)}")
         }
     }
 
     @Test
     fun everyDefaultHasCommandAndIsFoundByItsOwnKeys() {
-        for (shortcut in AppShortcut.entries) for (binding in shortcut.defaults) {
+        for (shortcut in AppShortcut.entries) for (binding in shortcut.defaults(mac)) {
             assertTrue(binding.meta, "$shortcut is a shortcut of the window: it has Command")
             assertEquals(shortcut, lookup(map, if (shortcut.takesDigit) Awt.VK_5 else binding.keyCode, binding.meta, binding.ctrl, binding.alt, binding.shift), "$shortcut")
         }
@@ -106,13 +116,13 @@ class ShortcutBindingsTest {
 
     @Test
     fun theKeysAreWrittenWithTheSymbolsOfAMacKeyboard() {
-        assertEquals("⌘⇧↩", KeyBinding(Awt.VK_ENTER, shift = true).label)
-        assertEquals("⌘⌃⌥⇧⌫", KeyBinding(Awt.VK_BACK_SPACE, ctrl = true, alt = true, shift = true).label)
-        assertEquals("⌘F12", KeyBinding(Awt.VK_F12).label)
-        assertEquals("⌘[", KeyBinding(Awt.VK_OPEN_BRACKET).label)
-        assertEquals("⌘Num 3", KeyBinding(Awt.VK_NUMPAD3).label)
-        assertEquals("⌘Space", KeyBinding(Awt.VK_SPACE).label)
-        assertEquals("⌘7", KeyBinding(Awt.VK_7).label)
+        assertEquals("⌘⇧↩", KeyBinding(Awt.VK_ENTER, shift = true).label(mac))
+        assertEquals("⌘⌃⌥⇧⌫", KeyBinding(Awt.VK_BACK_SPACE, ctrl = true, alt = true, shift = true).label(mac))
+        assertEquals("⌘F12", KeyBinding(Awt.VK_F12).label(mac))
+        assertEquals("⌘[", KeyBinding(Awt.VK_OPEN_BRACKET).label(mac))
+        assertEquals("⌘Num 3", KeyBinding(Awt.VK_NUMPAD3).label(mac))
+        assertEquals("⌘Space", KeyBinding(Awt.VK_SPACE).label(mac))
+        assertEquals("⌘7", KeyBinding(Awt.VK_7).label(mac))
     }
 
     @Test
@@ -135,24 +145,24 @@ class ShortcutBindingsTest {
         assertNull(lookup(unbound, Awt.VK_F))
         assertEquals(mapOf("FIND" to "none"), unbound.overrides)
 
-        assertEquals(ShortcutMap.DEFAULT, unbound.reset(AppShortcut.FIND))
+        assertEquals(macDefaults, unbound.reset(AppShortcut.FIND))
         assertEquals(emptyMap(), unbound.reset(AppShortcut.FIND).overrides)
-        assertEquals(ShortcutMap.DEFAULT, unbound.with(AppShortcut.FONT_RESET, KeyBinding(Awt.VK_9)).resetAll())
+        assertEquals(macDefaults, unbound.with(AppShortcut.FONT_RESET, KeyBinding(Awt.VK_9)).resetAll())
     }
 
     @Test
     fun whatIsKeptInTheFileComesBack() {
         val changed = map.with(AppShortcut.SPLIT_MAIN, KeyBinding(Awt.VK_E, alt = true)).with(AppShortcut.FIND, null).with(AppShortcut.PANE_NUMBER, KeyBinding(Awt.VK_1, ctrl = true))
 
-        assertEquals(changed, ShortcutMap.of(changed.overrides))
-        assertEquals("⌘⌃1…9", ShortcutMap.of(changed.overrides).label(AppShortcut.PANE_NUMBER))
-        assertEquals(ShortcutMap.DEFAULT, ShortcutMap.of(emptyMap()))
+        assertEquals(changed, ShortcutMap.of(changed.overrides, mac))
+        assertEquals("⌘⌃1…9", ShortcutMap.of(changed.overrides, mac).label(AppShortcut.PANE_NUMBER))
+        assertEquals(macDefaults, ShortcutMap.of(emptyMap(), mac))
     }
 
     // The settings were the main menu, whose shortcut was MENU: the keys that a file gave it are the settings' now, and written under its new name.
     @Test
     fun theKeysOfTheMainMenuInAnOlderFileAreTheSettings() {
-        val read = ShortcutMap.of(mapOf("MENU" to "meta+alt:44"))
+        val read = ShortcutMap.of(mapOf("MENU" to "meta+alt:44"), mac)
 
         assertEquals("⌘⌥,", read.label(AppShortcut.SETTINGS))
         assertEquals(mapOf("SETTINGS" to "meta+alt:44"), read.overrides)
@@ -165,6 +175,7 @@ class ShortcutBindingsTest {
                 "NOT_A_SHORTCUT" to "meta:68", "FIND" to "gibberish", "SPLIT_MAIN" to "shift:69", "NEW_WORKSPACE" to "meta:16",
                 "ADD_PROJECT" to "meta+alt:79",
             ),
+            mac,
         )
 
         assertEquals("⌘F", read.label(AppShortcut.FIND))
@@ -182,15 +193,15 @@ class ShortcutBindingsTest {
 
     @Test
     fun aShortcutNeedsCommand() {
-        assertEquals(BindingCheck.NeedsCommand, map.check(AppShortcut.FIND, KeyBinding(Awt.VK_E, meta = false)))
-        assertEquals(BindingCheck.NeedsCommand, map.check(AppShortcut.FIND, KeyBinding(Awt.VK_E, meta = false, ctrl = true, alt = true)))
+        assertEquals(BindingCheck.NeedsModifier, map.check(AppShortcut.FIND, KeyBinding(Awt.VK_E, meta = false)))
+        assertEquals(BindingCheck.NeedsModifier, map.check(AppShortcut.FIND, KeyBinding(Awt.VK_E, meta = false, ctrl = true, alt = true)))
     }
 
     @Test
     fun theKeysOfTheTerminalAndTheSystemAreRefusedWithAReason() {
         for (key in listOf(Awt.VK_C, Awt.VK_V, Awt.VK_A, Awt.VK_UP, Awt.VK_DOWN, Awt.VK_LEFT, Awt.VK_RIGHT, Awt.VK_BACK_SPACE, Awt.VK_Q, Awt.VK_H, Awt.VK_M, Awt.VK_TAB, Awt.VK_SPACE, Awt.VK_BACK_QUOTE)) {
             val check = map.check(AppShortcut.FIND, KeyBinding(key))
-            assertTrue(check is BindingCheck.Reserved && check.reason.isNotBlank(), "${KeyBinding(key).label}: $check")
+            assertTrue(check is BindingCheck.Reserved && check.reason.isNotBlank(), "${KeyBinding(key).label(mac)}: $check")
         }
         assertTrue(map.check(AppShortcut.FIND, KeyBinding(Awt.VK_SHIFT)) is BindingCheck.Reserved, "A modifier alone")
         // With another modifier they are free: ⌘⇧C is not the copy.
@@ -219,7 +230,7 @@ class ShortcutBindingsTest {
 
     @Test
     fun aRebindingTakesEffectInTheMapInUse() {
-        Shortcuts.map = ShortcutMap.DEFAULT.with(AppShortcut.SPLIT_MAIN, KeyBinding(Awt.VK_E))
+        Shortcuts.map = macDefaults.with(AppShortcut.SPLIT_MAIN, KeyBinding(Awt.VK_E))
 
         assertEquals("⌘E", AppShortcut.SPLIT_MAIN.label)
         assertEquals(AppShortcut.SPLIT_MAIN, Shortcuts.map.lookup(Awt.VK_E, true, false, false, false))
@@ -235,17 +246,17 @@ class ShortcutBindingsTest {
     @Test
     fun aFileCannotTakeTheKeysOfTheTerminalOrBindTwoShortcutsToTheSameKeys() {
         // ⌘C copies in a terminal: a shortcut written with it by hand keeps its default.
-        val copy = ShortcutMap.of(mapOf("SPLIT_MAIN" to "meta:67"))
+        val copy = ShortcutMap.of(mapOf("SPLIT_MAIN" to "meta:67"), mac)
         assertTrue(copy.isDefault(AppShortcut.SPLIT_MAIN))
         assertNull(copy.lookup(Awt.VK_C, meta = true, ctrl = false, alt = false, shift = false))
 
         // Two shortcuts with the same keys: one of them keeps its default, and the keys are one shortcut's.
-        val twice = ShortcutMap.of(mapOf("SPLIT_MAIN" to "meta+ctrl+alt:74", "FIND" to "meta+ctrl+alt:74"))
+        val twice = ShortcutMap.of(mapOf("SPLIT_MAIN" to "meta+ctrl+alt:74", "FIND" to "meta+ctrl+alt:74"), mac)
         assertEquals(1, listOf(AppShortcut.SPLIT_MAIN, AppShortcut.FIND).count { twice.isDefault(it) })
         assertTrue(twice.lookup(Awt.VK_J, meta = true, ctrl = true, alt = true, shift = false) in setOf(AppShortcut.SPLIT_MAIN, AppShortcut.FIND))
 
         // And the keys of a default that is still there.
-        val taken = ShortcutMap.of(mapOf("FIND" to "meta:68"))
+        val taken = ShortcutMap.of(mapOf("FIND" to "meta:68"), mac)
         assertTrue(taken.isDefault(AppShortcut.FIND), "⌘D is the main split's")
     }
 }

@@ -49,9 +49,11 @@ import androidx.compose.ui.unit.sp
 import app.katty.AppShortcut
 import app.katty.BindingCheck
 import app.katty.KeyBinding
+import app.katty.KeyboardStyle
 import app.katty.ShortcutGroup
 import app.katty.ShortcutMap
 import app.katty.TerminalKeys
+import app.katty.isCommandPressed
 import app.katty.ui.Katty
 import app.katty.ui.KattyTextButton
 import app.katty.ui.ListKey
@@ -74,17 +76,25 @@ internal sealed interface ShortcutRow {
     data class Fixed(val title: String, val keys: String) : ShortcutRow
 }
 
-/** The keys that the terminal and the screens handle themselves: they are listed, and they cannot be changed. */
-internal val FIXED_KEYS: List<ShortcutRow.Fixed> = listOf(
-    ShortcutRow.Fixed("Copy, paste and select all in a terminal", "${TerminalKeys.COPY} ${TerminalKeys.PASTE} ${TerminalKeys.SELECT_ALL}"),
-    ShortcutRow.Fixed("Jump to the previous or the next prompt", "${TerminalKeys.PREVIOUS_PROMPT} ${TerminalKeys.NEXT_PROMPT}"),
-    ShortcutRow.Fixed("Scroll the history by a page", "${TerminalKeys.SCROLL_PAGE_UP} ${TerminalKeys.SCROLL_PAGE_DOWN}"),
-    ShortcutRow.Fixed("Scroll the history to its ends", "${TerminalKeys.SCROLL_TO_TOP} ${TerminalKeys.SCROLL_TO_BOTTOM}"),
-    ShortcutRow.Fixed("Edit the line of the shell: by word, to its ends, delete to its start", "⌥← ⌥→ ⌘← ⌘→ ⌘⌫"),
-    ShortcutRow.Fixed("Rename the project or the workspace that has the focus in the sidebar or the tabs", "F2"),
-    ShortcutRow.Fixed("On the board: move from card to card, go to its terminal", "↑ ↓ ← → ↩"),
-    ShortcutRow.Fixed("In a list or a dialog: choose, confirm, cancel", "↑ ↓ ↩ ⎋"),
-)
+/**
+ * The keys that the terminal and the screens handle themselves on the keyboard of [style]: they are listed, and they cannot be changed. The keys that
+ * edit the line of the shell are a Mac's (a PC's terminals leave them to the shell: Ctrl+Left, Home…).
+ */
+internal fun fixedKeys(style: KeyboardStyle = KeyboardStyle.inUse): List<ShortcutRow.Fixed> {
+    fun keys(vararg codes: Int) = codes.joinToString(" ") { KeyBinding.keyText(it, style) }
+    fun own(vararg codes: Int) = codes.joinToString(" ") { TerminalKeys.own(it, style).label(style) }
+    fun scroll(vararg codes: Int) = codes.joinToString(" ") { KeyBinding(it, meta = false, shift = true).label(style) }
+    return listOfNotNull(
+        ShortcutRow.Fixed("Copy, paste and select all in a terminal", own(Awt.VK_C, Awt.VK_V, Awt.VK_A)),
+        ShortcutRow.Fixed("Jump to the previous or the next prompt", own(Awt.VK_UP, Awt.VK_DOWN)),
+        ShortcutRow.Fixed("Scroll the history by a page", scroll(Awt.VK_PAGE_UP, Awt.VK_PAGE_DOWN)),
+        ShortcutRow.Fixed("Scroll the history to its ends", scroll(Awt.VK_HOME, Awt.VK_END)),
+        if (style == KeyboardStyle.MAC) ShortcutRow.Fixed("Edit the line of the shell: by word, to its ends, delete to its start", "⌥← ⌥→ ⌘← ⌘→ ⌘⌫") else null,
+        ShortcutRow.Fixed("Rename the project or the workspace that has the focus in the sidebar or the tabs", "F2"),
+        ShortcutRow.Fixed("On the board: move from card to card, go to its terminal", keys(Awt.VK_UP, Awt.VK_DOWN, Awt.VK_LEFT, Awt.VK_RIGHT, Awt.VK_ENTER)),
+        ShortcutRow.Fixed("In a list or a dialog: choose, confirm, cancel", keys(Awt.VK_UP, Awt.VK_DOWN, Awt.VK_ENTER, Awt.VK_ESCAPE)),
+    )
+}
 
 /**
  * The lines of the shortcuts editor for [query]: the shortcuts of each group whose title, keys or group the query is in, each group under its title, and
@@ -100,7 +110,7 @@ internal fun shortcutRows(map: ShortcutMap, query: String): List<ShortcutRow> {
         rows += ShortcutRow.Header(group.title)
         rows += shortcuts.map { ShortcutRow.Item(it) }
     }
-    val fixed = FIXED_KEYS.filter { matches(it.title, it.keys) }
+    val fixed = fixedKeys(map.style).filter { matches(it.title, it.keys) }
     if (fixed.isNotEmpty()) {
         rows += ShortcutRow.Header("Fixed keys")
         rows += fixed
@@ -136,19 +146,22 @@ internal fun record(map: ShortcutMap, shortcut: AppShortcut, pending: KeyBinding
     if (alone && (code == Awt.VK_BACK_SPACE || code == Awt.VK_DELETE)) return RecordingResult.Done(map.with(shortcut, null))
     // The first default is the default: the shortcut gets its defaults back, the other keys that mean the same included.
     val bound = { from: ShortcutMap ->
-        val first = shortcut.defaults.firstOrNull()
+        val first = shortcut.defaults(map.style).firstOrNull()
         val isFirst = first != null && first.sameModifiers(pressed) && (shortcut.takesDigit || first.keyCode == pressed.keyCode)
         if (isFirst) from.reset(shortcut) else from.with(shortcut, pressed)
     }
     return when (val check = map.check(shortcut, pressed)) {
         BindingCheck.Ok -> RecordingResult.Done(bound(map))
-        BindingCheck.NeedsCommand -> RecordingResult.Refused("A shortcut has to include ⌘, so that the programs in your terminals never see it.")
+        BindingCheck.NeedsModifier -> RecordingResult.Refused(
+            if (map.style == KeyboardStyle.MAC) "A shortcut has to include ⌘, so that the programs in your terminals never see it."
+            else "A shortcut has to include Ctrl or Alt, with Shift or a key that types nothing, so that the programs in your terminals never see it.",
+        )
         is BindingCheck.Reserved -> RecordingResult.Refused(check.reason)
         is BindingCheck.Taken ->
             if (pressed == pending) {
                 RecordingResult.Done(bound(map.with(check.by, null)))
             } else {
-                val keys = if (shortcut.takesDigit) pressed.modifiersText + "1…9" else pressed.label
+                val keys = if (shortcut.takesDigit) pressed.modifiersText(map.style) + "1…9" else pressed.label(map.style)
                 RecordingResult.Refused("$keys is used by “${check.by.title}”. Press it again to take it, or Esc to cancel.", pending = pressed)
             }
     }
@@ -224,7 +237,7 @@ internal fun ShortcutsEditor(map: ShortcutMap, onChange: (ShortcutMap) -> Unit, 
                 ListKey.UP -> { chosen = shortcuts.getOrNull(shortcuts.indexOf(selected).stepped(-1, shortcuts.size)); true }
                 ListKey.ENTER -> { selected?.let(startEditing); true }
                 ListKey.ESCAPE -> false
-                null -> if (event.type == KeyEventType.KeyDown && event.isMetaPressed && event.key.nativeKeyCode == Awt.VK_BACK_SPACE) {
+                null -> if (event.type == KeyEventType.KeyDown && event.isCommandPressed() && event.key.nativeKeyCode == Awt.VK_BACK_SPACE) {
                     selected?.let { onChange(map.reset(it)) }
                     true
                 } else {
@@ -262,9 +275,9 @@ internal fun ShortcutsEditor(map: ShortcutMap, onChange: (ShortcutMap) -> Unit, 
             }
         }
         Row(Modifier.fillMaxWidth().heightIn(min = 38.dp).background(colors.side).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Hint(listOf("↑", "↓"), "Choose")
-            Hint(listOf("↩"), "Change")
-            Hint(listOf("⌘", "⌫"), "Back to the default")
+            Hint(listOf(KeyBinding.keyText(Awt.VK_UP), KeyBinding.keyText(Awt.VK_DOWN)), "Choose")
+            Hint(listOf(KeyBinding.keyText(Awt.VK_ENTER)), "Change")
+            Hint(shortcutKeys(KeyBinding(Awt.VK_BACK_SPACE, meta = map.style == KeyboardStyle.MAC, ctrl = map.style == KeyboardStyle.PC).label(map.style)).split(' '), "Back to the default")
         }
     }
 }
@@ -311,7 +324,7 @@ private fun ShortcutLine(
             }
         }
         if (editing) {
-            Text(message ?: "Esc gives up, ⌫ removes the shortcut.", Modifier.padding(bottom = 6.dp), color = if (message != null) colors.err else colors.muted, fontSize = 12.sp)
+            Text(message ?: "Esc gives up, ${KeyBinding.keyText(Awt.VK_BACK_SPACE)} removes the shortcut.", Modifier.padding(bottom = 6.dp), color = if (message != null) colors.err else colors.muted, fontSize = 12.sp)
         }
     }
 }

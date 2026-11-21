@@ -1,9 +1,9 @@
 package app.katty.screens
 
 import androidx.compose.ui.Modifier
+import app.katty.isOwnKey
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -18,11 +18,11 @@ private val MODIFIER_KEYS = setOf(
 
 /**
  * Whether a key is the user doing something with the terminal that has the keyboard: a key that goes down, that is not a modifier alone, and
- * without ⌘. What has ⌘ is the window's or the terminal's own, and the ⌘ of ⌘J goes down in the terminal before the J opens the bell: coming
- * back to the window and opening the bell must not count as having seen the terminal behind it.
+ * not one of the window's or the terminal's own ([ownKey]: with ⌘ on a Mac, see [isOwnKey]). The ⌘ of ⌘J goes down in the terminal before the J
+ * opens the bell: coming back to the window and opening the bell must not count as having seen the terminal behind it.
  */
-internal fun countsAsInteraction(key: Key, type: KeyEventType, meta: Boolean): Boolean =
-    type == KeyEventType.KeyDown && !meta && key !in MODIFIER_KEYS
+internal fun countsAsInteraction(key: Key, type: KeyEventType, ownKey: Boolean): Boolean =
+    type == KeyEventType.KeyDown && !ownKey && key !in MODIFIER_KEYS
 
 /**
  * Tells [onInteraction] when the user types in what this holds (see [countsAsInteraction]) or presses a button of the mouse over it, and lets
@@ -30,7 +30,7 @@ internal fun countsAsInteraction(key: Key, type: KeyEventType, meta: Boolean): B
  */
 internal fun Modifier.userInteraction(onInteraction: () -> Unit): Modifier = this
     .onPreviewKeyEvent { event ->
-        if (countsAsInteraction(event.key, event.type, event.isMetaPressed)) onInteraction()
+        if (countsAsInteraction(event.key, event.type, event.isOwnKey())) onInteraction()
         false
     }
     .pointerInput(onInteraction) {

@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.KeyboardStyle
 import app.katty.AppShortcut
 import app.katty.ui.uiScaleFactor
 import androidx.compose.foundation.background
@@ -87,8 +88,10 @@ internal fun highlighted(label: String, indices: List<Int>, accent: Color): Anno
 @Composable
 fun PaletteButton(compact: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = Katty.colors
+    // A PC writes its keys in words (`Ctrl Shift P`), which take some 60 dp more than `⌘ K`: the text is not cut for them.
+    val keys = if (KeyboardStyle.inUse == KeyboardStyle.PC) 60.dp else 0.dp
     Row(
-        modifier.width((if (compact) 140.dp else 280.dp) * uiScaleFactor()).heightIn(min = 28.dp).clip(RoundedCornerShape(6.dp)).background(colors.panel).border(1.dp, colors.line, RoundedCornerShape(6.dp))
+        modifier.width(((if (compact) 140.dp else 280.dp) + keys) * uiScaleFactor()).heightIn(min = 28.dp).clip(RoundedCornerShape(6.dp)).background(colors.panel).border(1.dp, colors.line, RoundedCornerShape(6.dp))
             .semantics { contentDescription = "Open command palette" }
             // It looks like a text field, and the pointer says so, although a click opens the palette, which is where the text is typed.
             .pointerHoverIcon(PointerIcon.Text)
@@ -232,11 +235,26 @@ private fun PaletteRow(match: PaletteMatch, selected: Boolean, onClick: () -> Un
     }
 }
 
-/** A shortcut written as the menus write it, `⌘⇧J` or `F2`, as the keys for [Shortcut]: each modifier is a key, and what follows is one. */
+/**
+ * A shortcut written as the menus write it, `⌘⇧J`, `Ctrl+Shift+J` or `F2`, as the keys for [Shortcut]: each modifier is a key, and what follows is
+ * one (`Ctrl++` is Control and the plus).
+ */
 internal fun shortcutKeys(shortcut: String): String {
     val modifiers = shortcut.takeWhile { it in "⌘⌥⇧⌃" }
-    return (modifiers.map { it.toString() } + shortcut.drop(modifiers.length)).filter { it.isNotEmpty() }.joinToString(" ")
+    if (modifiers.isNotEmpty() || '+' !in shortcut.dropLast(1)) {
+        return (modifiers.map { it.toString() } + shortcut.drop(modifiers.length)).filter { it.isNotEmpty() }.joinToString(" ")
+    }
+    val parts = ArrayList<String>()
+    var rest = shortcut
+    for (name in PC_MODIFIERS) if (rest.startsWith("$name+") && rest.length > name.length + 1) {
+        parts += name
+        rest = rest.substring(name.length + 1)
+    }
+    return (parts + rest).joinToString(" ")
 }
+
+// The modifiers that a PC writes before a key, in their order.
+private val PC_MODIFIERS = listOf("Win", "Ctrl", "Alt", "Shift")
 
 /** The id of the entry of a recent project in [RecentProjectsPopup]: its folder. */
 private const val RECENT_PREFIX = "recent:"

@@ -101,7 +101,7 @@ fun BoardWindow(
         state = windowState,
         // ⌘W closes the window that has the focus, as it does in any window of the system.
         onPreviewKeyEvent = { event ->
-            val close = event.type == KeyEventType.KeyDown && event.isMetaPressed && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W
+            val close = event.type == KeyEventType.KeyDown && event.isCommandPressed() && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W
             if (close) closeByUser()
             close || jumpFromTheBoardWindow(event, store.state.value, tracker.infos.value, tracker.finishedCommands.value) { bridge.openTerminal.tryEmit(it) }
         },

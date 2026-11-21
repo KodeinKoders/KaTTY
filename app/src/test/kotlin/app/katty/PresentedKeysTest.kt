@@ -6,7 +6,17 @@ import kotlin.test.assertNull
 import java.awt.event.KeyEvent as Awt
 
 class PresentedKeysTest {
-    private fun key(code: Int, meta: Boolean = false, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false, vertical: Boolean = false, map: ShortcutMap = ShortcutMap.DEFAULT) =
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
+    private fun key(code: Int, meta: Boolean = false, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false, vertical: Boolean = false, map: ShortcutMap = MAC_SHORTCUTS) =
         presentedKey(code, meta, ctrl, alt, shift, vertical, map)
 
     // A password typed during a demo must not be on the screen: nothing that types is shown.
@@ -43,7 +53,7 @@ class PresentedKeysTest {
 
     @Test
     fun aShortcutThatTheUserBoundIsKnownByItsNewKeys() {
-        val map = ShortcutMap.DEFAULT.with(AppShortcut.CLOSE_TERMINAL, KeyBinding(Awt.VK_E))
+        val map = MAC_SHORTCUTS.with(AppShortcut.CLOSE_TERMINAL, KeyBinding(Awt.VK_E))
 
         assertEquals(PresentedKey("⌘E", "Close the terminal"), key(Awt.VK_E, meta = true, map = map))
         assertEquals(PresentedKey("⌘W"), key(Awt.VK_W, meta = true, map = map), "Shown, but it does nothing now")

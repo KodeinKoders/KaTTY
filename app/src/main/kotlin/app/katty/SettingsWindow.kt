@@ -48,7 +48,7 @@ internal fun SettingsWindow(uiScale: Float, geometryFile: Path, focusTick: Int, 
         icon = remember { AppIcon.painter() },
         state = windowState,
         onKeyEvent = { event ->
-            val closing = event.type == KeyEventType.KeyDown && event.isMetaPressed && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W
+            val closing = event.type == KeyEventType.KeyDown && event.isCommandPressed() && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W
             if (closing) close()
             closing
         },

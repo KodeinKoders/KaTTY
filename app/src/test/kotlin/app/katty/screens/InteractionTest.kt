@@ -2,6 +2,9 @@
 
 package app.katty.screens
 
+import app.katty.ShortcutMap
+import app.katty.Shortcuts
+import app.katty.MAC_SHORTCUTS
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -27,19 +30,29 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class InteractionTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     @Test
     fun typingForTheProgramIsDoingSomethingWithTheTerminal() {
-        assertTrue(countsAsInteraction(Key.A, KeyEventType.KeyDown, meta = false))
-        assertTrue(countsAsInteraction(Key.Escape, KeyEventType.KeyDown, meta = false))
-        assertFalse(countsAsInteraction(Key.A, KeyEventType.KeyUp, meta = false), "Only the key going down")
+        assertTrue(countsAsInteraction(Key.A, KeyEventType.KeyDown, ownKey = false))
+        assertTrue(countsAsInteraction(Key.Escape, KeyEventType.KeyDown, ownKey = false))
+        assertFalse(countsAsInteraction(Key.A, KeyEventType.KeyUp, ownKey = false), "Only the key going down")
     }
 
     @Test
     fun aModifierAloneOrAKeyWithCommandIsNot() {
-        assertFalse(countsAsInteraction(Key.MetaLeft, KeyEventType.KeyDown, meta = true), "The ⌘ of ⌘J, which opens the bell")
-        assertFalse(countsAsInteraction(Key.J, KeyEventType.KeyDown, meta = true))
-        assertFalse(countsAsInteraction(Key.ShiftLeft, KeyEventType.KeyDown, meta = false))
-        assertFalse(countsAsInteraction(Key.CtrlLeft, KeyEventType.KeyDown, meta = false))
+        assertFalse(countsAsInteraction(Key.MetaLeft, KeyEventType.KeyDown, ownKey = true), "The ⌘ of ⌘J, which opens the bell")
+        assertFalse(countsAsInteraction(Key.J, KeyEventType.KeyDown, ownKey = true))
+        assertFalse(countsAsInteraction(Key.ShiftLeft, KeyEventType.KeyDown, ownKey = false))
+        assertFalse(countsAsInteraction(Key.CtrlLeft, KeyEventType.KeyDown, ownKey = false))
     }
 
     @Test

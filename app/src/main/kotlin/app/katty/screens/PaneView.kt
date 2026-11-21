@@ -1,5 +1,10 @@
 package app.katty.screens
 
+import java.awt.event.KeyEvent as Awt
+import androidx.compose.ui.input.key.nativeKeyCode
+import androidx.compose.ui.input.key.isCtrlPressed
+import app.katty.TerminalKeys
+import app.katty.KeyBinding
 import androidx.compose.foundation.layout.PaddingValues
 import app.katty.ui.uiScaleFactor
 import app.katty.AppShortcut
@@ -154,7 +159,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
             // Select all is the terminal's, whenever it has the focus: in a text field of the pane, it is the field's.
             .onPreviewKeyEvent { event ->
                 val session = handle?.session ?: return@onPreviewKeyEvent false
-                if (event.type != KeyEventType.KeyDown || !event.isMetaPressed || event.isAltPressed || event.isShiftPressed || event.key != Key.A) return@onPreviewKeyEvent false
+                val pressed = KeyBinding(event.key.nativeKeyCode, event.isMetaPressed, event.isCtrlPressed, event.isAltPressed, event.isShiftPressed)
+                if (event.type != KeyEventType.KeyDown || pressed != TerminalKeys.own(Awt.VK_A)) return@onPreviewKeyEvent false
                 session.selectAll()
                 true
             },

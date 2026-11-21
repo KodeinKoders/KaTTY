@@ -1,5 +1,6 @@
 package app.katty.ui
 
+import app.katty.isCommandPressed
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,7 +70,7 @@ fun ConfirmDialog(
             when {
                 event.type != KeyEventType.KeyDown -> false
                 event.key == Key.Escape -> { onCancel(); true }
-                event.key == Key.Backspace && event.isMetaPressed -> { onConfirm(); true }
+                event.key == Key.Backspace && event.isCommandPressed() -> { onConfirm(); true }
                 else -> false
             }
         },

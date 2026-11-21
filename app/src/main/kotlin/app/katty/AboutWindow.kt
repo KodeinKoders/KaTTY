@@ -152,7 +152,7 @@ internal fun AboutWindow(uiScale: Float, onClose: () -> Unit) {
         resizable = false,
         onPreviewKeyEvent = { event ->
             val close = event.type == KeyEventType.KeyDown &&
-                (event.key == Key.Escape || event.isMetaPressed && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W)
+                (event.key == Key.Escape || event.isCommandPressed() && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W)
             if (close) onClose()
             close
         },

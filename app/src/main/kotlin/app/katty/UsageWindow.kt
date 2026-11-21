@@ -47,7 +47,7 @@ internal fun UsageWindow(uiScale: Float, geometryFile: Path, onClose: () -> Unit
         state = windowState,
         // ⌘W closes the window that has the focus, as it does in any window of the system.
         onPreviewKeyEvent = { event ->
-            val closing = event.type == KeyEventType.KeyDown && event.isMetaPressed && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W
+            val closing = event.type == KeyEventType.KeyDown && event.isCommandPressed() && !event.isShiftPressed && !event.isAltPressed && event.key == Key.W
             if (closing) close()
             closing
         },

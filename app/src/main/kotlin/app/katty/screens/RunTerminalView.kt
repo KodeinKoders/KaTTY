@@ -2,6 +2,7 @@
 
 package app.katty.screens
 
+import app.katty.isCommandPressed
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -316,7 +317,7 @@ internal fun RunDialog(
     LaunchedEffect(askTick) { if (askTick != firstTick) askNow() }
     DialogScrim(
         Modifier.onPreviewKeyEvent { event ->
-            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape && !event.isMetaPressed) {
+            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape && !event.isCommandPressed()) {
                 onCancel()
                 true
             } else {
@@ -335,7 +336,8 @@ internal fun RunDialog(
                         Modifier.weight(1f).focusRequester(focus).semantics { contentDescription = "Command" }.onPreviewKeyEvent { event ->
                             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when {
-                                event.key == Key.Enter || event.key == Key.NumPadEnter -> { run(event.isMetaPressed); true }
+                                event.key == Key.Enter || event.key == Key.NumPadEnter -> { run(event.isCommandPressed()); true }
+                                // A text field of a Mac clears its line with ⌘⌫; a PC's Ctrl+Backspace deletes a word, as it does.
                                 event.key == Key.Backspace && event.isMetaPressed -> { state.clearText(); true }
                                 else -> false
                             }

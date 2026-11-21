@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.linkModifierName
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -81,7 +82,7 @@ fun OpenFileDialog(file: TerminalFilePosition, workspace: String, ides: List<Ide
 fun WorkspaceIdeDialog(workspace: String, ides: List<Ide>, current: Ide?, onChoose: (Ide?) -> Unit, onCancel: () -> Unit) {
     IdeDialog(
         title = "Default IDE of “$workspace”",
-        message = "It opens the files and folders whose paths you click in its terminals with ⌘.",
+        message = "It opens the files and folders whose paths you click in its terminals with ${linkModifierName()}.",
         options = listOf(null) + ides,
         current = current,
         onChoose = onChoose,

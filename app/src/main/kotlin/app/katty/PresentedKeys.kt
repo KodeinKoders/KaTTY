@@ -14,21 +14,26 @@ import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.type
 import java.awt.event.KeyEvent as Awt
 
-/** A key that presentation mode shows: the keys as a Mac writes them (`⌘⇧D`, `⌃C`, `⎋`), and what they do, when it is known. */
+/** A key that presentation mode shows: the keys as the keyboard writes them (`⌘⇧D`, `⌃C`, `⎋`; `Ctrl+Shift+D` on a PC), and what they do, when it is known. */
 internal data class PresentedKey(val keys: String, val caption: String? = null)
 
 // What the terminal does with its own keys (`TerminalKeys`), as the palette calls it.
-private val TERMINAL_KEY_CAPTIONS = mapOf(
-    TerminalKeys.COPY to "Copy",
-    TerminalKeys.PASTE to "Paste",
-    TerminalKeys.SELECT_ALL to "Select all",
-    TerminalKeys.PREVIOUS_PROMPT to "Jump to the previous prompt",
-    TerminalKeys.NEXT_PROMPT to "Jump to the next prompt",
-    TerminalKeys.SCROLL_PAGE_UP to "Scroll up a page",
-    TerminalKeys.SCROLL_PAGE_DOWN to "Scroll down a page",
-    TerminalKeys.SCROLL_TO_TOP to "Scroll to the top",
-    TerminalKeys.SCROLL_TO_BOTTOM to "Scroll to the bottom",
-)
+// What the terminal's own keys do, by how the keyboard of [style] writes them.
+private fun terminalKeyCaptions(style: KeyboardStyle): Map<String, String> {
+    fun own(keyCode: Int) = TerminalKeys.own(keyCode, style).label(style)
+    fun scroll(keyCode: Int) = KeyBinding(keyCode, meta = false, shift = true).label(style)
+    return mapOf(
+        own(Awt.VK_C) to "Copy",
+        own(Awt.VK_V) to "Paste",
+        own(Awt.VK_A) to "Select all",
+        own(Awt.VK_UP) to "Jump to the previous prompt",
+        own(Awt.VK_DOWN) to "Jump to the next prompt",
+        scroll(Awt.VK_PAGE_UP) to "Scroll up a page",
+        scroll(Awt.VK_PAGE_DOWN) to "Scroll down a page",
+        scroll(Awt.VK_HOME) to "Scroll to the top",
+        scroll(Awt.VK_END) to "Scroll to the bottom",
+    )
+}
 
 // The keys that are shown without Command or Control: they type nothing.
 private val SHOWN_ALONE = setOf(Awt.VK_ESCAPE, Awt.VK_TAB, Awt.VK_LEFT, Awt.VK_RIGHT, Awt.VK_UP, Awt.VK_DOWN)
@@ -52,9 +57,11 @@ internal fun presentedKey(
     map: ShortcutMap = Shortcuts.map,
 ): PresentedKey? {
     if (KeyBinding.isModifier(keyCode)) return null
-    val keys = KeyBinding(keyCode, meta, ctrl, alt, shift).label
+    // AltGr is Control and Alt on a PC: what it makes is a character that is typed (`@`, `€`), which is never shown.
+    if (map.style == KeyboardStyle.PC && ctrl && alt) return null
+    val keys = KeyBinding(keyCode, meta, ctrl, alt, shift).label(map.style)
     map.lookup(keyCode, meta, ctrl, alt, shift)?.let { return PresentedKey(keys, it.caption(vertical, digitOf(keyCode))) }
-    TERMINAL_KEY_CAPTIONS[keys]?.let { return PresentedKey(keys, it) }
+    terminalKeyCaptions(map.style)[keys]?.let { return PresentedKey(keys, it) }
     return if (meta || ctrl || keyCode in SHOWN_ALONE) PresentedKey(keys) else null
 }
 

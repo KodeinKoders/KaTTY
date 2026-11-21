@@ -2,6 +2,8 @@
 
 package app.katty.screens
 
+import app.katty.Shortcuts
+import app.katty.MAC_SHORTCUTS
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,7 +33,17 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ShortcutRecordingTest {
-    private val map = ShortcutMap.DEFAULT
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
+    private val map = MAC_SHORTCUTS
     private fun press(keyCode: Int, meta: Boolean = true, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) = KeyBinding(keyCode, meta, ctrl, alt, shift)
 
     @Test
@@ -89,7 +101,17 @@ class ShortcutRecordingTest {
 }
 
 class ShortcutRowsTest {
-    private val map = ShortcutMap.DEFAULT
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
+    private val map = MAC_SHORTCUTS
 
     @Test
     fun everyShortcutIsListedUnderItsGroupAndThenTheFixedKeys() {
@@ -97,7 +119,7 @@ class ShortcutRowsTest {
 
         assertEquals(AppShortcut.entries.toSet(), rows.filterIsInstance<ShortcutRow.Item>().map { it.shortcut }.toSet())
         assertEquals(ShortcutGroup.entries.map { it.title } + "Fixed keys", rows.filterIsInstance<ShortcutRow.Header>().map { it.title })
-        assertEquals(FIXED_KEYS, rows.filterIsInstance<ShortcutRow.Fixed>())
+        assertEquals(fixedKeys(), rows.filterIsInstance<ShortcutRow.Fixed>())
         // Each shortcut is under the title of its group.
         var group: ShortcutGroup? = null
         for (row in rows) when (row) {
@@ -135,7 +157,17 @@ class ShortcutRowsTest {
 }
 
 class ShortcutsEditorTest {
-    private var map by mutableStateOf(ShortcutMap.DEFAULT)
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
+    private var map by mutableStateOf(MAC_SHORTCUTS)
 
     private fun androidx.compose.ui.test.ComposeUiTest.show() {
         setContent { KattyTheme(false) { ShortcutsEditor(map, onChange = { map = it }, androidx.compose.ui.Modifier.fillMaxSize()) } }
@@ -198,7 +230,7 @@ class ShortcutsEditorTest {
         press(Key.Escape)
 
         assertEquals(0, count("Press the new keys…"))
-        assertEquals(ShortcutMap.DEFAULT, map)
+        assertEquals(MAC_SHORTCUTS, map)
     }
 
     // The settings window closes with ⌘W, after the editor: while it records, ⌘W is the new keys and closes nothing.
@@ -234,7 +266,7 @@ class ShortcutsEditorTest {
         onNodeWithText("A shortcut has to include ⌘, so that the programs in your terminals never see it.").assertExists()
         command(Key.C)
         assertTrue(count("⌘C copies, pastes and selects all in a terminal.") == 1)
-        assertEquals(ShortcutMap.DEFAULT, map)
+        assertEquals(MAC_SHORTCUTS, map)
         // Still waiting: the next valid keys are the shortcut.
         command(Key.E)
 
@@ -248,7 +280,7 @@ class ShortcutsEditorTest {
         press(Key.Enter)
         command(Key.N)
         onNodeWithText("⌘N is used by “New workspace”. Press it again to take it, or Esc to cancel.").assertExists()
-        assertEquals(ShortcutMap.DEFAULT, map)
+        assertEquals(MAC_SHORTCUTS, map)
         command(Key.N)
 
         assertEquals("⌘N", map.label(AppShortcut.ADD_PROJECT))
@@ -257,7 +289,7 @@ class ShortcutsEditorTest {
 
     @Test
     fun commandBackspaceBringsTheChosenShortcutBackToItsDefault() = runComposeUiTest {
-        map = ShortcutMap.DEFAULT.with(AppShortcut.ADD_PROJECT, KeyBinding(Awt.VK_E))
+        map = MAC_SHORTCUTS.with(AppShortcut.ADD_PROJECT, KeyBinding(Awt.VK_E))
         show()
 
         command(Key.Backspace)
@@ -267,7 +299,7 @@ class ShortcutsEditorTest {
 
     @Test
     fun theButtonsChangeAndResetWithTheMouse() = runComposeUiTest {
-        map = ShortcutMap.DEFAULT.with(AppShortcut.ADD_PROJECT, KeyBinding(Awt.VK_E))
+        map = MAC_SHORTCUTS.with(AppShortcut.ADD_PROJECT, KeyBinding(Awt.VK_E))
         show()
 
         onNodeWithContentDescription("Reset Add a project folder").performClick()
@@ -280,12 +312,12 @@ class ShortcutsEditorTest {
 
     @Test
     fun resetAllPutsEveryShortcutBack() = runComposeUiTest {
-        map = ShortcutMap.DEFAULT.with(AppShortcut.ADD_PROJECT, KeyBinding(Awt.VK_E)).with(AppShortcut.FIND, null)
+        map = MAC_SHORTCUTS.with(AppShortcut.ADD_PROJECT, KeyBinding(Awt.VK_E)).with(AppShortcut.FIND, null)
         show()
 
         onNodeWithContentDescription("Reset all shortcuts").performClick()
 
-        assertEquals(ShortcutMap.DEFAULT, map)
+        assertEquals(MAC_SHORTCUTS, map)
     }
 
     @Test
@@ -313,12 +345,12 @@ class ShortcutsEditorTest {
         press(Key.V)
 
         onNodeWithText("Search by action or keys").assertExists()
-        assertEquals(ShortcutMap.DEFAULT, map)
+        assertEquals(MAC_SHORTCUTS, map)
     }
 
     @Test
     fun recordingTheFirstDefaultAgainGivesBackTheDefaultsWithTheirAliases() {
-        val changed = ShortcutMap.DEFAULT.with(AppShortcut.FONT_BIGGER, app.katty.KeyBinding(Awt.VK_J))
+        val changed = MAC_SHORTCUTS.with(AppShortcut.FONT_BIGGER, app.katty.KeyBinding(Awt.VK_J))
 
         val result = record(changed, AppShortcut.FONT_BIGGER, null, AppShortcut.FONT_BIGGER.defaults.first())
 

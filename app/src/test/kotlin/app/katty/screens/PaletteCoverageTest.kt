@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.MAC_SHORTCUTS
 import app.katty.AppShortcut
 import app.katty.KeyBinding
 import app.katty.ShortcutMap
@@ -16,6 +17,16 @@ import kotlin.test.assertTrue
 
 /** What the keyboard does, the palette does: every shortcut of the window, and every key of the terminal, is a command of it. */
 class PaletteCoverageTest {
+    @kotlin.test.BeforeTest
+    fun useAMacKeyboard() {
+        Shortcuts.map = MAC_SHORTCUTS
+    }
+
+    @kotlin.test.AfterTest
+    fun putTheKeyboardBack() {
+        Shortcuts.map = ShortcutMap.DEFAULT
+    }
+
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
     private val state get() = store.state.value
@@ -73,7 +84,7 @@ class PaletteCoverageTest {
     fun theKeysThatTheUserBoundAreTheOnesThePaletteShows() {
         built()
         try {
-            Shortcuts.map = ShortcutMap.DEFAULT.with(AppShortcut.SPLIT_MAIN, KeyBinding(java.awt.event.KeyEvent.VK_E)).with(AppShortcut.FIND, null)
+            Shortcuts.map = MAC_SHORTCUTS.with(AppShortcut.SPLIT_MAIN, KeyBinding(java.awt.event.KeyEvent.VK_E)).with(AppShortcut.FIND, null)
 
             val commands = commands().entries.filter { it.group == PaletteGroup.COMMANDS }
 

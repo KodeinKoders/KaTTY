@@ -9,9 +9,9 @@ import kotlin.test.assertEquals
  * shows the default keys whatever the user chose.
  */
 class ShortcutLiteralsTest {
-    // The files where shortcuts are made, and the keys that are fixed on purpose: the modifiers' symbols, and the shortcuts dialog's own key.
+    // The files where shortcuts are made, and the keys that are fixed on purpose: the modifiers' symbols.
     private val owners = setOf("AppShortcuts.kt", "ShortcutBindings.kt")
-    private val fixed = listOf("\"⌘⌥⇧⌃\"", "Hint(listOf(\"⌘\", \"⌫\"), \"Back to the default\")")
+    private val fixed = listOf("\"⌘⌥⇧⌃\"")
 
     @Test
     fun noShortcutIsWrittenAsAStringOutsideItsPlace() {
