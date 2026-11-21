@@ -1,7 +1,5 @@
 package app.katty.core
 
-import java.io.File
-import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -22,9 +20,12 @@ public object AgentDetection {
      * that could not be read; `null` if neither could be, each in [timeoutMs]. It is read once; the caller keeps what it got, and so does
      * [knownLoginPath].
      */
-    public fun loginShellPath(shell: String = userShell(), timeoutMs: Long = 8_000): String? =
+    public fun loginShellPath(shell: String = userShell(), timeoutMs: Long = 8_000): String? {
+        // Windows has no login shell: an application that it starts has the user's PATH, from the user's and the system's settings.
+        if (isWindows) return System.getenv("PATH").orEmpty().also { knownLoginPath = it }
         // Only the user's own shell says what the user's PATH is.
-        readLoginShellPath(shell, timeoutMs)?.also { if (shell == userShell()) knownLoginPath = it }
+        return readLoginShellPath(shell, timeoutMs)?.also { if (shell == userShell()) knownLoginPath = it }
+    }
 
     private fun userShell(): String = System.getenv("SHELL") ?: "/bin/zsh"
 
@@ -44,15 +45,11 @@ public object AgentDetection {
 
     /**
      * The agents whose program is an executable file in one of the folders of [path] (separated as a `PATH` is), with where it is. The folder
-     * that comes first wins, as it does when the shell runs the program.
+     * that comes first wins, as it does when the shell runs the program (see [findExecutable]: `claude.exe` or `claude.cmd` on Windows).
      */
     public fun detect(path: String): Map<Agent, Path> {
-        val directories = path.split(File.pathSeparatorChar).filter { it.isNotEmpty() }.map { File(it).toPath() }
         val found = LinkedHashMap<Agent, Path>()
-        for (agent in Agent.entries) {
-            val executable = directories.map { it.resolve(agent.executable) }.firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) } ?: continue
-            found[agent] = executable
-        }
+        for (agent in Agent.entries) found[agent] = findExecutable(agent.executable, path) ?: continue
         return found
     }
 

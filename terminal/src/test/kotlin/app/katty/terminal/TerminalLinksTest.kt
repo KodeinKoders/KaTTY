@@ -102,6 +102,19 @@ class TerminalLinksTest {
     }
 
     @Test
+    fun aPathOfWindowsHasItsDriveAndItsBackslashes() {
+        fun windows(text: String, around: String) =
+            findPath(text, text.indexOf(around), windows = true)?.let { Triple(it.path, it.line, it.column) }
+
+        assertEquals(Triple("C:\\src\\Foo.kt", 42, 5), windows("e: C:\\src\\Foo.kt:42:5 Unresolved", "Foo"))
+        assertEquals(Triple("C:/src/Foo.kt", 42, null), windows("at C:/src/Foo.kt:42", "C:"))
+        assertEquals(Triple("src\\main.rs", 3, null), windows("  --> src\\main.rs:3", "main"))
+        assertEquals(Triple("~\\notes.md", null, null), windows("see ~\\notes.md", "notes"))
+        assertEquals(Triple("a", 12, null), windows("in a:12", "a:"), "A letter and a line is no drive")
+        assertEquals("src", findPath("src\\Foo.kt", 0, windows = false)?.path, "Not elsewhere")
+    }
+
+    @Test
     fun aBareNameMayBeAPathWhichTheDiskDecides() {
         // `ls` prints folders and files with neither a slash nor an extension: only the ones that are there are links.
         assertEquals(Triple("src", null, null), path("build  docs  src", "src"))

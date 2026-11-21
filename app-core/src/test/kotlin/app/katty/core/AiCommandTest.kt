@@ -143,6 +143,24 @@ class AiCommandTest {
         assertEquals(AiDiagnosis.Failed("it ended with the code 3: not logged in"), failing)
     }
 
+    @Test
+    fun windowsRunsTheCommandWithPowerShellAndTheQuestionInTheEnvironment() {
+        val command = AiPrompt.powerShellCommand("agent \"\$PROMPT\"")
+
+        assertEquals(listOf("-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand"), command.subList(1, 5))
+        val script = String(java.util.Base64.getDecoder().decode(command.last()), Charsets.UTF_16LE)
+        assertTrue(script.endsWith("\n\$PROMPT = \$env:PROMPT\nagent \"\$PROMPT\""), script)
+    }
+
+    @Test
+    fun theQuestionReachesTheAgentWhole() {
+        // With a real PowerShell on Windows, and sh elsewhere: the quotes, the dollar and the line break are the agent's as they were asked.
+        val question = "it's \"quoted\", \$HOME\nand a second line"
+        val answer = AiPrompt.ask(if (isWindows) "Write-Output \"[\$PROMPT]\"" else "printf '[%s]' \"\$PROMPT\"", question, directory, path = null)
+
+        assertEquals(AiAnswer.Command("[it's \"quoted\", \$HOME"), answer, "The first line")
+    }
+
     // --- A command asked for in plain words ---
 
     @Test

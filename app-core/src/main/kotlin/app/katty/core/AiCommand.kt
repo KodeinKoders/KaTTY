@@ -1,6 +1,8 @@
 package app.katty.core
 
+import app.katty.terminal.defaultShell
 import java.nio.file.Path
+import java.util.Base64
 
 /**
  * What the run terminal asks the AI for, when its field is empty: the command that runs the project, alone on one line.
@@ -122,8 +124,21 @@ public object AiPrompt {
     // Runs [template] with [prompt] as `$PROMPT`: `null` when it could not be started or did not end in [timeoutMs].
     private fun run(template: String, prompt: String, directory: Path, path: String?, runner: CommandRunner, timeoutMs: Long): CommandResult? {
         val searchPath = path ?: System.getenv("PATH").orEmpty()
+        if (isWindows) return runner.run(powerShellCommand(template), directory, timeoutMs, mapOf("PROMPT" to prompt, "PATH" to searchPath))
         val script = "PROMPT=${quoted(prompt)}; export PROMPT; PATH=${quoted(searchPath)}; export PATH\n$template"
         return runner.run(listOf("/bin/sh", "-c", script), directory, timeoutMs)
+    }
+
+    /**
+     * How Windows runs [template]: PowerShell, where `"$PROMPT"` is a variable that the script sets from the environment, so that the templates
+     * of `sh` read the same. The question is in the environment and not in the command line, which Windows limits to 32 767 characters (the
+     * output of a command that failed is sent) and in which Java does not escape a double quote; the script is encoded (`-EncodedCommand`), which
+     * needs no quoting. pwsh passes a double quote of an argument to a program as it is (`Standard`); Windows PowerShell 5.1 drops it.
+     */
+    internal fun powerShellCommand(template: String): List<String> {
+        // What the agent prints is read as UTF-8, as the application reads it.
+        val script = "\$PSNativeCommandArgumentPassing = 'Standard'\n[Console]::OutputEncoding = [Text.Encoding]::UTF8\n\$PROMPT = \$env:PROMPT\n$template"
+        return listOf(defaultShell().first(), "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE)))
     }
 
     private fun noAnswer(timeoutMs: Long) = "it did not answer within ${timeoutMs / 1000} seconds, or could not be started"
@@ -187,8 +202,8 @@ public fun tailForPrompt(output: String): String {
 public fun commandPrompt(question: CommandQuestion, run: CommandRun, directory: Path): String = buildString {
     appendLine(
         when (question) {
-            CommandQuestion.WHY_FAILED -> "A command run in a terminal on macOS, in the directory $directory, failed."
-            CommandQuestion.EXPLAIN -> "A command was run in a terminal on macOS, in the directory $directory."
+            CommandQuestion.WHY_FAILED -> "A command run in a terminal on $systemName, in the directory $directory, failed."
+            CommandQuestion.EXPLAIN -> "A command was run in a terminal on $systemName, in the directory $directory."
         },
     )
     appendLine("Command: ${run.command}")
@@ -229,11 +244,11 @@ public fun parseDiagnosis(output: String): AiDiagnosis.Explained? {
 public fun isTypable(command: String): Boolean = command.isNotBlank() && command.none { it.isISOControl() }
 
 /**
- * What the AI is asked for a command that does what the user describes ([request]), in [shell] on macOS, run in [directory]: the command alone, on
- * one line, since it is typed on the command line as it is.
+ * What the AI is asked for a command that does what the user describes ([request]), in [shell] on the system ([systemName]), run in
+ * [directory]: the command alone, on one line, since it is typed on the command line as it is.
  */
 public fun commandRequestPrompt(request: String, shell: String, directory: Path): String = buildString {
-    appendLine("Give me one command for the $shell shell on macOS, to be run in the directory $directory, that does this:")
+    appendLine("Give me one command for the $shell shell on $systemName, to be run in the directory $directory, that does this:")
     appendLine(request.trim())
     append(
         "Your output will be typed as-is on the command line. Do not print anything else but the command, on one single line, " +

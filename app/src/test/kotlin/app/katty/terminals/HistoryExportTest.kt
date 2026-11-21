@@ -19,6 +19,8 @@ class HistoryExportTest {
         assertEquals("api build 2026-11-10 19-43.html", exportFileName("api build", now, ExportFormat.HTML))
         assertEquals("api build 2026-11-10 19-43.txt", exportFileName("api build", now, ExportFormat.TEXT))
         assertEquals("api build 2026-11-10 19-43.ans", exportFileName("api build", now, ExportFormat.ANSI))
+        assertEquals("a-b-c-d-e-f-g-h-i 2026-11-10 19-43.txt", exportFileName("a<b>c\"d\\e|f?g*h:i", now, ExportFormat.TEXT, windows = true), "What Windows refuses")
+        assertEquals("a<b>c 2026-11-10 19-43.txt", exportFileName("a<b>c", now, ExportFormat.TEXT, windows = false), "What macOS takes")
     }
 
     @Test

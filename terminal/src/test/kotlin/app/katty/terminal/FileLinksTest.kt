@@ -49,6 +49,17 @@ class FileLinksTest {
     }
 
     @Test
+    fun anAbsolutePathOfTheSystemIsFoundInTheText() {
+        // `/private/var/…/Foo.kt` on macOS, `C:\Users\…\Foo.kt` on Windows.
+        val foo = file("src/Foo.kt")
+        val text = "e: $foo:42:5 bad"
+
+        val match = findPath(text, text.indexOf("Foo"))
+        assertEquals(foo.toString(), match?.path, text)
+        assertEquals(TerminalFilePosition(foo.toString(), 42, 5), fileLink(written(match!!.path, match.line, match.column)) { emptyList() }?.file)
+    }
+
+    @Test
     fun aPathThatIsNotThereIsNoLink() {
         file("src/Foo.kt")
         val directories = { listOf(root.toString()) }
@@ -115,7 +126,9 @@ class FileLinksTest {
     @Test
     fun theSessionLooksForAPathInTheDirectoryThatTheShellReported() {
         val foo = file("src/Foo.kt")
-        val script = "printf '\\033]7;file://localhost$root\\007e: src/Foo.kt:42:5 bad\\r\\nsrc/Bar.kt:1\\r\\nbuild  src\\r\\nEND'; sleep 30"
+        // The address of a path of Windows has its drive after a slash (`file://localhost/C:/Users/me`), and no backslash, which printf would read.
+        val address = if (testsOnWindows) "/" + root.toString().replace('\\', '/') else root.toString()
+        val script = "printf '\\033]7;file://localhost$address\\007e: src/Foo.kt:42:5 bad\\r\\nsrc/Bar.kt:1\\r\\nbuild  src\\r\\nEND'; sleep 30"
         TerminalSession.start(40, 6, command = sh(script), shellIntegration = false).use { session ->
             runBlocking {
                 withTimeout(15_000) {

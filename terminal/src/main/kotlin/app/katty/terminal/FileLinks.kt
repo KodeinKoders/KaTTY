@@ -31,7 +31,8 @@ internal fun fileLink(link: TerminalLink, directories: () -> List<String>): Term
     }
     val host = uri.host ?: uri.authority
     if (!host.isNullOrEmpty() && host != "localhost") return link
-    val path = uri.path?.takeIf { it.isNotEmpty() } ?: return link
+    // On Windows the path of a drive comes after a slash (`file:///C:/Users/me`), which is no path of the system.
+    val path = uri.path?.takeIf { it.isNotEmpty() }?.let { if (isWindows && WINDOWS_DRIVE_PATH.matches(it)) it.substring(1) else it } ?: return link
     existing(path)?.let { return link.copy(file = position(it, null, null)) }
     // `file:///a/Foo.kt:12:5`: the file is `/a/Foo.kt`, when that is one and the whole is not.
     val suffix = LINE_SUFFIX.matchEntire(path) ?: return link
@@ -43,10 +44,10 @@ internal fun fileLink(link: TerminalLink, directories: () -> List<String>): Term
 
 /** The file or the folder that [written] names, as a program printed it, or `null` when there is none: see [fileLink]. */
 internal fun resolveFile(written: String, directories: () -> List<String>): Path? {
-    if (written.startsWith("/")) return existing(written)
-    if (written.startsWith("~/")) return System.getProperty("user.home")?.let { existing(it + written.substring(1)) }
+    if (isAbsolute(written)) return existing(written)
+    if (written.startsWith("~/") || (isWindows && written.startsWith("~\\"))) return System.getProperty("user.home")?.let { existing(it + written.substring(1)) }
     for (directory in directories()) {
-        if (!directory.startsWith("/")) continue
+        if (!isAbsolute(directory)) continue
         val file = try {
             Path.of(directory).resolve(written).normalize()
         } catch (_: InvalidPathException) {
@@ -56,6 +57,16 @@ internal fun resolveFile(written: String, directories: () -> List<String>): Path
     }
     return null
 }
+
+// Absolute as the system reads it: `/a` on a Unix system, `C:\a` on Windows (where `/a` is on the drive of the program, which is not known).
+private fun isAbsolute(path: String): Boolean = try {
+    Path.of(path).isAbsolute
+} catch (_: InvalidPathException) {
+    false
+}
+
+// The path of a drive in a `file://` address: `/C:/Users/me`.
+private val WINDOWS_DRIVE_PATH = Regex("/[A-Za-z]:(/.*)?")
 
 // A folder has no line: `src:12` is the folder.
 private fun position(file: Path, line: Int?, column: Int?): TerminalFilePosition {

@@ -25,6 +25,10 @@ internal fun findUrl(text: String, index: Int): IntRange? {
 // and a column.
 private val PATH = Regex("""(?<![^\s(\[<{"'`=,])([A-Za-z0-9._~@%+\-/]+)(?::(\d{1,9})(?::(\d{1,9}))?)?""")
 
+// The same on Windows, where a path may start with its drive (`C:\…`, `C:/…`: the colon of a drive is one when a separator follows it, so that
+// `a:12` is still the line 12 of `a`), and is separated by backslashes.
+private val WINDOWS_PATH = Regex("""(?<![^\s(\[<{"'`=,])((?:[A-Za-z]:(?=[\\/]))?[A-Za-z0-9._~@%+\-/\\]+)(?::(\d{1,9})(?::(\d{1,9}))?)?""")
+
 /**
  * A path that [findPath] found: its characters, [path] as it is written (absolute, from the home, or relative to a directory that is not known
  * here), and the [line] and [column] written after it, `null` when there are none.
@@ -36,10 +40,10 @@ internal class PathMatch(val range: IntRange, val path: String, val line: Int?, 
  * runners and `grep -n` print them (`src/Foo.kt:42:5`, `Foo.java:42: error`), or a path alone (`git status`, `ls`: `src`, `Makefile`); `null`
  * when the character is not part of one. Whether it is there is not known here: any word with a letter may be one (not `12:34:56` nor `1.2.3`),
  * and only the ones that are on the disk are links. A space ends it (a path that has one is not found), and so does what ends a sentence, as for
- * an address.
+ * an address. On [windows], a path may start with a drive and have backslashes (`C:\src\Foo.kt:42`).
  */
-internal fun findPath(text: String, index: Int): PathMatch? {
-    for (match in PATH.findAll(text)) {
+internal fun findPath(text: String, index: Int, windows: Boolean = isWindows): PathMatch? {
+    for (match in (if (windows) WINDOWS_PATH else PATH).findAll(text)) {
         if (match.range.first > index) return null
         val written = match.groups[1]!!.value
         val lineGroup = match.groups[2]

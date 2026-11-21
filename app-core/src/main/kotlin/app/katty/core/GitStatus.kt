@@ -93,18 +93,14 @@ public object GitStatusReader {
      */
     public fun read(tree: Path, runner: CommandRunner = ProcessCommandRunner, timeoutMs: Long = TIMEOUT_MS, git: String? = gitExecutable()): GitStatusReading? {
         git ?: return null
-        val command = listOf(
-            "/usr/bin/env", "GIT_OPTIONAL_LOCKS=0", git, "-c", "gc.auto=0", "--no-optional-locks", "status", "--porcelain=v2", "--branch",
-        )
+        // `--no-optional-locks` sets GIT_OPTIONAL_LOCKS=0 for what git runs too.
+        val command = listOf(git, "-c", "gc.auto=0", "--no-optional-locks", "status", "--porcelain=v2", "--branch")
         val result = runner.run(command, tree, timeoutMs) ?: return null
         return if (result.exitCode == 0) parseGitStatus(result.output) else null
     }
 
     internal fun findGit(path: String, developerDirectory: () -> String? = ::developerDirectory): String? {
-        val candidate = path.split(File.pathSeparatorChar).filter { it.isNotEmpty() }
-            .map { Path.of(it).resolve("git") }
-            .firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }
-            ?: return null
+        val candidate = findExecutable("git", path) ?: return null
         if (candidate.toString() != "/usr/bin/git") return candidate.toString()
         val tools = developerDirectory() ?: return null
         return candidate.toString().takeIf { Files.isExecutable(Path.of(tools, "usr", "bin", "git")) }

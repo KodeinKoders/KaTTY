@@ -1,5 +1,6 @@
 package app.katty.terminals
 
+import app.katty.core.isWindows
 import app.katty.terminal.TerminalColor
 import app.katty.terminal.TerminalHistory
 import app.katty.terminal.TerminalTextFormat
@@ -19,9 +20,13 @@ enum class ExportFormat(val label: String, val description: String, val extensio
 // Dates are written in ISO order whatever the language; a colon is no character of a file name on macOS (the Finder shows it as a slash).
 private val FILE_TIME = DateTimeFormatter.ofPattern("uuuu-MM-dd HH-mm")
 
+private val FORBIDDEN = Regex("[/:\\p{Cntrl}]")
+private val WINDOWS_FORBIDDEN = Regex("[/:<>\"\\\\|?*\\p{Cntrl}]")
+
 /** The name that is proposed for the export of the terminal [title]: `api build 2026-11-10 19-43.html`. What macOS refuses in a name is a dash. */
-fun exportFileName(title: String, now: LocalDateTime, format: ExportFormat): String {
-    val name = title.replace(Regex("[/:\\p{Cntrl}]"), "-").trim().trimStart('.').ifEmpty { "Terminal" }
+fun exportFileName(title: String, now: LocalDateTime, format: ExportFormat, windows: Boolean = isWindows): String {
+    // What a name of a file cannot have: Windows also refuses `<>"\|?*`.
+    val name = title.replace(if (windows) WINDOWS_FORBIDDEN else FORBIDDEN, "-").trim().trimStart('.').ifEmpty { "Terminal" }
     return "$name ${FILE_TIME.format(now)}.${format.extension}"
 }
 

@@ -65,8 +65,8 @@ public fun RunningCommand.toTyped(policy: RestorePolicy = RestorePolicy()): Type
 private fun openCodeProgram(name: String, executable: String?, searchPath: String, directory: String?): String {
     if (executable == null) return name
     // A name with a slash is a path, which the shell resolves from where the program was started: its directory.
-    val onPath = if ('/' in name) File(name).let { if (it.isAbsolute || directory == null) it else File(directory, name) }
-    else searchPath.split(':').filter { it.isNotEmpty() }.map { File(it, name) }.firstOrNull { it.canExecute() && it.isFile }
+    val onPath = if ('/' in name || File.separatorChar in name) File(name).let { if (it.isAbsolute || directory == null) it else File(directory, name) }
+    else findExecutable(name, searchPath)?.toFile()
     val same = onPath != null && try {
         onPath.canonicalPath == File(executable).canonicalPath
     } catch (_: java.io.IOException) {

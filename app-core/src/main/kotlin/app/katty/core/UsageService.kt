@@ -50,6 +50,9 @@ public class CommandResult(public val exitCode: Int, public val output: String)
 public fun interface CommandRunner {
     /** `null` when it could not be started, or did not end in [timeoutMs]. */
     public fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult?
+
+    /** [run], with [environment] added to the application's own: a runner that does not say how runs it without. */
+    public fun run(command: List<String>, directory: Path, timeoutMs: Long, environment: Map<String, String>): CommandResult? = run(command, directory, timeoutMs)
 }
 
 /**
@@ -57,10 +60,13 @@ public fun interface CommandRunner {
  * started (an MCP server, a helper), which would otherwise go on with nobody to end it.
  */
 public object ProcessCommandRunner : CommandRunner {
-    override fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult? =
+    override fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult? = run(command, directory, timeoutMs, emptyMap())
+
+    override fun run(command: List<String>, directory: Path, timeoutMs: Long, environment: Map<String, String>): CommandResult? =
         try {
             Files.createDirectories(directory)
             val process = ProcessBuilder(command).directory(directory.toFile())
+                .apply { environment().putAll(environment) }
                 .redirectInput(ProcessBuilder.Redirect.from(NO_INPUT))
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()

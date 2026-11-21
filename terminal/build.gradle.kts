@@ -15,7 +15,6 @@ val notOnWindows = mapOf(
     "app.katty.terminal.SessionProcessesTest" to "the processes of a session are not known on Windows yet",
     "app.katty.terminal.ShellIntegrationTest" to "zsh and bash",
     "app.katty.terminal.TypedCommandTest" to "zsh",
-    "app.katty.terminal.FileLinksTest" to "the links to the paths of Windows are not found yet",
     "app.katty.terminal.TerminalAnswersTest.theCursorIsAtAPasswordPromptWhileTheProgramReadsALineWithTheEchoOff" to "a console has no termios",
     "app.katty.terminal.TerminalSessionTest.showsARedrawThatTakesSeveralWritesWhole" to "perl",
     "app.katty.terminal.TerminalSessionTest.stillPublishesWhileTheProgramKeepsWriting" to "perl",
