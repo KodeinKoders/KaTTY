@@ -3,6 +3,7 @@ package app.katty.core
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -70,7 +71,7 @@ public class KattyStore(
             return existing.id
         }
         val id = ProjectId(newId())
-        val projectName = name?.takeIf { it.isNotBlank() } ?: directory.trimEnd('/').substringAfterLast('/').ifEmpty { directory }
+        val projectName = name?.takeIf { it.isNotBlank() } ?: File(directory).name.ifEmpty { directory }
         // The first workspace is named after its project, which is what it is: the folder as it is.
         val workspace = Workspace(WorkspaceId(newId()), projectName, PaneNode.Leaf(newTerminal(directory)))
         val project = Project(id, projectName, directory, listOf(workspace))

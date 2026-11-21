@@ -93,10 +93,7 @@ fun WorkspaceIdeDialog(workspace: String, ides: List<Ide>, current: Ide?, onChoo
 internal fun fileLabel(file: TerminalFilePosition): String =
     File(file.path).name + if (file.directory) "/" else file.line?.let { ":$it" } ?: ""
 
-internal fun homeShortened(path: String): String {
-    val home = System.getProperty("user.home").orEmpty()
-    return if (home.isNotEmpty() && path.startsWith("$home/")) "~" + path.removePrefix(home) else path
-}
+internal fun homeShortened(path: String): String = path.abbreviatedHome()
 
 // A list of IDEs (`null` is none) over the scrim: the keys move in it and choose wherever the focus is in the dialog, and it starts on the one that
 // the workspace has.

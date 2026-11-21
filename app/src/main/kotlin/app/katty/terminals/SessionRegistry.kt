@@ -14,6 +14,7 @@ import app.katty.core.TerminalId
 import app.katty.core.TerminalSnapshotStore
 import app.katty.core.TerminalSpec
 import app.katty.core.apartFromOthers
+import app.katty.core.isWindows
 import app.katty.core.sessionOf
 import app.katty.core.restartDirectory
 import app.katty.core.toRunning
@@ -23,6 +24,7 @@ import app.katty.terminal.TerminalSession
 import app.katty.terminal.TerminalSnapshot
 import app.katty.terminal.TerminalSnapshotException
 import app.katty.terminal.TerminalTheme
+import app.katty.terminal.defaultShell
 import app.katty.terminal.themes.ITermColorSchemes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -693,7 +695,8 @@ private const val PROCESS_POLL_MS = 500L
 /** How long a restored terminal keeps what it is to start again while its shell has not yet got to it: a shell's startup files can be slow. */
 private const val RESTORE_GRACE_MS = 15_000L
 
-private fun shellName(): String = File(System.getenv("SHELL") ?: "/bin/zsh").name.ifEmpty { "shell" }
+// The name of the program that a terminal starts (`zsh`, `pwsh`), without the `.exe` of Windows.
+private fun shellName(): String = File(defaultShell().first()).name.removeSuffix(".exe").ifEmpty { "shell" }
 
 /**
  * Where a shell starts: where the terminal last was, if that folder is still there, else the folder of its project, else (for [startShell])
@@ -741,12 +744,14 @@ private fun TerminalSession.apply(preferences: TerminalPreferences, before: Term
 /**
  * Starts [command] alone in a terminal, in [directory] (the home when it is gone), for a run terminal: the user's shell runs it as a login and
  * interactive one (`-l -i -c`), so that it has what the user's files set (the `PATH` of `.zshrc`, its aliases), and ends with it, with its exit code.
- * No prompt is drawn and the shell integration is not needed: there is no prompt.
+ * On Windows PowerShell runs it (`-Command`), which reads the user's profile. No prompt is drawn and the shell integration is not needed: there
+ * is no prompt.
  */
 internal fun startCommand(command: String, directory: String, theme: TerminalTheme?, settings: Settings): TerminalSession {
-    val shell = System.getenv("SHELL")?.takeIf { it.isNotBlank() } ?: "/bin/zsh"
+    val shell = defaultShell().first()
+    val line = if (isWindows) listOf(shell, "-NoLogo", "-Command", command) else listOf(shell, "-l", "-i", "-c", command)
     return TerminalSession.start(
-        cols = 80, rows = 24, command = listOf(shell, "-l", "-i", "-c", command), directory = directory.takeIf { File(it).isDirectory }, theme = theme,
+        cols = 80, rows = 24, command = line, directory = directory.takeIf { File(it).isDirectory }, theme = theme,
         shellIntegration = false, cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
         boldIsBright = settings.boldIsBright, scrollbackMaxBytes = settings.scrollback.bytes,
     )

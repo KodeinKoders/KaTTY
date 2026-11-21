@@ -76,6 +76,7 @@ import app.katty.ui.rememberReorderState
 import app.katty.ui.onDoubleClick
 import app.katty.ui.onSecondaryClick
 import org.jetbrains.jewel.ui.component.Text
+import java.io.File
 
 /** The width of the project sidebar. */
 val SIDEBAR_WIDTH = 272.dp
@@ -333,6 +334,6 @@ private fun WorkspaceRow(
     }
 }
 
-// The path with the user's home folder written as ~, as the design shows it.
-internal fun String.abbreviatedHome(home: String = System.getProperty("user.home")): String =
-    if (this == home) "~" else if (startsWith("$home/")) "~" + removePrefix(home) else this
+// The path with the user's home folder written as ~, as the design shows it, followed by the system's separator (`~\dev` on Windows).
+internal fun String.abbreviatedHome(home: String = System.getProperty("user.home").orEmpty(), separator: Char = File.separatorChar): String =
+    if (home.isEmpty()) this else if (this == home) "~" else if (startsWith(home + separator)) "~" + removePrefix(home) else this

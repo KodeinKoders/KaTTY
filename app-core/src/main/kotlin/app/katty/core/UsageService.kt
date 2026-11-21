@@ -34,6 +34,9 @@ import kotlin.time.Duration.Companion.minutes
 
 private val logger = LoggerFactory.getLogger("app.katty.core.Usage")
 
+// What a command reads: nothing. Windows calls it `NUL`.
+private val NO_INPUT = File(if (isWindows) "NUL" else "/dev/null")
+
 /** Where an agent's usage is read from: its own command, which does not cost a turn. */
 public fun interface UsageSource {
     /** The reading, or `null` when it cannot be had: the agent is not logged in, its command failed, or it printed something unknown. */
@@ -58,7 +61,7 @@ public object ProcessCommandRunner : CommandRunner {
         try {
             Files.createDirectories(directory)
             val process = ProcessBuilder(command).directory(directory.toFile())
-                .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+                .redirectInput(ProcessBuilder.Redirect.from(NO_INPUT))
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()
             // Read on another thread, or a program that prints a lot would block before the wait. What is read is kept as it comes: a program

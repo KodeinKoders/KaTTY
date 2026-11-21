@@ -3,9 +3,11 @@ package app.katty.core
 import app.katty.terminal.TerminalSnapshot
 import org.slf4j.LoggerFactory
 import java.io.IOException
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.FileAttribute
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
@@ -36,9 +38,10 @@ public class TerminalSnapshotStore(private val directory: Path) {
     /** Keeps [snapshot] as the one of the terminal [id], in place of the one it had. `false` when it could not be written. */
     public fun save(id: TerminalId, snapshot: TerminalSnapshot): Boolean {
         try {
-            // Only the user's: before anything is in it, and not after.
-            Files.createDirectories(directory, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
-            val temporary = Files.createTempFile(directory, "snapshot", ".part", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+            // Only the user's: before anything is in it, and not after. Windows has no POSIX permissions, and the folder of the application
+            // in the user's profile is the user's already.
+            Files.createDirectories(directory, *onlyTheUsers("rwx------"))
+            val temporary = Files.createTempFile(directory, "snapshot", ".part", *onlyTheUsers("rw-------"))
             try {
                 GZIPOutputStream(Files.newOutputStream(temporary)).use { it.write(snapshot.toByteArray()) }
                 Files.move(temporary, fileOf(id), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
@@ -118,3 +121,8 @@ public class TerminalSnapshotStore(private val directory: Path) {
         const val EXTENSION = ".snapshot"
     }
 }
+
+// The POSIX permissions [permissions] where the file system has them, else none.
+private fun onlyTheUsers(permissions: String): Array<FileAttribute<*>> =
+    if ("posix" in FileSystems.getDefault().supportedFileAttributeViews()) arrayOf(PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(permissions)))
+    else emptyArray()

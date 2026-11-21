@@ -1,5 +1,7 @@
 package app.katty.core.sqlite
 
+import app.katty.core.isWindows
+
 import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.Linker
@@ -30,11 +32,12 @@ private const val BUSY_TIMEOUT_MS = 1000
 /** A call of the SQLite library that failed, or the library that is not there. */
 internal class SqliteException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-// The system's SQLite, which macOS has had since its first version: nothing to ship and no dependency. `dlopen` finds it in the shared cache
-// of the system even though there is no file at this path.
+// The system's SQLite, which macOS has had since its first version, and Windows since Windows 10 (`winsqlite3.dll`, in System32, which
+// exports the same functions): nothing to ship and no dependency. `dlopen` finds macOS's in the shared cache of the system even though there
+// is no file at this path.
 private object Native {
     private val linker = Linker.nativeLinker()
-    private val lookup = SymbolLookup.libraryLookup("/usr/lib/libsqlite3.dylib", Arena.global())
+    private val lookup = SymbolLookup.libraryLookup(if (isWindows) "winsqlite3.dll" else "/usr/lib/libsqlite3.dylib", Arena.global())
 
     private fun handle(name: String, descriptor: FunctionDescriptor): MethodHandle =
         linker.downcallHandle(lookup.find(name).orElseThrow { SqliteException("$name is not in libsqlite3") }, descriptor)

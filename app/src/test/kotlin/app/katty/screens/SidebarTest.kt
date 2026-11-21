@@ -402,9 +402,15 @@ class SidebarTest {
 
     @Test
     fun theHomeFolderIsWrittenAsATilde() {
-        assertEquals("~", "/Users/x".abbreviatedHome("/Users/x"))
-        assertEquals("~/dev/api-gateway", "/Users/x/dev/api-gateway".abbreviatedHome("/Users/x"))
-        assertEquals("/Users/xylophone/dev", "/Users/xylophone/dev".abbreviatedHome("/Users/x"))
-        assertEquals("/opt/api", "/opt/api".abbreviatedHome("/Users/x"))
+        assertEquals("~", "/Users/x".abbreviatedHome("/Users/x", '/'))
+        assertEquals("~/dev/api-gateway", "/Users/x/dev/api-gateway".abbreviatedHome("/Users/x", '/'))
+        assertEquals("/Users/xylophone/dev", "/Users/xylophone/dev".abbreviatedHome("/Users/x", '/'))
+        assertEquals("/opt/api", "/opt/api".abbreviatedHome("/Users/x", '/'))
+    }
+
+    @Test
+    fun theHomeFolderOfWindowsIsATildeFollowedByItsSeparator() {
+        assertEquals("~\\dev\\api", "C:\\Users\\x\\dev\\api".abbreviatedHome("C:\\Users\\x", '\\'))
+        assertEquals("C:\\Users\\xylophone", "C:\\Users\\xylophone".abbreviatedHome("C:\\Users\\x", '\\'))
     }
 }

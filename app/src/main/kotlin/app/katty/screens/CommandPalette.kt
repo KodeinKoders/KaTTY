@@ -265,7 +265,7 @@ fun RecentProjectsPopup(projects: List<RecentProject>, onOpen: (RecentProject) -
 
 /** What the recent list says of [project]: its folder, with `~` for [home], and what comes back with it when its state is kept. */
 internal fun recentContext(project: RecentProject, home: String): String {
-    val folder = if (home.isNotEmpty() && project.directory.startsWith("$home/")) "~" + project.directory.removePrefix(home) else project.directory
+    val folder = project.directory.abbreviatedHome(home)
     val saved = project.saved ?: return folder
     val workspaces = saved.workspaces.size
     val terminals = project.savedTerminals.size

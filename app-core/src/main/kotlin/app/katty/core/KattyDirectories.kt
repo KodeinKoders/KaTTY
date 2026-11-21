@@ -47,14 +47,16 @@ public class KattyDirectories(public val support: Path) {
         public const val PROPERTY: String = "katty.support"
 
         /**
-         * `~/Library/Application Support/KaTTY` on macOS, `$XDG_DATA_HOME/KaTTY` or `~/.local/share/KaTTY` elsewhere, unless [PROPERTY]
-         * says another one.
+         * `~/Library/Application Support/KaTTY` on macOS, `%APPDATA%\KaTTY` on Windows, `$XDG_DATA_HOME/KaTTY` or `~/.local/share/KaTTY`
+         * elsewhere, unless [PROPERTY] says another one.
          */
         public fun default(): KattyDirectories {
             System.getProperty(PROPERTY)?.takeIf { it.isNotBlank() }?.let { return KattyDirectories(Paths.get(it)) }
             val home = Paths.get(System.getProperty("user.home"))
-            val support = if (System.getProperty("os.name").startsWith("Mac")) {
+            val support = if (isMacOs) {
                 home.resolve("Library").resolve("Application Support").resolve("KaTTY")
+            } else if (isWindows) {
+                (System.getenv("APPDATA")?.takeIf { it.isNotBlank() }?.let { Paths.get(it) } ?: home.resolve("AppData").resolve("Roaming")).resolve("KaTTY")
             } else {
                 (System.getenv("XDG_DATA_HOME")?.takeIf { it.isNotBlank() }?.let { Paths.get(it) } ?: home.resolve(".local").resolve("share")).resolve("KaTTY")
             }
