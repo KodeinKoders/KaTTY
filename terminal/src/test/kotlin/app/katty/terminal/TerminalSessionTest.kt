@@ -57,6 +57,22 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun givesTheProgramTheVariablesItIsGivenAndNotTheOnesTakenOut() {
+        // One that this process has, and that the shell does not set again by itself.
+        val shellVariables = setOf("PATH", "PWD", "OLDPWD", "SHLVL", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM", "TERM_PROGRAM", "IFS", "PS1", "PS2", "PS4", "OPTIND")
+        val inherited = System.getenv().keys.sorted().first { it.matches(Regex("[A-Z][A-Z_]*")) && it !in shellVariables }
+        val script = "if [ -n \"\${$inherited+x}\" ]; then s=set; else s=gone; fi; echo \"added=\${DOTENV_PROBE-none} inherited=\$s end\""
+        fun run(unset: Set<String>): String {
+            val session = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), environment = mapOf("DOTENV_PROBE" to "x"), unsetEnvironment = unset)
+            sessions += session
+            return session.awaitFrame { it.text(0).endsWith("end") }.text(0)
+        }
+
+        assertEquals("added=x inherited=set end", run(emptySet()), "Without anything taken out")
+        assertEquals("added=x inherited=gone end", run(setOf(inherited)))
+    }
+
+    @Test
     fun publishesWhatTheProgramWrites() {
         val session = start("printf hello")
 
