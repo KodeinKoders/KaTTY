@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import app.katty.core.usageKey
+import app.katty.platform.desktopIntegration
 import app.katty.core.AgentState
 import app.katty.core.OPEN_SESSIONS_KEY
 import app.katty.core.openSessionsCost
@@ -211,10 +212,10 @@ internal fun KattyWindowContent(
             override fun copy(text: String) = copyToClipboard(text)
             override fun readClipboard() = app.katty.readClipboard()
             override fun reveal(directory: String) = revealInFileManager(directory)
-            override fun openIn(bundleId: String, directory: String) = openInApplication(bundleId, directory)
-            // LaunchServices is asked where the IDE is.
-            override fun openFile(ide: Ide, bundleId: String, file: app.katty.terminal.TerminalFilePosition) {
-                windowScope.launch(Dispatchers.IO) { openFileInApplication(ide, bundleId, file) }
+            override fun openIn(application: String, directory: String) = desktopIntegration.openIn(application, directory)
+            // The system is asked where the IDE is.
+            override fun openFile(ide: Ide, application: String, file: app.katty.terminal.TerminalFilePosition) {
+                windowScope.launch(Dispatchers.IO) { desktopIntegration.openFile(ide, application, file) }
             }
             override fun openBoardWindow() = openBoardWindow()
             override fun openAbout() = openAbout()
@@ -266,8 +267,8 @@ internal fun KattyWindowContent(
     // none when the user emptied it.
     val aiCommand = aiCommand(settings.aiCommand, detected.keys)
     SideEffect { controller.aiCommand = aiCommand }
-    // The editors that are installed: LaunchServices knows, and is asked again when the window gets the focus, with the agents.
-    val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { installedIdes() } }
+    // The editors that are installed: the system knows (LaunchServices on macOS), and is asked again when the window gets the focus, with the agents.
+    val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { desktopIntegration.installedIdes() } }
     SideEffect { controller.installedIdes = installedIdes }
     // What opens the files and folders that are clicked (the Finder too), and what a project's folder is offered to.
     val ides = installedIdes.keys.toList()

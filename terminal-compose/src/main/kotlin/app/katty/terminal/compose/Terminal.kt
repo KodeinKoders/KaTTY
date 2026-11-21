@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.terminal.KeyInput
+import app.katty.terminal.compose.platform.secureKeyboard
 import app.katty.terminal.TerminalCommandMark
 import app.katty.terminal.TerminalKey
 import app.katty.terminal.TerminalClipboardLocation
@@ -384,8 +385,8 @@ public fun Terminal(
         TerminalSecureInput.ALWAYS -> true
     }
     DisposableEffect(secure) {
-        val enabled = secure && SecureKeyboardEntry.enable()
-        onDispose { if (enabled) SecureKeyboardEntry.disable() }
+        val enabled = secure && secureKeyboard.enable()
+        onDispose { if (enabled) secureKeyboard.disable() }
     }
 
     // The pulse of the bell, from 1 when it rings to 0 when it is over: a ring grows around the cursor.

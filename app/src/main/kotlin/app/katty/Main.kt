@@ -17,6 +17,7 @@ import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import app.katty.core.KattyDirectories
+import app.katty.platform.desktopIntegration
 import app.katty.core.KattyStore
 import app.katty.core.RecentProjects
 import app.katty.core.RecentProjectsFile
@@ -53,7 +54,7 @@ fun main() {
     // does depends on it: watching the repositories is the system's on the JetBrains Runtime, and polls elsewhere.
     logger.info("KaTTY {} ({}) runs on {}", BuildConfig.VERSION, BuildConfig.GIT_COMMIT, runtimeDescription())
     // Before the first key is typed.
-    disablePressAndHold()
+    desktopIntegration.disablePressAndHold()
     // The logo is the icon of the Dock and of the application switcher, instead of the one of Java.
     AppIcon.installInDock()
     val directories = KattyDirectories.default()

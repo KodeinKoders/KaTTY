@@ -1,4 +1,4 @@
-package app.katty
+package app.katty.platform.macos
 
 import app.katty.core.Ide
 import app.katty.core.detectIdes
@@ -13,22 +13,19 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.SymbolLookup
 import java.lang.foreign.ValueLayout
 
-private val logger = LoggerFactory.getLogger("app.katty.LaunchServices")
+private val logger = LoggerFactory.getLogger("app.katty.platform.macos.LaunchServices")
 
 private const val UTF8 = 0x08000100
-
-private val isMac = System.getProperty("os.name").startsWith("Mac")
 
 /**
  * Whether an application of macOS with the bundle identifier [bundleId] is installed, wherever it is: LaunchServices knows, which `/Applications`
  * would not say for the ones that JetBrains Toolbox puts in `~/Applications`. LaunchServices can remember an application that was deleted, so
- * the folder it names has to be there. Any failure says it is not installed, and nothing is installed off macOS.
+ * the folder it names has to be there. Any failure says it is not installed.
  */
 internal fun applicationInstalled(bundleId: String): Boolean = applicationPath(bundleId) != null
 
 /** Where the application [bundleId] is installed (its bundle, `/Applications/Xcode.app`), `null` when it is not: see [applicationInstalled]. */
 internal fun applicationPath(bundleId: String): String? {
-    if (!isMac) return null
     return try {
         Arena.ofConfined().use { arena ->
             val linker = Linker.nativeLinker()

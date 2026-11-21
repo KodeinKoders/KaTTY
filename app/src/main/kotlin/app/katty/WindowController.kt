@@ -94,10 +94,11 @@ internal interface WindowPlatform {
 
     fun reveal(directory: String)
 
-    fun openIn(bundleId: String, directory: String)
+    /** Opens [directory] in [application], what the system knows an IDE as (see [WindowController.installedIdes]). */
+    fun openIn(application: String, directory: String)
 
-    /** Opens [file] at its line in [ide], installed as [bundleId]. */
-    fun openFile(ide: Ide, bundleId: String, file: TerminalFilePosition)
+    /** Opens [file] at its line in [ide], installed as [application]. */
+    fun openFile(ide: Ide, application: String, file: TerminalFilePosition)
 
     fun openBoardWindow()
 
@@ -317,7 +318,7 @@ internal class WindowController(
     /** Whether the window shows the vertical layout, which draws every split turned. */
     var vertical: Boolean = false
 
-    /** The editors that are installed, by their bundle identifier. */
+    /** The editors that are installed, with what the system knows each one as (a bundle identifier on macOS). */
     var installedIdes: Map<Ide, String> = emptyMap()
 
     /** Reads the usage of the agents again at once. */
@@ -732,8 +733,8 @@ internal class WindowController(
     }
 
     private fun openIn(directory: String, ide: Ide) {
-        val bundleId = installedIdes[ide] ?: return
-        platform.openIn(bundleId, directory)
+        val application = installedIdes[ide] ?: return
+        platform.openIn(application, directory)
     }
 
     /**
@@ -761,8 +762,8 @@ internal class WindowController(
     }
 
     private fun openFileIn(ide: Ide, file: TerminalFilePosition) {
-        val bundleId = installedIdes[ide] ?: return
-        platform.openFile(ide, bundleId, file)
+        val application = installedIdes[ide] ?: return
+        platform.openFile(ide, application, file)
     }
 
     /**

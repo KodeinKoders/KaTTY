@@ -1,4 +1,4 @@
-package app.katty
+package app.katty.platform.macos
 
 import org.junit.Assume.assumeTrue
 import kotlin.test.Test

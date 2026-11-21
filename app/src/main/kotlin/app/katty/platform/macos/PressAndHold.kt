@@ -1,4 +1,4 @@
-package app.katty
+package app.katty.platform.macos
 
 import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
@@ -9,7 +9,7 @@ import java.lang.foreign.SymbolLookup
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
 
-private val logger = LoggerFactory.getLogger("app.katty.PressAndHold")
+private val logger = LoggerFactory.getLogger("app.katty.platform.macos.PressAndHold")
 
 private const val KEY = "ApplePressAndHoldEnabled"
 
@@ -21,11 +21,10 @@ private const val KEY = "ApplePressAndHoldEnabled"
  * be no scrolling with `j` in vim. Ghostty does the same.
  *
  * The setting is registered for this process only, as a default: a value that the user set themselves wins.
- * It has to be done before the first key is typed, so at the start of the program. Nothing happens off macOS,
- * and a failure is logged: the application works without it.
+ * It has to be done before the first key is typed, so at the start of the program. A failure is logged: the
+ * application works without it.
  */
 internal fun disablePressAndHold() {
-    if (!System.getProperty("os.name").startsWith("Mac")) return
     try {
         Objc().use { it.registerDefault(KEY, false) }
         logger.debug("{} is registered as false", KEY)
