@@ -72,7 +72,7 @@ internal fun removeLeftoverExtractions(parent: Path) {
 }
 
 /**
- * Loads the libghostty-vt dylib bundled in the jar, once.
+ * Loads the libghostty-vt library bundled in the jar (a dylib on macOS, a DLL on Windows), once.
  *
  * The jextract-generated bindings look their functions up with `SymbolLookup.loaderLookup()`, which
  * only sees libraries loaded with `System.load`. Every class that calls into the bindings must
@@ -102,9 +102,12 @@ internal object NativeLibrary {
         // Referencing the object runs its initializer, which is all there is to do.
     }
 
-    private fun load() {
+    /** Where the build puts the library of this platform in the resources (`/app/katty/ghostty/native/macos-aarch64/`), and its file name. */
+    internal fun resources(): Pair<String, String> {
+        val system = System.getProperty("os.name").lowercase()
         val (os, extension) = when {
-            "mac" in System.getProperty("os.name").lowercase() -> "macos" to "dylib"
+            "mac" in system -> "macos" to "dylib"
+            "windows" in system -> "windows" to "dll"
             else -> throw unsupported()
         }
         val arch = when (System.getProperty("os.arch").lowercase()) {
@@ -112,21 +115,25 @@ internal object NativeLibrary {
             "x86_64", "amd64" -> "x86_64"
             else -> throw unsupported()
         }
-        val resource = "/app/katty/ghostty/native/$os-$arch/$LIBRARY_NAME.$extension"
-        val bytes = NativeLibrary::class.java.getResourceAsStream(resource)?.use { it.readBytes() } ?: throw unsupported()
-        val stamp = NativeLibrary::class.java.getResourceAsStream("/app/katty/ghostty/native/$os-$arch/$LIBRARY_NAME.stamp")?.use { it.readBytes() }
+        return "/app/katty/ghostty/native/$os-$arch/" to "$LIBRARY_NAME.$extension"
+    }
+
+    private fun load() {
+        val (folder, library) = resources()
+        val bytes = NativeLibrary::class.java.getResourceAsStream(folder + library)?.use { it.readBytes() } ?: throw unsupported()
+        val stamp = NativeLibrary::class.java.getResourceAsStream("$folder$LIBRARY_NAME.stamp")?.use { it.readBytes() }
             ?: throw IllegalStateException("The stamp of $LIBRARY_NAME is not in the resources: it is made by the build, with the library")
         fingerprint = sha256(stamp)
 
-        // The dylib has to be a real file to be loaded: it is extracted once, to a folder of the temporary directory named by its bytes (not by
+        // The library has to be a real file to be loaded: it is extracted once, to a folder of the temporary directory named by its bytes (not by
         // the fingerprint: another build of the same commit is another file), which every run (and every test) of the same library uses again.
         // macOS cleans its temporary directory of what is not used for days: it is then extracted again.
         val temporary = Path.of(System.getProperty("java.io.tmpdir"))
-        val file = extractLibrary(bytes, sha256(bytes), temporary, "$LIBRARY_NAME.$extension")
+        val file = extractLibrary(bytes, sha256(bytes), temporary, library)
         removeLeftoverExtractions(temporary)
 
         System.load(file.toAbsolutePath().toString())
-        logger.debug("Loaded libghostty-vt for {}-{} from {}", os, arch, file)
+        logger.debug("Loaded libghostty-vt from {}", file)
 
         installPngDecoder()
     }

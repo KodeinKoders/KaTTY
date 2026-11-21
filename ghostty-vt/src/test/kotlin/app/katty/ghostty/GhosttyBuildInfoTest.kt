@@ -16,17 +16,18 @@ class GhosttyBuildInfoTest {
     private fun sha256(bytes: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private fun resource(name: String) =
-        GhosttyBuildInfoTest::class.java.getResourceAsStream("/app/katty/ghostty/native/macos-aarch64/$name")!!.use { it.readBytes() }
+        GhosttyBuildInfoTest::class.java.getResourceAsStream(NativeLibrary.resources().first + name)!!.use { it.readBytes() }
 
     @Test
     fun theFingerprintIsOfWhatTheBuildSaysAndNotOfTheBytesOfTheLibrary() {
         val stamp = resource("libghostty-vt.stamp").toString(Charsets.UTF_8)
 
-        assertTrue(Regex("ghostty=[0-9a-f]{40}\n").containsMatchIn(stamp), "The commit of Ghostty: $stamp")
+        // The commit of the submodule, or a hash of its sources when it was built from a copy without git.
+        assertTrue(Regex("(ghostty=[0-9a-f]{40}|ghostty-sources=[0-9a-f]{64})\n").containsMatchIn(stamp), "What Ghostty was built from: $stamp")
         assertTrue(Regex("zig=\\d+\\.\\d+\\.\\d+\n").containsMatchIn(stamp), "The Zig that built it: $stamp")
         assertTrue("-Demit-lib-vt" in stamp, "What it was built with: $stamp")
         assertEquals(sha256(stamp.toByteArray()), GhosttyBuildInfo.fingerprint())
         // Two builds of the same commit are not the same file, and must have the same fingerprint.
-        assertTrue(GhosttyBuildInfo.fingerprint() != sha256(resource("libghostty-vt.dylib")))
+        assertTrue(GhosttyBuildInfo.fingerprint() != sha256(resource(NativeLibrary.resources().second)))
     }
 }
