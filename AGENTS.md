@@ -54,7 +54,7 @@ The ones that are easy to break:
 
 - Kotlin DSL only. No coordinate in a build script: dependencies and plugins come from `gradle/libs.versions.toml`, and project dependencies use typed accessors (`projects.terminalCompose`).
 - Every catalog plugin is also declared in the root `build.gradle.kts` with `apply false`. Catalog sections are sorted, with a blank line between domains, and each `[versions]` entry has a comment with its release page.
-- Every module sets `jvmToolchain(findProperty("jvm.toolchain")!!.toString().toInt())`. The version is in `gradle.properties`.
+- Every module sets `jvmToolchain { }` with the version of `gradle.properties` (`jvm.toolchain`) and **the JetBrains Runtime as its vendor**: the window needs it (Jewel's title bar), the application ships with it, and the tests run on it. On another JDK of the same version (Zulu, Temurin: what CI's `setup-java` installs, and the toolchain that a module took when it named no vendor) the JVM of `terminal`'s tests crashed on Windows, ARM64 and x64, inside the JVM while it loaded a class in a callback of libghostty during `ghostty_terminal_vt_write` (an access violation while it touched its stack 20 pages below its pointer, its shadow zone; reproduced in the VM with Zulu 25.0.5.1, not with the JetBrains Runtime): why was not found. libghostty probes its large stack frames (`__chkstk`) and only reads `x18`.
 - Repositories are declared in `settings.gradle.kts` only.
 - Every task that a build script registers has a `group` and a `description`, so that it is listed by `./gradlew tasks`. Tasks are registered with `tasks.register<Type>("name") { }`, not with the `by tasks.registering` delegate, which is deprecated.
 - A line that is not obvious in a build script gets a comment saying why.
