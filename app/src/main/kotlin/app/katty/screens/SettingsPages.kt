@@ -50,6 +50,8 @@ import app.katty.core.Agent
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
 import app.katty.core.EnvironmentListing
+import app.katty.core.environmentColor
+import app.katty.core.withEnvironmentColor
 import app.katty.core.Environments
 import app.katty.core.GitChangesDisplay
 import app.katty.core.LayoutMode
@@ -164,6 +166,8 @@ internal fun SettingsContent(
     val colors = Katty.colors
     // The theme whose color scheme is being chosen: `true` for the dark one.
     var picking by remember { mutableStateOf<Boolean?>(null) }
+    // The environment whose badges are being given a hex color.
+    var coloring by remember { mutableStateOf<String?>(null) }
     Box(modifier.fillMaxSize().background(colors.panel).semantics { contentDescription = "Settings" }) {
         Row(Modifier.fillMaxSize()) {
             PageList(page, onPage, onAbout)
@@ -180,7 +184,7 @@ internal fun SettingsContent(
                             SettingsPage.TERMINAL -> TerminalPage(settings, onChange)
                             SettingsPage.KEYBOARD -> KeyboardPage(settings, onChange)
                             SettingsPage.AGENTS -> AgentsPage(settings, onChange, agents)
-                            SettingsPage.ENVIRONMENTS -> EnvironmentsPage(settings, onChange, environments, environmentActions)
+                            SettingsPage.ENVIRONMENTS -> EnvironmentsPage(settings, onChange, environments, environmentActions, onCustomColor = { coloring = it })
                             SettingsPage.SHORTCUTS -> Unit
                         }
                     }
@@ -197,6 +201,14 @@ internal fun SettingsContent(
                     if (name != null) onChange { if (dark) it.copy(darkColorScheme = name) else it.copy(lightColorScheme = name) }
                 },
                 onClose = { picking = null },
+            )
+        }
+        coloring?.let { name ->
+            EnvironmentColorDialog(
+                name,
+                settings.environmentColor(name),
+                onChoose = { color -> onChange { it.withEnvironmentColor(name, color) }; coloring = null },
+                onClose = { coloring = null },
             )
         }
         // A question that what is done on a page asks (the default environment applied), over the whole window.
@@ -505,11 +517,20 @@ private fun AiAgentField(command: String, agents: List<Agent>, onChoose: (String
 }
 
 /**
- * The environments: the folders they are read from, in their order; the one that new projects are given; and the ones that were found, with their
- * files and, under a file that has lines that are not read, how many. Never a value, nor the text of a line: the files hold secrets.
+ * The environments: the folders they are read from, in their order; the one that new projects are given; and the ones that were found, with the
+ * color of their badges, their files and, under a file that has lines that are not read, how many. Never a value, nor the text of a line: the
+ * files hold secrets.
+ *
+ * @param onCustomColor Asks for the hex of the badges of an environment, by its name.
  */
 @Composable
-private fun EnvironmentsPage(settings: Settings, onChange: ((Settings) -> Settings) -> Unit, listing: EnvironmentListing, actions: EnvironmentActions) {
+private fun EnvironmentsPage(
+    settings: Settings,
+    onChange: ((Settings) -> Settings) -> Unit,
+    listing: EnvironmentListing,
+    actions: EnvironmentActions,
+    onCustomColor: (String) -> Unit,
+) {
     val colors = Katty.colors
     val latestActions by rememberUpdatedState(actions)
     // The files are not watched: they are read again when the page is shown.
@@ -551,10 +572,17 @@ private fun EnvironmentsPage(settings: Settings, onChange: ((Settings) -> Settin
     Section("FOUND") {
         if (listing.environments.isEmpty()) {
             Caption("None yet. A line such as CLAUDE_CONFIG_DIR=~/.claude-kodein in kodein.env gives the shells of its projects another Claude Code account.")
+        } else {
+            Caption("Click a badge to choose its color.")
         }
         for (environment in listing.environments) {
             Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 2.dp).semantics(mergeDescendants = true) {}) {
-                OneLine(environment.name, color = colors.text)
+                EnvironmentColorField(
+                    environment.name,
+                    settings.environmentColor(environment.name),
+                    onChoose = { color -> onChange { it.withEnvironmentColor(environment.name, color) } },
+                    onCustom = { onCustomColor(environment.name) },
+                )
                 for (file in environment.files) {
                     OneLine(homeAbbreviated(file.path.toString()), Modifier.padding(start = 12.dp), color = colors.muted, fontSize = 11.sp)
                     val problem = when {

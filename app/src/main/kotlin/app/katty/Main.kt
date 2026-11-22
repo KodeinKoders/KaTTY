@@ -1,6 +1,7 @@
 package app.katty
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +32,7 @@ import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionUsageTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.ui.KattyTheme
+import app.katty.ui.LocalEnvironmentColors
 import app.katty.ui.UiScale
 import app.katty.ui.rememberSystemDark
 import kotlinx.coroutines.CoroutineScope
@@ -165,19 +167,22 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     DisposableEffect(Unit) { takeAboutItem { aboutOpen = true }; onDispose { } }
     // The Settings item of the application menu of macOS opens the settings window, which the main window holds.
     DisposableEffect(Unit) { takeSettingsItem { bridge.openSettings?.invoke() }; onDispose { } }
+    // The colors of the badges of the environments are the settings', in every window: the main one, the board and the settings.
     KattyTheme(dark) {
-        DecoratedWindow(
-            onCloseRequest = { requestQuit {} },
-            title = "KaTTY",
-            icon = remember { AppIcon.painter() },
-            state = windowState,
-            onPreviewKeyEvent = windowKeys::handle,
-        ) {
-            UiScale(settings.effectiveUiScale) {
-                KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys, recent = recent)
+        CompositionLocalProvider(LocalEnvironmentColors provides settings.environmentColors) {
+            DecoratedWindow(
+                onCloseRequest = { requestQuit {} },
+                title = "KaTTY",
+                icon = remember { AppIcon.painter() },
+                state = windowState,
+                onPreviewKeyEvent = windowKeys::handle,
+            ) {
+                UiScale(settings.effectiveUiScale) {
+                    KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys, recent = recent)
+                }
             }
+            if (aboutOpen) AboutWindow(settings.effectiveUiScale, onClose = { aboutOpen = false })
+            if (boardWindow) BoardWindow(store, tracker, sessionUsage, registry, bridge, boardFocusTick, boardWindowFile, restoredAtLaunch, onClose = { boardWindow = false; restoredAtLaunch = false })
         }
-        if (aboutOpen) AboutWindow(settings.effectiveUiScale, onClose = { aboutOpen = false })
-        if (boardWindow) BoardWindow(store, tracker, sessionUsage, registry, bridge, boardFocusTick, boardWindowFile, restoredAtLaunch, onClose = { boardWindow = false; restoredAtLaunch = false })
     }
 }

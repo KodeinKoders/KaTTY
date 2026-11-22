@@ -3,6 +3,7 @@ package app.katty.ui
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import app.katty.core.BadgeTint
 
 /**
  * The colors of the design, light and dark: they are what the screens are drawn with, and the ones that Jewel does not have (the states
@@ -35,12 +36,19 @@ data class KattyColors(
     /** What is drawn on a filled state glyph. */
     val onStatus: Color,
     /**
-     * The colors of the badges of the environments, one for each name (see `environmentColor`): readable on the panel and the side, and none of
-     * them the red of [err], which says that an environment has no file.
+     * The colors of the badges of the environments, one for each [BadgeTint] in its order (see `environmentColor`): readable on the panel and the
+     * side, and none of them the red of [err], which says that an environment has no file.
      */
     val badges: List<Color>,
     val dark: Boolean,
 ) {
+    init {
+        require(badges.size == BadgeTint.entries.size) { "One badge color for each tint" }
+    }
+
+    /** The color of the badges in [tint]. */
+    fun badge(tint: BadgeTint): Color = badges[tint.ordinal]
+
     companion object {
         val Light = KattyColors(
             bg = Color(0xFFF2F3F5), panel = Color(0xFFFFFFFF), side = Color(0xFFF7F8FA), line = Color(0xFFDFE1E5),

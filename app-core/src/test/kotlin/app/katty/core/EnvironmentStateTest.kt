@@ -40,6 +40,7 @@ class EnvironmentStateTest {
         assertNull(loaded.projects.single().workspaces.single().environment)
         assertEquals(listOf("~/.config/KaTTY/environments"), loaded.settings.environmentDirectories)
         assertNull(loaded.settings.defaultEnvironment)
+        assertEquals(emptyMap(), loaded.settings.environmentColors)
     }
 
     @Test

@@ -157,6 +157,9 @@ public enum class MainView {
  * @param environmentDirectories The folders where the environments are looked for (see [Environments]), in the order their files are read in, with
  * `~` for the home folder.
  * @param defaultEnvironment The environment that a project is given when it is added, `null` for none.
+ * @param environmentColors The colors that the user gave the badges of environments, by their names, each kept as [EnvironmentColor.encoded]; an
+ * environment that is not in it has the one its name falls on. The color of an environment that is no longer found is kept: it comes back with
+ * its file.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -194,6 +197,7 @@ public data class Settings(
     val gitChanges: GitChangesDisplay = GitChangesDisplay.DOT,
     val environmentDirectories: List<String> = listOf(Environments.DEFAULT_DIRECTORY),
     val defaultEnvironment: String? = null,
+    val environmentColors: Map<String, String> = emptyMap(),
 ) {
     public companion object {
         public const val DEFAULT_LIGHT_COLOR_SCHEME: String = "Alabaster"

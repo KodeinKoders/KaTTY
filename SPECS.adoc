@@ -259,7 +259,7 @@ It is written to `state.json.tmp`, then moved over `state.json`.
 ** a file of a later version is moved to `state.json.version-<n>` and the state is empty;
 ** fields that the application does not know are ignored.
 * The application never writes over a file that it could not read.
-* Of the environments, the state only keeps names: the folders, the default one, and the one of each project and workspace; never a variable or a value.
+* Of the environments, the state only keeps names: the folders, the default one, the one of each project and workspace, and the color of the badges of each name; never a variable or a value.
 * The window is kept apart, in `window.json` of the same folder (never in `state.json`, which it would make change at every move):
 ** its position and size as a floating window, in dp, and its mode: floating, maximized or full screen; a window that is minimized is not kept;
 ** while the window is maximized or full screen the position and size that are kept are the floating ones from before, which it goes back to when it is restored;
@@ -684,7 +684,9 @@ Its default is the one of the first installed agent in the order of the README's
 * *Environments*, see <<environments>>:
 ** FOLDERS: the folders that the environments are read from, in their order (`~/.config/KaTTY/environments` by default), each with up, down, open (made first when it is not there) and remove; "Add folder…" adds one last, with the home written `~`; "Reset" puts the default back.
 ** DEFAULT ENVIRONMENT: a field with None and the environments that exist ("name (not found)" for one that has no file); while some projects have none, "N projects have no environment." and Apply, which gives it to them and asks about their workspaces as a change of a project's environment does, in the settings window.
-** FOUND: each environment with its files, and under a file that has lines that are not read "⚠ N lines ignored (line X)", X being the first of them, or "⚠ Cannot be read".
+** FOUND: each environment as its badge, with its files, and under a file that has lines that are not read "⚠ N lines ignored (line X)", X being the first of them, or "⚠ Cannot be read".
+A click on a badge opens its color: Auto (with the tint that its name falls on), — , Teal, Violet, Orange, Pink, Green, Blue, Olive, — , Custom… (with its hex when it has one), the current one checked, each with a square of its color.
+Custom… asks for a hex ("Color of “name”", a field `#RRGGBB` where the `#` and the case do not matter, the badge on the light and on the dark theme, Cancel and Apply, which only takes six hex digits).
 No value, no variable name and no text of a line is shown.
 The page reads the folders again when it opens.
 
@@ -759,7 +761,11 @@ The folders of the other agents are not followed.
 * A workspace has one when its environment is not its project's: its own, or "standard" (muted) when it has none.
 * A card of the board has the environment of its terminal's workspace ("standard" when it has none and its project has one).
 * They are in the sidebar, the tabs of the vertical layout, the title bar, the list of the rail and the cards of the board (both windows).
-* A badge is a small pill in a color made from the name (the same at every launch), red with a tooltip when the environment has no file.
+* A badge is a small pill in the color of its environment, red with a tooltip when the environment has no file, whatever its color.
+* The color of an environment is the one it was given in the settings (see <<settings>>), else a tint made from the name (the same at every launch).
+A tint of the palette has a light and a dark color; a hex is drawn as it is in both themes.
+* The settings keep the colors by the names of the environments: the color of one that is no longer found is kept, and comes back with its file; Auto takes it out.
+"standard" is always muted.
 * The list of the environments that exist is read when the application starts, when a window gets the focus, when a menu that lists them or the settings' page opens, and when the folders change.
 
 === Palette
