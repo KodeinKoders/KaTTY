@@ -23,6 +23,7 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
+import org.junit.Assume.assumeTrue
 
 class TerminalSessionTest {
     private val sessions = mutableListOf<TerminalSession>()
@@ -312,6 +313,10 @@ class TerminalSessionTest {
         // the entries are drawn, and the cursor goes back up to the line, in writes that are about half a
         // millisecond apart. A frame of the middle of it would show the cursor in the menu. It is done many
         // times, with pauses: whether the middle is caught is a matter of timing.
+        // It needs a machine where a pause of 1 ms lasts about that, under the 3 ms that the producer waits for: a CI's virtual machine
+        // may sleep several milliseconds for it, and a pause that long is the end of a redraw, which the producer is right to show.
+        val pauses = millisecondPauses()
+        assumeTrue("A pause of 1 ms lasted more than 2 ms in ${pauses.count { it > 2.0 }} of 40 (${pauses.sorted().takeLast(5)} ms): the program's writes are not that close here", pauses.count { it > 2.0 } <= 2)
         val script = """perl -e '${'$'}| = 1; print "prompt> ab"; for (1..40) { select(undef, undef, undef, 0.025); """ +
             """print "\r\n"; select(undef, undef, undef, 0.001); print "\e[A\e[11C"; } print "done"; select(undef, undef, undef, 30)'"""
         val session = start(script)
@@ -327,7 +332,18 @@ class TerminalSessionTest {
         // Without waiting for the output to pause, about a quarter of the redraws are caught in the middle. The
         // two that are allowed are for the program being preempted for longer than the wait, on a busy machine.
         val inTheMiddle = seen.count { it.cursor.y == 1 }
-        assertTrue(inTheMiddle <= 2, "The cursor was shown in the middle of the redraw in $inTheMiddle of the 40 redraws")
+        assertTrue(inTheMiddle <= 2, "The cursor was shown in the middle of the redraw in $inTheMiddle of the 40 redraws (the longest pauses of 1 ms: ${pauses.sorted().takeLast(5)} ms)")
+    }
+
+    // How long 40 pauses of 1 ms take in perl, as the redraw above makes them, in milliseconds.
+    private fun millisecondPauses(): List<Double> {
+        val process = ProcessBuilder(
+            "perl", "-MTime::HiRes=time", "-e",
+            "for (1..40) { my \$t = time; select(undef, undef, undef, 0.001); printf \"%.3f\\n\", (time - \$t) * 1000 }",
+        ).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        check(process.waitFor() == 0) { "perl failed: $output" }
+        return output.lines().filter { it.isNotBlank() }.map { it.toDouble() }
     }
 
     @Test
