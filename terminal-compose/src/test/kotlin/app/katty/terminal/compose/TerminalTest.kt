@@ -318,16 +318,16 @@ class TerminalTest {
         val middle = (typography!!.cellWidth / 2).toInt() to (typography!!.cellHeight / 2).toInt()
         val edge = 0 to (typography!!.cellHeight / 2).toInt()
 
-        // Longer than two periods of a blinking cursor: it is the same at every moment.
+        // Longer than two periods of a blinking cursor, which is timed in real time: it is the same at every moment. And a dozen looks at least,
+        // however long they take: a machine that draws slowly (a CI's, with no GPU) took fewer than that in the time.
         val deadline = System.nanoTime() + 1_300_000_000L
         var samples = 0
-        while (System.nanoTime() < deadline) {
+        while (System.nanoTime() < deadline || samples < 12) {
             assertEquals(background, scene.cursorCell(middle.first, middle.second), "The cursor is not filled")
             assertEquals(cursor, scene.cursorCell(edge.first, edge.second), "Its outline is always drawn")
             samples++
             Thread.sleep(40)
         }
-        assertTrue(samples > 10)
     }
 
     @Test
