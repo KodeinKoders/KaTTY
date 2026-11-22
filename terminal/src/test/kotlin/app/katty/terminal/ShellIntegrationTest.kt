@@ -22,7 +22,6 @@ class ShellIntegrationTest {
         sessions.forEach { it.close() }
     }
 
-    // A home with nothing in it but an empty .zshrc, which spares zsh its first-run questions: the user's own files are not read.
     // A home whose shells have a prompt that starts with an empty line, as some themes' do (the shells do not take PS1 from the environment).
     private fun homeWithAPromptThatStartsWithAnEmptyLine(): Path = Files.createTempDirectory("katty-home").also {
         Files.writeString(it.resolve(".zshrc"), "PROMPT=$'\\n$ '\n")
@@ -30,6 +29,16 @@ class ShellIntegrationTest {
         it.toFile().deleteOnExit()
     }
 
+    // A home whose shells have a short prompt, for a test that types on the command line: the default ones have the machine's name and the
+    // directory's (`me@host katty-start1234… %`), which made a typed line wrap at 80 columns on a machine with a long name, depending on the
+    // random digits of the directory.
+    private fun homeWithAShortPrompt(): Path = Files.createTempDirectory("katty-home").also {
+        Files.writeString(it.resolve(".zshrc"), "PROMPT='%% '\n")
+        Files.writeString(it.resolve(".bash_profile"), "PS1='\$ '\n")
+        it.toFile().deleteOnExit()
+    }
+
+    // A home with nothing in it but an empty .zshrc, which spares zsh its first-run questions: the user's own files are not read.
     private fun emptyHome(): Path = Files.createTempDirectory("katty-home").also {
         Files.createFile(it.resolve(".zshrc"))
         it.toFile().deleteOnExit()
@@ -60,7 +69,7 @@ class ShellIntegrationTest {
     private fun await(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000
         while (!condition()) {
-            check(System.nanoTime() < deadline) { "Still waiting for $what" }
+            check(System.nanoTime() < deadline) { "Still waiting for $what. The screen:\n${sessions.lastOrNull()?.screen()}" }
             Thread.sleep(10)
         }
     }
@@ -213,7 +222,7 @@ class ShellIntegrationTest {
 
     private fun movesTheCursorOfTheCommandLine(shell: String, typed: String = "echo hello") {
         val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
-        val session = start(shell, emptyHome(), directory)
+        val session = start(shell, homeWithAShortPrompt(), directory)
         await("the first prompt") { session.workingDirectory.value != null }
         // The prompt is still being drawn at first, so the frame is where the cursor was: asked where it is, nothing is sent.
         await("the cursor to be where the frame has it") {
@@ -247,7 +256,7 @@ class ShellIntegrationTest {
     @Test
     fun zshMovesTheCursorOfTheCommandLineToAClick() = movesTheCursorOfTheCommandLine("/bin/zsh")
 
-    // A wide character is two cells and one press of an arrow. The line is short enough not to wrap after a prompt as long as the host's name.
+    // A wide character is two cells and one press of an arrow.
     @Test
     fun zshMovesTheCursorOverWideCharacters() = movesTheCursorOfTheCommandLine("/bin/zsh", "echo 中 hello")
 
@@ -556,7 +565,7 @@ class ShellIntegrationTest {
     @Test
     fun clearingTheScreenAtThePromptDrawsThePromptAndWhatWasTypedAgainAtTheTop() {
         val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
-        val session = start("/bin/zsh", emptyHome(), directory)
+        val session = start("/bin/zsh", homeWithAShortPrompt(), directory)
         await("the first prompt") { session.workingDirectory.value != null }
         val events = session.collectEvents()
         session.sendText("printf 'one\\ntwo\\n'\r")
