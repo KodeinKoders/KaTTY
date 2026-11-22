@@ -37,22 +37,39 @@ internal fun shellEscaped(path: String): String = buildString(path.length) {
     }
 }
 
+// What PowerShell reads as part of a word, a path's backslashes and drive's colon included: not a space, a quote, `$`, a backtick (its escape),
+// `@`, `,`, `;`, `&`, a bracket…, as `TypedCommand` of `terminal` quotes for it.
+private val POWERSHELL_BARE = Regex("[A-Za-z0-9_+:./\\\\-]+")
+
+// The quotes of PowerShell: the typographic ones are quotes too, and are doubled as the plain one is.
+private const val POWERSHELL_QUOTES = "'\u2018\u2019\u201A\u201B"
+
+/**
+ * [path] for the command line of PowerShell, the shell of a terminal on Windows: as it is when it has nothing that PowerShell reads otherwise,
+ * else in single quotes, which PowerShell reads as they are (no `$` expanded), with its quotes doubled. A backslash is no escape there, and a path
+ * of Windows is made of them: escaping as [shellEscaped] does doubled them.
+ */
+internal fun powerShellQuoted(path: String): String = when {
+    POWERSHELL_BARE.matches(path) -> path
+    else -> "'" + path.fold(StringBuilder()) { quoted, char -> quoted.append(char).also { if (char in POWERSHELL_QUOTES) it.append(char) } } + "'"
+}
+
 /** Whether [this] is something that [droppedText] makes a text of: files, or text. */
 internal fun Transferable.isDroppable(): Boolean =
     isDataFlavorSupported(DataFlavor.javaFileListFlavor) || isDataFlavorSupported(DataFlavor.stringFlavor)
 
 /**
- * What a drop of [this] on a terminal pastes: the paths of files ([shellEscaped], separated by a space, as Ghostty does), or a text as it is;
- * `null` for anything else (an image that is no file), or when it cannot be read.
+ * What a drop of [this] on a terminal pastes: the paths of files ([shellEscaped], or [powerShellQuoted] on [windows], separated by a space, as
+ * Ghostty does), or a text as it is; `null` for anything else (an image that is no file), or when it cannot be read.
  *
- * A path with a control character (a line break in a file's name) is left out: a backslash cannot write it safely, and it would end the line.
+ * A path with a control character (a line break in a file's name) is left out: it cannot be written safely, and it would end the line.
  */
-internal fun Transferable.droppedText(): String? = try {
+internal fun Transferable.droppedText(windows: Boolean = isWindows): String? = try {
     when {
         isDataFlavorSupported(DataFlavor.javaFileListFlavor) -> {
             val files = (getTransferData(DataFlavor.javaFileListFlavor) as? List<*>).orEmpty().filterIsInstance<File>()
             files.map { it.absolutePath }.filter { path -> path.none { it.isISOControl() } }.takeIf { it.isNotEmpty() }
-                ?.joinToString(" ", transform = ::shellEscaped)
+                ?.joinToString(" ", transform = if (windows) ::powerShellQuoted else ::shellEscaped)
         }
         isDataFlavorSupported(DataFlavor.stringFlavor) -> (getTransferData(DataFlavor.stringFlavor) as? String)?.takeIf { it.isNotEmpty() }
         else -> null
