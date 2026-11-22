@@ -34,3 +34,13 @@ jobs:
       - name: Build
         run: ./gradlew --stacktrace --scan build
         shell: bash
+      # The log only names the tests that fail: their messages, and the screens that the tests print, are in the reports.
+      - name: Upload the test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          retention-days: 7

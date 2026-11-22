@@ -54,7 +54,7 @@ class AgentTrackerTest {
     private fun await(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 15_000_000_000
         while (!condition() && System.nanoTime() < deadline) Thread.sleep(20)
-        assertTrue(condition(), what)
+        assertTrue(condition(), "$what. The tracker has ${tracker.infos.value}, the terminals run ${registry.processNames.value}")
     }
 
     @Test

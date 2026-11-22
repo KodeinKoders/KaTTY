@@ -22,7 +22,6 @@ class ShellIntegrationTest {
         sessions.forEach { it.close() }
     }
 
-    // A home with nothing in it but an empty .zshrc, which spares zsh its first-run questions: the user's own files are not read.
     // A home whose shells have a prompt that starts with an empty line, as some themes' do (the shells do not take PS1 from the environment).
     private fun homeWithAPromptThatStartsWithAnEmptyLine(): Path = Files.createTempDirectory("katty-home").also {
         Files.writeString(it.resolve(".zshrc"), "PROMPT=$'\\n$ '\n")
@@ -30,8 +29,12 @@ class ShellIntegrationTest {
         it.toFile().deleteOnExit()
     }
 
+    // A home whose shells have a short prompt, whatever the machine: macOS's /etc/zshrc and /etc/bashrc put the user, the host and the
+    // directory in it, which on a machine with a long name made the line that a test types wrap (the shells do not take PS1 from the
+    // environment). Having a .zshrc also spares zsh its first-run questions; the user's own files are not read.
     private fun emptyHome(): Path = Files.createTempDirectory("katty-home").also {
-        Files.createFile(it.resolve(".zshrc"))
+        Files.writeString(it.resolve(".zshrc"), "PROMPT='%# '\n")
+        Files.writeString(it.resolve(".bash_profile"), "PS1='$ '\n")
         it.toFile().deleteOnExit()
     }
 
@@ -39,7 +42,7 @@ class ShellIntegrationTest {
         TerminalSession.start(
             80, 10,
             command = listOf(shell, "-l"),
-            environment = mapOf("HOME" to home.toString(), "BASH_SILENCE_DEPRECATION_WARNING" to "1", "PS1" to "$ "),
+            environment = mapOf("HOME" to home.toString(), "BASH_SILENCE_DEPRECATION_WARNING" to "1"),
             directory = directory.toString(),
             shellIntegration = shellIntegration,
             shellIntegrationDirectory = scripts,
@@ -60,7 +63,7 @@ class ShellIntegrationTest {
     private fun await(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000
         while (!condition()) {
-            check(System.nanoTime() < deadline) { "Still waiting for $what" }
+            check(System.nanoTime() < deadline) { "Still waiting for $what. The screens:\n${sessions.joinToString("\n----\n") { it.screen() }}" }
             Thread.sleep(10)
         }
     }
