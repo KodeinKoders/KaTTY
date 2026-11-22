@@ -494,7 +494,18 @@ scripts/install.sh                      # or `--dest /Applications`
 It replaces the application that is there, and refuses to while that one is running.
 A bundle that you built yourself is not quarantined, so macOS does not ask anything when it opens.
 
-Each terminal starts your login shell (`$SHELL -l`).
+On Windows 11 (ARM64 or x64), Zig brings what it links with, so nothing but Git is needed to build, and Gradle makes an installer:
+
+[source,powershell]
+----
+.\gradlew.bat :app:packageMsi        # the installer, in app\build\compose\binaries\main\msi
+----
+
+It installs KaTTY for you alone, in `%LOCALAPPDATA%\KaTTY`, without administrator rights, and adds it to the Start menu; the installer of a later version replaces it.
+It is not signed, so Windows may warn you before you run it.
+On Windows, each terminal starts PowerShell (`pwsh` when it is installed, else Windows PowerShell), and your projects, workspaces and settings are kept in `%APPDATA%\KaTTY`.
+
+On macOS, each terminal starts your login shell (`$SHELL -l`).
 Your projects, workspaces and settings are kept in `~/Library/Application Support/KaTTY`.
 To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`.
 

@@ -34,3 +34,41 @@ jobs:
       - name: Build
         run: ./gradlew --stacktrace --scan build
         shell: bash
+
+  # Windows, on both processors that KaTTY is built for: each machine builds libghostty-vt and the installer for its own processor, since jpackage
+  # only packages for the system that runs it, and the tests run there. The installer is kept as an artifact of the run.
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ windows-latest, windows-11-arm ]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+          # The whole history: the patch number of the version counts the commits, and an installer only replaces one of a lower version.
+          fetch-depth: 0
+      - name: Set up JDK Temurin 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Build
+        run: ./gradlew --stacktrace --scan build :app:packageMsi
+        shell: bash
+      - name: Keep the installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: KaTTY-${{ matrix.runner }}
+          path: app/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error
+      - name: Keep the test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-${{ matrix.runner }}
+          path: '**/build/reports/tests/'

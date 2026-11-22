@@ -111,8 +111,10 @@ tasks.processResources {
     from(appIcon) { into("app/katty") }
 }
 
-// The icon of the application that is packaged (the bundle and its disk image) is made from the same icon, with the tools of macOS: the only
-// platform that the application is packaged for.
+// The system that builds, which is the one the application is packaged for: jpackage only makes the packages of the system it runs on.
+val buildsOnWindows = System.getProperty("os.name").startsWith("Windows")
+
+// The icon of the application that is packaged on macOS (the bundle and its disk image) is made from the same icon, with the tools of macOS.
 val macIcon = tasks.register<Exec>("macIcon") {
     group = "build"
     description = "Makes the macOS icon (KaTTY.icns) of the packaged application from the icon of the application."
@@ -123,8 +125,27 @@ val macIcon = tasks.register<Exec>("macIcon") {
     commandLine("sh", "make-icns.sh", appIconFile.get().asFile.absolutePath, icns.get().asFile.absolutePath)
 }
 
+// The icon of the application that is packaged on Windows (its executable, its installer, its Start menu entry) is the logo as it is, on a transparent
+// background, as the icons of Windows are: the rounded square is the shape of macOS.
+val windowsIcon = tasks.register<Exec>("windowsIcon") {
+    group = "build"
+    description = "Makes the Windows icon (KaTTY.ico) of the packaged application from the logo."
+    val logo = rootProject.file("logo.png")
+    val ico = layout.buildDirectory.file("icons/KaTTY.ico")
+    inputs.file(logo)
+    inputs.file("make-ico.java")
+    outputs.file(ico)
+    // In a Java process of its own, without a screen, as `appIcon`.
+    val java = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(jvmToolchainVersion)
+        vendor = JvmVendorSpec.JETBRAINS
+    }.get().executablePath.asFile.absolutePath
+    commandLine(java, "-Djava.awt.headless=true", "make-ico.java", logo.absolutePath, ico.get().asFile.absolutePath)
+}
+
+// Each system's icon only: the one of macOS is made with its own tools, which Windows does not have.
 tasks.withType<AbstractJPackageTask>().configureEach {
-    dependsOn(macIcon)
+    dependsOn(if (buildsOnWindows) windowsIcon else macIcon)
 }
 
 // What macOS shows when a program that runs in a terminal asks for what it protects: it asks on behalf of KaTTY, and refuses without asking when
@@ -298,10 +319,12 @@ compose {
         jvmArgs += "--enable-native-access=ALL-UNNAMED"
 
         nativeDistributions {
-            // The disk image is for macOS on Apple Silicon, the only platform libghostty-vt is built for.
-            targetFormats(TargetFormat.Dmg)
+            // A disk image on macOS and an installer on Windows: each is made on its own system (`packageDistributionForCurrentOS`), for the
+            // processor that builds, which is the one libghostty-vt is built for.
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "KaTTY"
-            // The project's: macOS does not accept a version whose first number is 0.
+            // The project's: macOS does not accept a version whose first number is 0, and an installer of Windows one whose numbers are over
+            // 255, 255 and 65535.
             packageVersion = project.version.toString()
             description = "A terminal manager for coding agents"
             vendor = "Kodein Koders"
@@ -310,6 +333,17 @@ compose {
             // Added to the modules that Compose puts in the runtime of the bundle (java.desktop and what it needs): the git status of the
             // terminals watches their working trees with all their folders, `ExtendedWatchEventModifier.FILE_TREE`, which is in jdk.unsupported.
             modules("jdk.unsupported")
+
+            windows {
+                // For the user who installs it, in their profile: no administrator is needed, and KaTTY keeps its files in theirs anyway.
+                perUserInstall = true
+                // An entry in the Start menu, with the name of the application and in no folder of its own.
+                menu = true
+                menuGroup = ""
+                // What tells Windows that an installer of a later version is the same application, which it replaces: never change it.
+                upgradeUuid = "3d7e1ec7-2d56-42a7-84d8-f6c04d427bb0"
+                iconFile.set(layout.buildDirectory.file("icons/KaTTY.ico"))
+            }
 
             macOS {
                 bundleID = "app.katty"
