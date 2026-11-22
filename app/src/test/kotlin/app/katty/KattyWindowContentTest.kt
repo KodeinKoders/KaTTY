@@ -304,7 +304,9 @@ class KattyWindowContentTest {
         waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Command").fetchSemanticsNodes().isNotEmpty() }
         assertEquals("echo made-by-katty", commandText())
         val prompt = Files.readString(asked)
-        assertTrue("say hello" in prompt && "zsh shell" in prompt && directories.support.toString() in prompt, prompt)
+        // The shell is the user's, which the terminal takes from $SHELL.
+        val shell = registry.handles.value.values.single().shellName
+        assertTrue("say hello" in prompt && "$shell shell" in prompt && directories.support.toString() in prompt, prompt)
 
         // The user changes it before it is typed.
         onNodeWithContentDescription("Command").performTextReplacement("echo edited-by-katty")

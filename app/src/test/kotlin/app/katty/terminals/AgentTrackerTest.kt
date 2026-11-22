@@ -51,6 +51,12 @@ class AgentTrackerTest {
         return store.state.value.selection.terminal!!
     }
 
+    // Until the poll (every half second) has seen the program that has the terminal, the terminal is taken to be at its shell, and what it
+    // reported is not remembered as a program at rest when it is seen: a user sees it once the program is known, and so must a test, on a
+    // machine slow enough for the report to come before the first poll.
+    private fun awaitTheProgram(id: app.katty.core.TerminalId) =
+        await("the program is known") { registry.processNames.value[id].let { it != null && it != registry.handles.value.getValue(id).shellName } }
+
     private fun await(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 15_000_000_000
         while (!condition() && System.nanoTime() < deadline) Thread.sleep(20)
@@ -136,6 +142,7 @@ class AgentTrackerTest {
         val id = start()
         await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
 
+        awaitTheProgram(id)
         tracker.markSeen(id)
 
         await("at rest") { tracker.infos.value[id]?.state == AgentState.IDLE }
@@ -150,6 +157,7 @@ class AgentTrackerTest {
         val id = start()
         await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
 
+        awaitTheProgram(id)
         tracker.markSeen(id)
 
         await("at rest, still reporting") { tracker.infos.value[id]?.let { it.state == AgentState.IDLE && it.report.reporting } == true }
@@ -163,6 +171,7 @@ class AgentTrackerTest {
         val id = start()
         await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
 
+        awaitTheProgram(id)
         tracker.markSeen(id)
 
         await("at rest, still reporting") { tracker.infos.value[id]?.let { it.state == AgentState.IDLE && it.report.reporting } == true }
@@ -177,10 +186,8 @@ class AgentTrackerTest {
         scripts += "${report("state=done", "app=claude-code")}; head -n 1 >/dev/null; exec $shell -f -i"
         val id = start()
         await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
-        // Seen once the program that has the terminal is known (the poll is every half second), as a user sees it: until then the terminal is
-        // taken to be at its shell, and what it reported meanwhile is not remembered as a program at rest.
         // (`sh -c` has no job control: its group, and the name that the terminal has, is its own, not `head`'s.)
-        await("the program is known") { registry.processNames.value[id].let { it != null && it != registry.handles.value.getValue(id).shellName } }
+        awaitTheProgram(id)
         tracker.markSeen(id)
         await("at rest, still the agent") { tracker.infos.value[id]?.let { it.state == AgentState.IDLE && it.report.app == "claude-code" } == true }
 
