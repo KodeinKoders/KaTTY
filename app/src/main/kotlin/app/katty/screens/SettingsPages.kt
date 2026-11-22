@@ -1,5 +1,6 @@
 package app.katty.screens
 
+import app.katty.core.isMacOs
 import app.katty.core.isWindows
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -103,6 +104,12 @@ enum class SettingsPage(val title: String) {
 }
 
 /**
+ * The pages that the settings window lists on the system it runs on: the Keyboard page only has what macOS has (its Option keys as Alt, its secure
+ * keyboard entry), so it is only on macOS.
+ */
+internal fun settingsPages(macOs: Boolean): List<SettingsPage> = SettingsPage.entries.filter { macOs || it != SettingsPage.KEYBOARD }
+
+/**
  * What the AI command setting is for what is typed in its field: `null`, the default, for the default itself, so that a default that changes
  * (another agent installed) is followed; `""`, the AI turned off, for an empty field while there is a default (with none, `null` already asks
  * nothing, and an agent installed later is offered).
@@ -126,6 +133,7 @@ internal fun aiCommandSetting(text: String, default: String?): String? {
  * @param fontFamilies The monospaced families of the system, which may still be being listed.
  * @param shortcuts The shortcuts as they are bound, changed through [onShortcuts].
  * @param agents The agents that are installed: the AI command can be the one of any of them, and is the one of the first while the setting is `null`.
+ * @param macOs Whether it runs on macOS, which has the settings of the Keyboard page ([settingsPages]): a page that is not listed shows Appearance.
  */
 @Composable
 internal fun SettingsContent(
@@ -140,13 +148,16 @@ internal fun SettingsContent(
     agents: Set<Agent>,
     onAbout: () -> Unit,
     modifier: Modifier = Modifier,
+    macOs: Boolean = isMacOs,
 ) {
     val colors = Katty.colors
+    val pages = settingsPages(macOs)
+    val page = if (page in pages) page else SettingsPage.APPEARANCE
     // The theme whose color scheme is being chosen: `true` for the dark one.
     var picking by remember { mutableStateOf<Boolean?>(null) }
     Box(modifier.fillMaxSize().background(colors.panel).semantics { contentDescription = "Settings" }) {
         Row(Modifier.fillMaxSize()) {
-            PageList(page, onPage, onAbout)
+            PageList(pages, page, onPage, onAbout)
             Box(Modifier.width(1.dp).fillMaxHeight().background(colors.line))
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when (page) {
@@ -183,16 +194,15 @@ internal fun SettingsContent(
 
 /** The list of the pages: a click, or the arrows while it has the focus, shows one. */
 @Composable
-private fun PageList(page: SettingsPage, onPage: (SettingsPage) -> Unit, onAbout: () -> Unit) {
+private fun PageList(pages: List<SettingsPage>, page: SettingsPage, onPage: (SettingsPage) -> Unit, onAbout: () -> Unit) {
     val colors = Katty.colors
-    val pages = SettingsPage.entries
     Column(
         Modifier.width(PAGE_LIST_WIDTH * uiScaleFactor()).fillMaxHeight().background(colors.side).padding(8.dp)
             .semantics { contentDescription = "Settings pages" }
             .onKeyEvent { event ->
                 when (event.listKey()) {
-                    ListKey.DOWN -> { onPage(pages[page.ordinal.stepped(1, pages.size)]); true }
-                    ListKey.UP -> { onPage(pages[page.ordinal.stepped(-1, pages.size)]); true }
+                    ListKey.DOWN -> { onPage(pages[pages.indexOf(page).stepped(1, pages.size)]); true }
+                    ListKey.UP -> { onPage(pages[pages.indexOf(page).stepped(-1, pages.size)]); true }
                     else -> false
                 }
             }
@@ -395,7 +405,7 @@ private fun KeyboardPage(settings: Settings, onChange: ((Settings) -> Settings) 
 private fun AgentsPage(settings: Settings, onChange: ((Settings) -> Settings) -> Unit, agents: Set<Agent>) {
     Section("ATTENTION") {
         CheckSetting("Sound when an agent needs you", settings.attentionSound, { value -> onChange { it.copy(attentionSound = value) } }, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-        Caption("Plays the alert sound of macOS when an agent that you are not looking at waits for you or fails.")
+        Caption("Plays the alert sound of the system when an agent that you are not looking at waits for you or fails.")
     }
     Separator()
     Section("AGENT USAGE") {

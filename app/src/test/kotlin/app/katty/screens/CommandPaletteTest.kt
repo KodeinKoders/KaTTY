@@ -225,7 +225,9 @@ class CommandPaletteTest {
         editShortcuts = { calls += "editShortcuts" }, selectProject = { calls += "selectProject ${it.value}" }, moveTerminalTo = { calls += "move ${it.value}" },
     )
 
-    private fun commands(infos: Map<TerminalId, AgentInfo> = emptyMap()) = paletteCommands(state, infos, titleOf = { it.name ?: "zsh" }, handlers = handlers)
+    // A Mac's commands, whatever the system that runs the tests: the Option keys and the secure keyboard entry are only on macOS.
+    private fun commands(infos: Map<TerminalId, AgentInfo> = emptyMap(), macOs: Boolean = true) =
+        paletteCommands(state, infos, titleOf = { it.name ?: "zsh" }, handlers = handlers, macOs = macOs)
 
     @Test
     fun withNothingOpenOnlyTheCommandsThatDoNotNeedOneAreThere() {
@@ -472,6 +474,16 @@ class CommandPaletteTest {
         store.updateSettings { it.copy(attentionSound = false) }
 
         assertTrue("Turn the sound when an agent needs you on" in labels())
+    }
+
+    @Test
+    fun offMacOsTheOptionKeysAndTheSecureEntryHaveNoCommands() {
+        assertTrue(commands().entries.any { it.label == "Secure keyboard entry: always" })
+
+        val labels = commands(macOs = false).entries.map { it.label }
+
+        assertFalse(labels.any { it.startsWith("Option key") || it.startsWith("Secure keyboard entry") }, labels.toString())
+        assertTrue("Bell: sound" in labels)
     }
 
     @Test

@@ -251,7 +251,8 @@ class WindowControllerTest {
 
     @Test
     fun thePaletteSetsWhenTheKeysAreKeptFromTheOtherApplications() {
-        val commands = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = controller.paletteHandlers())
+        // The secure keyboard entry is macOS's, which the palette is told it runs on.
+        val commands = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = controller.paletteHandlers(), macOs = true)
         val entry = commands.entries.single { it.label == "Secure keyboard entry: always" }
 
         commands.run(entry)

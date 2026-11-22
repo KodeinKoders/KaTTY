@@ -24,6 +24,7 @@ import app.katty.core.ScrollbackSize
 import app.katty.core.SecureInput
 import app.katty.core.ThemeMode
 import app.katty.core.WorkspaceId
+import app.katty.core.isMacOs
 import app.katty.core.terminals
 
 /** What the palette knows of the run terminal of the selected workspace: whether it is [shown] over the panes, and whether its command has [ended]. */
@@ -219,6 +220,7 @@ fun paletteCommands(
     presenting: Boolean = false,
     teaching: Boolean = false,
     home: String = System.getProperty("user.home"),
+    macOs: Boolean = isMacOs,
 ): PaletteCommands {
     val entries = ArrayList<PaletteEntry>()
     val actions = HashMap<String, () -> Unit>()
@@ -380,10 +382,13 @@ fun paletteCommands(
     command("cursor-bar", "Cursor: bar") { handlers.setCursorShape(CursorShape.BAR) }
     command("cursor-underline", "Cursor: underline") { handlers.setCursorShape(CursorShape.UNDERLINE) }
     command("cursor-blink", if (state.settings.cursorBlink) "Turn cursor blinking off" else "Turn cursor blinking on", action = handlers.toggleCursorBlink)
-    command("option-characters", "Option key: types characters") { handlers.setOptionKey(OptionKey.CHARACTERS) }
-    command("option-left", "Option key: left Option is Alt") { handlers.setOptionKey(OptionKey.LEFT_IS_ALT) }
-    command("option-right", "Option key: right Option is Alt") { handlers.setOptionKey(OptionKey.RIGHT_IS_ALT) }
-    command("option-both", "Option key: both Option keys are Alt") { handlers.setOptionKey(OptionKey.BOTH_ARE_ALT) }
+    // The Option keys and the secure keyboard entry are macOS's: elsewhere they would do nothing.
+    if (macOs) {
+        command("option-characters", "Option key: types characters") { handlers.setOptionKey(OptionKey.CHARACTERS) }
+        command("option-left", "Option key: left Option is Alt") { handlers.setOptionKey(OptionKey.LEFT_IS_ALT) }
+        command("option-right", "Option key: right Option is Alt") { handlers.setOptionKey(OptionKey.RIGHT_IS_ALT) }
+        command("option-both", "Option key: both Option keys are Alt") { handlers.setOptionKey(OptionKey.BOTH_ARE_ALT) }
+    }
     command("bell-off", "Bell: off") { handlers.setBell(BellMode.OFF) }
     command("bell-visual", "Bell: visual") { handlers.setBell(BellMode.VISUAL) }
     command("bell-sound", "Bell: sound") { handlers.setBell(BellMode.SOUND) }
@@ -411,8 +416,10 @@ fun paletteCommands(
         if (state.settings.restoreContents) "Turn restoring terminal contents off" else "Turn restoring terminal contents on",
         action = handlers.toggleRestoreContents,
     )
-    command("secure-never", "Secure keyboard entry: never") { handlers.setSecureInput(SecureInput.NEVER) }
-    command("secure-passwords", "Secure keyboard entry: at password prompts") { handlers.setSecureInput(SecureInput.PASSWORD_PROMPTS) }
-    command("secure-always", "Secure keyboard entry: always") { handlers.setSecureInput(SecureInput.ALWAYS) }
+    if (macOs) {
+        command("secure-never", "Secure keyboard entry: never") { handlers.setSecureInput(SecureInput.NEVER) }
+        command("secure-passwords", "Secure keyboard entry: at password prompts") { handlers.setSecureInput(SecureInput.PASSWORD_PROMPTS) }
+        command("secure-always", "Secure keyboard entry: always") { handlers.setSecureInput(SecureInput.ALWAYS) }
+    }
     return PaletteCommands(entries, actions)
 }

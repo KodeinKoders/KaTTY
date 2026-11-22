@@ -69,6 +69,8 @@ class SettingsPagesTest {
     private var shortcuts by mutableStateOf(MAC_SHORTCUTS)
     private var abouts = 0
     private var agents by mutableStateOf(setOf(Agent.CLAUDE, Agent.CODEX))
+    // A Mac's settings, whatever the system that runs the tests: the Keyboard page is only on macOS.
+    private var macOs = true
 
     private fun ComposeUiTest.show(families: List<String> = listOf("Menlo", "Monaco")) {
         setContent {
@@ -84,6 +86,7 @@ class SettingsPagesTest {
                     onShortcuts = { shortcuts = it },
                     agents = agents,
                     onAbout = { abouts++ },
+                    macOs = macOs,
                 )
             }
         }
@@ -320,6 +323,24 @@ class SettingsPagesTest {
         assertEquals(OptionKey.BOTH_ARE_ALT, settings.optionKey)
         clickOn("Passwords")
         assertEquals(SecureInput.PASSWORD_PROMPTS, settings.secureInput)
+    }
+
+    @Test
+    fun offMacOsThereIsNoKeyboardPage() = runComposeUiTest {
+        macOs = false
+        show()
+        assertEquals(0, onAllNodesWithText(SettingsPage.KEYBOARD.title).fetchSemanticsNodes().size, "Its Option keys and its secure entry are macOS's")
+
+        goTo(SettingsPage.TERMINAL)
+        onNodeWithContentDescription("Settings pages").requestFocus()
+        onNodeWithContentDescription("Settings pages").performKeyInput { pressKey(Key.DirectionDown) }
+        waitForIdle()
+        assertEquals(SettingsPage.SHORTCUTS, page, "The arrows go over it")
+
+        page = SettingsPage.KEYBOARD
+        waitForIdle()
+        assertEquals(0, onAllNodesWithText("OPTION AS ALT").fetchSemanticsNodes().size)
+        onNodeWithText("LAYOUT").assertExists()
     }
 
     @Test
