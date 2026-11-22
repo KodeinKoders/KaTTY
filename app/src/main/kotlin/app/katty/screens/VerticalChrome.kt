@@ -59,6 +59,10 @@ import app.katty.core.Workspace
 import app.katty.core.WorkspaceId
 import app.katty.core.counts
 import app.katty.core.strip
+import app.katty.core.EnvironmentBadge
+import app.katty.core.environmentBadge
+import app.katty.ui.EnvironmentPill
+import androidx.compose.runtime.LaunchedEffect
 import app.katty.ui.GlyphSize
 import app.katty.ui.InlineRename
 import app.katty.ui.Katty
@@ -95,6 +99,7 @@ fun ProjectTabs(
     ides: List<Ide> = emptyList(),
     onOpenIn: (ProjectId, Ide) -> Unit = { _, _ -> },
     states: AgentStates = NoAgentStates,
+    environments: EnvironmentControls? = null,
 ) {
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
@@ -115,6 +120,9 @@ fun ProjectTabs(
                     onReveal = { onReveal(project.id) },
                     ides = ides,
                     onOpenIn = { onOpenIn(project.id, it) },
+                    environment = environments?.menuOf(project),
+                    badge = environments?.let { project.environmentBadge(it.available) },
+                    onMenu = { environments?.onMenu?.invoke() },
                 )
             }
         }
@@ -140,9 +148,13 @@ private fun ProjectTab(
     onReveal: () -> Unit,
     ides: List<Ide>,
     onOpenIn: (Ide) -> Unit,
+    environment: EnvironmentMenu? = null,
+    badge: EnvironmentBadge? = null,
+    onMenu: () -> Unit = {},
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
+    LaunchedEffect(menuAt != null) { if (menuAt != null) onMenu() }
     Box(modifier) {
         Row(
             Modifier.heightIn(min = TAB_BAR_HEIGHT)
@@ -170,9 +182,10 @@ private fun ProjectTab(
             } else {
                 OneLine(project.name, color = colors.text)
             }
+            if (badge != null) EnvironmentPill(badge)
             for ((state, count) in counts) StateCount(state, count)
         }
-        menuAt?.let { at -> KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove, ides, onOpenIn), onDismiss = { menuAt = null }, offset = at) }
+        menuAt?.let { at -> KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove, ides, onOpenIn, environment), onDismiss = { menuAt = null }, offset = at) }
     }
 }
 
@@ -197,6 +210,7 @@ fun WorkspaceTabs(
     onRunWorkspace: ((WorkspaceId) -> Unit)? = null,
     run: app.katty.terminals.RunTerminal? = null,
     runActions: RunActions? = null,
+    environments: EnvironmentControls? = null,
 ) {
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.panel).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
@@ -215,6 +229,11 @@ fun WorkspaceTabs(
                     onClose = { onCloseWorkspace(workspace.id) },
                     onDefaultIde = onWorkspaceIde?.let { choose -> { choose(workspace.id) } },
                     onRun = onRunWorkspace?.let { run -> { run(workspace.id) } },
+                    environment = environments?.menuOf(workspace),
+                    badge = if (environments != null && project != null) workspace.environmentBadge(project, environments.available) else null,
+                    projectEnvironment = project?.environment,
+                    onUseProjectEnvironment = environments?.let { controls -> { controls.useProjectEnvironment(workspace.id) } },
+                    onMenu = { environments?.onMenu?.invoke() },
                 )
             }
         }
@@ -246,9 +265,15 @@ private fun WorkspaceTab(
     onClose: () -> Unit,
     onDefaultIde: (() -> Unit)?,
     onRun: (() -> Unit)? = null,
+    environment: EnvironmentMenu? = null,
+    badge: EnvironmentBadge? = null,
+    projectEnvironment: String? = null,
+    onUseProjectEnvironment: (() -> Unit)? = null,
+    onMenu: () -> Unit = {},
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
+    LaunchedEffect(menuAt != null) { if (menuAt != null) onMenu() }
     Box(modifier) {
         Row(
             Modifier.heightIn(min = TAB_BAR_HEIGHT)
@@ -287,7 +312,13 @@ private fun WorkspaceTab(
                 // The branch that all of its terminals are in.
                 if (git != null) GitLabel(git, Modifier.widthIn(max = 160.dp * uiScaleFactor()), fontSize = 11.sp)
             }
+            if (badge != null) EnvironmentPill(badge)
         }
-        menuAt?.let { at -> KattyMenu(workspaceMenu(onRename, onClose, onDefaultIde, onRun), onDismiss = { menuAt = null }, offset = at) }
+        menuAt?.let { at ->
+            KattyMenu(
+                workspaceMenu(onRename, onClose, onDefaultIde, onRun, environment, projectEnvironment, onUseProjectEnvironment),
+                onDismiss = { menuAt = null }, offset = at,
+            )
+        }
     }
 }

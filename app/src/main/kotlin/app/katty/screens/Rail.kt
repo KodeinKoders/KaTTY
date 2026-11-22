@@ -66,6 +66,8 @@ import app.katty.core.ProjectId
 import app.katty.core.counts
 import app.katty.core.initialsOf
 import app.katty.core.strip
+import app.katty.core.environmentBadge
+import app.katty.ui.EnvironmentPill
 import app.katty.core.urgent
 import app.katty.ui.GlyphSize
 import app.katty.ui.Icon
@@ -96,6 +98,7 @@ fun Rail(
     states: AgentStates = NoAgentStates,
     gits: Map<TerminalId, GitInfo?> = emptyMap(),
     usage: @Composable () -> Unit = {},
+    environments: Set<String>? = null,
 ) {
     val colors = Katty.colors
     var open by remember { mutableStateOf<ProjectId?>(null) }
@@ -116,7 +119,7 @@ fun Rail(
                         open = if (open == project.id) null else project.id
                     }
                     if (open == project.id) {
-                        Flyout(project, state, store, states, gits, onDismiss = { open = null })
+                        Flyout(project, state, store, states, gits, environments, onDismiss = { open = null })
                     }
                 }
             }
@@ -176,7 +179,7 @@ private object BesideEnd : PopupPositionProvider {
 
 /** The workspaces of a project, in a panel that opens beside its tile. */
 @Composable
-private fun Flyout(project: Project, state: KattyState, store: KattyStore, states: AgentStates, gits: Map<TerminalId, GitInfo?>, onDismiss: () -> Unit) {
+private fun Flyout(project: Project, state: KattyState, store: KattyStore, states: AgentStates, gits: Map<TerminalId, GitInfo?>, environments: Set<String>?, onDismiss: () -> Unit) {
     val colors = Katty.colors
     Popup(popupPositionProvider = BesideEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
@@ -186,6 +189,7 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
         ) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OneLine(project.name, Modifier.weight(1f), color = colors.text)
+                environments?.let { project.environmentBadge(it) }?.let { EnvironmentPill(it) }
                 for ((s, n) in states.counts(project)) StateCount(s, n)
             }
             Text(
@@ -213,6 +217,7 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
                         OneLine(workspace.name, color = colors.text)
                         workspace.sharedGit(gits)?.let { GitLabel(it, fontSize = 11.sp) }
                     }
+                    environments?.let { workspace.environmentBadge(project, it) }?.let { EnvironmentPill(it) }
                     for (s in states.strip(workspace)) StateGlyph(s, size = GlyphSize.SMALL)
                 }
             }

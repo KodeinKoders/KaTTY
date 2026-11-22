@@ -318,16 +318,16 @@ class TerminalTest {
         val middle = (typography!!.cellWidth / 2).toInt() to (typography!!.cellHeight / 2).toInt()
         val edge = 0 to (typography!!.cellHeight / 2).toInt()
 
-        // Longer than two periods of a blinking cursor: it is the same at every moment.
+        // Longer than two periods of a blinking cursor, which is timed in real time: it is the same at every moment. And a dozen looks at least,
+        // however long they take: a machine that draws slowly (a CI's, with no GPU) took fewer than that in the time.
         val deadline = System.nanoTime() + 1_300_000_000L
         var samples = 0
-        while (System.nanoTime() < deadline) {
+        while (System.nanoTime() < deadline || samples < 12) {
             assertEquals(background, scene.cursorCell(middle.first, middle.second), "The cursor is not filled")
             assertEquals(cursor, scene.cursorCell(edge.first, edge.second), "Its outline is always drawn")
             samples++
             Thread.sleep(40)
         }
-        assertTrue(samples > 10)
     }
 
     @Test
@@ -1478,9 +1478,13 @@ class TerminalTest {
         }.also { scenes += it }
         scene.renderUntil("the alternate screen") { session.frames.value.alternateScreen && session.frames.value.cols != 10 }
 
-        val typography = typography!!
         // The grid starts where the host's padding says, with no gutter: its columns are those of the width that is left of 12 dp.
-        assertEquals(((WIDTH - 12) / typography.cellWidth).toInt(), session.frames.value.cols)
+        // The terminal may have been given the size with the gutter first, before the program took the alternate screen: the gutter
+        // going is another resize, which a frame on the alternate screen can come before.
+        val columns = ((WIDTH - 12) / typography!!.cellWidth).toInt()
+        scene.renderUntil("$columns columns, with no gutter (${session.frames.value.cols} now)") { session.frames.value.cols == columns }
+        scene.renderFor(200)
+        assertEquals(columns, session.frames.value.cols, "And it stays so")
     }
 
     @Test

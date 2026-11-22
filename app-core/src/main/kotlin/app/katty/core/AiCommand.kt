@@ -80,6 +80,9 @@ public object AiPrompt {
      * It is run by `/bin/sh` and not by the user's shell: what the user's files print (a greeting, a prompt) is not in the output, and `$PROMPT` is
      * written the same whatever the user's shell is. Its `PATH` is [path], the one of the user's interactive login shell (where `~/.local/bin` is
      * added), else the application's. Its input is empty and what it prints on its error output is not read.
+     *
+     * @param environment What the environment of the workspace it is asked from changes (see [Environments]): the agent is the one of that account.
+     * The `PATH` is [path] whatever it says.
      */
     public fun ask(
         template: String,
@@ -88,8 +91,9 @@ public object AiPrompt {
         path: String?,
         runner: CommandRunner = ProcessCommandRunner,
         timeoutMs: Long = TIMEOUT_MS,
+        environment: EnvironmentChange = EnvironmentChange.NONE,
     ): AiAnswer {
-        val result = run(template, prompt, directory, path, runner, timeoutMs) ?: return AiAnswer.Failed(noAnswer(timeoutMs))
+        val result = run(template, prompt, directory, path, runner, timeoutMs, environment) ?: return AiAnswer.Failed(noAnswer(timeoutMs))
         val line = aiCommandLine(result.output)
         return when {
             result.exitCode != 0 -> AiAnswer.Failed("it ended with the code ${result.exitCode}" + (line?.let { ": $it" } ?: ""))
@@ -110,8 +114,9 @@ public object AiPrompt {
         path: String?,
         runner: CommandRunner = ProcessCommandRunner,
         timeoutMs: Long = TIMEOUT_MS,
+        environment: EnvironmentChange = EnvironmentChange.NONE,
     ): AiDiagnosis {
-        val result = run(template, commandPrompt(question, run, directory), directory, path, runner, timeoutMs)
+        val result = run(template, commandPrompt(question, run, directory), directory, path, runner, timeoutMs, environment)
             ?: return AiDiagnosis.Failed(noAnswer(timeoutMs))
         val diagnosis = parseDiagnosis(result.output)
         return when {
@@ -122,11 +127,15 @@ public object AiPrompt {
     }
 
     // Runs [template] with [prompt] as `$PROMPT`: `null` when it could not be started or did not end in [timeoutMs].
-    private fun run(template: String, prompt: String, directory: Path, path: String?, runner: CommandRunner, timeoutMs: Long): CommandResult? {
+    private fun run(template: String, prompt: String, directory: Path, path: String?, runner: CommandRunner, timeoutMs: Long, environment: EnvironmentChange): CommandResult? {
         val searchPath = path ?: System.getenv("PATH").orEmpty()
-        if (isWindows) return runner.run(powerShellCommand(template), directory, timeoutMs, mapOf("PROMPT" to prompt, "PATH" to searchPath))
+        if (isWindows) {
+            // The question and the path win over the environment's, as the script of `sh` sets them after it.
+            val ours = mapOf("PROMPT" to prompt, "PATH" to searchPath)
+            return runner.run(powerShellCommand(template), directory, timeoutMs, EnvironmentChange(environment.variables + ours, environment.unset - ours.keys))
+        }
         val script = "PROMPT=${quoted(prompt)}; export PROMPT; PATH=${quoted(searchPath)}; export PATH\n$template"
-        return runner.run(listOf("/bin/sh", "-c", script), directory, timeoutMs)
+        return runner.run(listOf("/bin/sh", "-c", script), directory, timeoutMs, environment)
     }
 
     /**

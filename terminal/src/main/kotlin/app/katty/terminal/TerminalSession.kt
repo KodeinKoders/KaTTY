@@ -1366,6 +1366,8 @@ public class TerminalSession private constructor(
          * @param command By default the user's login shell.
          * @param environment Added to the environment of the current process, and overrides it. `TERM` and
          * `COLORTERM` are set to what the terminal supports, unless it says otherwise.
+         * @param unsetEnvironment Taken out of the environment of the current process, before [environment] is added. `LANG` comes back when the
+         * process has no locale, since a shell needs one to read UTF-8.
          * @param directory Where the program starts: the directory of [snapshot] if it has one that is still there, else the user's home.
          * @param cursorBlink Whether the cursor blinks unless the program says otherwise. It almost never does,
          * a shell included, and a terminal's cursor is expected to blink: without this it would not. A program says otherwise
@@ -1414,6 +1416,7 @@ public class TerminalSession private constructor(
             rows: Int,
             command: List<String> = defaultShell(),
             environment: Map<String, String> = emptyMap(),
+            unsetEnvironment: Set<String> = emptySet(),
             directory: String? = null,
             cursorBlink: Boolean = true,
             cursorShape: TerminalCursorShape = TerminalCursorShape.BLOCK,
@@ -1443,6 +1446,7 @@ public class TerminalSession private constructor(
             // Not the one of the terminal that started this application: programs that look at it to know where they run.
             env["TERM_PROGRAM"] = TERMINAL_NAME
             env.remove("TERM_PROGRAM_VERSION")
+            env.keys.removeAll(unsetEnvironment)
             env.putAll(environment)
             // An application opened from the Finder has no locale: the shell would read what is typed as ASCII. Windows has no such variable.
             if (!isWindows) ensureUtf8Locale(env)

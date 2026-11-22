@@ -236,6 +236,38 @@ class UsageServiceTest {
     }
 
     @Test
+    fun theProcessRunnerGivesTheProgramAnEnvironment() {
+        val inherited = System.getenv().keys.sorted().first { it.matches(Regex("[A-Z][A-Z_]*")) && it !in setOf("PATH", "PWD", "OLDPWD", "SHLVL", "HOME", "LANG") }
+        val environment = EnvironmentChange(mapOf("FOO" to "bar"), setOf(inherited))
+
+        val result = ProcessCommandRunner.run(listOf("/bin/sh", "-c", "printf '%s %s' \"\${FOO-none}\" \"\${$inherited-gone}\""), directory, 5_000, environment)!!
+
+        assertEquals("bar gone", result.output)
+        assertTrue(ProcessCommandRunner.run(listOf("/bin/sh", "-c", "printf '%s' \"\${$inherited-gone}\""), directory, 5_000)!!.output != "gone")
+    }
+
+    @Test
+    fun claudeIsReadWithTheEnvironmentAskedAtEachReading() = runBlocking {
+        val seen = mutableListOf<EnvironmentChange>()
+        val runner = object : CommandRunner {
+            override fun run(command: List<String>, directory: Path, timeoutMs: Long): CommandResult? = error("Run with its environment")
+
+            override fun run(command: List<String>, directory: Path, timeoutMs: Long, environment: EnvironmentChange): CommandResult? {
+                seen += environment
+                return CommandResult(1, "")
+            }
+        }
+        var account = "kodein"
+        val source = ClaudeUsageSource(Path.of("/bin/claude"), directory, runner) { EnvironmentChange(mapOf("CLAUDE_CONFIG_DIR" to account), emptySet()) }
+
+        source.read()
+        account = "perso"
+        source.read()
+
+        assertEquals(listOf("kodein", "perso"), seen.map { it.variables.getValue("CLAUDE_CONFIG_DIR") })
+    }
+
+    @Test
     fun claudeFailingIsNoReading() = runBlocking {
         assertNull(ClaudeUsageSource(Path.of("/bin/claude"), directory, runner = { _, _, _ -> CommandResult(1, "") }).read())
         assertNull(ClaudeUsageSource(Path.of("/bin/claude"), directory, runner = { _, _, _ -> null }).read())

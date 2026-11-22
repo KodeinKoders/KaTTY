@@ -31,7 +31,7 @@ class WindowsRunningRestoreTest {
     private val registry = SessionRegistry(
         store, scope, starter = Dispatchers.Unconfined,
         loadTheme = { null },
-        start = { spec, _ ->
+        start = { spec, _, _ ->
             TerminalSession.start(
                 100, 10,
                 command = listOf("powershell.exe", "-NoLogo"),

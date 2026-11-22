@@ -38,6 +38,18 @@ class AgentResumeTest {
     }
 
     @Test
+    fun claudeSessionIsInTheFolderOfItsConfigDirWhenItHasOne() {
+        val config = home.resolve(".claude-sunday")
+        config.resolve("sessions").createDirectories()
+        config.resolve("sessions/4242.json").writeText("""{"pid":4242,"sessionId":"$id","startedAt":1000000,"cwd":"/some/dir"}""")
+        config.resolve("projects/-some-dir").createDirectories()
+        config.resolve("projects/-some-dir/$id.jsonl").writeText("{}")
+
+        assertNull(AgentResume.sessionId(Agent.CLAUDE, 4242, 1_000_000L, home.toFile()), "Not in ~/.claude")
+        assertEquals(id, AgentResume.sessionId(Agent.CLAUDE, 4242, 1_000_000L, home.toFile(), claudeConfigDir = config.toFile()))
+    }
+
+    @Test
     fun noSessionWhenTheConversationHasNoTranscriptYet() {
         session(4242)
 

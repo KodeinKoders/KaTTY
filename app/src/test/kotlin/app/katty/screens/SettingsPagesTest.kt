@@ -150,7 +150,7 @@ class SettingsPagesTest {
         onNodeWithText("OPTION AS ALT").assertExists()
         onNodeWithContentDescription("Settings pages").performKeyInput { pressKey(Key.DirectionUp); pressKey(Key.DirectionUp); pressKey(Key.DirectionUp) }
         waitForIdle()
-        assertEquals(SettingsPage.AGENTS, page, "The arrows go round")
+        assertEquals(SettingsPage.entries.last(), page, "The arrows go round")
     }
 
     @Test

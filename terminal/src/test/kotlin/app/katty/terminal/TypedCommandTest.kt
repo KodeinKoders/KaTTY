@@ -42,8 +42,10 @@ class TypedCommandTest {
         assertFailsWith<IllegalArgumentException> { TypedCommand(emptyList(), true) }
     }
 
+    // A short prompt, whatever the machine: macOS's /etc/zshrc puts the user, the host and the directory in it, which on a machine with a
+    // long name made the typed line wrap (zsh does not take PS1 from the environment).
     private fun emptyHome(): Path = Files.createTempDirectory("katty-home").also {
-        Files.createFile(it.resolve(".zshrc"))
+        Files.writeString(it.resolve(".zshrc"), "PROMPT='%# '\n")
         it.toFile().deleteOnExit()
     }
 
@@ -51,7 +53,7 @@ class TypedCommandTest {
         TerminalSession.start(
             80, 10,
             command = listOf("/bin/zsh", "-l"),
-            environment = mapOf("HOME" to home.toString(), "PS1" to "$ "),
+            environment = mapOf("HOME" to home.toString()),
             shellIntegration = shellIntegration,
             typeAtPrompt = command,
         ).also { sessions += it }

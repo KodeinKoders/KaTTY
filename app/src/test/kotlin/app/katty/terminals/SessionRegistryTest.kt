@@ -35,7 +35,7 @@ class SessionRegistryTest {
     private val registry = SessionRegistry(
         store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined,
         loadTheme = { name -> themes += name; null },
-        start = { spec, _ ->
+        start = { spec, _, _ ->
             directories += spec.directory
             TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), directory = spec.directory).also { started += it }
         },
@@ -135,7 +135,7 @@ class SessionRegistryTest {
     // A registry whose shells take long to start, as a program on a slow disk does, started where they would be.
     private fun slowRegistry(made: MutableList<TerminalSession>) = SessionRegistry(
         store, scope, loadTheme = { null }, starter = Dispatchers.IO,
-        start = { spec, _ ->
+        start = { spec, _, _ ->
             Thread.sleep(500)
             TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), directory = spec.directory).also { synchronized(made) { made += it } }
         },
@@ -190,7 +190,7 @@ class SessionRegistryTest {
         val made = java.util.concurrent.CopyOnWriteArrayList<TerminalSession>()
         val slow = SessionRegistry(
             store, scope, loadTheme = { null }, starter = starter.asCoroutineDispatcher(),
-            start = { spec, _ ->
+            start = { spec, _, _ ->
                 val first = begun.merge(spec.id.value, 1, Int::plus) == 1
                 if (first) reopened.await(10, java.util.concurrent.TimeUnit.SECONDS)
                 val script = if (first) "echo first; sleep 30" else "echo second; sleep 30"
@@ -223,7 +223,7 @@ class SessionRegistryTest {
         val begun = java.util.concurrent.ConcurrentHashMap<String, Int>()
         val reopening = SessionRegistry(
             store, scope, starter = Dispatchers.Unconfined, loadTheme = { null },
-            start = { spec, _ ->
+            start = { spec, _, _ ->
                 val first = begun.merge(spec.id.value, 1, Int::plus) == 1
                 TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", if (first) "set -m; sleep 30" else "sleep 30"), directory = spec.directory)
             },
@@ -331,7 +331,7 @@ class SessionRegistryTest {
 
     @Test
     fun aShellThatCannotBeStartedLeavesATerminalWithItsFailure() {
-        val failing = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { _, _ -> throw IllegalStateException("no such shell") })
+        val failing = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { _, _, _ -> throw IllegalStateException("no such shell") })
         store.addProject("/tmp")
 
         failing.sync(store.state.value)
@@ -542,7 +542,7 @@ class SessionRegistryTest {
             store.addProject(project.path)
             store.setDirectory(store.state.value.selection.terminal!!, inside.path)
             val directories = mutableListOf<String>()
-            val recording = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { spec, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
+            val recording = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { spec, _, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
 
             recording.sync(store.state.value)
 
@@ -560,7 +560,7 @@ class SessionRegistryTest {
             store.addProject(project.path)
             store.setDirectory(store.state.value.selection.terminal!!, "/nonexistent/folder")
             val directories = mutableListOf<String>()
-            val recording = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { spec, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
+            val recording = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { spec, _, _ -> directories += spec.directory; TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory) })
 
             recording.sync(store.state.value)
 

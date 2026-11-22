@@ -57,6 +57,10 @@ import app.katty.core.Workspace
 import app.katty.core.WorkspaceId
 import app.katty.core.counts
 import app.katty.core.strip
+import app.katty.core.EnvironmentBadge
+import app.katty.core.environmentBadge
+import app.katty.ui.EnvironmentPill
+import androidx.compose.runtime.LaunchedEffect
 import app.katty.ui.ButtonSize
 import app.katty.ui.GlyphSize
 import app.katty.ui.Katty
@@ -117,6 +121,7 @@ fun Sidebar(
     usage: @Composable () -> Unit = {},
     ides: List<Ide> = emptyList(),
     onOpenIn: (ProjectId, Ide) -> Unit = { _, _ -> },
+    environments: EnvironmentControls? = null,
 ) {
     val colors = Katty.colors
 
@@ -164,6 +169,9 @@ fun Sidebar(
                         onReveal = { onReveal(project.id) },
                         ides = ides,
                         onOpenIn = { onOpenIn(project.id, it) },
+                        environment = environments?.menuOf(project),
+                        badge = environments?.let { project.environmentBadge(it.available) },
+                        onMenu = { environments?.onMenu?.invoke() },
                     )
                     if (open) {
                         Text(
@@ -191,6 +199,11 @@ fun Sidebar(
                                 onClose = { onCloseWorkspace(workspace.id) },
                                 onDefaultIde = onWorkspaceIde?.let { choose -> { choose(workspace.id) } },
                                 onRun = onRunWorkspace?.let { run -> { run(workspace.id) } },
+                                environment = environments?.menuOf(workspace),
+                                badge = environments?.let { workspace.environmentBadge(project, it.available) },
+                                projectEnvironment = project.environment,
+                                onUseProjectEnvironment = environments?.let { controls -> { controls.useProjectEnvironment(workspace.id) } },
+                                onMenu = { environments?.onMenu?.invoke() },
                             )
                         }
                         Row(
@@ -231,9 +244,13 @@ private fun ProjectRow(
     onReveal: () -> Unit,
     ides: List<Ide>,
     onOpenIn: (Ide) -> Unit,
+    environment: EnvironmentMenu? = null,
+    badge: EnvironmentBadge? = null,
+    onMenu: () -> Unit = {},
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
+    LaunchedEffect(menuAt != null) { if (menuAt != null) onMenu() }
     Box {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight()
@@ -264,13 +281,15 @@ private fun ProjectRow(
             } else {
                 OneLine(project.name, Modifier.weight(1f), color = colors.text)
             }
+            // The environment that its shells are given, which says which account its agents use.
+            if (badge != null) EnvironmentPill(badge)
             // How many of its terminals are in each state: the sign that tells the user where to look.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 for ((state, count) in counts) StateCount(state, count)
             }
         }
         menuAt?.let { at ->
-            KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove, ides, onOpenIn), onDismiss = { menuAt = null }, offset = at)
+            KattyMenu(projectMenu(onNewWorkspace, onRename, onReveal, onRemove, ides, onOpenIn, environment), onDismiss = { menuAt = null }, offset = at)
         }
     }
 }
@@ -290,9 +309,15 @@ private fun WorkspaceRow(
     onClose: () -> Unit,
     onDefaultIde: (() -> Unit)?,
     onRun: (() -> Unit)? = null,
+    environment: EnvironmentMenu? = null,
+    badge: EnvironmentBadge? = null,
+    projectEnvironment: String? = null,
+    onUseProjectEnvironment: (() -> Unit)? = null,
+    onMenu: () -> Unit = {},
 ) {
     val colors = Katty.colors
     var menuAt by remember { mutableStateOf<IntOffset?>(null) }
+    LaunchedEffect(menuAt != null) { if (menuAt != null) onMenu() }
     Box(modifier.padding(start = 22.dp)) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp)).hoverHighlight(enabled = !selected)
@@ -323,12 +348,17 @@ private fun WorkspaceRow(
                     if (git != null) GitLabel(git, fontSize = 11.sp)
                 }
             }
+            // Its environment, when it is not its project's: its shells were started with another one.
+            if (badge != null) EnvironmentPill(badge)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 for (state in strip) StateGlyph(state, size = GlyphSize.SMALL)
             }
         }
         menuAt?.let { at ->
-            KattyMenu(workspaceMenu(onRename, onClose, onDefaultIde, onRun), onDismiss = { menuAt = null }, offset = at)
+            KattyMenu(
+                workspaceMenu(onRename, onClose, onDefaultIde, onRun, environment, projectEnvironment, onUseProjectEnvironment),
+                onDismiss = { menuAt = null }, offset = at,
+            )
         }
     }
 }

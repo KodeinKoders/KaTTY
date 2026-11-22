@@ -33,6 +33,7 @@ val notOnWindows = mapOf(
     "app.katty.core.AiCommandTest.itRunsInTheDirectoryWithThePathItIsGiven" to aiScripts,
     "app.katty.core.AiCommandTest.theAiIsAskedWhyAndItsAnswerRead" to aiScripts,
     "app.katty.core.AiCommandTest.thePromptReachesTheCommandAsItIs" to aiScripts,
+    "app.katty.core.AiCommandTest.theAiIsRunWithTheEnvironmentOfTheWorkspaceButItsOwnPath" to aiScripts,
     "app.katty.core.CrushStoreTest.theDatabaseIsWhereTheListOfProjectsSaysItIs" to agentFiles,
     "app.katty.core.CursorStoreTest.aContinueWithNoIdIsTheNewestChatOfTheDirectoryWithAConversationThatWasWrittenToSince" to agentFiles,
     "app.katty.core.CursorStoreTest.aNewChatMadeAfterAnotherIsTheOneItIsInAtOnce" to agentFiles,

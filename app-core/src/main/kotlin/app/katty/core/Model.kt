@@ -36,6 +36,11 @@ public data class Project(
     val lastWorkspace: WorkspaceId? = null,
     /** The command that was run last in one of its workspaces (see [Workspace.runCommand]): what a workspace that ran none is offered. */
     val runCommand: String? = null,
+    /**
+     * The name of the environment (see [Environments]) that its new workspaces are given, `null` for none: the default of the settings when it was
+     * added, which it keeps when the default changes.
+     */
+    val environment: String? = null,
 )
 
 /**
@@ -49,6 +54,8 @@ public data class Project(
  * version with an IDE that this one does not have is still read.
  * @param runCommand The command that was run last in its run terminal (the terminal that only runs one command, over its panes), which the next run
  * is offered; `null` when it ran none. The run terminal itself is not kept: its program cannot outlive the application.
+ * @param environment The name of the environment (see [Environments]) that its shells are given, `null` for none: its project's when it was made.
+ * It is what its shells were started with, so it only changes when they are started again; it can then differ from its project's.
  */
 @Serializable
 public data class Workspace(
@@ -58,6 +65,7 @@ public data class Workspace(
     val focused: TerminalId? = null,
     val ide: String? = null,
     val runCommand: String? = null,
+    val environment: String? = null,
 )
 
 /** The command that the run of the workspace [id] is offered: the last one it ran, else the last one its project ran, else none. */

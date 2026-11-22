@@ -73,9 +73,9 @@ class KattyWindowContentTest {
     private val registry = SessionRegistry(
         store, scope, starter = Dispatchers.Unconfined,
         loadTheme = { null },
-        start = { spec, _ -> TerminalSession.start(80, 5, command = command, environment = environment, directory = spec.directory) },
+        start = { spec, _, _ -> TerminalSession.start(80, 5, command = command, environment = environment, directory = spec.directory) },
         // Not the user's shell, which reads the user's files.
-        startRun = { run, directory, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", run), directory = directory, shellIntegration = false) },
+        startRun = { run, directory, _, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", run), directory = directory, shellIntegration = false) },
     )
     private val tracker = AgentTracker(scope)
     private val usage = SessionUsageTracker(scope, emptyMap(), { emptyMap() }, { null }, { null })
@@ -314,7 +314,9 @@ class KattyWindowContentTest {
         waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Command").fetchSemanticsNodes().isNotEmpty() }
         assertEquals("echo made-by-katty", commandText())
         val prompt = Files.readString(asked)
-        assertTrue("say hello" in prompt && "zsh shell" in prompt && directories.support.toString() in prompt, prompt)
+        // The shell is the user's, which the terminal takes from $SHELL.
+        val shell = registry.handles.value.values.single().shellName
+        assertTrue("say hello" in prompt && "$shell shell" in prompt && directories.support.toString() in prompt, prompt)
 
         // The user changes it before it is typed.
         onNodeWithContentDescription("Command").performTextReplacement("echo edited-by-katty")

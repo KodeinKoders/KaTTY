@@ -299,6 +299,9 @@ val notOnWindows = mapOf(
 tasks.test {
     // The FFM API is restricted: without this flag, the JVM warns on the first native call.
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // The terminals take the user's $SHELL for their shell, and the tests that start `/bin/sh -c` take it for a program, which they cannot
+    // where the shell is bash (a CI machine's): macOS's /bin/sh runs bash, and its process has that name. The default of macOS is zsh.
+    environment("SHELL", "/bin/zsh")
     if (System.getProperty("os.name").startsWith("Windows")) {
         filter { notOnWindows.keys.forEach(::excludeTestsMatching) }
     }

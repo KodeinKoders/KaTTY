@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import app.katty.core.AgentState
 import app.katty.core.SessionUsage
 import app.katty.core.BoardCard
+import app.katty.core.terminalEnvironmentBadge
+import app.katty.ui.EnvironmentPill
 import app.katty.core.BoardColumn
 import app.katty.core.Direction
 import app.katty.core.stepSelection
@@ -104,6 +106,7 @@ fun AgentBoard(
     modifier: Modifier = Modifier,
     onOpenWindow: (() -> Unit)? = null,
     usages: Map<TerminalId, SessionUsage> = emptyMap(),
+    environments: Set<String>? = null,
 ) {
     val colors = Katty.colors
     val cards = columns.values.flatten()
@@ -134,7 +137,7 @@ fun AgentBoard(
         }
         if (vertical) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                for ((column, list) in columns) BoardSection(column, list, handles, now, selected, onOpen, usages)
+                for ((column, list) in columns) BoardSection(column, list, handles, now, selected, onOpen, usages, environments)
             }
         } else {
             Row(Modifier.weight(1f).padding(horizontal = 12.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -142,7 +145,7 @@ fun AgentBoard(
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         BoardHeader(column, list.size)
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (card in list) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen, usages[card.terminal.id])
+                            for (card in list) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen, usages[card.terminal.id], environments)
                         }
                     }
                 }
@@ -152,10 +155,10 @@ fun AgentBoard(
 }
 
 @Composable
-private fun BoardSection(column: BoardColumn, cards: List<BoardCard>, handles: Map<TerminalId, TerminalHandle>, now: Long, selected: TerminalId?, onOpen: (TerminalId) -> Unit, usages: Map<TerminalId, SessionUsage>) {
+private fun BoardSection(column: BoardColumn, cards: List<BoardCard>, handles: Map<TerminalId, TerminalHandle>, now: Long, selected: TerminalId?, onOpen: (TerminalId) -> Unit, usages: Map<TerminalId, SessionUsage>, environments: Set<String>?) {
     Column(Modifier.semantics { contentDescription = column.title }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoardHeader(column, cards.size)
-        for (card in cards) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen, usages[card.terminal.id])
+        for (card in cards) Card(card, handles[card.terminal.id], now, card.terminal.id == selected, onOpen, usages[card.terminal.id], environments)
     }
 }
 
@@ -179,7 +182,7 @@ private fun BoardHeader(column: BoardColumn, count: Int) {
 }
 
 @Composable
-private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, selected: Boolean, onOpen: (TerminalId) -> Unit, usage: SessionUsage?) {
+private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, selected: Boolean, onOpen: (TerminalId) -> Unit, usage: SessionUsage?, environments: Set<String>?) {
     val colors = Katty.colors
     val git: GitInfo? = handle?.git?.collectAsState()?.value
     val identity = card.identity(handle?.processName?.collectAsState()?.value, handle?.shellName ?: "shell")
@@ -200,7 +203,11 @@ private fun Card(card: BoardCard, handle: TerminalHandle?, now: Long, selected: 
             // An agent that has never reported has no time.
             if (card.info.since != 0L) Text(relativeTime(now, card.info.since), color = colors.muted, fontSize = 11.sp)
         }
-        OneLine("${card.project.name} / ${card.workspace.name}", color = colors.muted, fontSize = 12.sp)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OneLine("${card.project.name} / ${card.workspace.name}", Modifier.weight(1f, fill = false), color = colors.muted, fontSize = 12.sp)
+            // The environment its shell was started with: which account the agent uses.
+            environments?.let { card.workspace.terminalEnvironmentBadge(card.project, it) }?.let { EnvironmentPill(it) }
+        }
         if (git != null) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Icon(if (git.kind == GitKind.WORKTREE) KattyIcons.Worktree else KattyIcons.Branch, colors.muted, size = 12.dp)

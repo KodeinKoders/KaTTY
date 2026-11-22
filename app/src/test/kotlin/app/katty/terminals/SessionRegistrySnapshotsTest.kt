@@ -46,11 +46,11 @@ class SessionRegistrySnapshotsTest {
     // A registry whose first shell says `first` and whose restored one says `second`, and that saves every [autosaveMillis].
     private fun registry(autosaveMillis: Long = 3_600_000): SessionRegistry = SessionRegistry(
         store, scope, starter = Dispatchers.Unconfined, loadTheme = { null },
-        start = { spec, _ ->
+        start = { spec, _, _ ->
             TerminalSession.start(80, 5, command = sh("echo first; sleep 30"), directory = spec.directory, shellIntegration = false).also { sessions += it }
         },
         snapshots = snapshots,
-        startRestored = { spec, _, snapshot ->
+        startRestored = { spec, _, snapshot, _ ->
             TerminalSession.start(
                 80, 5, command = sh("echo second; sleep 30"), directory = spec.directory, shellIntegration = false,
                 snapshot = snapshot, restoredNote = "Restored",

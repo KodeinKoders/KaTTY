@@ -72,9 +72,11 @@ public class KattyStore(
         }
         val id = ProjectId(newId())
         val projectName = name?.takeIf { it.isNotBlank() } ?: File(directory).name.ifEmpty { directory }
+        // The project, and its first workspace, are given the default environment as it is now: changing it later does not change them.
+        val environment = flow.value.settings.defaultEnvironment
         // The first workspace is named after its project, which is what it is: the folder as it is.
-        val workspace = Workspace(WorkspaceId(newId()), projectName, PaneNode.Leaf(newTerminal(directory)))
-        val project = Project(id, projectName, directory, listOf(workspace))
+        val workspace = Workspace(WorkspaceId(newId()), projectName, PaneNode.Leaf(newTerminal(directory)), environment = environment)
+        val project = Project(id, projectName, directory, listOf(workspace), environment = environment)
         edit { it.copy(projects = it.projects + project, selection = Selection(id, workspace.id, workspace.layout.terminals().first().id)) }
         return id
     }
@@ -187,7 +189,12 @@ public class KattyStore(
      */
     public fun addWorkspace(project: ProjectId, name: String? = null): WorkspaceId? {
         val target = flow.value.projects.firstOrNull { it.id == project } ?: return null
-        val workspace = Workspace(WorkspaceId(newId()), name?.takeIf { it.isNotBlank() } ?: if (target.workspaces.isEmpty()) target.name else workspaceName(target.workspaces), PaneNode.Leaf(newTerminal(target.directory)))
+        val workspace = Workspace(
+            WorkspaceId(newId()),
+            name?.takeIf { it.isNotBlank() } ?: if (target.workspaces.isEmpty()) target.name else workspaceName(target.workspaces),
+            PaneNode.Leaf(newTerminal(target.directory)),
+            environment = target.environment,
+        )
         edit { state ->
             state.copy(
                 // The project is open: the workspace that was just made has to be seen.
@@ -215,6 +222,44 @@ public class KattyStore(
     /** Sets the IDE that opens the files whose paths are clicked in the terminals of a workspace, or takes it off with `null`. */
     public fun setWorkspaceIde(id: WorkspaceId, ide: Ide?) {
         edit { state -> state.mapWorkspaces { if (it.id == id) it.copy(ide = ide?.name) else it } }
+    }
+
+    /**
+     * Sets the environment that the new workspaces of the project [id] are given, `null` for none. Its workspaces keep theirs: their shells were
+     * started with it (see [setWorkspacesEnvironment]).
+     *
+     * @return The workspaces that had the project's environment before and do not have the new one: the ones that followed it, which the user is
+     * offered to start again with it. One that was given another environment of its own is not.
+     */
+    public fun setProjectEnvironment(id: ProjectId, environment: String?): Set<WorkspaceId> {
+        var following: Set<WorkspaceId> = emptySet()
+        edit { state ->
+            val project = state.projects.firstOrNull { it.id == id }
+            following = project?.workspaces.orEmpty().filter { it.environment == project?.environment && it.environment != environment }.map { it.id }.toSet()
+            state.copy(projects = state.projects.map { if (it.id == id) it.copy(environment = environment) else it })
+        }
+        return following
+    }
+
+    /** Sets the environment of the workspaces [ids], `null` for none: what their shells are started with from now on. */
+    public fun setWorkspacesEnvironment(ids: Set<WorkspaceId>, environment: String?) {
+        if (ids.isEmpty()) return
+        edit { state -> state.mapWorkspaces { if (it.id in ids) it.copy(environment = environment) else it } }
+    }
+
+    /**
+     * Sets the environment of every project that has none to [environment]: what the settings' "Apply" does with the default one. Their workspaces
+     * keep theirs, as with [setProjectEnvironment].
+     *
+     * @return The workspaces of those projects that have no environment either: the ones that followed their project.
+     */
+    public fun applyEnvironmentToProjectsWithout(environment: String): Set<WorkspaceId> {
+        var following: Set<WorkspaceId> = emptySet()
+        edit { state ->
+            following = state.projects.filter { it.environment == null }.flatMap { project -> project.workspaces.filter { it.environment == null }.map { it.id } }.toSet()
+            state.copy(projects = state.projects.map { if (it.environment == null) it.copy(environment = environment) else it })
+        }
+        return following
     }
 
     /** [command] was run in the run terminal of the workspace [id]: it is what the next run of the workspace, and of its project, is offered. */

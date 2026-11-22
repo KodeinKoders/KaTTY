@@ -1,15 +1,21 @@
 package app.katty.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -39,6 +45,10 @@ data class MenuAction(
     val enabled: Boolean = true,
     /** A value after the label, muted: what the item is set to now. */
     val hint: String? = null,
+    /** Whether it is the one that is chosen among the items of a choice, which have a check mark when it is: `null` for an item that is no choice. */
+    val checked: Boolean? = null,
+    /** A square of this color before the label: what the item gives something (the color of a badge). */
+    val swatch: Color? = null,
     val onClick: () -> Unit,
 ) : MenuEntry
 
@@ -52,9 +62,18 @@ data class MenuSubmenu(val label: String, val entries: List<MenuEntry>, val hint
 class MenuBuilder {
     private val entries = ArrayList<MenuEntry>()
 
-    fun action(label: String, shortcut: String? = null, danger: Boolean = false, enabled: Boolean = true, hint: String? = null, onClick: () -> Unit) {
+    fun action(
+        label: String,
+        shortcut: String? = null,
+        danger: Boolean = false,
+        enabled: Boolean = true,
+        hint: String? = null,
+        checked: Boolean? = null,
+        swatch: Color? = null,
+        onClick: () -> Unit,
+    ) {
         // A shortcut that is unbound is an empty text: it is shown as none.
-        entries += MenuAction(label, shortcut?.takeIf { it.isNotEmpty() }, danger, enabled, hint, onClick)
+        entries += MenuAction(label, shortcut?.takeIf { it.isNotEmpty() }, danger, enabled, hint, checked, swatch, onClick)
     }
 
     fun divider() {
@@ -108,10 +127,30 @@ private fun MenuScope.entries(entries: List<MenuEntry>, close: () -> Unit) {
                 onClick = { close(); entry.onClick() },
                 enabled = entry.enabled,
             ) {
+                // Jewel's `selected` is the highlight of the item under the pointer, not a choice: the check mark is drawn here, in a column of
+                // its own that every item of the choice has, so that their labels are aligned.
+                val check: @Composable () -> Unit = {
+                    if (entry.checked != null) {
+                        Box(Modifier.width(18.dp), contentAlignment = Alignment.CenterStart) {
+                            if (entry.checked) Icon(KattyIcons.Check, Katty.colors.text, size = 12.dp)
+                        }
+                    }
+                }
+                val swatch: @Composable () -> Unit = {
+                    if (entry.swatch != null) {
+                        Box(Modifier.padding(end = 8.dp).size(10.dp).background(entry.swatch, RoundedCornerShape(3.dp)))
+                    }
+                }
                 if (entry.hint == null) {
-                    Text(entry.label, color = if (entry.danger) Katty.colors.err else androidx.compose.ui.graphics.Color.Unspecified)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        check()
+                        swatch()
+                        Text(entry.label, color = if (entry.danger) Katty.colors.err else Color.Unspecified)
+                    }
                 } else {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        check()
+                        swatch()
                         Text(entry.label)
                         Spacer(Modifier.width(12.dp))
                         Text(entry.hint, color = Katty.colors.muted, fontSize = 12.sp)
