@@ -131,7 +131,8 @@ class PowerShellIntegrationTest {
 
             // At the prompt it is the line editor's: the line is given up, and the shell stays.
             session.sendText("echo given up")
-            session.await("what is typed in $shell") { "echo given up" in session.screen() }
+            // Not the whole line: after a long prompt (a temporary directory of macOS) it wraps.
+            session.await("what is typed in $shell") { "given up" in session.screen() }
             session.sendText("\u0003")
             Thread.sleep(1000)
             assertNull(session.exited.value, "$shell ended on Control + C at its prompt:\n${session.screen()}")
