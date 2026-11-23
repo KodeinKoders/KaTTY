@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class EnvironmentsTest {
@@ -256,5 +257,64 @@ class EnvironmentsTest {
     fun theFoldersStartWithHome() {
         assertEquals("$home/.config/KaTTY/environments", Environments.expandHome(Environments.DEFAULT_DIRECTORY, home))
         assertEquals("/abs", Environments.expandHome("/abs", home))
+    }
+
+    private val kosi = EnvironmentFolder("~/dev/kosi-libs", "kodein")
+    private val vie = EnvironmentFolder("~/dev/kosi-libs/vie", "perso")
+    private val koin = EnvironmentFolder("/home/me/dev/koin/", "koin")
+
+    private fun ruleOf(directory: String, vararg rules: EnvironmentFolder) = Environments.folderOf(directory, rules.toList(), home)
+
+    @Test
+    fun aProjectIsUnderTheFolderItIsInOrBelow() {
+        assertEquals(kosi, ruleOf("$home/dev/kosi-libs", kosi), "The folder itself")
+        assertEquals(kosi, ruleOf("$home/dev/kosi-libs/api", kosi))
+        assertEquals(kosi, ruleOf("$home/dev/kosi-libs/api/core", kosi), "Any depth")
+        assertEquals(kosi, ruleOf("$home/dev/kosi-libs/", kosi), "Its own trailing slash does not matter")
+        assertEquals(koin, ruleOf("$home/dev/koin/app", koin), "The slash that ends the rule's folder does not matter")
+        assertEquals(koin, ruleOf("~/dev/koin", koin), "`~` is the home, in a directory too")
+    }
+
+    @Test
+    fun aProjectIsNotUnderAFolderThatOnlyStartsLikeItsOwn() {
+        assertNull(ruleOf("$home/dev/kosi-libs2", kosi), "Whole names")
+        assertNull(ruleOf("$home/dev/kosi-lib", kosi))
+        assertNull(ruleOf("$home/dev", kosi), "Not a folder above it")
+        assertNull(ruleOf("$home/dev/Kosi-Libs", kosi), "Case counts")
+        assertNull(ruleOf("$home/dev/kosi-libs"), "No rule at all")
+    }
+
+    @Test
+    fun theDeepestFolderWinsWhateverTheOrderOfTheRules() {
+        assertEquals(vie, ruleOf("$home/dev/kosi-libs/vie/app", kosi, vie))
+        assertEquals(vie, ruleOf("$home/dev/kosi-libs/vie/app", vie, kosi))
+        assertEquals(kosi, ruleOf("$home/dev/kosi-libs/other", vie, kosi))
+        assertEquals(kosi, ruleOf("$home/dev/kosi-libs/vie2", vie, kosi), "vie2 is not vie")
+    }
+
+    @Test
+    fun theFirstRuleOfAFolderThatHasTwoWins() {
+        val again = kosi.copy(environment = "other")
+
+        assertEquals(kosi, ruleOf("$home/dev/kosi-libs/api", kosi, again))
+        assertEquals(again, ruleOf("$home/dev/kosi-libs/api", again, kosi))
+    }
+
+    @Test
+    fun aRuleWithNoFolderCoversNothingAndTheRootCoversEverything() {
+        assertNull(ruleOf("$home/dev/api", EnvironmentFolder("", "x"), EnvironmentFolder("  ", "y")))
+        val root = EnvironmentFolder("/", "all")
+        assertEquals(root, ruleOf("$home/dev/api", root))
+        assertEquals(kosi, ruleOf("$home/dev/kosi-libs/api", root, kosi))
+    }
+
+    @Test
+    fun theFolderOfAProjectGivesItsEnvironmentElseTheDefaultOne() {
+        val settings = Settings(defaultEnvironment = "default", environmentFolders = listOf(kosi, EnvironmentFolder("~/dev/private", null)))
+
+        assertEquals("kodein", settings.environmentForProject("$home/dev/kosi-libs/api", home))
+        assertEquals("default", settings.environmentForProject("$home/dev/other", home), "No folder: the default one")
+        assertNull(settings.environmentForProject("$home/dev/private/api", home), "A folder that says none is not the default one")
+        assertNull(Settings().environmentForProject("$home/dev/other", home))
     }
 }

@@ -160,6 +160,8 @@ public enum class MainView {
  * @param environmentColors The colors that the user gave the badges of environments, by their names, each kept as [EnvironmentColor.encoded]; an
  * environment that is not in it has the one its name falls on. The color of an environment that is no longer found is kept: it comes back with
  * its file.
+ * @param environmentFolders The environments of the folders that projects are added under, which win over [defaultEnvironment] (see
+ * [environmentForProject]).
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -198,6 +200,7 @@ public data class Settings(
     val environmentDirectories: List<String> = listOf(Environments.DEFAULT_DIRECTORY),
     val defaultEnvironment: String? = null,
     val environmentColors: Map<String, String> = emptyMap(),
+    val environmentFolders: List<EnvironmentFolder> = emptyList(),
 ) {
     public companion object {
         public const val DEFAULT_LIGHT_COLOR_SCHEME: String = "Alabaster"
@@ -233,6 +236,15 @@ public data class Settings(
         return UI_SCALES[(index + steps).coerceIn(UI_SCALES.indices)]
     }
 }
+
+/**
+ * The environment of the projects under a [folder]: one that is added there is given it, instead of the default environment of the settings.
+ *
+ * @param folder The folder, with `~` for the home folder. A project in it, or in a folder of it, is under it.
+ * @param environment The environment, `null` for none: the folder is then left out of the default one, or of the rule of a folder above it.
+ */
+@Serializable
+public data class EnvironmentFolder(val folder: String, val environment: String? = null)
 
 /** What [Settings.usageHidden] keeps for the limit that [agent] calls [label] (`Week (Sonnet only)`, `Session`…). */
 public fun usageKey(agent: Agent, label: String): String = "${agent.id}/$label"

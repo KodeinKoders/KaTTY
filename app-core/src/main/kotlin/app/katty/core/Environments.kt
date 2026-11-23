@@ -148,6 +148,7 @@ public object Environments {
 
     private const val EXTENSION = ".env"
 
+
     private val userHome: String get() = System.getProperty("user.home")
 
     /**
@@ -168,6 +169,24 @@ public object Environments {
         path.startsWith("~/") -> home + path.substring(1)
         else -> path
     }
+
+    /**
+     * The rule of [rules] that [directory] is under: the one whose folder is [directory] itself or one of its parents, the deepest folder when
+     * several are (the first one when two name the same). Folders are compared by whole names, as they are written: `/dev/kosi-libs2` is not
+     * under `/dev/kosi-libs`, case counts, and links are not followed. `~` is [home], in both. A rule with no folder covers nothing.
+     */
+    public fun folderOf(directory: String, rules: List<EnvironmentFolder>, home: String = userHome): EnvironmentFolder? {
+        val path = withoutTrailingSlash(expandHome(directory, home))
+        return rules
+            .filter { it.folder.isNotBlank() }
+            .map { it to withoutTrailingSlash(expandHome(it.folder, home)) }
+            .filter { (_, folder) -> path == folder || path.startsWith(if (folder.endsWith("/")) folder else "$folder/") }
+            .maxByOrNull { (_, folder) -> folder.length }
+            ?.first
+    }
+
+    // `/dev/` is `/dev`, and `/` stays what it is.
+    private fun withoutTrailingSlash(path: String): String = if (path.length > 1) path.trimEnd('/').ifEmpty { "/" } else path
 
     /** The environments of [directories] (with `~` for [home]), sorted by name; a folder that does not exist has none. */
     public fun list(directories: List<String>, home: String = userHome): EnvironmentListing {
@@ -487,3 +506,21 @@ public fun KattyState.environmentOf(id: WorkspaceId): String? =
 
 /** The projects that have no environment: the ones that the settings' "Apply" gives the default one. */
 public fun KattyState.projectsWithoutEnvironment(): List<Project> = projects.filter { it.environment == null }
+
+/**
+ * The environment that a project added in [directory] is given: the one of the deepest folder of [environmentFolders] that it is under (`null`
+ * when that one says none), else [defaultEnvironment]. See [Environments.folderOf].
+ */
+public fun Settings.environmentForProject(directory: String, home: String = System.getProperty("user.home")): String? {
+    val rule = Environments.folderOf(directory, environmentFolders, home)
+    return if (rule != null) rule.environment else defaultEnvironment
+}
+
+/**
+ * The projects that are under the folder [folder] of the settings (not under a deeper one) and have another environment than it gives: the ones
+ * that the settings' "Apply" of that folder changes. None when there is no such folder.
+ */
+public fun KattyState.projectsOffFolder(folder: String, home: String = System.getProperty("user.home")): List<Project> {
+    val rule = settings.environmentFolders.firstOrNull { it.folder == folder } ?: return emptyList()
+    return projects.filter { it.environment != rule.environment && Environments.folderOf(it.directory, settings.environmentFolders, home)?.folder == rule.folder }
+}

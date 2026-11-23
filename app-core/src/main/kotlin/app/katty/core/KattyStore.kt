@@ -71,8 +71,9 @@ public class KattyStore(
         }
         val id = ProjectId(newId())
         val projectName = name?.takeIf { it.isNotBlank() } ?: directory.trimEnd('/').substringAfterLast('/').ifEmpty { directory }
-        // The project, and its first workspace, are given the default environment as it is now: changing it later does not change them.
-        val environment = flow.value.settings.defaultEnvironment
+        // The project, and its first workspace, are given the environment of its folder (else the default one) as it is now: changing it later does
+        // not change them.
+        val environment = flow.value.settings.environmentForProject(directory)
         // The first workspace is named after its project, which is what it is: the folder as it is.
         val workspace = Workspace(WorkspaceId(newId()), projectName, PaneNode.Leaf(newTerminal(directory)), environment = environment)
         val project = Project(id, projectName, directory, listOf(workspace), environment = environment)
@@ -257,6 +258,24 @@ public class KattyStore(
         edit { state ->
             following = state.projects.filter { it.environment == null }.flatMap { project -> project.workspaces.filter { it.environment == null }.map { it.id } }.toSet()
             state.copy(projects = state.projects.map { if (it.environment == null) it.copy(environment = environment) else it })
+        }
+        return following
+    }
+
+    /**
+     * Gives the projects of [projectsOffFolder] (the ones under the folder [folder] of the settings that have another environment) the one of that
+     * folder: what the settings' "Apply" of a folder does. Their workspaces keep theirs, as with [setProjectEnvironment].
+     *
+     * @return The workspaces of those projects that had their project's environment: the ones that followed it, which the user is offered to start
+     * again with the new one. Empty when there is no such folder.
+     */
+    public fun applyFolderEnvironment(folder: String): Set<WorkspaceId> {
+        var following: Set<WorkspaceId> = emptySet()
+        edit { state ->
+            val environment = state.settings.environmentFolders.firstOrNull { it.folder == folder }?.environment
+            val projects = state.projectsOffFolder(folder).associateBy { it.id }
+            following = projects.values.flatMap { project -> project.workspaces.filter { it.environment == project.environment && it.environment != environment }.map { it.id } }.toSet()
+            if (projects.isEmpty()) state else state.copy(projects = state.projects.map { if (it.id in projects) it.copy(environment = environment) else it })
         }
         return following
     }
