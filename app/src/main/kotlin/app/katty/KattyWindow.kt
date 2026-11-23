@@ -45,6 +45,7 @@ import app.katty.core.UsageService
 import app.katty.core.usageSources
 import app.katty.core.Environments
 import app.katty.core.isActive
+import app.katty.core.projectsOffFolder
 import app.katty.core.projectsWithoutEnvironment
 import app.katty.screens.EnvironmentActions
 import app.katty.screens.EnvironmentControls
@@ -736,6 +737,9 @@ internal fun KattyWindowContent(
                             onAddFolder = controller::addEnvironmentFolder,
                             onOpenFolder = { controller.openEnvironmentsFolder(it) },
                             onApplyDefault = controller::applyDefaultEnvironment,
+                            projectsOffFolder = settings.environmentFolders.associate { it.folder to state.projectsOffFolder(it.folder).size },
+                            onAddProjectFolder = controller::addProjectFolder,
+                            onApplyProjectFolder = controller::applyFolderEnvironment,
                         ),
                         overlay = { controller.environmentRestart?.takeIf { it.fromSettings }?.let { environmentRestartDialog(it) } },
                     )

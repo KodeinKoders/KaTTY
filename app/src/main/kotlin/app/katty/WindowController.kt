@@ -20,6 +20,7 @@ import app.katty.core.commandRequestPrompt
 import app.katty.core.isTypable
 import app.katty.core.Direction
 import app.katty.core.EnvironmentChange
+import app.katty.core.EnvironmentFolder
 import app.katty.core.Environments
 import app.katty.core.environmentOf
 import app.katty.screens.homeAbbreviated
@@ -518,6 +519,29 @@ internal class WindowController(
         val default = state.settings.defaultEnvironment ?: return
         val following = store.applyEnvironmentToProjectsWithout(default)
         if (following.isNotEmpty()) environmentRestart = EnvironmentRestart(following, default, later = true, fromSettings = true)
+    }
+
+    /**
+     * Asks for a folder of projects, and gives it the default environment as its own: the one that a project added under it is given, which the
+     * user then chooses. A folder that has its environment already is left as it is.
+     */
+    fun addProjectFolder() {
+        val folder = platform.chooseFolder("Add folder of projects", null) ?: return
+        val written = homeAbbreviated(folder)
+        store.updateSettings { settings ->
+            if (settings.environmentFolders.any { it.folder == written }) settings
+            else settings.copy(environmentFolders = settings.environmentFolders + EnvironmentFolder(written, settings.defaultEnvironment))
+        }
+    }
+
+    /**
+     * Gives the environment of the folder [folder] of the settings to its projects that have another, as the settings' "Apply" of that folder does,
+     * and offers their workspaces to start again.
+     */
+    fun applyFolderEnvironment(folder: String) {
+        val rule = state.settings.environmentFolders.firstOrNull { it.folder == folder } ?: return
+        val following = store.applyFolderEnvironment(folder)
+        if (following.isNotEmpty()) environmentRestart = EnvironmentRestart(following, rule.environment, later = true, fromSettings = true)
     }
 
     /** The answer to [environmentRestart]: [now] starts the shells again; otherwise nothing changes (for a workspace) or they keep theirs (later). */

@@ -1,5 +1,6 @@
 package app.katty
 
+import app.katty.core.EnvironmentFolder
 import app.katty.core.KattyStore
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
@@ -142,6 +143,56 @@ class WindowControllerEnvironmentTest {
         controller.addEnvironmentFolder()
 
         assertEquals(listOf("~/.config/KaTTY/environments", "~/secrets/katty"), state.settings.environmentDirectories)
+    }
+
+    @Test
+    fun aFolderOfProjectsIsGivenTheDefaultEnvironmentOnceWithTheHomeWrittenAsATilde() {
+        folderAnswer = System.getProperty("user.home") + "/dev/kosi-libs"
+
+        controller.addProjectFolder()
+        store.updateSettings { it.copy(environmentFolders = it.environmentFolders.map { rule -> rule.copy(environment = "perso") }, defaultEnvironment = "sunday") }
+        controller.addProjectFolder()
+
+        assertEquals(listOf(EnvironmentFolder("~/dev/kosi-libs", "perso")), state.settings.environmentFolders, "Not added twice, and what was chosen is kept")
+        folderAnswer = null
+        controller.addProjectFolder()
+        assertEquals(1, state.settings.environmentFolders.size, "Nothing was chosen")
+    }
+
+    @Test
+    fun aNewFolderOfProjectsStartsWithTheDefaultEnvironment() {
+        folderAnswer = "/dev/kosi-libs"
+
+        controller.addProjectFolder()
+
+        assertEquals(listOf(EnvironmentFolder("/dev/kosi-libs", "kodein")), state.settings.environmentFolders)
+    }
+
+    @Test
+    fun theEnvironmentOfAFolderIsAppliedFromTheSettingsWhichAskThemselves() {
+        store.updateSettings { it.copy(environmentFolders = listOf(EnvironmentFolder("/tmp", "perso"))) }
+        val first = workspace.id
+
+        controller.applyFolderEnvironment("/tmp")
+
+        assertEquals("perso", project.environment)
+        assertEquals(EnvironmentRestart(setOf(first), "perso", later = true, fromSettings = true), controller.environmentRestart)
+        assertEquals(false, controller.blockingDialog, "The settings window shows it, not the main one")
+        assertEquals("kodein", workspace.environment, "Until its shells are started again")
+        controller.answerEnvironmentRestart(now = true)
+        assertEquals("perso", workspace.environment)
+        assertEquals<List<Collection<TerminalId>>>(listOf(workspace.layout.terminals().map { it.id }), restarted)
+    }
+
+    @Test
+    fun aFolderThatHasNothingToApplyOrIsNotInTheSettingsAsksNothing() {
+        store.updateSettings { it.copy(environmentFolders = listOf(EnvironmentFolder("/tmp", "kodein"))) }
+
+        controller.applyFolderEnvironment("/tmp")
+        controller.applyFolderEnvironment("/elsewhere")
+
+        assertNull(controller.environmentRestart)
+        assertEquals("kodein", project.environment)
     }
 
     @Test

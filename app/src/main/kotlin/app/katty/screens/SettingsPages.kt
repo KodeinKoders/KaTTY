@@ -111,6 +111,9 @@ enum class SettingsPage(val title: String) {
  * What the Environments page does that is not a setting: [onRefresh] reads the folders again (when the page opens), [onAddFolder] asks for a folder
  * to add, [onOpenFolder] shows one in the Finder (made if it is not there), and [onApplyDefault] gives the default environment to the
  * [projectsWithoutEnvironment] projects that have none.
+ *
+ * [onAddProjectFolder] asks for a folder of projects to give an environment to, and [onApplyProjectFolder] gives the environment of a folder of
+ * [Settings.environmentFolders] to its projects that have another: [projectsOffFolder] says how many, by the folder as it is written.
  */
 internal class EnvironmentActions(
     val projectsWithoutEnvironment: Int = 0,
@@ -118,6 +121,9 @@ internal class EnvironmentActions(
     val onAddFolder: () -> Unit = {},
     val onOpenFolder: (String) -> Unit = {},
     val onApplyDefault: () -> Unit = {},
+    val projectsOffFolder: Map<String, Int> = emptyMap(),
+    val onAddProjectFolder: () -> Unit = {},
+    val onApplyProjectFolder: (String) -> Unit = {},
 )
 
 /**
@@ -557,7 +563,7 @@ private fun EnvironmentsPage(
     }
     Separator()
     Section("DEFAULT ENVIRONMENT") {
-        DefaultEnvironmentField(settings.defaultEnvironment, listing.names) { name -> onChange { it.copy(defaultEnvironment = name) } }
+        EnvironmentField(settings.defaultEnvironment, listing.names, "Default environment") { name -> onChange { it.copy(defaultEnvironment = name) } }
         Caption("A project that is added gets it, and keeps it when this changes. Its shells are started with it.")
         val count = actions.projectsWithoutEnvironment
         if (settings.defaultEnvironment != null && count > 0) {
@@ -566,6 +572,33 @@ private fun EnvironmentsPage(
                 OneLine("$projects no environment.", Modifier.weight(1f), color = colors.muted)
                 KattyTextButton("Apply", actions.onApplyDefault, description = "Apply the default environment to the projects that have none")
             }
+        }
+    }
+    Separator()
+    Section("PROJECT FOLDERS") {
+        Caption("A project that is added under one of these folders gets its environment instead of the default one. The deepest folder wins.")
+        for (rule in settings.environmentFolders) {
+            val folder = rule.folder
+            Column(Modifier.padding(top = 2.dp)) {
+                Row(Modifier.padding(start = 8.dp, end = 4.dp).heightIn(min = 28.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OneLine(folder, Modifier.weight(1f), color = colors.text)
+                    KattyIconButton(KattyIcons.Close, "Remove $folder", { onChange { it.copy(environmentFolders = it.environmentFolders.filter { other -> other.folder != folder }) } })
+                }
+                EnvironmentField(rule.environment, listing.names, "Environment of $folder") { name ->
+                    onChange { it.copy(environmentFolders = it.environmentFolders.map { other -> if (other.folder == folder) other.copy(environment = name) else other }) }
+                }
+                val count = actions.projectsOffFolder[folder] ?: 0
+                if (count > 0) {
+                    val projects = if (count == 1) "1 project has" else "$count projects have"
+                    Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OneLine("$projects another environment.", Modifier.weight(1f), color = colors.muted)
+                        KattyTextButton("Apply", { actions.onApplyProjectFolder(folder) }, description = "Apply the environment of $folder to its projects")
+                    }
+                }
+            }
+        }
+        Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+            KattyTextButton("Add project folder…", actions.onAddProjectFolder)
         }
     }
     Separator()
@@ -598,9 +631,9 @@ private fun EnvironmentsPage(
     }
 }
 
-/** The default environment: "None", or one of the [names] that exist; one that has no file any more says so. */
+/** An environment to choose, for [what] ("Default environment"): "None", or one of the [names] that exist; one that has no file any more says so. */
 @Composable
-private fun DefaultEnvironmentField(current: String?, names: Set<String>, onChoose: (String?) -> Unit) {
+private fun EnvironmentField(current: String?, names: Set<String>, what: String, onChoose: (String?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val label = when {
         current == null -> "None"
@@ -608,7 +641,7 @@ private fun DefaultEnvironmentField(current: String?, names: Set<String>, onChoo
         else -> current
     }
     Box {
-        Field(label, "Default environment: $label", { open = true })
+        Field(label, "$what: $label", { open = true })
         if (open) {
             KattyMenu(
                 menu {
