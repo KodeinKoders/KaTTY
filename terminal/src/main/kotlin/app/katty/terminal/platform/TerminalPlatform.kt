@@ -66,6 +66,9 @@ internal interface TerminalPlatform {
 
     /** The name of this machine as the system has it now, `null` when it cannot be known. Quick: it does not ask the network. */
     fun hostName(): String?
+
+    /** What the system needs before a program is started in a terminal, which a program then inherits of this process. Never throws. */
+    fun beforeStart() {}
 }
 
 /** The implementation of the system the terminal runs on. */

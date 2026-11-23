@@ -27,4 +27,7 @@ internal object WindowsTerminalPlatform : TerminalPlatform {
 
     // What `hostname` says, and what the integration of PowerShell puts in the address of its directory.
     override fun hostName(): String? = System.getenv("COMPUTERNAME")?.takeIf { it.isNotEmpty() }
+
+    // A program inherits whether this process ignores Control + C (see processControlC).
+    override fun beforeStart() = processControlC()
 }

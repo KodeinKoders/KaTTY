@@ -1465,6 +1465,7 @@ public class TerminalSession private constructor(
             val marked = applied?.installed == true
 
             logger.info("Starting {} in a {}x{} terminal, in {}{}", argv, cols, rows, startIn, if (snapshot != null) ", from a snapshot" else "")
+            terminalPlatform.beforeStart()
             val process = PtyProcessBuilder(argv.toTypedArray())
                 .setEnvironment(env)
                 .setDirectory(startIn)
