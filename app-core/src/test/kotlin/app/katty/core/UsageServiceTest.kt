@@ -249,10 +249,11 @@ class UsageServiceTest {
             listOf("/bin/sh", "-c", "printf '%s' \"" + names.joinToString(" ") { (name, missing) -> "\${$name-$missing}" } + "\"")
         }
 
-        val result = ProcessCommandRunner.run(prints("FOO" to "none", inherited to "gone"), directory, 5_000, environment)!!
+        // Windows PowerShell can take seconds to start on a slow machine (CI's ARM64).
+        val result = ProcessCommandRunner.run(prints("FOO" to "none", inherited to "gone"), directory, 30_000, environment)!!
 
         assertEquals("bar gone", result.output)
-        assertTrue(ProcessCommandRunner.run(prints(inherited to "gone"), directory, 5_000)!!.output != "gone")
+        assertTrue(ProcessCommandRunner.run(prints(inherited to "gone"), directory, 30_000)!!.output != "gone")
     }
 
     @Test

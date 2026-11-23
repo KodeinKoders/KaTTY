@@ -237,7 +237,8 @@ public final class TestProgram {
                 if (rest.isEmpty()) in.transferTo(target);
                 else for (String file : rest) target.write(Files.readAllBytes(Path.of(file)));
             }
-            case "pwd" -> target.write((Path.of("").toAbsolutePath() + "\n").getBytes(StandardCharsets.UTF_8));
+            // The physical path, as getcwd gives it on Unix: Windows keeps the directory as it was given, a short name (RUNNER~1) too.
+            case "pwd" -> target.write((Path.of("").toAbsolutePath().toRealPath() + "\n").getBytes(StandardCharsets.UTF_8));
             case "true" -> {}
             case "exit" -> {
                 out.flush();

@@ -39,7 +39,7 @@ class TerminalSnapshotTest {
     private fun await(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000
         while (!condition()) {
-            check(System.nanoTime() < deadline) { "Still waiting for $what" }
+            check(System.nanoTime() < deadline) { "Still waiting for $what. The screen:\n${sessions.lastOrNull()?.frames?.value?.text()}" }
             Thread.sleep(10)
         }
     }
