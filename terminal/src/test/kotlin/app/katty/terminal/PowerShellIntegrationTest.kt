@@ -204,8 +204,9 @@ class PowerShellIntegrationTest {
         for (shell in shells) {
             val old = TerminalSession.start(100, 20, command = sh("printf 'old 1\\nold 2\\nold 3\\n'; sleep 30"), shellIntegration = false).also { sessions += it }
             old.await("the old content") { "old 3" in old.screen() }
+            // Wide: the prompt has the path of a temporary directory, which on a macOS of CI is long enough to wrap the line that is typed.
             val restored = TerminalSession.start(
-                100, 20, command = listOf(shell, "-NoLogo"), directory = directory("katty restored").toString(), snapshot = old.snapshot(), restoredNote = "restored",
+                200, 20, command = listOf(shell, "-NoLogo"), directory = directory("katty restored").toString(), snapshot = old.snapshot(), restoredNote = "restored",
             ).also { sessions += it }
             restored.await("the prompt of $shell") { restored.atPrompt() }
 
