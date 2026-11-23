@@ -1659,6 +1659,8 @@ public class GhosttyTerminal private constructor(
     public fun vtWrite(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size - offset) {
         Objects.checkFromIndexSize(offset, length, bytes.size)
         requireOpen()
+        // What libghostty calls back while it reads the bytes must not have to grow the stack (see StackGrowth).
+        StackGrowth.ensure()
         var written = 0
         while (written < length) {
             val piece = minOf(length - written, WRITE_BUFFER_BYTES.toInt())
@@ -1685,6 +1687,8 @@ public class GhosttyTerminal private constructor(
         reportedRows = rows
         reportedCellWidthPx = cellWidthPx
         reportedCellHeightPx = cellHeightPx
+        // The reports call back (see StackGrowth).
+        StackGrowth.ensure()
         checkResult(
             GhosttyVt.ghostty_terminal_resize(
                 handle,

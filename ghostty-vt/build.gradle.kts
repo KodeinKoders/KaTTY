@@ -8,8 +8,7 @@ plugins {
 }
 
 kotlin {
-    // The JetBrains Runtime, which the application ships with: the tests run on it. On another JDK of the same version (Zulu, Temurin), the
-    // JVM of the tests crashed on Windows in a callback from libghostty (measured on ARM64 and x64, not on the JetBrains Runtime).
+    // The JetBrains Runtime, which the application ships with: what is tested is what runs.
     jvmToolchain {
         languageVersion = JavaLanguageVersion.of(findProperty("jvm.toolchain")!!.toString().toInt())
         vendor = JvmVendorSpec.JETBRAINS
