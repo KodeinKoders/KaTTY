@@ -124,16 +124,28 @@ CLAUDE_CONFIG_DIR=~/.claude-kodein
 
 # ~/.config/KaTTY/environments/claude-perso.env
 CLAUDE_CONFIG_DIR=~/.claude-perso
-unset ANTHROPIC_API_KEY
+unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
 ----
 +
 `${NAME}` uses a variable above or of your environment, `~` is your home, and `unset` takes a variable out.
+Take out the tokens that your own shell exports (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`): they are used before the login of the account.
 A value with a `$` of its own, such as a password, goes in single quotes: `PASSWORD='Tr0ub4dor$Horse'`.
 * Choose the environment of a project in its right-click menu (*Environment*), or in the command palette.
-A new project gets the default one of the settings, and keeps it.
+A new project gets the one of the folder it is in, and keeps it.
+Give an environment to a folder of projects in the settings (*Environments*, *Project folders*): `~/Developer/github.com/kosi-libs` with `claude-kodein` is the account of every project that you add under it, and the deepest folder wins.
+A project that is under no folder gets the default environment of the settings.
+*Apply* gives the environment of a folder to the projects of it that have another.
 * A badge says it, next to the project, in the title bar and on the cards of the board.
 Its color is made from the name: click the badge in the settings (*Environments*) to choose a tint, or any hex.
 Changing it offers to restart the shells of its workspaces, where they were and with what ran in them (a Claude Code that changes account starts a new conversation); a workspace that you keep on another one shows its own badge.
+* Every shell is told its environment in `KATTY_ENVIRONMENT`, and a shell with none does not have it.
+Your startup files run after the environment and win over it, so make what chooses an account step aside, whichever the agent:
++
+[source,shell]
+----
+# ~/.zshenv
+[[ -z $KATTY_ENVIRONMENT && -r ~/.claude-token.env ]] && source ~/.claude-token.env
+----
 * The AI that KaTTY asks from a terminal uses that terminal's account, and a Claude Code is resumed from the folder of its `CLAUDE_CONFIG_DIR`.
 * KaTTY never shows a value of these files: the settings list the environments, their files, and the lines that could not be read.
 
@@ -537,7 +549,7 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 fish is supported but was never tried, and nushell and elvish are not.
 * ⌘F2 needs the fn key on a Mac keyboard where F2 is the brightness key, unless F1, F2 and the others are standard function keys in the keyboard settings.
 * The logos of the agents are drawn in one color each, not in their own.
-* The variables of an environment are given to the shell before its startup files run: what your `.zshrc` exports wins, so keep account variables out of it.
+* The variables of an environment are given to the shell before its startup files run: what your `.zshrc` exports wins, so keep account variables out of it, or guard them with `[[ -z $KATTY_ENVIRONMENT ]]`.
 `${PATH}` in an environment is the `PATH` of KaTTY, which is the system's when it was opened from the Finder, and the AI command keeps the `PATH` of your login shell.
 * Only Claude Code is resumed from its environment's folder: the other agents are looked for in their default folders.
 The usage meter reads the account of the default environment.

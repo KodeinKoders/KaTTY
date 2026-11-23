@@ -684,6 +684,8 @@ Its default is the one of the first installed agent in the order of the README's
 * *Environments*, see <<environments>>:
 ** FOLDERS: the folders that the environments are read from, in their order (`~/.config/KaTTY/environments` by default), each with up, down, open (made first when it is not there) and remove; "Add folder…" adds one last, with the home written `~`; "Reset" puts the default back.
 ** DEFAULT ENVIRONMENT: a field with None and the environments that exist ("name (not found)" for one that has no file); while some projects have none, "N projects have no environment." and Apply, which gives it to them and asks about their workspaces as a change of a project's environment does, in the settings window.
+** PROJECT FOLDERS: the folders that projects are added under, each with its environment (a field like the default one's, with None), and a remove button; "Add project folder…" asks for a folder and adds it last with the default environment, written with the home as `~`, unless it is there already.
+Under a folder that has projects with another environment than its own, "N projects have another environment." and Apply, which gives them its environment and asks about their workspaces as a change of a project's environment does, in the settings window.
 ** FOUND: each environment as its badge, with its files, and under a file that has lines that are not read "⚠ N lines ignored (line X)", X being the first of them, or "⚠ Cannot be read".
 A click on a badge opens its color: Auto (with the tint that its name falls on), — , Teal, Violet, Orange, Pink, Green, Blue, Olive, — , Custom… (with its hex when it has one), the current one checked, each with a square of its color.
 Custom… asks for a hex ("Color of “name”", a field `#RRGGBB` where the `#` and the case do not matter, the badge on the light and on the dark theme, Cancel and Apply, which only takes six hex digits).
@@ -731,7 +733,8 @@ A hidden file, `.env` alone, and a name with a `/` or a control character are no
 
 === Who has which
 
-* A project gets the default environment of the settings when it is added, and keeps it when the default changes; a new workspace gets its project's.
+* A project gets when it is added the environment of the deepest folder of the settings that it is under (see <<project-folders>>), else the default environment of the settings.
+It keeps it when they change, and a new workspace gets its project's.
 * Changing the environment of a project changes what its new workspaces get.
 Its workspaces that had its environment are offered to start again with the new one: "Restart N workspaces with the environment “name”?", with the terminals where something runs, Later and "Restart now".
 Later, they keep theirs.
@@ -742,11 +745,28 @@ A Claude Code whose `CLAUDE_CONFIG_DIR` changes is started on a new conversation
 * A project that is opened again from the recent ones keeps its environments.
 * A terminal that is moved to another workspace keeps the environment it was started with until it is started again.
 
+[#project-folders]
+=== Project folders
+
+* The settings can give an environment to a folder of projects, so that the projects of an account are not chosen one by one: `~/Developer/github.com/kosi-libs` with `kodein-koders` gives it to every project that is added in that folder or below.
+* A project is under a folder when its directory is that folder or one of its parents, compared by whole names as they are written, with `~` for the home folder: `kosi-libs2` is not under `kosi-libs`, case counts, and links are not followed.
+* The deepest folder wins, whatever the order of the list.
+Of two rules for the same folder, the first wins.
+* A folder with no environment (None) is a choice: its projects are given none, and not the default one.
+That is how a folder is left out of the default environment, or of the rule of a folder above it.
+* A folder only counts when a project is added: the project keeps what it was given, as when the default environment changes.
+Apply, in the settings, gives the environment of a folder to its projects that have another, which includes one that was given another on purpose.
+It does not change a project that is under a deeper folder.
+Their workspaces are offered to start again, as with the default environment.
+
 === Shells
 
 * The variables are put in the environment of the shell's process before it starts; the startup files of the shell (`.zprofile`, `.zshrc`) run after, and what they set wins.
 * An environment that has no file starts its shells without it, and the log says so.
 * The files are read each time a shell starts: an edited file is for the shells that start after.
+* A shell, and a run, is told the name of its environment in `KATTY_ENVIRONMENT`, so that the startup files of the user can leave an account alone when one is chosen: `[[ -z $KATTY_ENVIRONMENT ]] && source ~/.claude-token.env`.
+A shell with no environment, or whose environment has no file, has none: the variable is taken out of its environment, in case KaTTY was started from one of its own terminals.
+A file cannot set it, as with the other `KATTY_…` variables.
 * The `CLAUDE_CONFIG_DIR` of a shell (its environment's, else KaTTY's unless the environment takes it out) is where its Claude Code's session is looked for, to resume it at the next launch.
 The folders of the other agents are not followed.
 
