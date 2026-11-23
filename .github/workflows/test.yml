@@ -68,14 +68,10 @@ jobs:
           java-version: 25
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
-      # Windows PowerShell builds its caches the first time it starts on a machine (its modules' commands), which on the ARM64 one took longer
-      # than the tests that run it wait: started once here, and timed, then again.
-      - name: Start Windows PowerShell once
-        run: |
-          foreach ($run in 'first', 'second') {
-            $time = Measure-Command { powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'Import-Module PSReadLine; Get-Command | Out-Null' }
-            "Windows PowerShell, $run start: $([math]::Round($time.TotalSeconds, 1)) s"
-          }
+      # Windows PowerShell builds the cache of its modules' commands the first time it needs them on a machine, which on the ARM64 one took
+      # longer than the tests that run it wait (without this, three of them failed there; with it, they passed): built once here.
+      - name: Build the caches of Windows PowerShell
+        run: powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'Import-Module PSReadLine; Get-Command | Out-Null'
         shell: pwsh
       - name: Build
         run: ./gradlew --stacktrace --scan build :app:packageMsi
