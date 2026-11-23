@@ -1046,8 +1046,15 @@ public class TerminalSession private constructor(
         // and leaves pty4j's way for a system that cannot, or what the system refused.
         ptyLock.read {
             if (ptyClosed) return
-            val done = terminalPlatform.pty.setWindowSize(process, cols, rows, cols * cellWidthPx, rows * cellHeightPx)
-            if (!done) process.winSize = WinSize(cols, rows)
+            // A program that ended may have taken its pty with it (ConPTY closes its console when the program ends, and pty4j then throws:
+            // "ResizePseudoConsole failed: the handle is invalid"): what is shown is still resized, the pty no longer matters. Thrown on the
+            // UI thread, it froze the application.
+            try {
+                val done = terminalPlatform.pty.setWindowSize(process, cols, rows, cols * cellWidthPx, rows * cellHeightPx)
+                if (!done) process.winSize = WinSize(cols, rows)
+            } catch (e: Exception) {
+                if (process.isAlive) logger.warn("Could not resize the pty", e) else logger.debug("The pty of a program that ended is not resized", e)
+            }
         }
         producer.request()
     }
@@ -1450,7 +1457,7 @@ public class TerminalSession private constructor(
             env.putAll(environment)
             // An application opened from the Finder has no locale: the shell would read what is typed as ASCII. Windows has no such variable.
             if (!isWindows) ensureUtf8Locale(env)
-            val applied = if (shellIntegration) ShellIntegration.apply(command, env, shellIntegrationDirectory) else null
+            val applied = if (shellIntegration) ShellIntegration.apply(command, env, shellIntegrationDirectory, lightBackground = !isDark(theme)) else null
             val argv = applied?.argv ?: command
             val shell = ShellIntegration.shellOf(command)
             val typed = typeAtPrompt?.let { it.toInput(shell ?: "sh") ?: null.also { logger.warn("Not typing {}: it holds a control character", it) } }

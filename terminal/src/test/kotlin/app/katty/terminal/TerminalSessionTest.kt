@@ -1059,6 +1059,19 @@ class TerminalSessionTest {
     }
 
     @Test
+    fun aTerminalWhoseProgramEndedIsStillResized() {
+        // ConPTY closes its console when the program ends, and resizing it threw (on the UI thread, which froze the application).
+        val session = start("printf hello")
+        session.awaitExit()
+
+        session.resize(40, 3, 8, 16)
+
+        val frame = session.awaitFrame { it.rows.size == 3 }
+        assertEquals("hello", frame.text(0))
+        assertEquals(40, frame.rows[0].cells.size)
+    }
+
+    @Test
     fun doesNotSendWhatItWritesOnTheScreenToTheProgram() {
         // In raw mode, the program gets exactly the bytes that are sent: it must not get the message.
         val session = start("stty raw -echo; echo ready; head -c1 | od -An -tx1")

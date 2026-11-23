@@ -19,6 +19,42 @@ if (-not $global:__KattyIntegration) {
         $global:OutputEncoding = [System.Text.Encoding]::UTF8
     } catch {}
 
+    # PSReadLine colors the command line for a dark background: white text, bright yellow commands, bright white numbers, which a light one does
+    # not show. When KaTTY says that the background is light (the theme it had when the shell started), each color that is still PSReadLine's
+    # default is made one that reads on it: white is the text's own color, a bright color its plain one. A color that the profile set is kept.
+    # The defaults are the ones of PSReadLine 2.0 (Windows PowerShell) to 2.4, as Get-PSReadLineOption gives them.
+    if ($global:__KattyLightBackground -and (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue)) {
+        try {
+            $esc = [char]27
+            $light = [ordered]@{
+                ContinuationPrompt     = @(@('37'), '39')
+                Default                = @(@('37'), '39')
+                Keyword                = @(@('92'), '32')
+                Variable               = @(@('92'), '32')
+                Command                = @(@('93'), '33')
+                Type                   = @(@('37'), '39')
+                Number                 = @(@('97'), '39')
+                Member                 = @(@('97', '37'), '39')
+                Emphasis               = @(@('96'), '36')
+                Error                  = @(@('91'), '31')
+                Selection              = @(@('30;47'), '7')
+                InlinePrediction       = @(@('97;2;3'), '90;3')
+                ListPredictionSelected = @(@('48;5;238'), '48;5;252')
+                ListPredictionTooltip  = @(@('97;2;3'), '90;3')
+            }
+            $options = Get-PSReadLineOption
+            $colors = @{}
+            foreach ($kind in $light.Keys) {
+                $property = if ($kind -eq 'Default') { 'DefaultTokenColor' } else { "${kind}Color" }
+                # A version of PSReadLine that does not have it (2.0 has no prediction) is left alone.
+                if (-not $options.PSObject.Properties[$property]) { continue }
+                $defaults, $replacement = $light[$kind]
+                if ($defaults | Where-Object { $options.$property -eq "$esc[$($_)m" }) { $colors[$kind] = "$esc[$($replacement)m" }
+            }
+            if ($colors.Count) { Set-PSReadLineOption -Colors $colors }
+        } catch {}
+    }
+
     # The directory as a file:// URL, which is what OSC 7 carries: a drive is `/C:/…`, and what is not ASCII is its UTF-8 bytes in percents.
     function global:__KattyDirectory {
         $location = $ExecutionContext.SessionState.Path.CurrentLocation

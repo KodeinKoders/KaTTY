@@ -99,11 +99,17 @@ internal object ShellIntegration {
     private val POWERSHELL_OPTIONS = setOf("-nologo", "-login", "-l")
     private val UNIX_OPTIONS = setOf("-l", "--login", "-i")
 
-    // The script of PowerShell as the command that runs it: UTF-16LE in Base64, which is what -EncodedCommand reads.
-    private val powerShellCommand: String by lazy {
-        val script = ShellIntegration::class.java.getResourceAsStream("$RESOURCES/pwsh/katty.ps1")?.use { it.readBytes().decodeToString() }
+    private val powerShellScript: String by lazy {
+        ShellIntegration::class.java.getResourceAsStream("$RESOURCES/pwsh/katty.ps1")?.use { it.readBytes().decodeToString() }
             ?: error("The resource pwsh/katty.ps1 is missing")
-        Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE))
+    }
+
+    // The script of PowerShell as the command that runs it: UTF-16LE in Base64, which is what -EncodedCommand reads. On a light background it
+    // is told so first, in a variable of its own (not the environment, which the programs would inherit): PSReadLine's default colors are a dark
+    // background's.
+    private fun powerShellCommand(lightBackground: Boolean): String {
+        val script = if (lightBackground) "\$global:__KattyLightBackground = \$true\n$powerShellScript" else powerShellScript
+        return Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE))
     }
 
     /**
@@ -111,8 +117,10 @@ internal object ShellIntegration {
      * untouched when the shell is not one that is known, is not started to be typed in, or the scripts cannot be written.
      *
      * @param directory Where the scripts are kept (see [prepare]): a temporary directory when it is `null`.
+     * @param lightBackground Whether the terminal's background is light when the shell starts: PowerShell's line editor then gets colors that are
+     *   readable on it, where the user did not choose others.
      */
-    fun apply(command: List<String>, environment: MutableMap<String, String>, directory: Path? = null): Applied {
+    fun apply(command: List<String>, environment: MutableMap<String, String>, directory: Path? = null, lightBackground: Boolean = false): Applied {
         val untouched = Applied(command, installed = false)
         // A login shell, which is what a terminal starts: anything else is a command or a script that must run as it is.
         val shell = shellOf(command) ?: return untouched
@@ -148,7 +156,7 @@ internal object ShellIntegration {
                 Applied(command, installed = true)
             }
 
-            "pwsh", "powershell" -> Applied(command + listOf("-NoExit", "-EncodedCommand", powerShellCommand), installed = true)
+            "pwsh", "powershell" -> Applied(command + listOf("-NoExit", "-EncodedCommand", powerShellCommand(lightBackground)), installed = true)
 
             else -> untouched
         }

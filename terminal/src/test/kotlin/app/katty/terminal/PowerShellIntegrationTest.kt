@@ -56,6 +56,32 @@ class PowerShellIntegrationTest {
     }
 
     @Test
+    fun onALightBackgroundTheScriptIsToldSoFirst() {
+        val applied = ShellIntegration.apply(listOf("pwsh.exe", "-NoLogo"), mutableMapOf(), lightBackground = true)
+
+        val script = String(Base64.getDecoder().decode(applied.argv.last()), Charsets.UTF_16LE)
+        assertTrue(script.startsWith("\$global:__KattyLightBackground = \$true\n"), script.take(80))
+    }
+
+    @Test
+    fun onALightBackgroundTheDefaultColorsOfTheLineEditorAreMadeReadableAndTheUsersKept() {
+        val shells = powerShells()
+        assumeTrue("No PowerShell is installed", shells.isNotEmpty())
+        for (shell in shells) {
+            // What a profile does, before the script (Windows PowerShell runs no script file): it set the color of the commands, which stays.
+            val profile = "Set-PSReadLineOption -Colors @{ Command = \"\$([char]27)[35m\" }"
+            val script = String(Base64.getDecoder().decode(ShellIntegration.apply(listOf(shell, "-NoLogo"), mutableMapOf(), lightBackground = true).argv.last()), Charsets.UTF_16LE)
+            val check = "\$o = Get-PSReadLineOption; Write-Output ('colors:' + ((\$o.DefaultTokenColor, \$o.CommandColor, \$o.NumberColor, \$o.CommentColor) -join ',').Replace([string][char]27, 'ESC'))"
+            // Encoded, as the script is given: Java does not escape the double quotes of an argument on Windows.
+            val command = Base64.getEncoder().encodeToString("Import-Module PSReadLine; $profile\n$script\n$check".toByteArray(Charsets.UTF_16LE))
+            val output = ProcessBuilder(shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", command)
+                .redirectErrorStream(true).start().let { process -> process.inputStream.bufferedReader().readText().also { process.waitFor() } }
+            val colors = output.lines().firstOrNull { it.startsWith("colors:") }
+            assertEquals("colors:ESC[39m,ESC[35m,ESC[39m,ESC[32m", colors, "$shell: the text and the numbers its own color, the profile's commands kept, the comments as they were:\n$output")
+        }
+    }
+
+    @Test
     fun aCommandLineIsQuotedForPowerShell() {
         assertEquals("vim notes.txt C:\\Users\\me\\a.txt", shellLine(listOf("vim", "notes.txt", "C:\\Users\\me\\a.txt"), "pwsh"))
         assertEquals("echo 'a b' '' '\$HOME' 'it''s' 'a,b' '@x' 'a`b'", shellLine(listOf("echo", "a b", "", "\$HOME", "it's", "a,b", "@x", "a`b"), "pwsh"))
@@ -93,6 +119,34 @@ class PowerShellIntegrationTest {
     }
 
     private fun directory(name: String): Path = Files.createTempDirectory(name).also { it.toFile().deleteOnExit() }.toRealPath()
+
+    @Test
+    fun controlCStopsTheProgramAndNotPowerShell() {
+        val shells = powerShells()
+        assumeTrue("No PowerShell is installed", shells.isNotEmpty())
+        for (shell in shells) {
+            val session = start(shell, directory("katty interrupt"))
+            val events = session.collectEvents()
+            session.await("the first prompt of $shell") { session.atPrompt() }
+
+            // At the prompt it is the line editor's: the line is given up, and the shell stays.
+            session.sendText("echo given up")
+            session.await("what is typed in $shell") { "echo given up" in session.screen() }
+            session.sendText("\u0003")
+            Thread.sleep(1000)
+            assertNull(session.exited.value, "$shell ended on Control + C at its prompt:\n${session.screen()}")
+
+            // While a program runs, it ends that program.
+            val forever = if (isWindows) "ping -t 127.0.0.1" else "sleep 600"
+            events.clear()
+            session.sendText("$forever\r")
+            session.await("$forever to run in $shell") { TerminalEvent.CommandStarted(null) in events && !session.atPrompt() }
+            Thread.sleep(1500)
+            session.sendText("\u0003")
+            session.await("the prompt of $shell after $forever was stopped") { session.atPrompt() || session.exited.value != null }
+            assertNull(session.exited.value, "$shell ended with the program it ran:\n${session.screen()}")
+        }
+    }
 
     @Test
     fun powerShellReportsItsDirectoryAndItsCommands() {
