@@ -8,6 +8,7 @@ import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSnapshotStore
 import app.katty.core.TerminalSpec
+import app.katty.core.isWindows
 import app.katty.terminal.TerminalSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,12 +39,19 @@ class SessionRegistryEnvironmentTest {
     private val runs = CopyOnWriteArrayList<EnvironmentChange>()
     private val sessions = CopyOnWriteArrayList<TerminalSession>()
 
-    private val script = "echo \"FOO=\${FOO-none} end\"; sleep 30"
+    // What the shell prints of the variable it was given, or `none`: with sh, and on Windows with PowerShell (the script encoded, since Java does
+    // not escape the double quotes of an argument there).
+    private val printsFoo: List<String> = if (isWindows) {
+        val script = "Write-Output ('FOO=' + \$(if (Test-Path env:FOO) { \$env:FOO } else { 'none' }) + ' end'); Start-Sleep 30"
+        listOf("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", java.util.Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE)))
+    } else {
+        listOf("/bin/sh", "-c", "echo \"FOO=\${FOO-none} end\"; sleep 30")
+    }
 
     private fun shell(spec: TerminalSpec, environment: EnvironmentChange, restored: Boolean, snapshot: app.katty.terminal.TerminalSnapshot? = null): TerminalSession {
         starts += Start(spec, environment, restored)
         return TerminalSession.start(
-            80, 5, command = listOf("/bin/sh", "-c", script), directory = spec.directory, shellIntegration = false,
+            80, 5, command = printsFoo, directory = spec.directory, shellIntegration = false,
             environment = environment.variables, unsetEnvironment = environment.unset, snapshot = snapshot,
         ).also { sessions += it }
     }
@@ -55,7 +63,8 @@ class SessionRegistryEnvironmentTest {
         startRestored = { spec, _, snapshot, environment -> shell(spec, environment, restored = true, snapshot) },
         startRun = { command, directory, _, environment ->
             runs += environment
-            TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", command), directory = directory, shellIntegration = false).also { sessions += it }
+            val line = if (isWindows) listOf("cmd.exe", "/c", command) else listOf("/bin/sh", "-c", command)
+            TerminalSession.start(80, 5, command = line, directory = directory, shellIntegration = false).also { sessions += it }
         },
         resolveEnvironment = { Environments.resolve(it, listOf(environments.toString())) },
     )

@@ -75,9 +75,16 @@ class TerminalSessionTest {
         // One that this process has, and that the shell does not set again by itself.
         val shellVariables = setOf("PATH", "PWD", "OLDPWD", "SHLVL", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM", "TERM_PROGRAM", "IFS", "PS1", "PS2", "PS4", "OPTIND")
         val inherited = System.getenv().keys.sorted().first { it.matches(Regex("[A-Z][A-Z_]*")) && it !in shellVariables }
-        val script = "if [ -n \"\${$inherited+x}\" ]; then s=set; else s=gone; fi; echo \"added=\${DOTENV_PROBE-none} inherited=\$s end\""
+        // With sh, and on Windows with PowerShell, whose script is encoded: Java does not escape the double quotes of an argument there.
+        val command = if (isWindows) {
+            val script = "\$s = if (Test-Path env:$inherited) { 'set' } else { 'gone' }; " +
+                "\$a = if (Test-Path env:DOTENV_PROBE) { \$env:DOTENV_PROBE } else { 'none' }; Write-Output \"added=\$a inherited=\$s end\""
+            listOf("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", java.util.Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE)))
+        } else {
+            listOf("/bin/sh", "-c", "if [ -n \"\${$inherited+x}\" ]; then s=set; else s=gone; fi; echo \"added=\${DOTENV_PROBE-none} inherited=\$s end\"")
+        }
         fun run(unset: Set<String>): String {
-            val session = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), environment = mapOf("DOTENV_PROBE" to "x"), unsetEnvironment = unset)
+            val session = TerminalSession.start(80, 5, command = command, environment = mapOf("DOTENV_PROBE" to "x"), unsetEnvironment = unset)
             sessions += session
             return session.awaitFrame { it.text(0).endsWith("end") }.text(0)
         }

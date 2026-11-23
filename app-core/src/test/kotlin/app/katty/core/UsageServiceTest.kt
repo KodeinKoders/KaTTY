@@ -240,10 +240,19 @@ class UsageServiceTest {
         val inherited = System.getenv().keys.sorted().first { it.matches(Regex("[A-Z][A-Z_]*")) && it !in setOf("PATH", "PWD", "OLDPWD", "SHLVL", "HOME", "LANG") }
         val environment = EnvironmentChange(mapOf("FOO" to "bar"), setOf(inherited))
 
-        val result = ProcessCommandRunner.run(listOf("/bin/sh", "-c", "printf '%s %s' \"\${FOO-none}\" \"\${$inherited-gone}\""), directory, 5_000, environment)!!
+        // With sh, and on Windows with PowerShell, whose script is encoded: Java does not escape the double quotes of an argument there.
+        fun prints(vararg names: Pair<String, String>): List<String> = if (isWindows) {
+            val values = names.joinToString(", ") { (name, missing) -> "\$(if (Test-Path env:$name) { \$env:$name } else { '$missing' })" }
+            val script = "[Console]::Write((@($values) -join ' '))"
+            listOf("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", java.util.Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE)))
+        } else {
+            listOf("/bin/sh", "-c", "printf '%s' \"" + names.joinToString(" ") { (name, missing) -> "\${$name-$missing}" } + "\"")
+        }
+
+        val result = ProcessCommandRunner.run(prints("FOO" to "none", inherited to "gone"), directory, 5_000, environment)!!
 
         assertEquals("bar gone", result.output)
-        assertTrue(ProcessCommandRunner.run(listOf("/bin/sh", "-c", "printf '%s' \"\${$inherited-gone}\""), directory, 5_000)!!.output != "gone")
+        assertTrue(ProcessCommandRunner.run(prints(inherited to "gone"), directory, 5_000)!!.output != "gone")
     }
 
     @Test
