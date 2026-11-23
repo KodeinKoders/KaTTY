@@ -38,7 +38,8 @@ class SessionRegistryEnvironmentTest {
     private val runs = CopyOnWriteArrayList<EnvironmentChange>()
     private val sessions = CopyOnWriteArrayList<TerminalSession>()
 
-    private val script = "echo \"FOO=\${FOO-none} end\"; sleep 30"
+    // The second line says the name of the environment that the shell was told, which no test of the first line looks at.
+    private val script = "echo \"FOO=\${FOO-none} end\"; echo \"ENV=\${KATTY_ENVIRONMENT-none}\"; sleep 30"
 
     private fun shell(spec: TerminalSpec, environment: EnvironmentChange, restored: Boolean, snapshot: app.katty.terminal.TerminalSnapshot? = null): TerminalSession {
         starts += Start(spec, environment, restored)
@@ -87,6 +88,9 @@ class SessionRegistryEnvironmentTest {
 
     private val terminal get() = store.state.value.selection.terminal!!
 
+    // What a shell with no environment of its own is given: only its name, taken out.
+    private val standardShell = EnvironmentChange(emptyMap(), setOf("KATTY_ENVIRONMENT"))
+
     @Test
     fun aShellIsGivenTheEnvironmentOfItsWorkspace() {
         environments.resolve("demo.env").writeText("FOO=bar\nunset DOTENV_PROBE")
@@ -96,7 +100,8 @@ class SessionRegistryEnvironmentTest {
         sync()
 
         session(terminal).awaitText("FOO=bar end")
-        assertEquals(EnvironmentChange(mapOf("FOO" to "bar"), setOf("DOTENV_PROBE")), starts.single().environment)
+        session(terminal).awaitText("ENV=demo")
+        assertEquals(EnvironmentChange(mapOf("FOO" to "bar", "KATTY_ENVIRONMENT" to "demo"), setOf("DOTENV_PROBE")), starts.single().environment)
     }
 
     @Test
@@ -143,7 +148,8 @@ class SessionRegistryEnvironmentTest {
         sync()
 
         session(terminal).awaitText("FOO=none end")
-        assertTrue(starts.single().environment.isEmpty)
+        session(terminal).awaitText("ENV=none")
+        assertEquals(standardShell, starts.single().environment, "Nothing but the name taken out, in case KaTTY was started from one of its own terminals")
     }
 
     @Test
@@ -154,7 +160,8 @@ class SessionRegistryEnvironmentTest {
         sync()
 
         session(terminal).awaitText("FOO=none end")
-        assertTrue(starts.single().environment.isEmpty)
+        session(terminal).awaitText("ENV=none")
+        assertEquals(standardShell, starts.single().environment, "It does not have the environment, so it is not told its name")
     }
 
     @Test
@@ -185,7 +192,7 @@ class SessionRegistryEnvironmentTest {
         registry.runs.run(workspace, "echo run", project)
 
         await("the run") { runs.isNotEmpty() }
-        assertEquals(EnvironmentChange(mapOf("FOO" to "bar"), emptySet()), runs.single())
+        assertEquals(EnvironmentChange(mapOf("FOO" to "bar", "KATTY_ENVIRONMENT" to "demo"), emptySet()), runs.single())
     }
 
     @Test

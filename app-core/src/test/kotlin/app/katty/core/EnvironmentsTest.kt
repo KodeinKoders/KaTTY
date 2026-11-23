@@ -317,4 +317,22 @@ class EnvironmentsTest {
         assertNull(settings.environmentForProject("$home/dev/private/api", home), "A folder that says none is not the default one")
         assertNull(Settings().environmentForProject("$home/dev/other", home))
     }
+
+    @Test
+    fun aShellIsToldItsEnvironmentAndAStandardOneIsNotTold() {
+        val change = EnvironmentChange(mapOf("A" to "1"), setOf("B"))
+
+        assertEquals(EnvironmentChange(mapOf("A" to "1", "KATTY_ENVIRONMENT" to "kodein"), setOf("B")), change.named("kodein"))
+        assertEquals(EnvironmentChange(mapOf("A" to "1"), setOf("B", "KATTY_ENVIRONMENT")), change.named(null), "Taken out of KaTTY's own")
+        assertEquals(EnvironmentChange(emptyMap(), setOf("KATTY_ENVIRONMENT")), EnvironmentChange.NONE.named(null))
+        assertEquals(EnvironmentChange(mapOf("KATTY_ENVIRONMENT" to "kodein"), emptySet()), EnvironmentChange.NONE.named("kodein"))
+        assertEquals(change.named("x"), change.named(null).named("x"), "Never both set and taken out")
+        assertEquals(change.named(null), change.named("x").named(null))
+    }
+
+    @Test
+    fun theNameOfTheEnvironmentIsAVariableThatAFileCannotSet() {
+        assertTrue(Environments.isReserved(Environments.NAME_VARIABLE))
+        assertEquals(emptyMap(), variables("KATTY_ENVIRONMENT=other"), "It is KaTTY's to say")
+    }
 }

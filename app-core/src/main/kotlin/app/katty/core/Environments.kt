@@ -106,6 +106,18 @@ public class EnvironmentChange(public val variables: Map<String, String>, public
         base.putAll(variables)
     }
 
+    /**
+     * This change for the shells of the environment [name], which they are told in [Environments.NAME_VARIABLE] (the startup files of the user
+     * can then leave an account alone when it is chosen). For `null`, the shell is standard: the variable is taken out, so that a KaTTY that was
+     * started from one of its own terminals does not hand its own name on.
+     */
+    public fun named(name: String?): EnvironmentChange =
+        if (name != null) {
+            EnvironmentChange(variables + (Environments.NAME_VARIABLE to name), unset - Environments.NAME_VARIABLE)
+        } else {
+            EnvironmentChange(variables - Environments.NAME_VARIABLE, unset + Environments.NAME_VARIABLE)
+        }
+
     override fun equals(other: Any?): Boolean = other is EnvironmentChange && variables == other.variables && unset == other.unset
 
     override fun hashCode(): Int = 31 * variables.hashCode() + unset.hashCode()
@@ -148,6 +160,8 @@ public object Environments {
 
     private const val EXTENSION = ".env"
 
+    /** The variable that tells a shell the name of its environment (see [EnvironmentChange.named]); not there in a standard one. Reserved, like all of `KATTY_…`. */
+    public const val NAME_VARIABLE: String = "KATTY_ENVIRONMENT"
 
     private val userHome: String get() = System.getProperty("user.home")
 

@@ -240,18 +240,19 @@ class SessionRegistry(
 
     /**
      * What the environment [name] changes for the shells that start with it, read now: nothing for none, or one that has no file (which is logged).
-     * Only names are logged, never values.
+     * The shell is told the name of the environment that it has (see [EnvironmentChange.named]), and none for a standard one, a missing one
+     * included. Only names are logged, never values.
      */
     private fun environmentChange(name: String?, of: String): EnvironmentChange = when (val resolution = resolveEnvironment(name)) {
-        EnvironmentResolution.Standard -> EnvironmentChange.NONE
+        EnvironmentResolution.Standard -> resolution.change.named(null)
         is EnvironmentResolution.Missing -> {
             logger.warn("The environment {} of {} has no file: it starts without it", resolution.name, of)
-            EnvironmentChange.NONE
+            resolution.change.named(null)
         }
         is EnvironmentResolution.Resolved -> {
             for (problem in resolution.problems) logger.info("Environment {}: {} at {}:{}{}", resolution.name, problem.kind, problem.file, problem.line ?: "-", problem.variable?.let { " ($it)" }.orEmpty())
             logger.info("Environment {} for {}: {} variables, {} taken out", resolution.name, of, resolution.change.variables.size, resolution.change.unset.size)
-            resolution.change
+            resolution.change.named(resolution.name)
         }
     }
 
