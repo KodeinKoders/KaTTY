@@ -4,8 +4,13 @@ import app.katty.core.AgentState
 import app.katty.core.FinishedCommand
 import app.katty.core.KattyStore
 import app.katty.core.SplitDirection
+import app.katty.interactiveShellLine
+import app.katty.longCommand
+import app.katty.longCommandName
 import app.katty.terminal.TerminalCommandOutcome
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
+import app.katty.tmpDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,7 +34,7 @@ class AgentTrackerTest {
     private val registry = SessionRegistry(
         store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null },
         start = { spec, _, _ ->
-            TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", scripts.removeFirstOrNull() ?: "sleep 60"), directory = spec.directory, shellIntegration = false)
+            TerminalSession.start(80, 5, command = sh(scripts.removeFirstOrNull() ?: "sleep 60"), directory = spec.directory, shellIntegration = false)
         },
     )
 
@@ -45,7 +50,7 @@ class AgentTrackerTest {
     private fun report(vararg fields: String) = "printf '\\033]7501;${fields.joinToString(":")}\\033\\\\'"
 
     private fun start(): app.katty.core.TerminalId {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         registry.sync(store.state.value)
         tracker.sync(registry.handles.value)
         return store.state.value.selection.terminal!!
@@ -67,7 +72,7 @@ class AgentTrackerTest {
     fun reportsThatComeAtTheSameMomentFromManyTerminalsAreAllKept() {
         // Each session reports on its own thread: two updates that read the same map, and wrote it one after the other, lost the first.
         repeat(16) { scripts += "sleep 1; ${report("state=working", "app=claude-code")}; sleep 60" }
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         repeat(15) { store.split(store.state.value.selection.terminal!!, SplitDirection.ROW) }
         registry.sync(store.state.value)
         tracker.sync(registry.handles.value)
@@ -182,8 +187,7 @@ class AgentTrackerTest {
     fun theAgentIsForgottenWhenTheShellHasTheTerminalAgain() {
         // It reports, waits for a line, and then the shell takes the terminal: the agent has ended. A line and not a time, which a slow machine
         // could take up before the test looks.
-        val shell = System.getenv("SHELL") ?: "/bin/zsh"
-        scripts += "${report("state=done", "app=claude-code")}; head -n 1 >/dev/null; exec $shell -f -i"
+        scripts += "${report("state=done", "app=claude-code")}; head -n 1 >/dev/null; exec $interactiveShellLine"
         val id = start()
         await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
         // (`sh -c` has no job control: its group, and the name that the terminal has, is its own, not `head`'s.)
@@ -201,8 +205,7 @@ class AgentTrackerTest {
     @Test
     fun anAgentThatEndedAtRestLeavesNoCard() {
         // It reports `idle`, which the terminal keeps after the program ends, and the shell has the terminal.
-        val shell = System.getenv("SHELL") ?: "/bin/zsh"
-        scripts += "${report("state=idle", "app=antigravity")}; sleep 1; exec $shell -f -i"
+        scripts += "${report("state=idle", "app=antigravity")}; sleep 1; exec $interactiveShellLine"
         val id = start()
         await("reporting, at rest") { tracker.infos.value[id]?.report?.reporting == true }
 
@@ -213,17 +216,16 @@ class AgentTrackerTest {
     fun theIdleRecordOfAnAgentThatEndedIsNotTheNextProgramsCard() {
         // Crush, agy and OpenCode leave an `idle` record when they end. The shell has the terminal, and then emacs or aider takes it: the
         // record is the old program's, and must not make a card for it ("Crush") around a program that says nothing.
-        val shell = System.getenv("SHELL") ?: "/bin/zsh"
-        scripts += "${report("state=idle", "app=crush")}; sleep 1; exec $shell -f -i"
+        scripts += "${report("state=idle", "app=crush")}; sleep 1; exec $interactiveShellLine"
         val id = start()
         await("reporting, at rest") { tracker.infos.value[id]?.report?.reporting == true }
         await("the shell has the terminal, the card is gone") { tracker.infos.value[id]?.report?.reporting == false }
         val handle = registry.handles.value.getValue(id)
         await("the shell has the terminal") { registry.processNames.value[id] == handle.shellName }
 
-        handle.session!!.sendText("sleep 30\r")
+        handle.session!!.sendText("$longCommand\r")
 
-        await("another program has the terminal") { registry.processNames.value[id] == "sleep" }
+        await("another program has the terminal") { registry.processNames.value[id] == longCommandName }
         Thread.sleep(500)
         assertEquals(false, tracker.infos.value.getValue(id).report.reporting, "the program that ended is back as a card")
     }
@@ -232,8 +234,7 @@ class AgentTrackerTest {
     fun anAgentThatEndedBeforeItsFinishedStateWasSeenLeavesNoGhostOfItInTheShell() {
         // It reports `done` and ends: the shell has the terminal, and the `done` record is still there. Seeing it then must leave a plain
         // shell, not "that agent at rest" for a terminal that runs a shell.
-        val shell = System.getenv("SHELL") ?: "/bin/zsh"
-        scripts += "${report("state=done", "app=claude-code")}; sleep 1; exec $shell -f -i"
+        scripts += "${report("state=done", "app=claude-code")}; sleep 1; exec $interactiveShellLine"
         val id = start()
         await("done") { tracker.infos.value[id]?.state == AgentState.DONE }
         // Wait for the shell to have the terminal: the process is what the registry says it is.
@@ -288,7 +289,7 @@ class AgentTrackerTest {
     fun markingEverythingSeenDoesItForEveryTerminal() {
         scripts += "${report("state=done", "app=a")}; sleep 60"
         scripts += "${report("state=error", "app=b")}; sleep 60"
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         val second = store.split(first, SplitDirection.ROW)!!
         registry.sync(store.state.value)
@@ -381,7 +382,7 @@ class AgentTrackerTest {
     fun aCommandThatIsKeptStaysUntilTheTerminalIsSeen() {
         scripts += "sleep 60"
         scripts += "sleep 60"
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         val second = store.split(first, SplitDirection.ROW)!!
         registry.sync(store.state.value)

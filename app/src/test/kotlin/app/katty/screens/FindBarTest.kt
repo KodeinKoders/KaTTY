@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import app.katty.terminal.TerminalSearchState
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
 import app.katty.ui.KattyTheme
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -23,7 +24,7 @@ class FindBarTest {
     fun close() = sessions.forEach { it.close() }
 
     private fun session(output: String): TerminalSession =
-        TerminalSession.start(40, 6, command = listOf("/bin/sh", "-c", "printf '$output'; sleep 60")).also { sessions += it }
+        TerminalSession.start(40, 6, command = sh("printf '$output'; sleep 60")).also { sessions += it }
 
     @Test
     fun saysHowManyMatchesThereAreAndWhichOneIsSelected() {

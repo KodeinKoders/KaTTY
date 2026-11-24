@@ -473,8 +473,9 @@ internal fun KattyWindowContent(
             controller.handle(event.appShortcut(), event.shortcutNumber())
         }
     }
-    // What the user bound the shortcuts to, for the whole application: what shows a label draws it again when that changes.
-    val shortcutMap = remember(settings.shortcuts) { ShortcutMap.of(settings.shortcuts) }
+    // What the user bound the shortcuts to, for the whole application: what shows a label draws it again when that changes. On the keyboard in use,
+    // which is the system's (a test that presses ⌘ on a PC sets a Mac's).
+    val shortcutMap = remember(settings.shortcuts) { ShortcutMap.of(settings.shortcuts, KeyboardStyle.inUse) }
     SideEffect { Shortcuts.map = shortcutMap }
 
     titleBar {

@@ -25,7 +25,8 @@ import java.util.List;
 
 /**
  * A program that the tests run in a terminal where there is no `/bin/sh` (Windows): it runs the part of `sh` that their scripts use, the same way
- * (`printf`, `echo`, `sleep`, `stty raw -echo`, `head`, `od`, `tr -d`, `seq`, `yes`, `cat`, `pwd`, pipes, `;` and `>/dev/null`), and refuses
+ * (`printf`, `echo`, `sleep`, `stty raw -echo`, `head`, `od`, `tr -d`, `seq`, `yes`, `cat` and `cat -v`, `cd`, `pwd`, `read`, `exec`, `wait`, pipes, `;`, `&` and `$!`,
+ * `${NAME-word}`, and `>` to a file or `/dev/null`), and refuses
  * anything else, so that a script it does not know fails instead of doing something else. `TestProgramTest` compares it with `/bin/sh`.
  *
  * Java with no dependency: it is started with the folder of its class as its only classpath. The script comes in Base64, so that no quoting of the
@@ -65,14 +66,42 @@ public final class TestProgram {
         }
     }
 
+    /** A pipeline of the script, with its text, and whether it runs in the background (`&`). */
+    record Command(List<List<String>> pipeline, String source, boolean background) {}
+
+    // What `&` started, which `wait` waits for: `$!` is the last one.
+    private static final List<Process> background = new ArrayList<>();
+
+    // The directory that `cd` went to: a Java process cannot change its own, so it is the one of what this one starts, and what `pwd` says.
+    private static Path directory = Path.of("").toAbsolutePath();
+
+    // `$!` in a word, which only has its value once the script runs.
+    private static final String LAST_BACKGROUND = "\u0000!\u0000";
+
     /** Runs [script]: its commands one after the other, each a pipeline. */
     static void run(String script, InputStream in, OutputStream out) throws Throwable {
-        for (List<List<String>> pipeline : parse(script)) runPipeline(pipeline, in, out);
+        for (Command command : parse(script)) {
+            if (command.background()) {
+                out.flush();
+                background.add(start(command.source()));
+            } else {
+                runPipeline(command.pipeline(), in, out);
+            }
+        }
     }
 
-    // The script as commands separated by `;`, each a pipeline of commands separated by `|`, each a list of words.
-    static List<List<List<String>>> parse(String script) {
-        List<List<List<String>>> commands = new ArrayList<>();
+    // A script in another TestProgram, a process of its own as a shell's `&` makes one, with the terminal of this one.
+    private static Process start(String script) throws IOException {
+        String java = ProcessHandle.current().info().command().orElseThrow();
+        String classes = System.getProperty("java.class.path");
+        return new ProcessBuilder(java, "--enable-native-access=ALL-UNNAMED", "-XX:TieredStopAtLevel=1", "-XX:+UseSerialGC", "-cp", classes, TestProgram.class.getName(),
+            Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_8))).directory(directory.toFile()).inheritIO().start();
+    }
+
+    // The script as commands separated by `;` or `&`, each a pipeline of commands separated by `|`, each a list of words.
+    static List<Command> parse(String script) {
+        List<Command> commands = new ArrayList<>();
+        int start = 0;
         List<List<String>> pipeline = new ArrayList<>();
         List<String> words = new ArrayList<>();
         StringBuilder word = null;
@@ -122,12 +151,26 @@ public final class TestProgram {
                     if (!words.isEmpty()) pipeline.add(words);
                     words = new ArrayList<>();
                     if (c != '|') {
-                        if (!pipeline.isEmpty()) commands.add(pipeline);
+                        if (!pipeline.isEmpty()) commands.add(new Command(pipeline, script.substring(start, i), false));
                         pipeline = new ArrayList<>();
+                        start = i + 1;
                     }
                 }
                 i++;
-            } else if ("&<(){}`".indexOf(c) >= 0) {
+            } else if (c == '&') {
+                if (i + 1 < script.length() && script.charAt(i + 1) == '&') throw new Unsupported("&&");
+                if (word != null) {
+                    words.add(word.toString());
+                    word = null;
+                }
+                if (!words.isEmpty()) pipeline.add(words);
+                words = new ArrayList<>();
+                if (pipeline.isEmpty()) throw new Unsupported("'&' after nothing");
+                commands.add(new Command(pipeline, script.substring(start, i), true));
+                pipeline = new ArrayList<>();
+                start = i + 1;
+                i++;
+            } else if ("<(){}`".indexOf(c) >= 0) {
                 throw new Unsupported("'" + c + "'");
             } else {
                 if (word == null) word = new StringBuilder();
@@ -137,16 +180,36 @@ public final class TestProgram {
         }
         if (word != null) words.add(word.toString());
         if (!words.isEmpty()) pipeline.add(words);
-        if (!pipeline.isEmpty()) commands.add(pipeline);
+        if (!pipeline.isEmpty()) commands.add(new Command(pipeline, script.substring(start), false));
         return commands;
     }
 
-    // `$NAME`, from the environment, which is all that the scripts expand. Returns where the name ends.
+    // `$NAME`, `${NAME}` and `${NAME-word}` from the environment, and `$!`. Returns where it ends.
     private static int expand(String script, int dollar, StringBuilder word) {
-        int end = dollar + 1;
+        if (dollar + 1 < script.length() && script.charAt(dollar + 1) == '!') {
+            word.append(LAST_BACKGROUND);
+            return dollar + 2;
+        }
+        boolean braced = dollar + 1 < script.length() && script.charAt(dollar + 1) == '{';
+        int first = braced ? dollar + 2 : dollar + 1;
+        int end = first;
         while (end < script.length() && (Character.isLetterOrDigit(script.charAt(end)) || script.charAt(end) == '_')) end++;
-        if (end == dollar + 1) throw new Unsupported("'$' that is not a variable");
-        String value = System.getenv(script.substring(dollar + 1, end));
+        if (end == first) throw new Unsupported("'$' that is not a variable");
+        String value = System.getenv(script.substring(first, end));
+        if (braced) {
+            int close = script.indexOf('}', end);
+            if (close < 0) throw new Unsupported("an unclosed '${'");
+            String operator = script.substring(end, close);
+            // The word when the variable is unset (`-`), or unset or empty too (`:-`): written as it is, the scripts expand nothing in it.
+            if (operator.startsWith(":-")) {
+                if (value == null || value.isEmpty()) value = operator.substring(2);
+            } else if (operator.startsWith("-")) {
+                if (value == null) value = operator.substring(1);
+            } else if (!operator.isEmpty()) {
+                throw new Unsupported("${" + script.substring(first, close) + "}");
+            }
+            end = close + 1;
+        }
         if (value != null) word.append(value);
         return end;
     }
@@ -183,21 +246,24 @@ public final class TestProgram {
     }
 
     private static void runCommand(List<String> words, InputStream in, OutputStream out) throws Throwable {
-        List<String> arguments = new ArrayList<>(words);
-        // `>/dev/null`, written in one word or two: what the command writes goes nowhere.
+        List<String> arguments = new ArrayList<>();
+        String lastPid = background.isEmpty() ? "" : String.valueOf(background.get(background.size() - 1).pid());
+        for (String word : words) arguments.add(word.replace(LAST_BACKGROUND, lastPid));
+        // `>/dev/null` or `> file`, written in one word or two: what the command writes goes nowhere, or to the file.
         OutputStream target = out;
         for (int index = 0; index < arguments.size(); index++) {
             String argument = arguments.get(index);
-            if (argument.equals(">/dev/null")) {
-                arguments.remove(index--);
-                target = OutputStream.nullOutputStream();
-            } else if (argument.equals(">") && index + 1 < arguments.size() && arguments.get(index + 1).equals("/dev/null")) {
-                arguments.remove(index + 1);
-                arguments.remove(index--);
-                target = OutputStream.nullOutputStream();
-            } else if (argument.startsWith(">") || argument.startsWith("2>")) {
-                throw new Unsupported("the redirection " + argument);
+            if (argument.startsWith("2>")) throw new Unsupported("the redirection " + argument);
+            if (!argument.startsWith(">")) continue;
+            if (argument.startsWith(">>")) throw new Unsupported("the redirection " + argument);
+            String file = argument.substring(1);
+            arguments.remove(index);
+            if (file.isEmpty()) {
+                if (index >= arguments.size()) throw new Unsupported("a '>' with no file");
+                file = arguments.remove(index);
             }
+            index--;
+            target = file.equals("/dev/null") ? OutputStream.nullOutputStream() : new FileOutputStream(file);
         }
         String name = arguments.get(0);
         List<String> rest = arguments.subList(1, arguments.size());
@@ -234,12 +300,34 @@ public final class TestProgram {
                 while (true) target.write(bytes);
             }
             case "cat" -> {
-                if (rest.isEmpty()) in.transferTo(target);
-                else for (String file : rest) target.write(Files.readAllBytes(Path.of(file)));
+                if (rest.equals(List.of("-v"))) catVisible(in, target);
+                else if (rest.isEmpty()) in.transferTo(target);
+                else for (String file : rest) target.write(Files.readAllBytes(directory.resolve(file)));
             }
             // The physical path, as getcwd gives it on Unix: Windows keeps the directory as it was given, a short name (RUNNER~1) too.
-            case "pwd" -> target.write((Path.of("").toAbsolutePath().toRealPath() + "\n").getBytes(StandardCharsets.UTF_8));
+            case "pwd" -> target.write((directory.toRealPath() + "\n").getBytes(StandardCharsets.UTF_8));
+            case "cd" -> {
+                Path next = directory.resolve(single(name, rest)).normalize();
+                if (!Files.isDirectory(next)) throw new Unsupported("cd to a folder that is not there: " + next);
+                directory = next;
+            }
             case "true" -> {}
+            // A line from the input, up to its end; the scripts do not read what it holds.
+            case "read" -> {
+                out.flush();
+                int b;
+                while ((b = in.read()) >= 0 && b != '\n' && b != '\r') {}
+            }
+            case "wait" -> {
+                if (!rest.isEmpty()) throw new Unsupported("wait " + rest);
+                for (Process process : background) process.waitFor();
+            }
+            // Another program in its place, with its terminal: its code is this one's.
+            case "exec" -> {
+                if (rest.isEmpty()) throw new Unsupported("exec without a program");
+                out.flush();
+                System.exit(new ProcessBuilder(rest).directory(directory.toFile()).inheritIO().start().waitFor());
+            }
             case "exit" -> {
                 out.flush();
                 System.exit(rest.isEmpty() ? 0 : Integer.parseInt(single(name, rest)));
@@ -247,7 +335,31 @@ public final class TestProgram {
             default -> throw new Unsupported("the command " + name);
         }
         target.flush();
+        if (target != out) target.close();
         out.flush();
+    }
+
+    // `cat -v`: the controls as `^X` (but the line feed and the tab), DEL as `^?`, and what is past ASCII as `M-` and the same, written as it comes.
+    private static void catVisible(InputStream in, OutputStream out) throws IOException {
+        byte[] buffer = new byte[4096];
+        int read;
+        while ((read = in.read(buffer)) > 0) {
+            ByteArrayOutputStream text = new ByteArrayOutputStream();
+            for (int index = 0; index < read; index++) {
+                int b = buffer[index] & 0xff;
+                if (b >= 0x80) {
+                    text.writeBytes("M-".getBytes(StandardCharsets.US_ASCII));
+                    b -= 0x80;
+                }
+                if (b == 0x7f) text.writeBytes("^?".getBytes(StandardCharsets.US_ASCII));
+                else if (b < 0x20 && b != '\n' && b != '\t') {
+                    text.write('^');
+                    text.write(b + 0x40);
+                } else text.write(b);
+            }
+            out.write(text.toByteArray());
+            out.flush();
+        }
     }
 
     private static String single(String command, List<String> arguments) {
@@ -256,7 +368,7 @@ public final class TestProgram {
     }
 
     // printf's format, with its escapes and %%, %s, %d and %c, used again while arguments are left.
-    static byte[] printf(List<String> arguments) {
+    public static byte[] printf(List<String> arguments) {
         if (arguments.isEmpty()) throw new Unsupported("printf without a format");
         String format = arguments.get(0);
         List<String> values = arguments.subList(1, arguments.size());
@@ -319,6 +431,14 @@ public final class TestProgram {
                 int end = backslash + 2;
                 while (end < text.length() && end < backslash + 4 && Character.digit(text.charAt(end), 16) >= 0) end++;
                 bytes.write(Integer.parseInt(text.substring(backslash + 2, end), 16));
+                return end - 1;
+            }
+            // A character by its code, in UTF-8, as the printf of zsh and bash 4 read it (not the one of macOS's sh, bash 3.2).
+            case 'u' -> {
+                int end = backslash + 2;
+                while (end < text.length() && end < backslash + 6 && Character.digit(text.charAt(end), 16) >= 0) end++;
+                if (end == backslash + 2) throw new Unsupported("a \\u with no digits");
+                bytes.writeBytes(Character.toString(Integer.parseInt(text.substring(backslash + 2, end), 16)).getBytes(StandardCharsets.UTF_8));
                 return end - 1;
             }
             default -> {

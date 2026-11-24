@@ -2,6 +2,7 @@ package app.katty.core
 
 import app.katty.terminal.TerminalSession
 import app.katty.terminal.TerminalSnapshot
+import app.katty.terminal.sh
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.zip.GZIPOutputStream
@@ -27,7 +28,7 @@ class TerminalSnapshotStoreTest {
 
     // A terminal that has printed something, and waits.
     private fun snapshot(text: String = "hello"): TerminalSnapshot {
-        val session = TerminalSession.start(40, 5, command = listOf("/bin/sh", "-c", "echo $text; sleep 30"), shellIntegration = false).also { sessions += it }
+        val session = TerminalSession.start(40, 5, command = sh("echo $text; sleep 30"), shellIntegration = false).also { sessions += it }
         val deadline = System.nanoTime() + 15_000_000_000L
         while (text !in session.viewportText()) {
             check(System.nanoTime() < deadline) { "Still waiting for $text" }

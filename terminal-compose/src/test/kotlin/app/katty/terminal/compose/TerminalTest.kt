@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
@@ -49,7 +50,7 @@ class TerminalTest {
 
     // Small, so that the terminal visibly changes size to fit the scene.
     private fun session(script: String, cols: Int = 10, rows: Int = 3) =
-        TerminalSession.start(cols, rows, command = listOf("/bin/sh", "-c", script)).also { sessions += it }
+        TerminalSession.start(cols, rows, command = sh(script)).also { sessions += it }
 
     private var typography: TerminalTypography? = null
 
@@ -414,7 +415,7 @@ class TerminalTest {
     fun aClickOnThePathOfAFileOpensItAtItsLineInTheEditor() {
         val file = kotlin.io.path.createTempFile("katty-link", ".kt").toRealPath()
         try {
-            val (scene, _) = terminalScene("printf 'e: $file:12:5 Unresolved\r\n'; sleep 30", editor = true) { it.text(0).startsWith("e: /") }
+            val (scene, _) = terminalScene("printf 'e: %s:12:5 Unresolved\r\n' '$file'; sleep 30", editor = true) { it.text(0).startsWith("e: ") }
 
             scene.linkClick(at(4.5f, 0.5f))
             scene.renderUntil("the file to be opened") { openedFiles.isNotEmpty() }
@@ -430,7 +431,7 @@ class TerminalTest {
     fun withoutAnEditorThePathOfAFileIsOpenedAsItsAddress() {
         val file = kotlin.io.path.createTempFile("katty-link", ".kt").toRealPath()
         try {
-            val (scene, _) = terminalScene("printf 'e: $file:12:5 Unresolved\r\n'; sleep 30") { it.text(0).startsWith("e: /") }
+            val (scene, _) = terminalScene("printf 'e: %s:12:5 Unresolved\r\n' '$file'; sleep 30") { it.text(0).startsWith("e: ") }
 
             scene.linkClick(at(4.5f, 0.5f))
             scene.renderUntil("the file to be opened") { opened.isNotEmpty() }
@@ -494,7 +495,7 @@ class TerminalTest {
     @Test
     fun jumpsToThePreviousPromptWithTheKeys() {
         val (scene, session) = terminalScene(
-            """i=0; while [ ${'$'}i -lt 100 ]; do printf '\033]133;A\007prompt %s\r\n' ${'$'}i; i=${'$'}((i+1)); done; sleep 30""",
+            """printf '\033]133;A\007prompt %s\r\n' ${(0..99).joinToString(" ")}; sleep 30""",
         ) { frame -> frame.rows.indices.any { frame.text(it) == "prompt 99" } && frame.scrollbar?.atBottom == true }
         val bottom = session.frames.value.scrollbar!!.offset
 
@@ -657,7 +658,7 @@ class TerminalTest {
         val snapshot = old.snapshot()
 
         val restored = TerminalSession.start(
-            40, 5, command = listOf("/bin/sh", "-c", "echo new text; sleep 30"), snapshot = snapshot, shellIntegration = false,
+            40, 5, command = sh("echo new text; sleep 30"), snapshot = snapshot, shellIntegration = false,
         ).also { sessions += it }
         val scene = show(restored)
 

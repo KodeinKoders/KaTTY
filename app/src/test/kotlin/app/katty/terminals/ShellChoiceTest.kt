@@ -7,6 +7,7 @@ import app.katty.core.ShellLaunch
 import app.katty.core.isWindows
 import app.katty.core.resolveShell
 import app.katty.terminal.TerminalSession
+import app.katty.tmpDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -56,7 +57,7 @@ class ShellChoiceTest {
     @Test
     fun theTerminalsStartTheShellThatIsChosen() {
         store.updateSettings { it.copy(shell = "/bin/bash") }
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
 
         registry.sync(store.state.value, false)
 
@@ -68,7 +69,7 @@ class ShellChoiceTest {
     @Test
     fun aShellThatIsNotInstalledAnyMoreIsTheDefaultOne() {
         store.updateSettings { it.copy(shell = "/no/such/fish") }
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
 
         registry.sync(store.state.value, false)
 
@@ -80,7 +81,7 @@ class ShellChoiceTest {
         val launch = resolveShell("/bin/bash", "", listOf(bash), ShellLaunch.default(), windows = false)
 
         // Only bash has a BASH_VERSION: the default shell (zsh) would print nothing after the sign.
-        val run = startCommand("echo \"shell=\$BASH_VERSION\"", "/tmp", null, Settings(), launch = launch).also { sessions += it }
+        val run = startCommand("echo \"shell=\$BASH_VERSION\"", tmpDirectory, null, Settings(), launch = launch).also { sessions += it }
 
         await("bash to run the command", { run.text() }) { Regex("shell=\\d").containsMatchIn(run.text()) }
     }

@@ -7,6 +7,8 @@ import app.katty.core.RecentProjectsFile
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalSnapshotStore
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
+import app.katty.tmpDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,7 +43,6 @@ class SessionRegistrySnapshotsTest {
         directory.parent.toFile().deleteRecursively()
     }
 
-    private fun sh(script: String) = listOf("/bin/sh", "-c", script)
 
     // A registry whose first shell says `first` and whose restored one says `second`, and that saves every [autosaveMillis].
     private fun registry(autosaveMillis: Long = 3_600_000): SessionRegistry = SessionRegistry(
@@ -77,7 +78,7 @@ class SessionRegistrySnapshotsTest {
 
     @Test
     fun whatATerminalShowedComesBackWhenTheRegistryIsMadeAgain() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = registry().also { it.sync(store.state.value) }
         first.session().awaitText("first")
 
@@ -92,7 +93,7 @@ class SessionRegistrySnapshotsTest {
 
     @Test
     fun whatTheTerminalsOfARemovedProjectShowedIsKeptAndComesBackWithIt() {
-        val project = store.addProject("/tmp")
+        val project = store.addProject(tmpDirectory)
         val registry = registry().also { it.sync(store.state.value) }
         registry.session().awaitText("first")
 
@@ -100,8 +101,8 @@ class SessionRegistrySnapshotsTest {
         registry.sync(store.state.value)
 
         await("the snapshot of the removed terminal") { files().size == 1 }
-        store.restoreProject(recent.saved("/tmp")!!)
-        recent.dropSaved("/tmp")
+        store.restoreProject(recent.saved(tmpDirectory)!!)
+        recent.dropSaved(tmpDirectory)
         registry.sync(store.state.value)
         val text = registry.session().also { it.awaitText("second") }.readText().lines()
         assertTrue(text.indexOf("first") < text.indexOf("Restored"), "What it showed is there, then the note: $text")
@@ -110,7 +111,7 @@ class SessionRegistrySnapshotsTest {
 
     @Test
     fun theSnapshotsOfARemovedProjectAreDeletedWhenItsStateIsDropped() {
-        val project = store.addProject("/tmp")
+        val project = store.addProject(tmpDirectory)
         val registry = registry().also { it.sync(store.state.value) }
         registry.session().awaitText("first")
         store.removeProject(project)
@@ -118,7 +119,7 @@ class SessionRegistrySnapshotsTest {
         await("the snapshot of the removed terminal") { files().size == 1 }
 
         // The folder is opened fresh: its state is dropped.
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         registry.sync(store.state.value)
 
         await("the snapshot to go") { files().isEmpty() }
@@ -128,7 +129,7 @@ class SessionRegistrySnapshotsTest {
     @Test
     fun withTheSettingOffARemovedProjectKeepsNoSnapshot() {
         store.updateSettings { it.copy(restoreContents = false) }
-        val project = store.addProject("/tmp")
+        val project = store.addProject(tmpDirectory)
         val registry = registry().also { it.sync(store.state.value) }
         registry.session().awaitText("first")
 
@@ -137,12 +138,12 @@ class SessionRegistrySnapshotsTest {
 
         Thread.sleep(300)
         assertTrue(files().isEmpty())
-        assertNotNull(recent.saved("/tmp"), "The project's state is kept without what its terminals showed")
+        assertNotNull(recent.saved(tmpDirectory), "The project's state is kept without what its terminals showed")
     }
 
     @Test
     fun aTerminalThatNothingHasSavedStartsPlain() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
 
         val registry = registry().also { it.sync(store.state.value) }
 
@@ -152,7 +153,7 @@ class SessionRegistrySnapshotsTest {
 
     @Test
     fun reopeningTheShellStartsAPlainOneAndForgetsWhatWasShown() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         registry().also { it.sync(store.state.value); it.session().awaitText("first") }.close()
         val second = registry().also { it.sync(store.state.value) }
         second.session().awaitText("second")
@@ -170,7 +171,7 @@ class SessionRegistrySnapshotsTest {
 
     @Test
     fun aTerminalThatIsClosedLeavesNoSnapshotBehind() {
-        val project = store.addProject("/tmp")
+        val project = store.addProject(tmpDirectory)
         store.split(store.state.value.selection.terminal!!, SplitDirection.ROW)
         val registry = registry().also { it.sync(store.state.value) }
         await("both shells") { registry.handles.value.size == 2 && registry.handles.value.values.all { it.session != null } }
@@ -188,7 +189,7 @@ class SessionRegistrySnapshotsTest {
 
     @Test
     fun withTheSettingOffNothingIsSavedOrRestoredAndWhatWasKeptIsDeleted() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         registry().also { it.sync(store.state.value); it.session().awaitText("first") }.close()
         assertEquals(1, files().size)
 
@@ -204,7 +205,7 @@ class SessionRegistrySnapshotsTest {
 
     @Test
     fun theTerminalsAreSavedWhileTheyRunAndOnlyWhenTheyChanged() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val registry = registry(autosaveMillis = 100).also { it.sync(store.state.value) }
         registry.session().awaitText("first")
 
@@ -220,13 +221,14 @@ class SessionRegistrySnapshotsTest {
         Thread.sleep(600)
 
         assertEquals(saved, Files.getLastModifiedTime(files().single()), "A terminal that has not changed is not saved again")
-        registry.session().paste("x")
+        // What is typed, which the terminal echoes; on Windows a resize, since a console does not echo what is typed while the program reads nothing.
+        if (app.katty.core.isWindows) registry.session().resize(100, 5, 8, 16) else registry.session().paste("x")
         await("a save of what changed") { Files.getLastModifiedTime(files().single()) > saved }
     }
 
     // A project with two terminals whose shells said `first`, the second of which is closed: its id.
     private fun closedSecond(registry: SessionRegistry): app.katty.core.TerminalId {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val closed = store.split(store.state.value.selection.terminal!!, SplitDirection.ROW)!!
         registry.sync(store.state.value)
         await("both shells") { registry.handles.value.size == 2 && registry.handles.value.values.all { it.session?.readText()?.contains("first") == true } }

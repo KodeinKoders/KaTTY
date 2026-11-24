@@ -7,10 +7,13 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Density
+import app.katty.terminal.TerminalFrame
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
+import app.katty.terminal.testsOnWindows
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.skia.Bitmap
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
@@ -74,19 +77,24 @@ class TerminalDropTest {
 
     @Test
     fun whatIsDroppedIsPastedForTheProgram() {
-        // The program reads what is pasted, byte by byte.
-        TerminalSession.start(60, 5, command = listOf("/bin/sh", "-c", "stty raw -echo; head -c 13 | od -An -c; sleep 30")).use { session ->
-            runBlocking { withTimeout(15_000) { session.frames.first { it.cols == 60 } } }
+        // A path with a space, as the system writes it, and what is pasted for it: escaped on a Unix system, in PowerShell's quotes on Windows.
+        val file = File(if (testsOnWindows) "C:\\tmp\\a b.png" else "/tmp/a b.png")
+        val pasted = pathQuoting(null, testsOnWindows)(file.path)
+        // The program reads what is pasted, byte by byte, once it is ready for it.
+        TerminalSession.start(60, 5, command = sh("stty raw -echo; echo ready; head -c${pasted.length} | od -An -c; sleep 30")).use { session ->
+            fun screen(frame: TerminalFrame) = frame.rows.joinToString("\n") { row -> row.cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd() }
+            checkNotNull(runBlocking { withTimeoutOrNull(30_000) { session.frames.first { it.cols == 60 && "ready" in screen(it) } } }) {
+                "The program is not ready, the screen is:\n${screen(session.frames.value)}"
+            }
 
-            assertTrue(drop(Files(listOf(File("/tmp/a b.png"))), shell = null) { session.paste(it) })
+            assertTrue(drop(Files(listOf(file)), shell = null) { session.paste(it) })
 
-            val read = runBlocking {
-                withTimeout(15_000) {
-                    session.frames.first { frame -> frame.rows.any { row -> row.cells.joinToString("") { it.text }.contains("p   n   g") } }
-                }
-            }.rows.joinToString("\n") { row -> row.cells.joinToString("") { it.text.ifEmpty { " " } }.trimEnd() }
-            // `od -c` writes the backslash as it is, and the space as blanks.
-            assertTrue(read.replace(Regex("\\s+"), " ").contains("/ t m p / a \\ b . p n g"), "What the program read:\n$read")
+            // `od -c` writes each byte apart, the backslash as it is and the space as blanks.
+            val expected = pasted.filter { it != ' ' }.toList().joinToString(" ")
+            val read = checkNotNull(runBlocking {
+                withTimeoutOrNull(30_000) { session.frames.first { frame -> expected in screen(frame).replace(Regex("\\s+"), " ") } }
+            }) { "The program did not read $expected, the screen is:\n${screen(session.frames.value)}" }
+            assertTrue(screen(read).replace(Regex("\\s+"), " ").contains(expected), "What the program read:\n${screen(read)}")
         }
     }
 

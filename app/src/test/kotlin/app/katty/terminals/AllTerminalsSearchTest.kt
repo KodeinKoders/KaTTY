@@ -4,6 +4,8 @@ import app.katty.core.KattyStore
 import app.katty.core.SplitDirection
 import app.katty.core.TerminalId
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
+import app.katty.tmpDirectory
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -23,7 +25,7 @@ class AllTerminalsSearchTest {
 
     // A terminal whose program writes [script] (with `printf`), and waits.
     private fun terminal(id: String, script: String, rows: Int = 10): SearchTarget {
-        val session = TerminalSession.start(60, rows, command = listOf("/bin/sh", "-c", "$script; echo END; sleep 30"), shellIntegration = false).also { sessions += it }
+        val session = TerminalSession.start(60, rows, command = sh("$script; echo END; sleep 30"), shellIntegration = false).also { sessions += it }
         await("its output", session) { "END" in session.readText() }
         return SearchTarget(TerminalId(id), session)
     }
@@ -94,7 +96,7 @@ class AllTerminalsSearchTest {
     @Test
     fun aTerminalThatWroteSinceIsReadAgain() {
         val session = TerminalSession.start(
-            60, 10, command = listOf("/bin/sh", "-c", "stty raw -echo; printf 'needle one\\r\\nREADY\\r\\n'; head -c1 >/dev/null; printf 'needle two\\r\\n'; sleep 30"),
+            60, 10, command = sh("stty raw -echo; printf 'needle one\\r\\nREADY\\r\\n'; head -c1 >/dev/null; printf 'needle two\\r\\n'; sleep 30"),
             shellIntegration = false,
         ).also { sessions += it }
         await("its output", session) { "READY" in session.readText() }
@@ -122,7 +124,7 @@ class AllTerminalsSearchTest {
     fun theSelectedTerminalIsSearchedFirstThenTheOthersAsTheSidebarListsThem() {
         var counter = 0
         val store = KattyStore(newId = { "id${counter++}" })
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         val second = store.split(first, SplitDirection.ROW)!!
         store.addProject("/var")

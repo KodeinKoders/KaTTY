@@ -4,6 +4,7 @@ import app.katty.core.KattyStore
 import app.katty.core.terminals
 import app.katty.screens.paletteCommands
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
 import app.katty.terminals.RunTerminals
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,7 @@ class WindowControllerRunTest {
     private val store = KattyStore(newId = { "id${counter++}" })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runs = RunTerminals(scope, Dispatchers.Unconfined) { _, command, directory ->
-        TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", command), directory = directory, shellIntegration = false)
+        TerminalSession.start(80, 5, command = sh(command), directory = directory, shellIntegration = false)
     }
     private val platform = object : WindowPlatform {
         override fun chooseFolder(title: String, initial: String?): String? = null
@@ -55,7 +56,7 @@ class WindowControllerRunTest {
     private val workspace get() = state.selection.workspace!!
 
     init {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
     }
 
     @AfterTest
@@ -232,7 +233,7 @@ class WindowControllerRunTest {
     fun whileTheRunIsShownWhatActsOnATerminalActsOnItAndWhatActsOnThePanesDoesNothing() {
         store.split(state.selection.terminal!!, app.katty.core.SplitDirection.ROW)
         val pane = state.selection.terminal!!
-        val paneSession = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "echo pane; sleep 30"), directory = "/tmp", shellIntegration = false)
+        val paneSession = TerminalSession.start(80, 5, command = sh("echo pane; sleep 30"), directory = tmpDirectory, shellIntegration = false)
         try {
             controller.handles = mapOf(pane to app.katty.terminals.TerminalHandle(pane, paneSession))
             runs.setVisible(workspace)

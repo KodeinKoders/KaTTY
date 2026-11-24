@@ -4,6 +4,8 @@ import app.katty.core.CursorShape
 import app.katty.core.KattyStore
 import app.katty.core.WorkspaceId
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
+import app.katty.tmpDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,7 +28,7 @@ class RunTerminalsTest {
     private val runs = RunTerminals(scope, Dispatchers.Unconfined) { _, command, directory ->
         started += command to directory
         startedAt[command] = System.nanoTime()
-        TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", command), directory = directory, shellIntegration = false)
+        TerminalSession.start(80, 5, command = sh(command), directory = directory, shellIntegration = false)
     }
     private val workspace = WorkspaceId("w")
 
@@ -47,12 +49,12 @@ class RunTerminalsTest {
     @Test
     fun aCommandThatEndsByItselfStaysWithItsExitCode() {
         runs.setVisible(workspace)
-        runs.run(workspace, "echo built; exit 3", "/tmp")
+        runs.run(workspace, "echo built; exit 3", tmpDirectory)
 
         val run = runs.terminals.value.getValue(workspace)
         val session = assertNotNull(run.session)
         assertEquals(3, exitOf(session))
-        assertEquals("/tmp", started.single().second, "It runs in the directory it is given")
+        assertEquals(tmpDirectory, started.single().second, "It runs in the directory it is given")
         assertTrue(runs.terminals.value.getValue(workspace).ended)
         assertFalse(runs.active(workspace), "A new run would not ask")
         val shown = runBlocking { withTimeout(15_000) { session.frames.first { frame -> frame.rows.any { row -> "built" in row.cells.joinToString("") { it.text } } } } }
@@ -62,7 +64,7 @@ class RunTerminalsTest {
     @Test
     fun onlyTheRunOfTheWorkspaceOnTheScreenWhileItIsShownDrawsFrames() {
         runs.setVisible(workspace)
-        runs.run(workspace, "echo built; sleep 30", "/tmp")
+        runs.run(workspace, "echo built; sleep 30", tmpDirectory)
         val session = runs.terminals.value.getValue(workspace).session!!
         runBlocking { withTimeout(15_000) { session.frames.first { "built" in screen(session) } } }
 
@@ -76,7 +78,7 @@ class RunTerminalsTest {
 
     @Test
     fun aRunThatIsStoppedIsGoneWithItsProgram() {
-        runs.run(workspace, "sleep 30", "/tmp")
+        runs.run(workspace, "sleep 30", tmpDirectory)
         val session = runs.terminals.value.getValue(workspace).session!!
         assertTrue(runs.active(workspace))
 
@@ -88,11 +90,11 @@ class RunTerminalsTest {
 
     @Test
     fun aWorkspaceHasOneRunAndANewOneStopsTheOld() {
-        runs.run(workspace, "sleep 30", "/tmp")
+        runs.run(workspace, "sleep 30", tmpDirectory)
         val first = runs.terminals.value.getValue(workspace)
         runs.setShown(workspace, false)
 
-        runs.run(workspace, "sleep 31", "/tmp")
+        runs.run(workspace, "sleep 31", tmpDirectory)
 
         val second = runs.terminals.value.getValue(workspace)
         assertEquals("sleep 31", second.command)
@@ -106,13 +108,14 @@ class RunTerminalsTest {
     // terminal, ends first. Here a child that ignores the hang-up, in a group of its own, and ends a second and a half after.
     @Test
     fun aNewRunStartsOnceWhatTheOldOneStartedHasEnded() {
-        runs.run(workspace, "set -m; trap '' HUP; sleep 1.5 & wait", "/tmp")
+        // In a group of its own that ignores the hang-up, on a Unix system: what closing the run does not end. Windows has neither.
+        runs.run(workspace, if (app.katty.core.isWindows) "sleep 1.5 & wait" else "set -m; trap '' HUP; sleep 1.5 & wait", tmpDirectory)
         sessionOf(workspace)
         // Time for the shell to start its sleep.
         Thread.sleep(300)
         val replaced = System.nanoTime()
 
-        runs.run(workspace, "sleep 31", "/tmp")
+        runs.run(workspace, "sleep 31", tmpDirectory)
 
         assertTrue(runs.terminals.value.getValue(workspace).waiting, "It waits for the old run")
         val second = sessionOf(workspace)
@@ -124,7 +127,7 @@ class RunTerminalsTest {
 
     @Test
     fun aRunIsShownOrMinimized() {
-        runs.run(workspace, "sleep 30", "/tmp")
+        runs.run(workspace, "sleep 30", tmpDirectory)
 
         runs.toggle(workspace)
         assertFalse(runs.terminals.value.getValue(workspace).shown)
@@ -135,8 +138,8 @@ class RunTerminalsTest {
     @Test
     fun theRunOfAWorkspaceThatIsGoneIsStopped() {
         val other = WorkspaceId("other")
-        runs.run(workspace, "sleep 30", "/tmp")
-        runs.run(other, "sleep 30", "/tmp")
+        runs.run(workspace, "sleep 30", tmpDirectory)
+        runs.run(other, "sleep 30", tmpDirectory)
         val session = runs.terminals.value.getValue(workspace).session!!
 
         runs.keepOnly(setOf(other))
@@ -149,7 +152,7 @@ class RunTerminalsTest {
     fun aCommandThatCannotStartSaysWhy() {
         val failing = RunTerminals(scope, Dispatchers.Unconfined) { _, _, _ -> error("no such shell") }
 
-        failing.run(workspace, "make", "/tmp")
+        failing.run(workspace, "make", tmpDirectory)
 
         val run = failing.terminals.value.getValue(workspace)
         assertEquals("no such shell", run.failure)
@@ -162,18 +165,18 @@ class RunTerminalsTest {
         val commands = mutableListOf<String>()
         val registry = SessionRegistry(
             store, scope, starter = Dispatchers.Unconfined, loadTheme = { null },
-            start = { spec, _, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), directory = spec.directory) },
+            start = { spec, _, _ -> TerminalSession.start(80, 5, command = sh("sleep 30"), directory = spec.directory) },
             startRun = { command, directory, _, _ ->
                 commands += command
-                TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", command), directory = directory, shellIntegration = false)
+                TerminalSession.start(80, 5, command = sh(command), directory = directory, shellIntegration = false)
             },
         )
         try {
-            store.addProject("/tmp")
+            store.addProject(tmpDirectory)
             store.updateSettings { it.copy(cursorShape = CursorShape.BAR) }
             registry.sync(store.state.value)
             val id = store.state.value.selection.workspace!!
-            registry.runs.run(id, "sleep 30", "/tmp")
+            registry.runs.run(id, "sleep 30", tmpDirectory)
             val session = registry.runs.terminals.value.getValue(id).session!!
             assertEquals(listOf("sleep 30"), commands)
 

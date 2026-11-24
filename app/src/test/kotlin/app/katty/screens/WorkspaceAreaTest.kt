@@ -42,8 +42,14 @@ import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.KattyStore
 import app.katty.core.SplitDirection
 import app.katty.core.terminals
+import app.katty.interactiveShell
+import app.katty.interactiveShellName
+import app.katty.longCommand
+import app.katty.longCommandName
+import app.katty.printfLine
 import app.katty.terminal.TerminalSession
 import app.katty.terminals.SessionRegistry
+import app.katty.tmpDirectory
 import app.katty.ui.KattyTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,8 +77,8 @@ class WorkspaceAreaTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val registry = SessionRegistry(
         store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null },
-        // An interactive zsh with no startup files: what a user has, so that its name is the terminal's.
-        start = { spec, _, _ -> TerminalSession.start(80, 10, command = listOf("/bin/zsh", "-f", "-i"), directory = spec.directory, shellIntegration = false) },
+        // An interactive shell with no startup files (zsh, PowerShell on Windows): what a user has, so that its name is the terminal's.
+        start = { spec, _, _ -> TerminalSession.start(80, 10, command = interactiveShell, directory = spec.directory, shellIntegration = false) },
     )
 
     @AfterTest
@@ -120,7 +126,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun theFocusedTerminalTakesTheKeyboardBackWhenTheFocusTickChanges() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         registry.sync(store.state.value)
         var tick by androidx.compose.runtime.mutableStateOf(0)
         setContent {
@@ -153,7 +159,7 @@ class WorkspaceAreaTest {
 
     // How far the grid of the terminal starts from the edge of the pane, in pixels.
     private fun ComposeUiTest.gridOffsetFromTheEdge(commandMarks: Boolean, reporting: Boolean = false): Int {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         if (reporting) {
             val terminal = store.state.value.selection.terminal!!
             infos = mapOf(terminal to app.katty.core.AgentInfo(app.katty.core.AgentReport(app.katty.core.AgentState.WORKING, "claude-code"), 0))
@@ -162,7 +168,7 @@ class WorkspaceAreaTest {
         show()
         val session = registry.handles.value.values.single().session!!
         // A line of full blocks, which fill their cells to the edge: the first of them is where the grid starts.
-        session.sendText("printf '\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588'\r")
+        session.sendText(printfLine("\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588\\u2588"))
         waitUntil(timeoutMillis = 10_000) { session.frames.value.rows.any { row -> row.cells.count { it.text == "█" } >= 8 } }
         waitForIdle()
 
@@ -199,7 +205,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun theHeaderSaysHowManyTerminalsThereAre() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         show()
 
         onNodeWithText("1 terminal").assertExists()
@@ -207,7 +213,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun theSplitButtonsSplitTheFocusedTerminal() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         show()
 
         onNodeWithContentDescription("Split right").performClick()
@@ -224,10 +230,10 @@ class WorkspaceAreaTest {
 
     @Test
     fun theTitleOfATerminalIsTheNameOfTheAgentThatReportsAndTheShellsOtherwise() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
-        onNodeWithContentDescription("Terminal zsh").assertExists()
+        onNodeWithContentDescription("Terminal $interactiveShellName").assertExists()
         onNodeWithText("Idle").assertExists()
 
         infos = mapOf(terminal to app.katty.core.AgentInfo(app.katty.core.AgentReport(app.katty.core.AgentState.NEEDS_INPUT, "codex", "Apply this patch?"), 0))
@@ -239,13 +245,13 @@ class WorkspaceAreaTest {
 
     @Test
     fun doubleClickingTheNameOfATerminalRenamesIt() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
 
-        onNodeWithContentDescription("Terminal zsh").performMouseInput { doubleClick() }
+        onNodeWithContentDescription("Terminal $interactiveShellName").performMouseInput { doubleClick() }
         waitForIdle()
-        onNodeWithText("zsh").performTextInput("build")
+        onNodeWithText(interactiveShellName).performTextInput("build")
         onNodeWithText("build").performKeyInput { pressKey(Key.Enter) }
         waitForIdle()
 
@@ -254,7 +260,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun aTerminalThatTheUserNamedKeepsItsNameWhateverRuns() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         store.renameTerminal(terminal, "build")
         infos = mapOf(terminal to app.katty.core.AgentInfo(app.katty.core.AgentReport(app.katty.core.AgentState.WORKING, "claude-code"), 0))
@@ -266,7 +272,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun theMenuOfAPaneSplitsRenamesAndClosesItsTerminal() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
 
@@ -284,14 +290,14 @@ class WorkspaceAreaTest {
 
     @Test
     fun aRightClickOnTheHeaderOpensTheMenuOfTheTerminalAndFocusesIt() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         val second = store.split(first, SplitDirection.ROW)!!
         show()
         assertEquals(second, store.state.value.selection.terminal)
 
         // On the title of the first pane, which is not the focused one.
-        onAllNodesWithContentDescription("Terminal zsh")[0].performMouseInput { rightClick() }
+        onAllNodesWithContentDescription("Terminal $interactiveShellName")[0].performMouseInput { rightClick() }
         waitForIdle()
 
         onNodeWithText("Rename terminal").assertExists()
@@ -303,7 +309,7 @@ class WorkspaceAreaTest {
     // The AI is asked about the last command once it has ended, why it failed or what its result says, and the menu asks which when it opens.
     @Test
     fun aRightClickOffersToAskTheAiAboutTheLastCommand() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
         waitUntil(timeoutMillis = 5_000) { registry.handles.value[terminal]?.session != null }
@@ -343,12 +349,12 @@ class WorkspaceAreaTest {
      * none) and at the next prompt, and its output: blocks, which show where the grid is.
      */
     private fun ComposeUiTest.aCommandAndItsBar(): Pair<TerminalSession, androidx.compose.ui.geometry.Offset> {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
         waitUntil(timeoutMillis = 5_000) { registry.handles.value[terminal]?.session != null }
         val session = registry.handles.value[terminal]!!.session!!
-        session.sendText("printf '\\033]133;A\\007$ ls\\r\\n\\033]133;B\\007\\033]133;C\\007\\u2588\\u2588\\u2588\\u2588\\r\\n\\033]133;D;0\\007\\033]133;A\\007'\r")
+        session.sendText(printfLine("\\033]133;A\\007$ ls\\r\\n\\033]133;B\\007\\033]133;C\\007\\u2588\\u2588\\u2588\\u2588\\r\\n\\033]133;D;0\\007\\033]133;A\\007"))
         waitUntil(timeoutMillis = 10_000) {
             val frame = session.frames.value
             frame.commandMarks.any { it.finishedAt != null } && frame.rows.any { row -> row.cells.count { it.text == "█" } == 4 }
@@ -431,7 +437,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun aRightClickInTheTerminalOffersItsTextAndEveryItemOfTheMenuOfThePane() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
         waitUntil(timeoutMillis = 5_000) { registry.handles.value[terminal]?.session != null }
@@ -454,27 +460,27 @@ class WorkspaceAreaTest {
 
     @Test
     fun aTerminalIsCalledAfterTheProgramThatRunsInItUntilItEnds() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
-        onNodeWithContentDescription("Terminal zsh").assertExists()
+        onNodeWithContentDescription("Terminal $interactiveShellName").assertExists()
 
-        registry.handles.value.getValue(terminal).session!!.sendText("sleep 30\r")
-        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Terminal sleep").fetchSemanticsNodes().isNotEmpty() }
+        registry.handles.value.getValue(terminal).session!!.sendText("$longCommand\r")
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Terminal $longCommandName").fetchSemanticsNodes().isNotEmpty() }
         registry.handles.value.getValue(terminal).session!!.sendText("\u0003")
 
-        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Terminal zsh").fetchSemanticsNodes().isNotEmpty() }
+        waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Terminal $interactiveShellName").fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
     fun aNameThatTheUserGaveStaysWhateverRuns() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         store.renameTerminal(terminal, "build")
         show()
 
-        registry.handles.value.getValue(terminal).session!!.sendText("sleep 30\r")
-        waitUntil(timeoutMillis = 15_000) { registry.handles.value.getValue(terminal).processName.value == "sleep" }
+        registry.handles.value.getValue(terminal).session!!.sendText("$longCommand\r")
+        waitUntil(timeoutMillis = 15_000) { registry.handles.value.getValue(terminal).processName.value == longCommandName }
         waitForIdle()
 
         onNodeWithContentDescription("Terminal build").assertExists()
@@ -483,7 +489,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun theMenuOffersToGoBackToTheProcessNameOnlyForATerminalThatHasANameOfItsOwn() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
 
@@ -500,19 +506,19 @@ class WorkspaceAreaTest {
         waitForIdle()
 
         assertEquals(null, store.state.value.locate(terminal)!!.terminal.name)
-        onAllNodesWithContentDescription("Terminal zsh")[0].assertExists()
+        onAllNodesWithContentDescription("Terminal $interactiveShellName")[0].assertExists()
     }
 
     @Test
     fun theNameOfATerminalIsEditedInItsHeader() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
 
         onNodeWithContentDescription("Pane menu").performClick()
         onNodeWithText("Rename terminal").performClick()
         waitForIdle()
-        onNodeWithText("zsh").performTextInput("build")
+        onNodeWithText(interactiveShellName).performTextInput("build")
         onNodeWithText("build").performKeyInput { pressKey(Key.Enter) }
         waitForIdle()
 
@@ -522,7 +528,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun aWorkspaceWithOnePaneHasNothingToMaximizeAPaneOver() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         show()
 
@@ -537,7 +543,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun aPaneGrowsToItsMaximizedPlaceAndGoesBackToItsOwn() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         store.split(first, SplitDirection.ROW)
         show()
@@ -580,7 +586,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun aMaximizedTerminalFloatsOverTheOthersAndCanBePutBack() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         store.split(first, SplitDirection.ROW)
         show()
@@ -598,7 +604,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun everyTerminalOfTheWorkspaceHasItsShell() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         store.split(store.state.value.selection.terminal!!, SplitDirection.ROW)
         show()
         waitForIdle()
@@ -610,7 +616,7 @@ class WorkspaceAreaTest {
 
     @Test
     fun theTerminalThatTheStoreFocusesKeepsTheFocusWhenTheOthersAreShown() = runComposeUiTest {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         val second = store.split(first, SplitDirection.ROW)!!
         val third = store.split(second, SplitDirection.COLUMN)!!

@@ -14,6 +14,7 @@ import app.katty.screens.paletteCommands
 import app.katty.screens.toTerminal
 import app.katty.terminal.compose.TerminalSecureInput
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
 import app.katty.terminals.ExportFormat
 import app.katty.terminals.TerminalHandle
 import kotlinx.coroutines.CoroutineScope
@@ -603,7 +604,7 @@ class WindowControllerTest {
 
     // The selected terminal, with a session whose program wrote [text].
     private fun terminalThatWrote(text: String): TerminalId {
-        val session = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "printf '$text\\r\\n'; sleep 30"), shellIntegration = false).also { sessions += it }
+        val session = TerminalSession.start(80, 5, command = sh("printf '$text\\r\\n'; sleep 30"), shellIntegration = false).also { sessions += it }
         val deadline = System.nanoTime() + 15_000_000_000L
         while (text !in session.screenText()) {
             check(System.nanoTime() < deadline) { "The program did not write: ${session.screenText()}" }

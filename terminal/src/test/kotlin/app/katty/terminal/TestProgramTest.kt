@@ -51,6 +51,42 @@ class TestProgramTest {
     }
 
     @Test
+    fun expandsAVariableWithTheWordForWhenItIsUnset() {
+        sameAsSh("echo \"\${HOME-none} \${KATTY_UNSET_VARIABLE-none} \${KATTY_UNSET_VARIABLE:-empty}\"")
+    }
+
+    @Test
+    fun runsInTheBackgroundAndWaits() {
+        sameAsSh("sleep 0.3 & echo first; wait; echo second")
+        val file = kotlin.io.path.createTempFile("katty-pid")
+        output(testProgram("sleep 0.2 & echo \$! > '$file'; wait"))
+        val pid = file.toFile().readText().trim().toLong()
+        assertTrue(pid != ProcessHandle.current().pid() && ProcessHandle.of(pid).isEmpty, "The pid of the program that ran in the background, which ended: $pid")
+    }
+
+    @Test
+    fun readsALineAndWritesToAFile() {
+        val file = kotlin.io.path.createTempFile("katty-out")
+        sameAsSh("read line; echo after; echo in the file > '$file'; cat '$file'", input = "a line\nrest")
+    }
+
+    @Test
+    fun catShowsTheControlsItReads() {
+        sameAsSh("cat -v", input = "\u001b[57441;2u\ttab\u007f\n")
+    }
+
+    @Test
+    fun goesToAFolderForWhatItRunsAndSays() {
+        val folder = kotlin.io.path.createTempDirectory("katty cd").toRealPath()
+        sameAsSh("cd '$folder'; pwd")
+    }
+
+    @Test
+    fun execRunsAnotherProgramInItsPlace() {
+        sameAsSh("echo before; exec ${if (testsOnWindows) "cmd" else "/bin/echo"} replaced")
+    }
+
+    @Test
     fun refusesWhatItDoesNotKnow() {
         assertTrue("not supported" in output(testProgram("i=0; while true; do echo; done")))
         assertTrue("not supported" in output(testProgram("echo \$(seq 1 3)")))

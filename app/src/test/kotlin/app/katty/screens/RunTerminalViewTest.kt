@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.dp
 import app.katty.core.AgentState
 import app.katty.core.WorkspaceId
 import app.katty.terminals.RunTerminal
+import app.katty.tmpDirectory
 import app.katty.ui.Katty
 import app.katty.ui.UiScale
 import app.katty.ui.render
@@ -36,10 +37,10 @@ class RunTerminalViewTest {
                 }
                 // An empty field, with an AI to ask: its button is enabled.
                 render("run-dialog-ask-$theme-$suffix", 1400, 700, dark = dark) {
-                    UiScale(scale) { RunDialog("", "/tmp", interrupts = false, onRun = { _, _ -> }, onCancel = {}, ask = { app.katty.core.AiAnswer.Command("make") }) }
+                    UiScale(scale) { RunDialog("", tmpDirectory, interrupts = false, onRun = { _, _ -> }, onCancel = {}, ask = { app.katty.core.AiAnswer.Command("make") }) }
                 }
                 val warned = render("run-dialog-warning-$theme-$suffix", 1400, 700, dark = dark) {
-                    UiScale(scale) { RunDialog("./gradlew :app:run", "/tmp", interrupts = true, onRun = { _, _ -> }, onCancel = {}) }
+                    UiScale(scale) { RunDialog("./gradlew :app:run", tmpDirectory, interrupts = true, onRun = { _, _ -> }, onCancel = {}) }
                 }
                 assertTrue(warned.count(err, tolerance = 40) > plain.count(err, tolerance = 40) + 50, "The warning is red ($theme, $suffix)")
             }
@@ -53,9 +54,9 @@ class RunTerminalViewTest {
         for (dark in listOf(false, true)) {
             val theme = if (dark) "dark" else "light"
             for ((name, run) in listOf(
-                "running" to RunTerminal(workspace, "./gradlew :app:run", "/tmp", shown = false),
-                "shown" to RunTerminal(workspace, "./gradlew :app:run", "/tmp", shown = true),
-                "failed" to RunTerminal(workspace, "make", "/tmp", failure = "No such file", shown = false),
+                "running" to RunTerminal(workspace, "./gradlew :app:run", tmpDirectory, shown = false),
+                "shown" to RunTerminal(workspace, "./gradlew :app:run", tmpDirectory, shown = true),
+                "failed" to RunTerminal(workspace, "make", tmpDirectory, failure = "No such file", shown = false),
             )) {
                 val rendered = render("run-indicator-$name-$theme", 700, 80, dark = dark) {
                     Box(Modifier.background(Katty.colors.panel).padding(8.dp)) { RunIndicator(run, onClick = {}) }

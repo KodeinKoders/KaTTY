@@ -20,8 +20,9 @@ class AgentDetectionTest {
         root.toFile().deleteRecursively()
     }
 
+    // A program, which is a file with an extension of PATHEXT on Windows: one without is no program there.
     private fun program(directory: String, name: String, executable: Boolean = true): Path {
-        val file = root.resolve(directory).createDirectories().resolve(name)
+        val file = root.resolve(directory).createDirectories().resolve(if (isWindows && executable) "$name.exe" else name)
         file.writeText("#!/bin/sh\n")
         file.toFile().setExecutable(executable)
         return file

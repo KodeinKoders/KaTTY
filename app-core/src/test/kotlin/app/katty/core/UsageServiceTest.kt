@@ -1,5 +1,6 @@
 package app.katty.core
 
+import app.katty.terminal.sh
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -8,7 +9,6 @@ import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -178,7 +178,7 @@ class UsageServiceTest {
 
     @Test
     fun theProcessRunnerGivesWhatAProgramPrintedAndItsCode() {
-        val result = ProcessCommandRunner.run(listOf("/bin/sh", "-c", "printf hello; exit 2"), directory, 5_000)!!
+        val result = ProcessCommandRunner.run(sh("printf hello; exit 2"), directory, 5_000)!!
 
         assertEquals("hello", result.output)
         assertEquals(2, result.exitCode)
@@ -186,14 +186,14 @@ class UsageServiceTest {
 
     @Test
     fun aProgramThatTakesTooLongIsEnded() {
-        assertNull(ProcessCommandRunner.run(listOf("/bin/sleep", "30"), directory, 300))
+        assertNull(ProcessCommandRunner.run(sh("sleep 30"), directory, 300))
     }
 
     @Test
     fun theProgramsThatAProgramThatTakesTooLongStartedAreEndedWithIt() {
         val pidFile = directory.resolve("child.pid")
 
-        assertNull(ProcessCommandRunner.run(listOf("/bin/sh", "-c", "sleep 60 & echo \$! > '$pidFile'; sleep 60"), directory, 500))
+        assertNull(ProcessCommandRunner.run(sh("sleep 60 & echo \$! > '$pidFile'; sleep 60"), directory, 500))
 
         val child = ProcessHandle.of(java.nio.file.Files.readString(pidFile).trim().toLong())
         val deadline = System.nanoTime() + 2_000_000_000
@@ -204,7 +204,7 @@ class UsageServiceTest {
     @Test
     fun whatAProgramPrintedIsReadEvenWhenAProgramItStartedKeepsTheOutputOpen() {
         // An MCP server or a helper that goes on in the background, with the output of the command.
-        val result = ProcessCommandRunner.run(listOf("/bin/sh", "-c", "sleep 5 & echo hello"), directory, 3_000)
+        val result = ProcessCommandRunner.run(sh("sleep 5 & echo hello"), directory, 3_000)
 
         assertEquals("hello", result?.output?.trim())
     }
@@ -216,7 +216,7 @@ class UsageServiceTest {
 
     @Test
     fun theCommandsRunInTheDirectoryOfTheApplicationAndNotInAProject() {
-        val result = ProcessCommandRunner.run(listOf("/bin/pwd"), directory, 5_000)!!
+        val result = ProcessCommandRunner.run(sh("pwd"), directory, 5_000)!!
 
         assertEquals(directory.toRealPath().toString(), result.output.trim())
     }
@@ -231,7 +231,7 @@ class UsageServiceTest {
 
         val reading = source.read()!!
 
-        assertEquals(listOf(listOf("/bin/claude", "-p", "/usage", "--output-format", "json")), seen)
+        assertEquals(listOf(listOf(Path.of("/bin/claude").toString(), "-p", "/usage", "--output-format", "json")), seen)
         assertEquals(26, reading.primary!!.percentUsed)
     }
 
@@ -246,7 +246,7 @@ class UsageServiceTest {
             val script = "[Console]::Write((@($values) -join ' '))"
             listOf("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", java.util.Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE)))
         } else {
-            listOf("/bin/sh", "-c", "printf '%s' \"" + names.joinToString(" ") { (name, missing) -> "\${$name-$missing}" } + "\"")
+            sh("printf '%s' \"" + names.joinToString(" ") { (name, missing) -> "\${$name-$missing}" } + "\"")
         }
 
         // Windows PowerShell can take seconds to start on a slow machine (CI's ARM64).
@@ -295,30 +295,22 @@ class UsageServiceTest {
         )
 
         assertNull(source("1.1.10").read())
-        assertEquals(listOf(listOf("/bin/agy", "--version")), seen)
+        val agy = Path.of("/bin/agy").toString()
+        assertEquals(listOf(listOf(agy, "--version")), seen)
         seen.clear()
         assertEquals(50, source("1.3.5").read()!!.primary!!.percentUsed)
-        assertEquals(listOf("/bin/agy", "-p", "/usage", "--output-format", "json", "--print-timeout", "20s"), seen.last())
+        assertEquals(listOf(agy, "-p", "/usage", "--output-format", "json", "--print-timeout", "20s"), seen.last())
     }
 
     @Test
     fun codexIsAskedOverJsonRpc() = runBlocking {
         // A program that answers as the Codex server does: to initialize, then to the request for the rate limits.
-        val server = directory.resolve("server.sh")
-        server.writeText(
-            """
-            |#!/bin/sh
-            |read init
-            |printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{}}'
-            |read initialized
-            |read request
-            |printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"rateLimits":{"primary":{"usedPercent":41,"windowDurationMins":300,"resetsAt":1792000000}}}}'
-            |sleep 30
-            """.trimMargin(),
+        val server = sh(
+            "read init; printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; read initialized; read request; " +
+                "printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"rateLimits\":{\"primary\":{\"usedPercent\":41,\"windowDurationMins\":300,\"resetsAt\":1792000000}}}}'; sleep 30",
         )
-        server.toFile().setExecutable(true)
 
-        val reading = CodexUsageSource(listOf(server.toString()), directory).read()!!
+        val reading = CodexUsageSource(server, directory).read()!!
 
         assertEquals(41, reading.primary!!.percentUsed)
         assertEquals("Session", reading.primary!!.label)
@@ -326,11 +318,7 @@ class UsageServiceTest {
 
     @Test
     fun codexThatDoesNotAnswerIsNoReading() = runBlocking {
-        val server = directory.resolve("silent.sh")
-        server.writeText("#!/bin/sh\nsleep 30\n")
-        server.toFile().setExecutable(true)
-
-        assertNull(CodexUsageSource(listOf(server.toString()), directory, timeoutMs = 500).read())
+        assertNull(CodexUsageSource(sh("sleep 30"), directory, timeoutMs = 500).read())
     }
 
     @Test

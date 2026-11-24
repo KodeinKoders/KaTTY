@@ -51,7 +51,7 @@ class RestoreTest {
                 second, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null },
                 start = { spec, _, _ ->
                     started[spec.id.value] = spec.directory
-                    TerminalSession.start(80, 5, command = listOf("/bin/sleep", "30"), directory = spec.directory)
+                    TerminalSession.start(80, 5, command = app.katty.terminal.sh("sleep 30"), directory = spec.directory)
                 },
             )
             registry.sync(second.state.value)

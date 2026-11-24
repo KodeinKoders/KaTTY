@@ -78,7 +78,9 @@ class CrushStoreTest {
         val project = root.resolve("work")
         val elsewhere = root.resolve("elsewhere/data")
         database(elsewhere) { session("mine-session-0001", created = 1_100, updated = 1_200) }
-        Files.writeString(projects, """{"projects":[{"path":"$project","data_dir":"$elsewhere","last_accessed":"2026-10-21T12:38:11Z"}]}""")
+        // In JSON, the backslashes of a path of Windows are escaped.
+        fun json(path: java.nio.file.Path) = path.toString().replace("\\", "\\\\")
+        Files.writeString(projects, """{"projects":[{"path":"${json(project)}","data_dir":"${json(elsewhere)}","last_accessed":"2026-10-21T12:38:11Z"}]}""")
 
         assertEquals("mine-session-0001", store().sessionFor(project.toString(), 1_000_000))
     }

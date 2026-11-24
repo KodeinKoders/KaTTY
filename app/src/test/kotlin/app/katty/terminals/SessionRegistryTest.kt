@@ -4,8 +4,12 @@ import app.katty.core.CursorShape
 import app.katty.core.KattyStore
 import app.katty.core.ScrollbackSize
 import app.katty.core.SplitDirection
+import app.katty.fileUrl
+import app.katty.runsAProgram
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
+import app.katty.tmpDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +41,7 @@ class SessionRegistryTest {
         loadTheme = { name -> themes += name; null },
         start = { spec, _, _ ->
             directories += spec.directory
-            TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), directory = spec.directory).also { started += it }
+            TerminalSession.start(80, 5, command = sh(script), directory = spec.directory).also { started += it }
         },
     )
 
@@ -51,7 +55,7 @@ class SessionRegistryTest {
 
     @Test
     fun aChangeOfTheCursorIsGivenToTheRunningSessions() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         sync()
         val session = registry.handles.value.values.single().session!!
 
@@ -67,7 +71,7 @@ class SessionRegistryTest {
     @Test
     fun aChangeOfTheTextSettingsIsGivenToTheRunningSessions() {
         script = """printf '\033[31mn\033[1mb'; sleep 30"""
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         sync()
         val session = registry.handles.value.values.single().session!!
         val normal = runBlocking {
@@ -86,7 +90,7 @@ class SessionRegistryTest {
     @Test
     fun loweringTheScrollbackDeletesTheOlderLinesOfTheRunningSessions() {
         script = "seq 1 60000; echo done; sleep 30"
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         sync()
         val session = registry.handles.value.values.single().session!!
         val deadline = System.nanoTime() + 30_000_000_000L
@@ -104,7 +108,7 @@ class SessionRegistryTest {
 
     @Test
     fun aShellThatIsStartedAgainHasTheSettingsAsTheyAreNow() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         sync()
         val id = store.state.value.selection.terminal!!
 
@@ -121,7 +125,7 @@ class SessionRegistryTest {
 
     @Test
     fun startsOneSessionForEachTerminalOfEveryWorkspace() {
-        val project = store.addProject("/tmp")
+        val project = store.addProject(tmpDirectory)
         store.addWorkspace(project)
         store.split(store.state.value.selection.terminal!!, SplitDirection.ROW)
 
@@ -137,7 +141,7 @@ class SessionRegistryTest {
         store, scope, loadTheme = { null }, starter = Dispatchers.IO,
         start = { spec, _, _ ->
             Thread.sleep(500)
-            TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", "sleep 30"), directory = spec.directory).also { synchronized(made) { made += it } }
+            TerminalSession.start(80, 5, command = sh("sleep 30"), directory = spec.directory).also { synchronized(made) { made += it } }
         },
     )
 
@@ -146,7 +150,7 @@ class SessionRegistryTest {
         val made = mutableListOf<TerminalSession>()
         val slow = slowRegistry(made)
         try {
-            store.addProject("/tmp")
+            store.addProject(tmpDirectory)
             val id = store.state.value.selection.terminal!!
 
             val begun = System.nanoTime()
@@ -165,7 +169,7 @@ class SessionRegistryTest {
         val made = mutableListOf<TerminalSession>()
         val slow = slowRegistry(made)
         try {
-            store.addProject("/tmp")
+            store.addProject(tmpDirectory)
             val id = store.state.value.selection.terminal!!
             slow.sync(store.state.value)
 
@@ -194,11 +198,11 @@ class SessionRegistryTest {
                 val first = begun.merge(spec.id.value, 1, Int::plus) == 1
                 if (first) reopened.await(10, java.util.concurrent.TimeUnit.SECONDS)
                 val script = if (first) "echo first; sleep 30" else "echo second; sleep 30"
-                TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), directory = spec.directory, shellIntegration = false).also { made += it }
+                TerminalSession.start(80, 5, command = sh(script), directory = spec.directory, shellIntegration = false).also { made += it }
             },
         )
         try {
-            store.addProject("/tmp")
+            store.addProject(tmpDirectory)
             val id = store.state.value.selection.terminal!!
             store.split(id, SplitDirection.ROW)
             slow.sync(store.state.value)
@@ -225,11 +229,11 @@ class SessionRegistryTest {
             store, scope, starter = Dispatchers.Unconfined, loadTheme = { null },
             start = { spec, _, _ ->
                 val first = begun.merge(spec.id.value, 1, Int::plus) == 1
-                TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", if (first) "set -m; sleep 30" else "sleep 30"), directory = spec.directory)
+                TerminalSession.start(80, 5, command = sh(if (first) runsAProgram(30) else "sleep 30"), directory = spec.directory)
             },
         )
         try {
-            store.addProject("/tmp")
+            store.addProject(tmpDirectory)
             repeat(7) { store.split(store.state.value.selection.terminal!!, SplitDirection.ROW) }
             reopening.sync(store.state.value)
             val ids = store.state.value.allTerminals().map { it.terminal.id }
@@ -250,7 +254,7 @@ class SessionRegistryTest {
     fun quittingClosesTheSessionsTogether() {
         // Programs that ignore the hang-up: each is killed after its grace, which one after another would add up.
         script = "trap '' HUP; while :; do sleep 1; done"
-        val project = store.addProject("/tmp")
+        val project = store.addProject(tmpDirectory)
         store.addWorkspace(project)
         repeat(4) { store.split(store.state.value.selection.terminal!!, SplitDirection.ROW) }
         sync()
@@ -267,7 +271,7 @@ class SessionRegistryTest {
 
     @Test
     fun theProgramThatHasEachTerminalIsToldInOnePlaceAndForgottenWithTheTerminal() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         val second = store.split(first, SplitDirection.ROW)!!
         sync()
@@ -290,8 +294,8 @@ class SessionRegistryTest {
     @Test
     fun whatRanOverAShellThatEndedIsNotStartedAgain() {
         // A program has the terminal (job control on, as in an interactive shell), and the shell ends right after it (as after `exec vim`).
-        script = "set -m; sleep 2"
-        store.addProject("/tmp")
+        script = runsAProgram(2)
+        store.addProject(tmpDirectory)
         sync()
         val id = store.state.value.selection.terminal!!
         awaitUntil("the program to be kept") { store.state.value.locate(id)?.terminal?.running != null }
@@ -303,7 +307,7 @@ class SessionRegistryTest {
 
     @Test
     fun syncingAgainKeepsTheSessionsThatAreThere() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         sync()
         val before = registry.handles.value.values.single()
 
@@ -315,7 +319,7 @@ class SessionRegistryTest {
 
     @Test
     fun closesTheSessionOfATerminalThatIsGone() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         val second = store.split(first, SplitDirection.ROW)!!
         sync()
@@ -332,7 +336,7 @@ class SessionRegistryTest {
     @Test
     fun aShellThatCannotBeStartedLeavesATerminalWithItsFailure() {
         val failing = SessionRegistry(store, scope, starter = kotlinx.coroutines.Dispatchers.Unconfined, loadTheme = { null }, start = { _, _, _ -> throw IllegalStateException("no such shell") })
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
 
         failing.sync(store.state.value)
 
@@ -343,7 +347,7 @@ class SessionRegistryTest {
 
     @Test
     fun theColorSchemeOfATerminalIsItsOwnOrTheDefaultOfTheSettings() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val id = store.state.value.selection.terminal!!
         sync()
         assertEquals("Alabaster", registry.schemeOf(id))
@@ -360,7 +364,7 @@ class SessionRegistryTest {
 
     @Test
     fun aChangeOfTheDefaultSchemeReachesTheTerminalsThatDoNotHaveTheirOwn() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         sync()
 
         store.updateSettings { it.copy(lightColorScheme = "Nord") }
@@ -371,7 +375,7 @@ class SessionRegistryTest {
 
     @Test
     fun aTerminalWithoutASchemeOfItsOwnFollowsTheThemeOfTheApplication() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val follows = store.state.value.selection.terminal!!
         val own = store.split(follows, app.katty.core.SplitDirection.ROW)!!
         store.setColorScheme(own, "Nord")
@@ -390,7 +394,7 @@ class SessionRegistryTest {
 
     @Test
     fun aTerminalThatIsStartedAgainInTheDarkTakesTheDarkScheme() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val id = store.state.value.selection.terminal!!
         sync(dark = true)
 
@@ -401,15 +405,15 @@ class SessionRegistryTest {
 
     @Test
     fun whereTheShellGoesIsWhereTheTerminalStartsNextTime() {
-        script = "printf '\\033]7;file://localhost/tmp\\007'; sleep 30"
+        script = "printf '\\033]7;%s\\007' '${fileUrl(tmpDirectory)}'; sleep 30"
         store.addProject("/")
         val id = store.state.value.selection.terminal!!
 
         sync()
 
         val deadline = System.nanoTime() + 10_000_000_000
-        while (store.state.value.locate(id)!!.terminal.directory != "/tmp" && System.nanoTime() < deadline) Thread.sleep(20)
-        assertEquals("/tmp", store.state.value.locate(id)!!.terminal.directory)
+        while (store.state.value.locate(id)!!.terminal.directory != tmpDirectory && System.nanoTime() < deadline) Thread.sleep(20)
+        assertEquals(tmpDirectory, store.state.value.locate(id)!!.terminal.directory)
     }
 
     private fun git(directory: java.io.File, vararg arguments: String) {
@@ -499,7 +503,9 @@ class SessionRegistryTest {
             git(other, "init")
             git(other, "checkout", "-b", "elsewhere")
             // A program that works in another repository than the shell's (job control on, so that it has the terminal), and the shell's own after it.
-            script = "set -m; (cd '${other.path}' && exec sleep 3); sleep 30"
+            // On Windows a program that the shell started in the background there, which is a child of the shell (and the other way does not
+            // parse with TestProgram).
+            script = if (app.katty.core.isWindows) "cd '${other.path}'; exec ping -n 4 127.0.0.1 & wait; cd '${repo.path}'; sleep 30" else "set -m; (cd '${other.path}' && exec sleep 3); sleep 30"
             store.addProject(repo.path)
             val id = store.state.value.selection.terminal!!
 
@@ -520,7 +526,7 @@ class SessionRegistryTest {
         try {
             git(repo, "init")
             // The shell goes to a folder that is not in a repository.
-            script = "printf '\\033]7;file://localhost${plain.path}\\007'; sleep 30"
+            script = "printf '\\033]7;%s\\007' '${fileUrl(plain.path)}'; sleep 30"
             store.addProject(repo.path)
             val id = store.state.value.selection.terminal!!
 
@@ -574,7 +580,7 @@ class SessionRegistryTest {
     @Test
     fun aShellThatEndsLeavesItsOutputAndSaysThatItIsOver() {
         script = "printf hello"
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val id = store.state.value.selection.terminal!!
 
         sync()
@@ -586,7 +592,7 @@ class SessionRegistryTest {
 
     @Test
     fun restartingStartsAnotherShellInThePlaceOfTheFirst() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val id = store.state.value.selection.terminal!!
         sync()
         val before = registry.handles.value.getValue(id)
@@ -622,7 +628,7 @@ class SessionRegistryTest {
 
     @Test
     fun hidesTheSessionsThatAreNotShown() {
-        store.addProject("/tmp")
+        store.addProject(tmpDirectory)
         val first = store.state.value.selection.terminal!!
         val second = store.split(first, SplitDirection.ROW)!!
         sync()

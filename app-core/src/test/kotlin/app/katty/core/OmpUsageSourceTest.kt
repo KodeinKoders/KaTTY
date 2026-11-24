@@ -61,7 +61,7 @@ class OmpUsageSourceTest {
             reading,
         )
         // Its output is left alone: it has the last 24 hours and no other range. The command is run where no project is.
-        assertEquals(listOf(listOf("/opt/omp/bin/omp", "stats", "-j") to directory), runner.commands)
+        assertEquals(listOf(listOf(executable.toString(), "stats", "-j") to directory), runner.commands)
     }
 
     @Test

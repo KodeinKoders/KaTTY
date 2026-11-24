@@ -49,7 +49,9 @@ class AiCommandTest {
     fun thePromptReachesTheCommandAsItIs() {
         val prompt = "It's \"quoted\", \$HOME and `ticks` \\ and\na second line"
 
-        val answer = AiPrompt.ask("printf '%s' \"\$PROMPT\" | tr '\\n' '|'", prompt, directory, path = null)
+        // On Windows the command is PowerShell's (the line breaks of its output are taken off).
+        val command = if (isWindows) "Write-Output (\$PROMPT -replace \"`n\", '|')" else "printf '%s' \"\$PROMPT\" | tr '\\n' '|'"
+        val answer = AiPrompt.ask(command, prompt, directory, path = null)
 
         assertEquals(AiAnswer.Command(prompt.replace('\n', '|')), answer)
     }
@@ -57,13 +59,22 @@ class AiCommandTest {
     @Test
     fun itRunsInTheDirectoryWithThePathItIsGiven() {
         val bin = Files.createTempDirectory("katty-ai-bin")
-        val tool = bin.resolve("fake-agent")
-        Files.writeString(tool, "#!/bin/sh\necho \"./run.sh in \$(pwd -P)\"\n")
-        tool.toFile().setExecutable(true)
+        // A batch file on Windows, which PowerShell finds by the extensions of PATHEXT.
+        if (isWindows) {
+            Files.writeString(bin.resolve("fake-agent.cmd"), "@echo ./run.sh in %CD%\r\n")
+        } else {
+            val tool = bin.resolve("fake-agent")
+            Files.writeString(tool, "#!/bin/sh\necho \"./run.sh in \$(pwd -P)\"\n")
+            tool.toFile().setExecutable(true)
+        }
+        val path = if (isWindows) "$bin;${System.getenv("SystemRoot")}\\System32" else "$bin:/usr/bin:/bin"
 
-        val answer = AiPrompt.ask("fake-agent \"\$PROMPT\"", "anything", directory, path = "$bin:/usr/bin:/bin")
+        val answer = AiPrompt.ask("fake-agent \"\$PROMPT\"", "anything", directory, path = path)
 
-        assertEquals(AiAnswer.Command("./run.sh in ${directory.toRealPath()}"), answer)
+        // The directory as the system gives it, which may be a short name on Windows (RUNNER~1).
+        val line = (answer as AiAnswer.Command).line
+        assertTrue(line.startsWith("./run.sh in "), line)
+        assertEquals(directory.toRealPath(), java.nio.file.Path.of(line.removePrefix("./run.sh in ")).toRealPath())
     }
 
     @Test
@@ -71,9 +82,9 @@ class AiCommandTest {
         val failed = AiPrompt.ask("echo 'not logged in'; exit 3", "x", directory, path = null)
         assertEquals(AiAnswer.Failed("it ended with the code 3: not logged in"), failed)
 
-        assertEquals(AiAnswer.Failed("it printed nothing"), AiPrompt.ask("true", "x", directory, path = null))
+        assertEquals(AiAnswer.Failed("it printed nothing"), AiPrompt.ask(if (isWindows) "\$null" else "true", "x", directory, path = null))
 
-        val slow = AiPrompt.ask("sleep 5", "x", directory, path = null, timeoutMs = 300)
+        val slow = AiPrompt.ask(if (isWindows) "Start-Sleep 5" else "sleep 5", "x", directory, path = null, timeoutMs = 300)
         assertTrue(slow is AiAnswer.Failed && "within" in slow.reason, "$slow")
     }
 
@@ -129,16 +140,21 @@ class AiCommandTest {
 
     @Test
     fun theAiIsAskedWhyAndItsAnswerRead() {
-        var asked: List<String>? = null
-        val runner = CommandRunner { command, _, _ ->
-            asked = command
-            CommandResult(0, "The file is missing.\nCOMMAND: touch a.txt\n")
+        // The question, which is in the script of sh, and on Windows in the environment of PowerShell.
+        var asked: String? = null
+        val runner = object : CommandRunner {
+            override fun run(command: List<String>, directory: java.nio.file.Path, timeoutMs: Long): CommandResult? = error("Run with its environment")
+
+            override fun run(command: List<String>, directory: java.nio.file.Path, timeoutMs: Long, environment: EnvironmentChange): CommandResult? {
+                asked = if (isWindows) environment.variables["PROMPT"] else command.last()
+                return CommandResult(0, "The file is missing.\nCOMMAND: touch a.txt\n")
+            }
         }
 
         val diagnosis = AiPrompt.askAbout("agent \"\$PROMPT\"", CommandQuestion.WHY_FAILED, CommandRun("cat a.txt", 1, "cat: a.txt: No such file"), directory, null, runner)
 
         assertEquals(AiDiagnosis.Explained("The file is missing.", "touch a.txt"), diagnosis)
-        assertTrue("cat: a.txt: No such file" in asked!!.last(), "The output is in the prompt of the script")
+        assertTrue("cat: a.txt: No such file" in asked!!, "The output is in the question")
         val failing = AiPrompt.askAbout("echo 'not logged in'; exit 3", CommandQuestion.WHY_FAILED, CommandRun("x", 1, ""), directory, path = null)
         assertEquals(AiDiagnosis.Failed("it ended with the code 3: not logged in"), failing)
     }
@@ -163,15 +179,23 @@ class AiCommandTest {
 
     @Test
     fun theAiIsRunWithTheEnvironmentOfTheWorkspaceButItsOwnPath() {
-        // One that this process has, taken out.
-        val inherited = System.getenv().keys.sorted().first { it.matches(Regex("[A-Z][A-Z_]*")) && it !in setOf("PATH", "PWD", "OLDPWD", "SHLVL", "HOME", "LANG") }
+        // One that this process has, taken out: not one that the shell needs.
+        val needed = setOf("PATH", "PWD", "OLDPWD", "SHLVL", "HOME", "LANG", "COMSPEC", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "TEMP", "TMP")
+        val inherited = System.getenv().keys.sorted().first { it.matches(Regex("[A-Z][A-Z_]*")) && it.uppercase() !in needed && !it.startsWith("PS") }
+        val path = if (isWindows) "C:\\katty-nowhere" else "/usr/bin:/bin"
         val environment = EnvironmentChange(mapOf("FOO" to "bar", "PATH" to "/nowhere"), setOf(inherited))
+        // On Windows the command is PowerShell's, which reads the environment through env:.
+        val command = if (isWindows) {
+            "Write-Output ('{0} {1} {2}' -f \$env:FOO, \$(if (Test-Path env:$inherited) { 'there' } else { 'gone' }), \$env:PATH)"
+        } else {
+            "printf '%s %s %s' \"\$FOO\" \"\${$inherited-gone}\" \"\$PATH\""
+        }
 
-        val answer = AiPrompt.ask(
-            "printf '%s %s %s' \"\$FOO\" \"\${$inherited-gone}\" \"\$PATH\"", "?", directory, path = "/usr/bin:/bin", environment = environment,
-        )
+        val answer = AiPrompt.ask(command, "?", directory, path = path, environment = environment)
 
-        assertEquals(AiAnswer.Command("bar gone /usr/bin:/bin"), answer)
+        // PowerShell of the Microsoft Store puts its own folder in front of the path it is given.
+        val line = (answer as AiAnswer.Command).line
+        assertTrue(line.startsWith("bar gone ") && line.endsWith(path) && (isWindows || line == "bar gone $path"), line)
     }
 
     // --- A command asked for in plain words ---

@@ -3,6 +3,7 @@ package app.katty.terminals
 import app.katty.core.Agent
 import app.katty.core.sessionOf
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,7 +18,7 @@ class ReportedSessionTest {
         sessions.forEach { it.close() }
     }
 
-    private fun run(script: String) = TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", script), shellIntegration = false).also { sessions += it }
+    private fun run(script: String) = TerminalSession.start(80, 5, command = sh(script), shellIntegration = false).also { sessions += it }
 
     private fun TerminalSession.await(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 15_000_000_000

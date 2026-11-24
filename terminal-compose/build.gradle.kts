@@ -18,6 +18,8 @@ kotlin {
 val secureKeyboardTests = "app.katty.terminal.compose.platform.SecureKeyboardTest"
 
 tasks.withType<Test>().configureEach {
+    // KATTY_TEST_PROGRAM=1 runs the scripts of the tests with TestProgram on a Unix system too (TestShell.kt): the tests run again when it changes.
+    inputs.property("testProgram", providers.environmentVariable("KATTY_TEST_PROGRAM").orElse(""))
     // The tests render with Skia, in memory: no display is needed.
     systemProperty("java.awt.headless", "true")
     // ghostty-vt calls the FFM API, and pty4j calls JNA: both are restricted, and the JVM warns on the
@@ -27,8 +29,8 @@ tasks.withType<Test>().configureEach {
 
 // The tests that do not run on Windows, and why: the others run there.
 val notOnWindows = mapOf(
-    "app.katty.terminal.compose.TerminalTest" to "76 of its 78 tests start their terminal with /bin/sh, which TestProgram of terminal's tests would replace",
-    "app.katty.terminal.compose.TerminalDropTest" to "the paths of a Unix system, and /bin/sh",
+    "app.katty.terminal.compose.TerminalDropTest.theFilesThatAreDroppedAreTheirPathsSeparatedByASpace" to "the paths of a Unix system",
+    "app.katty.terminal.compose.TerminalDropTest.aFileWhoseNameHasALineBreakIsLeftOut" to "the paths of a Unix system",
     "app.katty.terminal.compose.CommandMarksUiTest.theTooltipOfACommandThatWasStoppedSaysSoAndHowLongItRan" to "no job is stopped on Windows",
     "app.katty.terminal.compose.TerminalViewTest.aCommandThatWasStoppedIsYellowAndNotRed" to "no job is stopped on Windows",
 )
@@ -65,6 +67,8 @@ dependencies {
 
     testImplementation(compose.desktop.currentOs)
 
+    // sh(), which starts a script with TestProgram on Windows.
+    testImplementation(testFixtures(projects.terminal))
     testImplementation(libs.kotlin.test.junit)
 
     testRuntimeOnly(libs.slf4j.simple)

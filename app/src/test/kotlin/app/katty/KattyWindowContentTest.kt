@@ -31,9 +31,11 @@ import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.CursorShape
 import app.katty.core.KattyDirectories
 import app.katty.core.KattyStore
+import app.katty.core.isWindows
 import app.katty.core.terminals
 import app.katty.terminal.TerminalCursorShape
 import app.katty.terminal.TerminalSession
+import app.katty.terminal.sh
 import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.terminals.SessionUsageTracker
@@ -68,14 +70,15 @@ class KattyWindowContentTest {
     private var counter = 0
     private val store = KattyStore(newId = { "id${counter++}" })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var command = listOf("/bin/sh")
+    // An interactive shell: sh, and PowerShell on Windows.
+    private var command = if (isWindows) interactiveShell else listOf("/bin/sh")
     private var environment = emptyMap<String, String>()
     private val registry = SessionRegistry(
         store, scope, starter = Dispatchers.Unconfined,
         loadTheme = { null },
         start = { spec, _, _ -> TerminalSession.start(80, 5, command = command, environment = environment, directory = spec.directory) },
         // Not the user's shell, which reads the user's files.
-        startRun = { run, directory, _, _ -> TerminalSession.start(80, 5, command = listOf("/bin/sh", "-c", run), directory = directory, shellIntegration = false) },
+        startRun = { run, directory, _, _ -> TerminalSession.start(80, 5, command = sh(run), directory = directory, shellIntegration = false) },
     )
     private val tracker = AgentTracker(scope)
     private val usage = SessionUsageTracker(scope, emptyMap(), { emptyMap() }, { null }, { null })
@@ -187,7 +190,7 @@ class KattyWindowContentTest {
     @Test
     fun theAiIsAskedForTheCommandWhileTheFieldIsEmpty() = runComposeUiTest {
         store.addProject(directories.support.toString())
-        store.updateSettings { it.copy(aiCommand = "printf '\\n\\140./gradlew run --debug-jvm\\140\\n'") }
+        store.updateSettings { it.copy(aiCommand = aiAnswers("\n`./gradlew run --debug-jvm`\n")) }
         showWindow()
 
         shortcut(Key.R)
@@ -227,8 +230,13 @@ class KattyWindowContentTest {
         onAllNodesWithContentDescription("Ask the AI for the command").assertCountEquals(0)
     }
 
-    // A zsh with KaTTY's integration, which marks its commands, in a home of its own: not the user's files.
+    // A zsh with KaTTY's integration, which marks its commands, in a home of its own: not the user's files. On Windows PowerShell with it, which
+    // reads the user's profile (it would not be integrated without it).
     private fun markingShell() {
+        if (isWindows) {
+            command = listOf(app.katty.terminal.defaultShell().first(), "-NoLogo")
+            return
+        }
         val home = Files.createTempDirectory("katty-home").also { Files.createFile(it.resolve(".zshrc")) }
         command = listOf("/bin/zsh", "-l")
         environment = mapOf("HOME" to home.toString())
@@ -248,7 +256,7 @@ class KattyWindowContentTest {
         markingShell()
         val asked = Files.createTempFile("katty-asked", ".txt")
         store.addProject(directories.support.toString())
-        store.updateSettings { it.copy(aiCommand = "printf '%s' \"\$PROMPT\" > '$asked'; printf 'The folder is not there.\\nCOMMAND: echo typed-by-katty\\n'") }
+        store.updateSettings { it.copy(aiCommand = aiAnswers("The folder is not there.\nCOMMAND: echo typed-by-katty\n", asked)) }
         showWindow()
         val session = registry.handles.value.values.single().session!!
         waitUntil(timeoutMillis = 15_000) { session.atPrompt() }
@@ -259,7 +267,8 @@ class KattyWindowContentTest {
         onNodeWithContentDescription("Ask AI why it failed", substring = true, useUnmergedTree = true).performClick()
         waitUntil(timeoutMillis = 15_000) { onAllNodesWithText("The folder is not there.").fetchSemanticsNodes().isNotEmpty() }
         val prompt = Files.readString(asked)
-        assertTrue("Command: ls /nonexistent-katty" in prompt && "No such file" in prompt, prompt)
+        // What ls says, or on Windows Get-ChildItem, which is ls in PowerShell.
+        assertTrue("Command: ls /nonexistent-katty" in prompt && (if (isWindows) "does not exist" else "No such file") in prompt, prompt)
         onNodeWithContentDescription("Corrected command").assertExists()
 
         onNodeWithText("Type it").performClick()
@@ -275,7 +284,7 @@ class KattyWindowContentTest {
         markingShell()
         val asked = Files.createTempFile("katty-asked", ".txt")
         store.addProject(directories.support.toString())
-        store.updateSettings { it.copy(aiCommand = "printf '%s' \"\$PROMPT\" > '$asked'; printf 'It printed a word.\\n'") }
+        store.updateSettings { it.copy(aiCommand = aiAnswers("It printed a word.\n", asked)) }
         showWindow()
         val session = registry.handles.value.values.single().session!!
         waitUntil(timeoutMillis = 15_000) { session.atPrompt() }
@@ -302,7 +311,7 @@ class KattyWindowContentTest {
         markingShell()
         val asked = Files.createTempFile("katty-asked", ".txt")
         store.addProject(directories.support.toString())
-        store.updateSettings { it.copy(aiCommand = "printf '%s' \"\$PROMPT\" > '$asked'; printf '```sh\\necho made-by-katty\\n```\\n'") }
+        store.updateSettings { it.copy(aiCommand = aiAnswers("```sh\necho made-by-katty\n```\n", asked)) }
         showWindow()
         val session = registry.handles.value.values.single().session!!
         waitUntil(timeoutMillis = 15_000) { session.atPrompt() }
@@ -316,7 +325,9 @@ class KattyWindowContentTest {
         val prompt = Files.readString(asked)
         // The shell is the terminals' (the user's login shell by default), as the user knows it.
         val shell = registry.handles.value.values.single().shellLabel
-        assertTrue("say hello" in prompt && "$shell shell" in prompt && directories.support.toString() in prompt, prompt)
+        // The directory as the shell says it, which on Windows may be the long name of a folder that Java has by its short one (SALOMO~1).
+        val directory = directories.support.toString() in prompt || directories.support.toRealPath().toString() in prompt
+        assertTrue("say hello" in prompt && "$shell shell" in prompt && directory, prompt)
 
         // The user changes it before it is typed.
         onNodeWithContentDescription("Command").performTextReplacement("echo edited-by-katty")
@@ -332,11 +343,11 @@ class KattyWindowContentTest {
     fun aCommandIsNotTypedWhileAProgramRuns() = runComposeUiTest {
         markingShell()
         store.addProject(directories.support.toString())
-        store.updateSettings { it.copy(aiCommand = "printf 'echo late'") }
+        store.updateSettings { it.copy(aiCommand = aiAnswers("echo late")) }
         showWindow()
         val session = registry.handles.value.values.single().session!!
         waitUntil(timeoutMillis = 15_000) { session.atPrompt() }
-        session.sendText("sleep 30\r")
+        session.sendText("$longCommand\r")
         waitUntil(timeoutMillis = 15_000) { session.lastCommand()?.outcome == app.katty.terminal.TerminalCommandOutcome.RUNNING }
 
         assertTrue(shortcut(Key.I))
@@ -370,7 +381,7 @@ class KattyWindowContentTest {
     @Test
     fun theAiIsAskedWhyTheRunFailedAndItsCorrectionGoesInTheQuestion() = runComposeUiTest {
         store.addProject(directories.support.toString())
-        store.updateSettings { it.copy(aiCommand = "printf 'It exits with 3.\\nCOMMAND: exit 0\\n'") }
+        store.updateSettings { it.copy(aiCommand = aiAnswers("It exits with 3.\nCOMMAND: exit 0\n")) }
         showWindow()
         onNodeWithContentDescription("Run a command").performClick()
         waitForIdle()
@@ -486,7 +497,7 @@ class KattyWindowContentTest {
     // Coming back to the window shows the terminal that finished: the bell must still say it, until the user does something with it.
     @Test
     fun aTerminalThatFinishedInFrontOfTheUserStaysInTheBellUntilTheyTypeInIt() = runComposeUiTest {
-        command = listOf("/bin/sh", "-c", """printf '\033]7501;state=done:app=claude\033\\'; sleep 30""")
+        command = sh("""printf '\033]7501;state=done:app=claude\033\\'; sleep 30""")
         store.addProject(directories.support.toString())
         showWindow()
         val id = state.selection.terminal!!
@@ -503,8 +514,7 @@ class KattyWindowContentTest {
     private fun androidx.compose.ui.test.ComposeUiTest.twoTerminalsWhereACommandEnds(
         beforeItEnds: androidx.compose.ui.test.ComposeUiTest.() -> Unit = {},
     ): Pair<app.katty.core.TerminalId, app.katty.core.TerminalId> {
-        command = listOf(
-            "/bin/sh", "-c",
+        command = sh(
             """sleep 2; printf '\033]133;A\007$ \033]133;B\007make build\r\n\033]133;C\007'; sleep 0.5; printf '\033]133;D;2\007\033]133;A\007$ '; sleep 30""",
         )
         store.addProject(directories.support.toString())
@@ -596,12 +606,12 @@ class KattyWindowContentTest {
 
     @Test
     fun closingATerminalWhereAProgramRunsAsksFirst() = runComposeUiTest {
-        command = listOf("/bin/sh", "-c", "sleep 30")
+        command = sh(runsAProgram(30))
         store.addProject(directories.support.toString())
         showWindow()
         val terminal = state.selection.terminal!!
         // The poll has seen the program (the shell is `sh`, and the program `sleep`).
-        waitUntil(timeoutMillis = 5_000) { registry.processNames.value[terminal] == "sleep" }
+        waitUntil(timeoutMillis = 5_000) { registry.processNames.value[terminal] == longCommandName }
 
         assertTrue(shortcut(Key.W))
         waitForIdle()
@@ -614,7 +624,7 @@ class KattyWindowContentTest {
     // the shell's history is there again.
     @Test
     fun theExportSaysWhetherAProgramHasTheAlternateScreen() = runComposeUiTest {
-        command = listOf("/bin/sh", "-c", """printf '\033[?1049hfull screen'; read line; printf '\033[?1049l'; sleep 30""")
+        command = sh("""printf '\033[?1049hfull screen'; read line; printf '\033[?1049l'; sleep 30""")
         store.addProject(directories.support.toString())
         showWindow()
         val session = registry.handles.value.values.single().session!!
@@ -740,7 +750,7 @@ class KattyWindowContentTest {
         reported: app.katty.core.AgentState,
         beforeTheyReport: androidx.compose.ui.test.ComposeUiTest.() -> Unit = {},
     ): Pair<app.katty.core.TerminalId, app.katty.core.TerminalId> {
-        command = listOf("/bin/sh", "-c", """sleep 2; printf '\033]7501;$report\033\\'; sleep 30""")
+        command = sh("""sleep 2; printf '\033]7501;$report\033\\'; sleep 30""")
         store.addProject(directories.support.toString())
         val selected = state.selection.terminal!!
         val other = store.split(selected, app.katty.core.SplitDirection.ROW)!!
@@ -803,11 +813,11 @@ class KattyWindowContentTest {
 
     @Test
     fun quittingWhileAProgramRunsAsksAndCancelKeepsTheApplication() = runComposeUiTest {
-        command = listOf("/bin/sh", "-c", "sleep 30")
+        command = sh(runsAProgram(30))
         store.addProject(directories.support.toString())
         showWindow()
         val terminal = state.selection.terminal!!
-        waitUntil(timeoutMillis = 5_000) { registry.processNames.value[terminal] == "sleep" }
+        waitUntil(timeoutMillis = 5_000) { registry.processNames.value[terminal] == longCommandName }
 
         val answer = CoroutineScope(Dispatchers.Default).async { bridge.confirmQuit!!.invoke() }
 
