@@ -5,7 +5,10 @@ package app.katty.screens
 import app.katty.ShortcutMap
 import app.katty.Shortcuts
 import app.katty.MAC_SHORTCUTS
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onRoot
@@ -95,6 +98,19 @@ class WorkspaceAreaTest {
     private var renaming by androidx.compose.runtime.mutableStateOf<app.katty.core.TerminalId?>(null)
     // Something open over the terminals (a dialog, the palette): they do not take the keyboard then.
     private var overlay by androidx.compose.runtime.mutableStateOf(false)
+
+    // Waits for a terminal called [title]. The shell's title was not there right after the pane was shown, twice on CI's macOS (which title
+    // there was is not known: the first read of the program's name gives zsh, measured 100 times in 100), so the tests wait for it, and say
+    // what titles there were when it does not come.
+    private fun ComposeUiTest.awaitTerminalTitle(title: String) {
+        try {
+            waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Terminal $title").fetchSemanticsNodes().isNotEmpty() }
+        } catch (e: ComposeTimeoutException) {
+            val titles = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription)).fetchSemanticsNodes()
+                .flatMap { it.config[SemanticsProperties.ContentDescription] }.filter { it.startsWith("Terminal ") }
+            throw AssertionError("No terminal called $title, there were: $titles", e)
+        }
+    }
 
     private fun androidx.compose.ui.test.ComposeUiTest.show() {
         registry.sync(store.state.value)
@@ -233,7 +249,7 @@ class WorkspaceAreaTest {
         store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
-        onNodeWithContentDescription("Terminal $interactiveShellName").assertExists()
+        awaitTerminalTitle(interactiveShellName)
         onNodeWithText("Idle").assertExists()
 
         infos = mapOf(terminal to app.katty.core.AgentInfo(app.katty.core.AgentReport(app.katty.core.AgentState.NEEDS_INPUT, "codex", "Apply this patch?"), 0))
@@ -249,6 +265,7 @@ class WorkspaceAreaTest {
         val terminal = store.state.value.selection.terminal!!
         show()
 
+        awaitTerminalTitle(interactiveShellName)
         onNodeWithContentDescription("Terminal $interactiveShellName").performMouseInput { doubleClick() }
         waitForIdle()
         onNodeWithText(interactiveShellName).performTextInput("build")
@@ -297,6 +314,7 @@ class WorkspaceAreaTest {
         assertEquals(second, store.state.value.selection.terminal)
 
         // On the title of the first pane, which is not the focused one.
+        awaitTerminalTitle(interactiveShellName)
         onAllNodesWithContentDescription("Terminal $interactiveShellName")[0].performMouseInput { rightClick() }
         waitForIdle()
 
@@ -463,7 +481,7 @@ class WorkspaceAreaTest {
         store.addProject(tmpDirectory)
         val terminal = store.state.value.selection.terminal!!
         show()
-        onNodeWithContentDescription("Terminal $interactiveShellName").assertExists()
+        awaitTerminalTitle(interactiveShellName)
 
         registry.handles.value.getValue(terminal).session!!.sendText("$longCommand\r")
         waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Terminal $longCommandName").fetchSemanticsNodes().isNotEmpty() }
@@ -506,7 +524,7 @@ class WorkspaceAreaTest {
         waitForIdle()
 
         assertEquals(null, store.state.value.locate(terminal)!!.terminal.name)
-        onAllNodesWithContentDescription("Terminal $interactiveShellName")[0].assertExists()
+        awaitTerminalTitle(interactiveShellName)
     }
 
     @Test
