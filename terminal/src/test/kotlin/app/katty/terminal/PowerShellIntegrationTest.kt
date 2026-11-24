@@ -98,8 +98,10 @@ class PowerShellIntegrationTest {
         return listOfNotNull(pwsh?.toString(), if (isWindows) "powershell.exe" else null)
     }
 
+    // Wide: the prompt has the path of a temporary directory, which on a macOS of CI is long enough, with what a test types after it, to wrap the
+    // line, which PSReadLine drew again without running it (it failed or passed with the length of the random digits of the folder).
     private fun start(shell: String, directory: Path, typeAtPrompt: TypedCommand? = null): TerminalSession =
-        TerminalSession.start(100, 20, command = listOf(shell, "-NoLogo"), directory = directory.toString(), typeAtPrompt = typeAtPrompt)
+        TerminalSession.start(240, 20, command = listOf(shell, "-NoLogo"), directory = directory.toString(), typeAtPrompt = typeAtPrompt)
             .also { sessions += it }
 
     private fun TerminalSession.screen(): String = frames.value.rows.joinToString("\n") { row -> row.cells.joinToString("") { it.text.ifEmpty { " " } } }
