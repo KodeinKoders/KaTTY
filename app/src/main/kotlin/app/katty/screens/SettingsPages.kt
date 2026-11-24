@@ -49,6 +49,9 @@ import androidx.compose.ui.unit.sp
 import app.katty.AppShortcut
 import app.katty.ShortcutMap
 import app.katty.core.Agent
+import app.katty.core.CUSTOM_SHELL
+import app.katty.core.InstalledShell
+import app.katty.core.ShellLaunch
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
 import app.katty.core.EnvironmentListing
@@ -153,6 +156,7 @@ internal fun aiCommandSetting(text: String, default: String?): String? {
  * @param shortcuts The shortcuts as they are bound, changed through [onShortcuts].
  * @param agents The agents that are installed: the AI command can be the one of any of them, and is the one of the first while the setting is `null`.
  * @param environments The environments found in the folders of the settings.
+ * @param shells The shells that are installed, which the terminals can start instead of the default one ([defaultShellLabel], read once when `null`).
  * @param macOs Whether it runs on macOS, which has the settings of the Keyboard page ([settingsPages]): a page that is not listed shows Appearance.
  */
 @Composable
@@ -172,8 +176,11 @@ internal fun SettingsContent(
     environmentActions: EnvironmentActions = EnvironmentActions(),
     overlay: @Composable () -> Unit = {},
     macOs: Boolean = isMacOs,
+    shells: List<InstalledShell> = emptyList(),
+    defaultShellLabel: String? = null,
 ) {
     val colors = Katty.colors
+    val defaultShell = defaultShellLabel ?: remember { ShellLaunch.default().label }
     val pages = settingsPages(macOs)
     val page = if (page in pages) page else SettingsPage.APPEARANCE
     // The theme whose color scheme is being chosen: `true` for the dark one.
@@ -193,7 +200,7 @@ internal fun SettingsContent(
                     else -> ScrolledPage(page) {
                         when (page) {
                             SettingsPage.APPEARANCE -> AppearancePage(settings, onChange, schemes, fontFamilies, onPickColorScheme = { picking = it })
-                            SettingsPage.TERMINAL -> TerminalPage(settings, onChange)
+                            SettingsPage.TERMINAL -> TerminalPage(settings, onChange, shells, defaultShell)
                             SettingsPage.KEYBOARD -> KeyboardPage(settings, onChange)
                             SettingsPage.AGENTS -> AgentsPage(settings, onChange, agents)
                             SettingsPage.ENVIRONMENTS -> EnvironmentsPage(settings, onChange, environments, environmentActions, onCustomColor = { coloring = it })
@@ -346,7 +353,16 @@ private fun AppearancePage(
 }
 
 @Composable
-private fun TerminalPage(settings: Settings, onChange: ((Settings) -> Settings) -> Unit) {
+private fun TerminalPage(settings: Settings, onChange: ((Settings) -> Settings) -> Unit, shells: List<InstalledShell>, defaultShell: String) {
+    Section("SHELL") {
+        ShellField(settings.shell, shells, defaultShell) { choice -> onChange { it.copy(shell = choice) } }
+        if (settings.shell == CUSTOM_SHELL) ShellCommandField(settings.shellCommand) { command -> onChange { it.copy(shellCommand = command) } }
+        Caption(
+            "What the terminals start from now on: the new ones, the ones that are reopened and the ones that come back at launch. The ones that run " +
+                "keep theirs. zsh, bash, fish and PowerShell get KaTTY's integration (the marks of the commands, the folder); another shell starts as it is.",
+        )
+    }
+    Separator()
     Section("CURSOR") {
         Choice(
             listOf(ChoiceOption(CursorShape.BLOCK, "Block"), ChoiceOption(CursorShape.BAR, "Bar"), ChoiceOption(CursorShape.UNDERLINE, "Underline")),
@@ -631,6 +647,56 @@ private fun DefaultEnvironmentField(current: String?, names: Set<String>, onChoo
             )
         }
     }
+}
+
+/**
+ * The shell that the terminals start ([current], see `Settings.shell`): the default one ([defaultShell] says which), one of the [shells] that are
+ * installed (one that is not any more says so), or the command that the user types.
+ */
+@Composable
+private fun ShellField(current: String?, shells: List<InstalledShell>, defaultShell: String, onChoose: (String?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = when (current) {
+        null -> "Default ($defaultShell)"
+        CUSTOM_SHELL -> "Custom command"
+        else -> shells.firstOrNull { it.id == current }?.label ?: "$current (not found)"
+    }
+    Box {
+        Field(label, "Shell: $label", { open = true })
+        if (open) {
+            KattyMenu(
+                menu {
+                    action("Default ($defaultShell)", checked = current == null) { onChoose(null) }
+                    if (shells.isNotEmpty()) divider()
+                    for (shell in shells) action(shell.label, hint = shell.id, checked = shell.id == current) { onChoose(shell.id) }
+                    divider()
+                    action("Custom command", checked = current == CUSTOM_SHELL) { onChoose(CUSTOM_SHELL) }
+                },
+                onDismiss = { open = false },
+            )
+        }
+    }
+}
+
+/** The command line of a shell that the user types ([current]), kept as it is typed. */
+@Composable
+private fun ShellCommandField(current: String, onChange: (String) -> Unit) {
+    val colors = Katty.colors
+    val state = rememberTextFieldState(current)
+    val latestOnChange by rememberUpdatedState(onChange)
+    // Every change is kept at once: nothing is lost when the window is closed while the field has the focus.
+    LaunchedEffect(state) { snapshotFlow { state.text.toString() }.drop(1).collect { latestOnChange(it) } }
+    TextField(
+        state,
+        Modifier.padding(horizontal = 4.dp, vertical = 4.dp).fillMaxWidth().semantics { contentDescription = "Shell command" },
+        placeholder = { Text(if (isWindows) "C:\\msys64\\usr\\bin\\zsh.exe --login -i" else "/opt/homebrew/bin/fish -l", fontFamily = FontFamily.Monospace) },
+        textStyle = JewelTheme.defaultTextStyle.copy(fontFamily = FontFamily.Monospace),
+    )
+    Text(
+        "The program and its arguments, after NAME=value words for its environment. Empty, the terminals start the default shell.",
+        Modifier.padding(start = 8.dp, end = 8.dp, top = 2.dp),
+        color = colors.muted, fontSize = 11.sp,
+    )
 }
 
 /** [path] with the home folder written `~`. */

@@ -22,6 +22,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.AgentInfo
 import app.katty.core.AgentReport
 import app.katty.core.AgentState
+import app.katty.core.InstalledShell
 import app.katty.core.KattyStore
 import app.katty.core.MainView
 import app.katty.core.PaletteEntry
@@ -223,6 +224,7 @@ class CommandPaletteTest {
         jumpToWaiting = { calls += "jump" }, markAllSeen = { calls += "seen" }, openBoardWindow = { calls += "boardWindow" }, openTerminal = { calls += "terminal ${it.value}" },
         openWorkspace = { calls += "workspace ${it.value}" },
         editShortcuts = { calls += "editShortcuts" }, selectProject = { calls += "selectProject ${it.value}" }, moveTerminalTo = { calls += "move ${it.value}" },
+        setShell = { calls += "shell $it" }, editShellCommand = { calls += "shellCommand" },
     )
 
     // A Mac's commands, whatever the system that runs the tests: the Option keys and the secure keyboard entry are only on macOS.
@@ -484,6 +486,19 @@ class CommandPaletteTest {
 
         assertFalse(labels.any { it.startsWith("Option key") || it.startsWith("Secure keyboard entry") }, labels.toString())
         assertTrue("Bell: sound" in labels)
+    }
+
+    @Test
+    fun theShellsThatAreInstalledHaveCommands() {
+        val shells = listOf(InstalledShell("C:\\msys64\\usr\\bin\\zsh.exe", "zsh", "MSYS2 zsh", listOf("C:\\msys64\\usr\\bin\\zsh.exe", "--login", "-i")))
+        val commands = paletteCommands(state, emptyMap(), titleOf = { "zsh" }, handlers = handlers, shells = shells, defaultShellLabel = "PowerShell 7")
+        fun run(label: String) = commands.run(commands.entries.single { it.label == label })
+
+        run("Shell: MSYS2 zsh")
+        run("Shell: default (PowerShell 7)")
+        run("Shell: custom command…")
+
+        assertEquals(listOf("shell C:\\msys64\\usr\\bin\\zsh.exe", "shell null", "shellCommand"), calls)
     }
 
     @Test

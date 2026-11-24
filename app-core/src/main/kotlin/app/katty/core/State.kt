@@ -160,6 +160,10 @@ public enum class MainView {
  * @param environmentColors The colors that the user gave the badges of environments, by their names, each kept as [EnvironmentColor.encoded]; an
  * environment that is not in it has the one its name falls on. The color of an environment that is no longer found is kept: it comes back with
  * its file.
+ * @param shell The shell that the terminals start (see [resolveShell]): `null` for the default one (the login shell, or PowerShell on Windows), the
+ * path of the program of a shell that was found on the machine ([InstalledShell.id]), or [CUSTOM_SHELL] for [shellCommand]. It is read when a shell
+ * starts: the terminals that run keep theirs.
+ * @param shellCommand The command line of a shell that the user typed, kept while another one is chosen so that choosing it again finds it.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -198,6 +202,8 @@ public data class Settings(
     val environmentDirectories: List<String> = listOf(Environments.DEFAULT_DIRECTORY),
     val defaultEnvironment: String? = null,
     val environmentColors: Map<String, String> = emptyMap(),
+    val shell: String? = null,
+    val shellCommand: String = "",
 ) {
     public companion object {
         public const val DEFAULT_LIGHT_COLOR_SCHEME: String = "Alabaster"

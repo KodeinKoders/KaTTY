@@ -35,6 +35,8 @@ import androidx.compose.ui.test.runSkikoComposeUiTest
 import app.katty.AppShortcut
 import app.katty.ShortcutMap
 import app.katty.core.Agent
+import app.katty.core.CUSTOM_SHELL
+import app.katty.core.InstalledShell
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
 import app.katty.core.GitChangesDisplay
@@ -71,6 +73,7 @@ class SettingsPagesTest {
     private var agents by mutableStateOf(setOf(Agent.CLAUDE, Agent.CODEX))
     // A Mac's settings, whatever the system that runs the tests: the Keyboard page is only on macOS.
     private var macOs = true
+    private val shells = listOf(InstalledShell("/opt/homebrew/bin/fish", "fish", "fish", listOf("/opt/homebrew/bin/fish", "-l")))
 
     private fun ComposeUiTest.show(families: List<String> = listOf("Menlo", "Monaco")) {
         setContent {
@@ -87,6 +90,8 @@ class SettingsPagesTest {
                     agents = agents,
                     onAbout = { abouts++ },
                     macOs = macOs,
+                    shells = shells,
+                    defaultShellLabel = "zsh",
                 )
             }
         }
@@ -309,6 +314,30 @@ class SettingsPagesTest {
         assertFalse(settings.commandMarks)
         clickOn("Restore terminal contents")
         assertFalse(settings.restoreContents)
+    }
+
+    @Test
+    fun theShellIsChosenAmongTheInstalledOnesOrTyped() = runComposeUiTest {
+        show()
+        goTo(SettingsPage.TERMINAL)
+        onNodeWithText("Default (zsh)").assertExists()
+
+        onNodeWithContentDescription("Shell: Default (zsh)").performClick()
+        waitForIdle()
+        // An item of the menu, which is a popup: nothing to scroll to.
+        onNodeWithText("fish").performClick()
+        waitForIdle()
+        assertEquals("/opt/homebrew/bin/fish", settings.shell)
+        assertEquals(0, onAllNodesWithContentDescription("Shell command").fetchSemanticsNodes().size, "No command to type")
+
+        onNodeWithContentDescription("Shell: fish").performClick()
+        waitForIdle()
+        onNodeWithText("Custom command").performClick()
+        waitForIdle()
+        assertEquals(CUSTOM_SHELL, settings.shell)
+        onNodeWithContentDescription("Shell command").performTextInput("/bin/bash -l")
+        waitForIdle()
+        assertEquals("/bin/bash -l", settings.shellCommand)
     }
 
     @Test

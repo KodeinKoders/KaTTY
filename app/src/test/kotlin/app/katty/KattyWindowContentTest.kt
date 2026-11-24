@@ -314,8 +314,8 @@ class KattyWindowContentTest {
         waitUntil(timeoutMillis = 15_000) { onAllNodesWithContentDescription("Command").fetchSemanticsNodes().isNotEmpty() }
         assertEquals("echo made-by-katty", commandText())
         val prompt = Files.readString(asked)
-        // The shell is the user's, which the terminal takes from $SHELL.
-        val shell = registry.handles.value.values.single().shellName
+        // The shell is the terminals' (the user's login shell by default), as the user knows it.
+        val shell = registry.handles.value.values.single().shellLabel
         assertTrue("say hello" in prompt && "$shell shell" in prompt && directories.support.toString() in prompt, prompt)
 
         // The user changes it before it is typed.

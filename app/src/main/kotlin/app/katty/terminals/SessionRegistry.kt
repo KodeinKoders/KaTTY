@@ -14,6 +14,8 @@ import app.katty.core.KattyStore
 import app.katty.core.RestorePolicy
 import app.katty.core.SessionLookups
 import app.katty.core.Settings
+import app.katty.core.ShellLaunch
+import app.katty.core.runArgv
 import app.katty.core.TerminalId
 import app.katty.core.TerminalSnapshotStore
 import app.katty.core.TerminalSpec
@@ -28,7 +30,6 @@ import app.katty.terminal.TerminalSession
 import app.katty.terminal.TerminalSnapshot
 import app.katty.terminal.TerminalSnapshotException
 import app.katty.terminal.TerminalTheme
-import app.katty.terminal.defaultShell
 import app.katty.terminal.themes.ITermColorSchemes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -80,6 +81,8 @@ class TerminalHandle(
     val generation: Int = 0,
     /** The name of the shell that runs, as its executable is called: `zsh`. */
     val shellName: String = "zsh",
+    /** What the shell that runs is called for the user (`Git Bash`, `zsh`), which an AI is told when it is asked for a command. */
+    val shellLabel: String = shellName,
 ) {
     val focus: FocusRequester = FocusRequester()
 
@@ -125,6 +128,8 @@ class TerminalHandle(
  * @param startRun Starts the command of a run terminal ([runs]) in a directory.
  * @param resolveEnvironment What the environment of a workspace (see `Environments`), by its name, changes in the environment of its shells, read
  * each time a shell starts: a file that was edited is read again. Tests give their own folders.
+ * @param shellLaunch The shell that a terminal starts with the settings (`Settings.shell`), decided each time a shell starts: a change of the
+ * setting is for the shells that start after it.
  */
 class SessionRegistry(
     private val store: KattyStore,
@@ -132,17 +137,21 @@ class SessionRegistry(
     private val loadTheme: (String) -> TerminalTheme? = ::loadColorScheme,
     shellIntegration: Path? = null,
     private val starter: CoroutineDispatcher = Dispatchers.IO,
+    private val shellLaunch: (Settings) -> ShellLaunch = ShellCatalog::launch,
     private val start: (TerminalSpec, TerminalTheme?, EnvironmentChange) -> TerminalSession = { spec, theme, environment ->
-        startShell(spec, theme, shellIntegration, store.state.value.settings, environment)
+        val settings = store.state.value.settings
+        startShell(spec, theme, shellIntegration, settings, environment, shellLaunch(settings))
     },
     private val snapshots: TerminalSnapshotStore? = null,
     private val startRestored: (TerminalSpec, TerminalTheme?, TerminalSnapshot, EnvironmentChange) -> TerminalSession = { spec, theme, snapshot, environment ->
-        startShell(spec, theme, shellIntegration, store.state.value.settings, environment, snapshot)
+        val settings = store.state.value.settings
+        startShell(spec, theme, shellIntegration, settings, environment, shellLaunch(settings), snapshot)
     },
     private val autosaveMillis: Long = AUTOSAVE_MS,
     private val savedTerminals: StateFlow<Set<TerminalId>> = MutableStateFlow(emptySet()),
     private val startRun: (command: String, directory: String, TerminalTheme?, EnvironmentChange) -> TerminalSession = { command, directory, theme, environment ->
-        startCommand(command, directory, theme, store.state.value.settings, environment)
+        val settings = store.state.value.settings
+        startCommand(command, directory, theme, settings, environment, shellLaunch(settings))
     },
     private val resolveEnvironment: (String?) -> EnvironmentResolution = { Environments.resolve(it, store.state.value.settings.environmentDirectories) },
 ) {
@@ -577,7 +586,8 @@ class SessionRegistry(
     // The handle of the shell that started, with what follows it. Under the monitor.
     // [claudeConfigDir] is the `CLAUDE_CONFIG_DIR` that the shell was started with, where a Claude Code that runs in it keeps its sessions.
     private fun follow(spec: TerminalSpec, session: TerminalSession, generation: Int, claudeConfigDir: String?): TerminalHandle {
-        val handle = TerminalHandle(spec.id, session, generation = generation, shellName = shellName())
+        val launch = shellLaunch(store.state.value.settings)
+        val handle = TerminalHandle(spec.id, session, generation = generation, shellName = launch.name, shellLabel = launch.label)
         // Where the shell goes is where it starts the next time.
         val flag = AtomicBoolean(true).also { alive[spec.id] = it }
         // What the followers write, only while the session is followed.
@@ -783,9 +793,6 @@ private const val PROCESS_POLL_MS = 500L
 /** How long a restored terminal keeps what it is to start again while its shell has not yet got to it: a shell's startup files can be slow. */
 private const val RESTORE_GRACE_MS = 15_000L
 
-// The name of the program that a terminal starts (`zsh`, `pwsh`), without the `.exe` of Windows.
-private fun shellName(): String = File(defaultShell().first()).name.removeSuffix(".exe").ifEmpty { "shell" }
-
 /** The `CLAUDE_CONFIG_DIR` of a shell started with [change]: what it sets, else the application's unless it takes it out. */
 internal fun claudeConfigDir(change: EnvironmentChange): String? = change.variables[CLAUDE_CONFIG_DIR]
     ?: System.getenv(CLAUDE_CONFIG_DIR)?.takeIf { CLAUDE_CONFIG_DIR !in change.unset && it.isNotEmpty() }
@@ -841,12 +848,20 @@ private fun TerminalSession.apply(preferences: TerminalPreferences, before: Term
  * On Windows PowerShell runs it (`-Command`), which reads the user's profile. No prompt is drawn and the shell integration is not needed: there
  * is no prompt.
  */
-internal fun startCommand(command: String, directory: String, theme: TerminalTheme?, settings: Settings, environment: EnvironmentChange = EnvironmentChange.NONE): TerminalSession {
-    val shell = defaultShell().first()
-    val line = if (isWindows) listOf(shell, "-NoLogo", "-Command", command) else listOf(shell, "-l", "-i", "-c", command)
+internal fun startCommand(
+    command: String,
+    directory: String,
+    theme: TerminalTheme?,
+    settings: Settings,
+    environment: EnvironmentChange = EnvironmentChange.NONE,
+    launch: ShellLaunch = ShellLaunch.default(),
+): TerminalSession {
+    // The shell of the terminals runs it, or the default one for a shell that KaTTY does not know how to give a command to.
+    val run = runArgv(launch, command, ShellLaunch.default())
     return TerminalSession.start(
-        cols = 80, rows = 24, command = line, directory = directory.takeIf { File(it).isDirectory }, theme = theme,
-        environment = environment.variables, unsetEnvironment = environment.unset,
+        cols = 80, rows = 24, command = run.argv, directory = directory.takeIf { File(it).isDirectory }, theme = theme,
+        // What the shell needs (MSYSTEM), under what the environment of the workspace sets.
+        environment = run.environment + environment.variables, unsetEnvironment = environment.unset,
         shellIntegration = false, cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
         boldIsBright = settings.boldIsBright, scrollbackMaxBytes = settings.scrollback.bytes,
     )
@@ -858,6 +873,7 @@ private fun startShell(
     shellIntegration: Path?,
     settings: Settings,
     environment: EnvironmentChange,
+    launch: ShellLaunch,
     snapshot: TerminalSnapshot? = null,
 ): TerminalSession {
     // A folder that is gone is not a reason for the terminal to have no shell: it starts in the user's home.
@@ -867,8 +883,10 @@ private fun startShell(
     val directory = (running?.directory ?: spec.directory).takeIf { File(it).isDirectory } ?: spec.directory.takeIf { File(it).isDirectory }
     return TerminalSession.start(
         // At the size that the old terminal had, so that its content is reflowed once, when the pane gives the real size, and not twice.
-        cols = snapshot?.cols ?: 80, rows = snapshot?.rows ?: 24, directory = directory, theme = theme, typeAtPrompt = running?.toTyped(RESTORE_POLICY),
-        environment = environment.variables, unsetEnvironment = environment.unset,
+        cols = snapshot?.cols ?: 80, rows = snapshot?.rows ?: 24, command = launch.argv, directory = directory, theme = theme,
+        typeAtPrompt = running?.toTyped(RESTORE_POLICY),
+        // What the shell needs (MSYSTEM), under what the environment of the workspace sets.
+        environment = launch.environment + environment.variables, unsetEnvironment = environment.unset,
         cursorShape = settings.cursorShape.toTerminal(), cursorBlink = settings.cursorBlink,
         boldIsBright = settings.boldIsBright, scrollbackMaxBytes = settings.scrollback.bytes,
         snapshot = snapshot, restoredNote = snapshot?.let { "Restored session: ${RESTORED_FORMAT.format(Instant.ofEpochMilli(it.createdAt).atZone(ZoneId.systemDefault()))}" },

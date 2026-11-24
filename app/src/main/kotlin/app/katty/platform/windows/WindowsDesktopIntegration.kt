@@ -2,7 +2,10 @@ package app.katty.platform.windows
 
 import app.katty.core.Ide
 import app.katty.core.InstalledProgram
+import app.katty.core.InstalledShell
+import app.katty.core.WindowsShellRoots
 import app.katty.core.detectWindowsIdes
+import app.katty.core.detectWindowsShells
 import app.katty.core.findExecutable
 import app.katty.core.windowsOpenFileCommand
 import app.katty.platform.DesktopIntegration
@@ -44,6 +47,20 @@ internal object WindowsDesktopIntegration : DesktopIntegration {
 
     override fun disablePressAndHold() {}
 
+    override fun installedShells(): List<InstalledShell> = try {
+        val systemRoot = System.getenv("SystemRoot") ?: "C:\\Windows"
+        detectWindowsShells(
+            shellRoots(),
+            exists = { File(it).exists() },
+            pwsh = findExecutable("pwsh.exe", System.getenv("PATH").orEmpty())?.toString(),
+            systemRoot = systemRoot,
+            programFiles = System.getenv("ProgramFiles") ?: "C:\\Program Files",
+        )
+    } catch (e: Throwable) {
+        logger.warn("Could not look for the shells", e)
+        emptyList()
+    }
+
     // The command, which is never given to a shell, with nothing to read on its input and its output going nowhere.
     private fun start(command: List<String>, what: String) {
         try {
@@ -56,18 +73,35 @@ internal object WindowsDesktopIntegration : DesktopIntegration {
 }
 
 /**
+ * Where the POSIX environments are installed, in their order of preference: where their installers say (Git for Windows' key, the uninstall key of
+ * MSYS2, Cygwin's setup key), then the folders they install in by default. A folder that is not there is left out by [detectWindowsShells].
+ */
+internal fun shellRoots(): WindowsShellRoots {
+    fun named(vararg places: Pair<RegistryRoot, String>, value: String) = places.mapNotNull { (root, key) -> registryString(root, key, value) }
+    val git = named(RegistryRoot.LOCAL_MACHINE to "Software\\GitForWindows", RegistryRoot.CURRENT_USER to "Software\\GitForWindows", value = "InstallPath") +
+        listOfNotNull(System.getenv("ProgramFiles")?.let { "$it\\Git" }, System.getenv("LOCALAPPDATA")?.let { "$it\\Programs\\Git" })
+    val msys2 = uninstallKeys().filter { (root, key) -> registryString(root, key, "DisplayName")?.startsWith("MSYS2") == true }
+        .mapNotNull { (root, key) -> registryString(root, key, "InstallLocation") }.toList() + "C:\\msys64"
+    val cygwin = named(RegistryRoot.LOCAL_MACHINE to "Software\\Cygwin\\setup", RegistryRoot.CURRENT_USER to "Software\\Cygwin\\setup", value = "rootdir") +
+        "C:\\cygwin64"
+    fun distinct(folders: List<String>) = folders.map { it.trimEnd('\\') }.distinctBy { it.lowercase() }
+    return WindowsShellRoots(distinct(git), distinct(msys2), distinct(cygwin))
+}
+
+// Every uninstall key: of every user, of its 32-bit view, and of the user.
+private fun uninstallKeys(): Sequence<Pair<RegistryRoot, String>> =
+    UNINSTALL.asSequence().flatMap { (root, path) -> registrySubKeys(root, path).map { root to "$path\\$it" } }
+
+/**
  * The programs that Windows lists as installed, with the executable of each: the `DisplayIcon` of an uninstall key (`"C:\…\idea64.exe",0`),
  * and the executables of the IDEs that `App Paths` names. Not for the UI thread: it reads a few hundred keys.
  */
 internal fun installedPrograms(): List<InstalledProgram> {
     val programs = ArrayList<InstalledProgram>()
-    for ((root, path) in UNINSTALL) {
-        for (name in registrySubKeys(root, path)) {
-            val key = "$path\\$name"
-            val displayName = registryString(root, key, "DisplayName") ?: continue
-            val executable = registryString(root, key, "DisplayIcon")?.let(::iconExecutable) ?: continue
-            programs += InstalledProgram(displayName, executable)
-        }
+    for ((root, key) in uninstallKeys()) {
+        val displayName = registryString(root, key, "DisplayName") ?: continue
+        val executable = registryString(root, key, "DisplayIcon")?.let(::iconExecutable) ?: continue
+        programs += InstalledProgram(displayName, executable)
     }
     for (executable in Ide.entries.flatMap { it.windowsExecutables }.distinct()) {
         for (root in RegistryRoot.entries) {

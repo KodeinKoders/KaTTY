@@ -64,6 +64,8 @@ import app.katty.core.attention
 import app.katty.core.terminalIdentity
 import app.katty.core.board
 import app.katty.core.Ide
+import app.katty.core.InstalledShell
+import app.katty.core.ShellLaunch
 import app.katty.core.WorkspaceId
 import app.katty.core.terminals
 import app.katty.screens.AgentBoard
@@ -123,6 +125,7 @@ import app.katty.terminals.AllTerminalsSearch
 import app.katty.terminals.SearchTarget
 import app.katty.terminals.searchOrder
 import app.katty.terminals.SessionRegistry
+import app.katty.terminals.ShellCatalog
 import app.katty.terminals.SessionUsageTracker
 import app.katty.ui.glyph
 import app.katty.terminal.compose.TerminalFont
@@ -277,6 +280,9 @@ internal fun KattyWindowContent(
     // The editors that are installed: the system knows (LaunchServices on macOS), and is asked again when the window gets the focus, with the agents.
     val installedIdes by produceState(emptyMap<Ide, String>(), detectTick) { value = withContext(Dispatchers.IO) { desktopIntegration.installedIdes() } }
     SideEffect { controller.installedIdes = installedIdes }
+    // The shells that are installed, which the settings and the palette offer: looked for again with the IDEs, once the login shell's PATH is known.
+    val installedShells by produceState(emptyList<InstalledShell>(), loginPath, detectTick) { value = withContext(Dispatchers.IO) { ShellCatalog.refresh() } }
+    SideEffect { controller.installedShells = installedShells }
     // What opens the files and folders that are clicked (the Finder too), and what a project's folder is offered to.
     val ides = installedIdes.keys.toList()
     val projectIdes = ides.filter { it.forProjects }
@@ -731,6 +737,7 @@ internal fun KattyWindowContent(
                         onShortcuts = { changed -> store.updateSettings { it.copy(shortcuts = changed.overrides) } },
                         agents = detected.keys,
                         onAbout = { openAbout() },
+                        shells = installedShells,
                         environments = environmentListing,
                         environmentActions = EnvironmentActions(
                             projectsWithoutEnvironment = state.projectsWithoutEnvironment().size,
@@ -747,10 +754,12 @@ internal fun KattyWindowContent(
                 // Whether something is selected is asked when the palette opens, once: that is when there is a choice to make, and asking takes the lock
                 // of the terminal that its output is written under.
                 val hasSelection = remember { selectedSession()?.selectedText() != null }
-                val commands = remember(state, infos, handles, vertical, shortcutMap, controller.presenting, controller.teaching) {
+                val defaultShellLabel = remember { ShellLaunch.default().label }
+                val commands = remember(state, infos, handles, vertical, shortcutMap, controller.presenting, controller.teaching, installedShells) {
                     paletteCommands(
                         state, infos, titleOf = { spec -> describe(spec).title }, handlers = controller.paletteHandlers(), vertical = vertical,
                         hasSelection = hasSelection, presenting = controller.presenting, teaching = controller.teaching,
+                        shells = installedShells, defaultShellLabel = defaultShellLabel,
                     )
                 }
                 CommandPalette(

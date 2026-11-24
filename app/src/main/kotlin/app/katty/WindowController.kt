@@ -26,6 +26,8 @@ import app.katty.screens.homeAbbreviated
 import app.katty.core.GitChangesDisplay
 import app.katty.core.GitReader
 import app.katty.core.Ide
+import app.katty.core.CUSTOM_SHELL
+import app.katty.core.InstalledShell
 import app.katty.core.KattyState
 import app.katty.core.KattyStore
 import app.katty.core.MainView
@@ -347,6 +349,9 @@ internal class WindowController(
 
     /** The editors that are installed, with what the system knows each one as (a bundle identifier on macOS). */
     var installedIdes: Map<Ide, String> = emptyMap()
+
+    /** The shells that are installed, which the palette offers for the terminals. */
+    var installedShells: List<InstalledShell> = emptyList()
 
     /** Reads the usage of the agents again at once. */
     var refreshUsage: () -> Unit = {}
@@ -1009,7 +1014,7 @@ internal class WindowController(
         val handle = handles[id] ?: return
         val directory = handle.session?.workingDirectory?.value ?: state.locate(id)?.terminal?.directory ?: return
         requestJob?.cancel()
-        requestingCommand = CommandRequest(id, directory, handle.shellName)
+        requestingCommand = CommandRequest(id, directory, handle.shellLabel)
     }
 
     /** Asks the AI for a command that does what [request] says; the answer replaces the last one. */
@@ -1371,6 +1376,11 @@ internal class WindowController(
         togglePresentation = ::togglePresentation,
         toggleTeaching = ::toggleTeaching,
         editAiCommand = { openSettings(SettingsPage.AGENTS) },
+        setShell = { shell -> store.updateSettings { it.copy(shell = shell) } },
+        editShellCommand = {
+            store.updateSettings { it.copy(shell = CUSTOM_SHELL) }
+            openSettings(SettingsPage.TERMINAL)
+        },
         openSettings = { openSettings() },
         previousWorkspace = { stepWorkspace(-1) },
         nextWorkspace = { stepWorkspace(1) },

@@ -19,6 +19,7 @@ import app.katty.core.TerminalSpec
 import app.katty.core.BellMode
 import app.katty.core.CursorShape
 import app.katty.core.MinimumContrast
+import app.katty.core.InstalledShell
 import app.katty.core.OptionKey
 import app.katty.core.ScrollbackSize
 import app.katty.core.SecureInput
@@ -151,6 +152,10 @@ class PaletteHandlers(
     val toggleTeaching: () -> Unit = {},
     /** Opens the settings window on the page of the AI command. */
     val editAiCommand: () -> Unit = {},
+    /** The shell that the terminals start: `null` for the default one, else the id of an installed one (see `Settings.shell`). */
+    val setShell: (String?) -> Unit = {},
+    /** Makes the terminals start the command that the user types, and opens the settings where it is typed. */
+    val editShellCommand: () -> Unit = {},
     /** Moves the focus to the pane in that direction, or the nearest divider that way (the keyboard does the same). */
     val focusPane: (Direction) -> Unit = {},
     val resizeSplit: (Direction) -> Unit = {},
@@ -213,6 +218,7 @@ private fun AgentState.word(): String = when (this) {
  * @param hasSelection Whether something is selected in the terminal: there is nothing to copy otherwise.
  * @param presenting Whether the window is in presentation mode, which its command stops then.
  * @param teaching Whether the window is in teach mode, which its command stops then.
+ * @param shells The shells that are installed, which the terminals can start instead of the default one, which [defaultShellLabel] names.
  */
 fun paletteCommands(
     state: KattyState,
@@ -225,6 +231,8 @@ fun paletteCommands(
     teaching: Boolean = false,
     home: String = System.getProperty("user.home"),
     macOs: Boolean = isMacOs,
+    shells: List<InstalledShell> = emptyList(),
+    defaultShellLabel: String = "",
 ): PaletteCommands {
     val entries = ArrayList<PaletteEntry>()
     val actions = HashMap<String, () -> Unit>()
@@ -369,6 +377,9 @@ fun paletteCommands(
     command("settings", "Open the settings", AppShortcut.SETTINGS.label, handlers.openSettings)
     command("edit-shortcuts", "Edit keyboard shortcuts…", action = handlers.editShortcuts)
     command("ai-command", "AI command…", action = handlers.editAiCommand)
+    command("shell-default", if (defaultShellLabel.isEmpty()) "Shell: default" else "Shell: default ($defaultShellLabel)") { handlers.setShell(null) }
+    for (shell in shells) command("shell:${shell.id}", "Shell: ${shell.label}") { handlers.setShell(shell.id) }
+    command("shell-custom", "Shell: custom command…", action = handlers.editShellCommand)
     command("about", "About KaTTY", action = handlers.openAbout)
     command("light-color-scheme", "Choose the light color scheme…") { handlers.defaultColorScheme(false) }
     command("dark-color-scheme", "Choose the dark color scheme…") { handlers.defaultColorScheme(true) }

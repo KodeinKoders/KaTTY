@@ -22,4 +22,6 @@ internal object MacosDesktopIntegration : DesktopIntegration {
     }
 
     override fun disablePressAndHold() = app.katty.platform.macos.disablePressAndHold()
+
+    override fun installedShells(): List<app.katty.core.InstalledShell> = app.katty.platform.unixShells()
 }
