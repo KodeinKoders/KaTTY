@@ -69,7 +69,7 @@ class TerminalDropTest {
         assertEquals("https://kodein.net/a b", StringSelection("https://kodein.net/a b").droppedText())
         assertFalse(Image.isDroppable())
         assertNull(Image.droppedText())
-        assertFalse(drop(Image) { error("Nothing is pasted") }, "The drop is refused")
+        assertFalse(drop(Image, shell = null) { error("Nothing is pasted") }, "The drop is refused")
     }
 
     @Test
@@ -78,7 +78,7 @@ class TerminalDropTest {
         TerminalSession.start(60, 5, command = listOf("/bin/sh", "-c", "stty raw -echo; head -c 13 | od -An -c; sleep 30")).use { session ->
             runBlocking { withTimeout(15_000) { session.frames.first { it.cols == 60 } } }
 
-            assertTrue(drop(Files(listOf(File("/tmp/a b.png")))) { session.paste(it) })
+            assertTrue(drop(Files(listOf(File("/tmp/a b.png"))), shell = null) { session.paste(it) })
 
             val read = runBlocking {
                 withTimeout(15_000) {

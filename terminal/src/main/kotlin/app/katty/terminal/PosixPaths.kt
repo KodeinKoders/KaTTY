@@ -87,3 +87,19 @@ internal class PosixFileSystem(val root: String, val cygdrive: String, val mount
         private fun readLines(path: String): List<String>? = File(path).takeIf { it.isFile }?.readLines()
     }
 }
+
+/**
+ * The shell that the program of a session is, as KaTTY knows it (see [TerminalSession.shell]): what a text for its command line is written for.
+ *
+ * @property name `zsh`, `bash`, `fish`, `pwsh` or `powershell`.
+ * @property writePath How it writes a path of this machine: as it is, or the way of its POSIX environment on Windows (`/c/Users/me`).
+ */
+public class TerminalShell(public val name: String, private val writePath: (String) -> String = { it }) {
+    /** Whether it is PowerShell, whose quotes are not a POSIX shell's. */
+    public val isPowerShell: Boolean get() = name == "pwsh" || name == "powershell"
+
+    /** [path] of this machine as this shell writes it. */
+    public fun path(path: String): String = writePath(path)
+
+    override fun toString(): String = "TerminalShell($name)"
+}

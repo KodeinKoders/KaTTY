@@ -246,7 +246,7 @@ public fun Terminal(
         object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
                 dropFeedback = dropFeedback.next(DropEvent.DROPPED)
-                return drop(event.awtTransferable) { text ->
+                return drop(event.awtTransferable, session.shell) { text ->
                     pasteConfirmed(text)
                     latestFocusRequester.value.requestFocus()
                 }

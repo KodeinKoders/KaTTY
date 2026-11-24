@@ -12,6 +12,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The shells of the POSIX environments of Windows (Git for Windows, MSYS2, Cygwin) with KaTTY's integration, real ones: each that this Windows has
@@ -78,6 +79,8 @@ class MsysShellIntegrationTest {
             // It starts in the terminal's directory (not the home, where their profile goes otherwise), which it says in its own path.
             session.await("$label to say the directory it started in (${session.workingDirectory.value})") { sameFolder(session.workingDirectory.value, directory) }
             session.await("the prompt of $label") { session.atPrompt() }
+            // What is written for its command line (a dropped file) is in its own paths: /c/Windows, /cygdrive/c/Windows.
+            assertTrue(session.shell!!.path("C:\\Windows").endsWith("/c/Windows"), "${session.shell} writes ${session.shell!!.path("C:\\Windows")}")
 
             // A command (bash's DEBUG trap, which marks the start of one, does not run for a subshell).
             session.sendText("sh -c 'exit 3'\r")

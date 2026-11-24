@@ -141,6 +141,8 @@ Log in once in a terminal of each environment (`claude`, then `/login`), and che
 
 === A terminal you will enjoy
 
+* The shell of your choice: your login shell by default (PowerShell on Windows), or zsh, bash, fish or PowerShell found on your Mac, the bash, zsh and fish of Git for Windows, MSYS2 and Cygwin on Windows, or any command you type.
+The new terminals start it, and the ones that run keep theirs.
 * 811 color schemes, with a picker that has a search, a light and dark filter and a live preview, and a scheme of its own for any terminal.
 The terminals follow the theme of the application: you choose one scheme for the light theme and one for the dark theme, and they change when macOS does in the System theme.
 * The bundled JetBrains Mono, or any monospaced font of your system, from 8 to 32 points, with ligatures on or off.
@@ -531,9 +533,10 @@ On Windows 11 (ARM64 or x64), Zig brings what it links with, so nothing but Git 
 
 It installs KaTTY for you alone, in `%LOCALAPPDATA%\KaTTY`, without administrator rights, and adds it to the Start menu; the installer of a later version replaces it.
 It is not signed, so Windows may warn you before you run it.
-On Windows, each terminal starts PowerShell (`pwsh` when it is installed, else Windows PowerShell), and your projects, workspaces and settings are kept in `%APPDATA%\KaTTY`.
+On Windows, each terminal starts PowerShell by default (`pwsh` when it is installed, else Windows PowerShell), and your projects, workspaces and settings are kept in `%APPDATA%\KaTTY`.
 
-On macOS, each terminal starts your login shell (`$SHELL -l`).
+On macOS, each terminal starts your login shell by default (`$SHELL -l`).
+The *Shell* section of the Terminal page of the settings chooses another one.
 Your projects, workspaces and settings are kept in `~/Library/Application Support/KaTTY`.
 To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`.
 
@@ -544,8 +547,10 @@ To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`
 * Input methods other than dead keys, such as the candidate windows of Chinese, Japanese and Korean input, are not supported.
 * Copilot CLI, Junie, Aider, Cline, Kilo Code and Cursor Agent do not tell KaTTY what they are doing yet.
 * The Option key types the characters of your keyboard layout unless you make it Alt in the settings, which was never tried on a real keyboard.
-* The directory and the prompts of a terminal are followed for zsh and bash.
+* The directory and the prompts of a terminal are followed for zsh, bash and PowerShell, and on Windows for the zsh and bash of Git for Windows, MSYS2 and Cygwin.
 fish is supported but was never tried, and nushell and elvish are not.
+A command that you type as your shell gets this only when it starts one of these shells.
+* On Windows, cmd and WSL are not offered as shells, and what runs in the shell of Git for Windows, MSYS2 or Cygwin is only seen when it is a program of Windows (`node`, `claude`): their own programs (`vim`, `less`) are not, and do not come back when KaTTY starts again.
 * ⌘F2 needs the fn key on a Mac keyboard where F2 is the brightness key, unless F1, F2 and the others are standard function keys in the keyboard settings.
 * The logos of the agents are drawn in one color each, not in their own.
 * The variables of an environment are given to the shell before its startup files run: what your `.zshrc` exports wins, so keep account variables out of it.

@@ -1,6 +1,7 @@
 package app.katty.terminal.compose
 
 import androidx.compose.ui.Modifier
+import app.katty.terminal.TerminalShell
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -59,17 +60,29 @@ internal fun Transferable.isDroppable(): Boolean =
     isDataFlavorSupported(DataFlavor.javaFileListFlavor) || isDataFlavorSupported(DataFlavor.stringFlavor)
 
 /**
- * What a drop of [this] on a terminal pastes: the paths of files ([shellEscaped], or [powerShellQuoted] on [windows], separated by a space, as
- * Ghostty does), or a text as it is; `null` for anything else (an image that is no file), or when it cannot be read.
+ * How a path is written for the command line of [shell]: in PowerShell's quotes ([powerShellQuoted]), or escaped as a POSIX shell reads it
+ * ([shellEscaped]) in the way that shell writes paths (`/c/Users/me` in MSYS2's). A program that is no shell KaTTY knows is taken for the one of the
+ * system: PowerShell on [windows], a POSIX shell elsewhere.
+ */
+internal fun pathQuoting(shell: TerminalShell?, windows: Boolean = isWindows): (String) -> String = when {
+    shell?.isPowerShell == true -> ::powerShellQuoted
+    shell != null -> { path -> shellEscaped(shell.path(path)) }
+    windows -> ::powerShellQuoted
+    else -> ::shellEscaped
+}
+
+/**
+ * What a drop of [this] on a terminal pastes: the paths of files, written for [shell] ([pathQuoting]) and separated by a space, as Ghostty does, or
+ * a text as it is; `null` for anything else (an image that is no file), or when it cannot be read.
  *
  * A path with a control character (a line break in a file's name) is left out: it cannot be written safely, and it would end the line.
  */
-internal fun Transferable.droppedText(windows: Boolean = isWindows): String? = try {
+internal fun Transferable.droppedText(shell: TerminalShell? = null, windows: Boolean = isWindows): String? = try {
     when {
         isDataFlavorSupported(DataFlavor.javaFileListFlavor) -> {
             val files = (getTransferData(DataFlavor.javaFileListFlavor) as? List<*>).orEmpty().filterIsInstance<File>()
             files.map { it.absolutePath }.filter { path -> path.none { it.isISOControl() } }.takeIf { it.isNotEmpty() }
-                ?.joinToString(" ", transform = if (windows) ::powerShellQuoted else ::shellEscaped)
+                ?.joinToString(" ", transform = pathQuoting(shell, windows))
         }
         isDataFlavorSupported(DataFlavor.stringFlavor) -> (getTransferData(DataFlavor.stringFlavor) as? String)?.takeIf { it.isNotEmpty() }
         else -> null
@@ -84,8 +97,8 @@ internal fun Transferable.droppedText(windows: Boolean = isWindows): String? = t
  * Pastes what a drop of [transferable] gives ([droppedText]) through [paste], and says whether there was something: a drop that gives nothing is
  * refused.
  */
-internal fun drop(transferable: Transferable, paste: (String) -> Unit): Boolean {
-    val text = transferable.droppedText() ?: return false
+internal fun drop(transferable: Transferable, shell: TerminalShell?, paste: (String) -> Unit): Boolean {
+    val text = transferable.droppedText(shell) ?: return false
     paste(text)
     return true
 }

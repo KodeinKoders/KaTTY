@@ -77,6 +77,8 @@ public class TerminalSession private constructor(
     private val clipboardWrite: Boolean,
     // The POSIX environment of Windows that the program belongs to (MSYS2, Git for Windows, Cygwin), whose paths the directories it reports are in.
     private val posix: PosixFileSystem? = null,
+    /** The shell that the program is, as KaTTY knows it (the ones it integrates), `null` for another program: what a text for its command line is written for. */
+    public val shell: TerminalShell? = null,
 ) : AutoCloseable {
     // Guards the terminal, and the key and mouse encoders that read it: the thread that feeds the terminal and the
     // ones that encode keys or resize it take turns. The render state is only ever used by the frame
@@ -1535,7 +1537,8 @@ public class TerminalSession private constructor(
                 val mouseEncoder = GhosttyMouseEncoder().also { toClose.addFirst(it) }
                 val selectionGesture = GhosttySelectionGesture(terminal).also { toClose.addFirst(it) }
                 terminal.setClipboardReader(clipboardReader?.let { reader -> { location -> reader(location.toTerminal()) } })
-                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, selectionGesture, theme, clipboardWrite, posix)
+                val known = shell?.let { name -> TerminalShell(name) { path -> posix?.toPosix(path) ?: path } }
+                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, selectionGesture, theme, clipboardWrite, posix, known)
                     .also {
                         if (typed != null) {
                             it.pendingInput.set(typed)

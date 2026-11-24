@@ -1,5 +1,6 @@
 package app.katty.terminal.compose
 
+import app.katty.terminal.TerminalShell
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
 import java.awt.datatransfer.UnsupportedFlavorException
@@ -36,5 +37,15 @@ class PowerShellDropTest {
 
         assertEquals("${powerShellQuoted(spaced.path)} ${powerShellQuoted(plain.path)}", files.droppedText(windows = true))
         assertEquals("${shellEscaped(spaced.path)} ${shellEscaped(plain.path)}", files.droppedText(windows = false))
+    }
+
+    @Test
+    fun aPathIsWrittenForTheShellOfTheTerminalNotForTheSystem() {
+        val msysBash = TerminalShell("bash") { path -> "/c" + path.removePrefix("C:").replace('\\', '/') }
+
+        assertEquals("/c/Users/me/a\\ b.txt", pathQuoting(msysBash, windows = true)("C:\\Users\\me\\a b.txt"), "MSYS2's bash: its path, escaped as bash reads it")
+        assertEquals("'C:\\a b.txt'", pathQuoting(TerminalShell("pwsh"), windows = false)("C:\\a b.txt"), "PowerShell's quotes, on any system")
+        assertEquals("'C:\\a b.txt'", pathQuoting(null, windows = true)("C:\\a b.txt"), "A program of Windows that is no shell KaTTY knows")
+        assertEquals("/tmp/a\\ b.txt", pathQuoting(null, windows = false)("/tmp/a b.txt"))
     }
 }
