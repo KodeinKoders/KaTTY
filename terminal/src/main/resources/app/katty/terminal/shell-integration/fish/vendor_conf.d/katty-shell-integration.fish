@@ -38,7 +38,10 @@ function __katty_setup --on-event fish_prompt -d "Set up KaTTY's shell integrati
 
     # The directory as a file:// URL, which is what OSC 7 carries.
     function __katty_report_pwd --on-variable PWD -d "Tell the terminal which directory the shell is in"
-        printf '\e]7;file://%s%s\a' (hostname) (string escape --style=url -- $PWD)
+        # The name of the machine as Windows writes it there (COMPUTERNAME, which KaTTY compares), else the one of the network.
+        set -l host $COMPUTERNAME
+        test -n "$host"; or set host (hostname)
+        printf '\e]7;file://%s%s\a' $host (string escape --style=url -- $PWD)
     end
 
     # What was the last thing that was marked, to mark what is missing: a command that was started and did not end (the shell was

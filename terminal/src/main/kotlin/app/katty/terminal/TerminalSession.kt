@@ -75,6 +75,8 @@ public class TerminalSession private constructor(
     private val selectionGesture: GhosttySelectionGesture,
     theme: TerminalTheme?,
     private val clipboardWrite: Boolean,
+    // The POSIX environment of Windows that the program belongs to (MSYS2, Git for Windows, Cygwin), whose paths the directories it reports are in.
+    private val posix: PosixFileSystem? = null,
 ) : AutoCloseable {
     // Guards the terminal, and the key and mouse encoders that read it: the thread that feeds the terminal and the
     // ones that encode keys or resize it take turns. The render state is only ever used by the frame
@@ -264,7 +266,7 @@ public class TerminalSession private constructor(
         // A terminal that was restored has them, and says nothing of it: nothing was listening.
         lock.withLock {
             titleState.value = terminal.title
-            workingDirectoryState.value = decodeWorkingDirectory(terminal.pwd)
+            workingDirectoryState.value = decodeWorkingDirectory(terminal.pwd, posix = posix)
         }
 
         producer.start()
@@ -491,7 +493,7 @@ public class TerminalSession private constructor(
             // A directory of another machine (a shell over ssh) is not this one's: the terminal keeps the one it had.
             val pwd = terminal.pwd
             if (!isRemoteDirectory(pwd)) {
-                workingDirectoryState.value = decodeWorkingDirectory(pwd)
+                workingDirectoryState.value = decodeWorkingDirectory(pwd, posix = posix)
             } else {
                 logIgnoredDirectory(pwd)
             }
@@ -1457,7 +1459,9 @@ public class TerminalSession private constructor(
             env.putAll(environment)
             // An application opened from the Finder has no locale: the shell would read what is typed as ASCII. Windows has no such variable.
             if (!isWindows) ensureUtf8Locale(env)
-            val applied = if (shellIntegration) ShellIntegration.apply(command, env, shellIntegrationDirectory, lightBackground = !isDark(theme)) else null
+            // On Windows, the POSIX environment that the program belongs to (MSYS2, Git for Windows, Cygwin), whose shells write paths their way.
+            val posix = if (isWindows) PosixFileSystem.of(command.first()) else null
+            val applied = if (shellIntegration) ShellIntegration.apply(command, env, shellIntegrationDirectory, lightBackground = !isDark(theme), posix = posix) else null
             val argv = applied?.argv ?: command
             val shell = ShellIntegration.shellOf(command)
             val typed = typeAtPrompt?.let { it.toInput(shell ?: "sh") ?: null.also { logger.warn("Not typing {}: it holds a control character", it) } }
@@ -1531,7 +1535,7 @@ public class TerminalSession private constructor(
                 val mouseEncoder = GhosttyMouseEncoder().also { toClose.addFirst(it) }
                 val selectionGesture = GhosttySelectionGesture(terminal).also { toClose.addFirst(it) }
                 terminal.setClipboardReader(clipboardReader?.let { reader -> { location -> reader(location.toTerminal()) } })
-                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, selectionGesture, theme, clipboardWrite)
+                return TerminalSession(process, terminal, renderState, keyEncoder, mouseEncoder, selectionGesture, theme, clipboardWrite, posix)
                     .also {
                         if (typed != null) {
                             it.pendingInput.set(typed)

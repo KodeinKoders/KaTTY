@@ -23,7 +23,8 @@ _katty_report_pwd() {
             esac
         done
         _katty_reported_pwd="$PWD"
-        _katty_reported_url="file://${HOST}${encoded}"
+        # The name of the machine as Windows writes it there (COMPUTERNAME, which KaTTY compares), else the one of the network.
+        _katty_reported_url="file://${COMPUTERNAME:-$HOST}${encoded}"
     fi
     builtin printf '\e]7;%s\a' "$_katty_reported_url"
 }

@@ -88,7 +88,8 @@ internal object ShellIntegration {
      */
     fun shellOf(command: List<String>): String? {
         val program = command.firstOrNull() ?: return null
-        val name = File(program).name.removePrefix("-").let { if (it.endsWith(".exe", ignoreCase = true)) it.dropLast(4) else it }
+        // Its name, whichever separator its path has: a path of Windows is read the same on every system.
+        val name = program.substringAfterLast('/').substringAfterLast('\\').removePrefix("-").let { if (it.endsWith(".exe", ignoreCase = true)) it.dropLast(4) else it }
         val powerShell = name.lowercase().takeIf { it in POWERSHELLS }
         val options = if (powerShell != null) POWERSHELL_OPTIONS else UNIX_OPTIONS
         if (!command.drop(1).all { it.lowercase() in options }) return null
@@ -96,6 +97,9 @@ internal object ShellIntegration {
     }
 
     private val POWERSHELLS = setOf("pwsh", "powershell")
+
+    // The shells whose integration is a script of a POSIX shell, which Windows only has in a POSIX environment.
+    private val POSIX_SHELLS = setOf("zsh", "bash", "fish")
     private val POWERSHELL_OPTIONS = setOf("-nologo", "-login", "-l")
     private val UNIX_OPTIONS = setOf("-l", "--login", "-i")
 
@@ -119,20 +123,36 @@ internal object ShellIntegration {
      * @param directory Where the scripts are kept (see [prepare]): a temporary directory when it is `null`.
      * @param lightBackground Whether the terminal's background is light when the shell starts: PowerShell's line editor then gets colors that are
      *   readable on it, where the user did not choose others.
+     * @param posix On Windows, the POSIX environment that a zsh, a bash or a fish belongs to (MSYS2, Git for Windows, Cygwin): the paths that they
+     *   are given are written as theirs (`/c/Users/…`), and they start in the terminal's directory (`CHERE_INVOKING`; their profile goes to the home
+     *   otherwise, measured). Without one, such a shell (WSL's bash, a port of its own) is started as it is.
      */
-    fun apply(command: List<String>, environment: MutableMap<String, String>, directory: Path? = null, lightBackground: Boolean = false): Applied {
+    fun apply(
+        command: List<String>,
+        environment: MutableMap<String, String>,
+        directory: Path? = null,
+        lightBackground: Boolean = false,
+        posix: PosixFileSystem? = null,
+        windows: Boolean = isWindows,
+    ): Applied {
         val untouched = Applied(command, installed = false)
         // A login shell, which is what a terminal starts: anything else is a command or a script that must run as it is.
         val shell = shellOf(command) ?: return untouched
         val program = command.first()
         val arguments = command.drop(1)
+        if (windows && shell in POSIX_SHELLS) {
+            if (posix == null) return untouched
+            environment.putIfAbsent("CHERE_INVOKING", "1")
+        }
+        // A path of this machine as the shell writes it.
+        fun shellPath(path: Path): String = posix?.toPosix(path.toString()) ?: path.toString()
         return when (shell) {
             "zsh" -> {
                 val root = root(directory) ?: return untouched
                 // What KaTTY, running in a terminal of its own, may have inherited is not the user's.
                 environment.remove("KATTY_ZDOTDIR")
                 environment["ZDOTDIR"]?.let { environment["KATTY_ZDOTDIR"] = it }
-                environment["ZDOTDIR"] = root.resolve("zsh").toString()
+                environment["ZDOTDIR"] = shellPath(root.resolve("zsh"))
                 Applied(command, installed = true)
             }
 
@@ -141,18 +161,18 @@ internal object ShellIntegration {
                 environment["KATTY_BASH_INJECTED"] = "1"
                 // It is not a login shell any more: the script reads the files of one.
                 if (arguments.any { it == "-l" || it == "--login" }) environment["KATTY_BASH_LOGIN"] = "1" else environment.remove("KATTY_BASH_LOGIN")
-                Applied(listOf(program, "--rcfile", root.resolve("bash/katty.bash").toString(), "-i"), installed = true)
+                Applied(listOf(program, "--rcfile", shellPath(root.resolve("bash/katty.bash")), "-i"), installed = true)
             }
 
             "fish" -> {
                 val root = root(directory) ?: return untouched
                 // What KaTTY, running in a terminal of its own, may have inherited is not the user's: the script takes its own out.
-                environment["KATTY_SHELL_INTEGRATION_XDG_DIR"] = root.toString()
+                environment["KATTY_SHELL_INTEGRATION_XDG_DIR"] = shellPath(root)
                 // The directories that fish and the system use when it is not set, which the script takes away again with its own: the
                 // programs do not see a variable that the user never had.
                 val existing = environment["XDG_DATA_DIRS"]?.takeIf { it.isNotEmpty() }
                 if (existing == null) environment["KATTY_SHELL_INTEGRATION_XDG_UNSET"] = "1" else environment.remove("KATTY_SHELL_INTEGRATION_XDG_UNSET")
-                environment["XDG_DATA_DIRS"] = "$root:${existing ?: "/usr/local/share:/usr/share"}"
+                environment["XDG_DATA_DIRS"] = "${shellPath(root)}:${existing ?: "/usr/local/share:/usr/share"}"
                 Applied(command, installed = true)
             }
 

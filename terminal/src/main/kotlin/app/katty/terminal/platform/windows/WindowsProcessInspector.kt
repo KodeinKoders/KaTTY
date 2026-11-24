@@ -14,6 +14,9 @@ private var warned = false
 // The hosts of a console, which are children of what they host and are no program of the user's.
 private val CONSOLE_HOSTS = setOf("conhost.exe", "openconsole.exe")
 
+// How many copies of the shell are gone through to find its program: a subshell of a subshell is still found.
+private const val MAX_COPIES = 4
+
 /**
  * What runs in a terminal on Windows. A console has no process group that has it, as a Unix terminal does: the program that has the terminal is a
  * direct child of the shell (a command that PowerShell runs and waits for), and the most recent one when there are several (a pipeline). The hosts
@@ -63,15 +66,25 @@ internal object WindowsProcessInspector : ProcessInspector {
 
     // The children of the shell that are the user's programs, the oldest first: not a host of the console, nor a graphical program, nor a process
     // whose pid the shell's dead parent left and that was given to it again (it started before the shell).
-    private fun foreground(tree: List<WindowsProcess>, shell: Int): List<WindowsProcess> {
+    //
+    // The shells of MSYS2, Git for Windows and Cygwin start a program of Windows from a copy of themselves (their `fork`), which stays its parent
+    // (measured with ping: bash, then a bash, then PING): a child with the shell's own executable that has programs of its own is gone through,
+    // and its programs are the ones that have the terminal. One that has none is a shell that the user started, at its prompt. A program of the
+    // environment itself (vim, sleep) is a process whose parent, the copy, has ended: it is not seen, and the shell seems at its prompt.
+    private fun foreground(tree: List<WindowsProcess>, shell: Int, depth: Int = 0): List<WindowsProcess> {
         val shellStart = startOf(shell) ?: return emptyList()
-        return tree.asSequence()
+        val programs = tree.asSequence()
             .filter { it.parent == shell && it.exeName.lowercase() !in CONSOLE_HOSTS }
             .mapNotNull { child -> startOf(child.pid)?.takeIf { it >= shellStart }?.let { child to it } }
             .filter { (child, _) -> ProcessHandle.of(child.pid.toLong()).flatMap { it.info().command() }.map { !isGraphicalProgram(it) }.orElse(true) }
             .sortedBy { it.second }
             .map { it.first }
             .toList()
+        val shellExe = tree.firstOrNull { it.pid == shell }?.exeName ?: return programs
+        if (depth >= MAX_COPIES) return programs
+        return programs.flatMap { program ->
+            if (program.exeName.equals(shellExe, ignoreCase = true)) foreground(tree, program.pid, depth + 1).ifEmpty { listOf(program) } else listOf(program)
+        }
     }
 
     // The processes that [root] started, and the ones they started, by the parent that each one had, even when that parent has ended: the ones

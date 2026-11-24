@@ -93,12 +93,14 @@ public data class TerminalFilePosition(val path: String, val line: Int? = null, 
 /**
  * The directory that the shell reported (OSC 7), as a path: a `file://host/path` URI of this machine is turned into its path, with the
  * percent-encoding removed, and a bare path is kept. `null` when there is none, and for a directory of another machine ([isRemoteDirectory]).
- * On [windows], the path of a drive in a URI (`file://host/C:/Users/me`) is the Windows path (`C:\Users\me`).
+ * On [windows], the path of a drive in a URI (`file://host/C:/Users/me`) is the Windows path (`C:\Users\me`), and so is a path of the shell of a
+ * POSIX environment ([posix]: `/c/Users/me` of MSYS2, `/cygdrive/c/Users/me` of Cygwin, `/home/me` under its root).
  */
 internal fun decodeWorkingDirectory(
     reported: String,
     isLocal: (String) -> Boolean = { isThisMachine(it) },
     windows: Boolean = isWindows,
+    posix: PosixFileSystem? = null,
 ): String? {
     if (reported.isEmpty()) return null
     if (!reported.startsWith("file://")) return reported
@@ -109,7 +111,11 @@ internal fun decodeWorkingDirectory(
     val path = if (slash < 0) "" else rest.substring(slash)
     if (path.isEmpty()) return null
     val decoded = percentDecode(path)
-    return if (windows && WINDOWS_DRIVE.matches(decoded)) decoded.substring(1).replace('/', '\\') else decoded
+    return when {
+        windows && WINDOWS_DRIVE.matches(decoded) -> decoded.substring(1).replace('/', '\\')
+        windows && posix != null -> posix.toWindows(decoded)
+        else -> decoded
+    }
 }
 
 // The path of a URI that names a drive of Windows: a slash, its letter and a colon, then the rest of the path or nothing.
