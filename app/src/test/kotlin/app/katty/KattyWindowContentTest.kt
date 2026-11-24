@@ -187,8 +187,12 @@ class KattyWindowContentTest {
         onNodeWithContentDescription("Command").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text
 
     // While the field is empty, the AI is asked for the command, by the button or by ⌘R, and its answer is put in the field, to be read before it runs.
+    // On the v2 test, whose composition runs its coroutines on the UI thread, as the window does: the first one runs them on whatever thread
+    // resumes them, so what follows the question, asked on IO (the text put in the field, the focus), ran on IO while the UI thread laid
+    // the window out, and Compose failed once on CI's Windows ("Detected multithreaded access to SnapshotStateObserver"). Seen: the coroutine
+    // went on in a worker of Dispatchers.IO with the first, and on the UI thread with this one.
     @Test
-    fun theAiIsAskedForTheCommandWhileTheFieldIsEmpty() = runComposeUiTest {
+    fun theAiIsAskedForTheCommandWhileTheFieldIsEmpty() = androidx.compose.ui.test.v2.runComposeUiTest {
         store.addProject(directories.support.toString())
         store.updateSettings { it.copy(aiCommand = aiAnswers("\n`./gradlew run --debug-jvm`\n")) }
         showWindow()
