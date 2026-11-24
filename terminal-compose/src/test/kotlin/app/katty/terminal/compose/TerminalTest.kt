@@ -1251,9 +1251,15 @@ class TerminalTest {
     fun theWheelIsTheProgramsWhenItAskedForTheMouse() {
         val (scene, session) = historyScene(
             prefix = """printf '\033[?1000h\033[?1006h'; """,
-            suffix = """stty raw -echo; head -c10 | tr -d '\033' | od -An -c""",
+            suffix = """stty raw -echo; echo ready; head -c10 | tr -d '\033' | od -An -c""",
         )
-        scene.renderUntil("the mouse to be asked for") { session.frames.value.mouseTracking }
+        // The mouse is asked for before the history is printed, so it is asked for before the program makes the terminal raw: a report sent
+        // in between is read by the line discipline (on Windows, by the console's line input). The wheel waits for the program to say it is
+        // raw, as the other tests of the mouse do. It failed once on CI's x64 without it; that this was the cause was not seen.
+        scene.renderUntil("the mouse to be asked for, and the program to be ready") {
+            val frame = session.frames.value
+            frame.mouseTracking && frame.rows.indices.any { "ready" in frame.text(it) }
+        }
 
         scene.wheel(-1f, at(2.5f, 1.5f))
 
