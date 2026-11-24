@@ -193,9 +193,12 @@ class UsageServiceTest {
     fun theProgramsThatAProgramThatTakesTooLongStartedAreEndedWithIt() {
         val pidFile = directory.resolve("child.pid")
 
-        assertNull(ProcessCommandRunner.run(sh("sleep 60 & echo \$! > '$pidFile'; sleep 60"), directory, 500))
+        // Long enough for the program to have written the file: on Windows it is a JVM (TestProgram), which printed a line in 0.96 s on CI's
+        // x64 machine, and failed to write the file in the 500 ms this test once gave it.
+        assertNull(ProcessCommandRunner.run(sh("sleep 60 & echo \$! > '$pidFile'; sleep 60"), directory, 5_000))
 
-        val child = ProcessHandle.of(java.nio.file.Files.readString(pidFile).trim().toLong())
+        assertTrue(Files.exists(pidFile), "The program had not written the pid of the one it started")
+        val child = ProcessHandle.of(Files.readString(pidFile).trim().toLong())
         val deadline = System.nanoTime() + 2_000_000_000
         while (child.map { it.isAlive }.orElse(false) && System.nanoTime() < deadline) Thread.sleep(20)
         assertFalse(child.map { it.isAlive }.orElse(false), "The program it started was left running")
