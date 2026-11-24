@@ -1,6 +1,11 @@
 import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
+import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+import javax.inject.Inject
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -83,6 +88,86 @@ dependencies {
 
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.compose.ui.test.junit4)
+}
+
+// pty4j starts every program through an executable of its jar (pty4j-unix-spawn-helper, extracted when it runs), which JetBrains signed without the
+// hardened runtime: Apple refuses to notarize an application that has one, even inside a jar, and Compose only signs the libraries of the jars
+// (.dylib and .jnilib). So when the application is signed, the jars of its runtime classpath go through this transform, which signs that
+// executable again, with the identity that Compose signs with and the hardened runtime. A jar without it is given as it is.
+abstract class SignSpawnHelper : TransformAction<SignSpawnHelper.Parameters> {
+    interface Parameters : TransformParameters {
+        @get:Input
+        val identity: Property<String>
+
+        @get:Input
+        @get:Optional
+        val keychain: Property<String>
+    }
+
+    @get:Inject
+    abstract val exec: ExecOperations
+
+    @get:InputArtifact
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val input: Provider<FileSystemLocation>
+
+    override fun transform(outputs: TransformOutputs) {
+        val jar = input.get().asFile
+        val helper = ZipFile(jar).use { zip -> zip.getEntry(SPAWN_HELPER)?.let { entry -> zip.getInputStream(entry).use { it.readBytes() } } }
+        if (helper == null) {
+            outputs.file(input)
+            return
+        }
+        val unpacked = Files.createTempFile("pty4j-unix-spawn-helper", "")
+        try {
+            Files.write(unpacked, helper)
+            exec.exec {
+                commandLine(
+                    listOf("codesign", "--force", "--options", "runtime", "--timestamp", "--sign", parameters.identity.get()) +
+                        (parameters.keychain.orNull?.let { listOf("--keychain", it) } ?: emptyList()) +
+                        unpacked.toString()
+                )
+            }
+            val signed = Files.readAllBytes(unpacked)
+            ZipFile(jar).use { zip ->
+                ZipOutputStream(outputs.file(jar.name).outputStream().buffered()).use { out ->
+                    for (entry in zip.entries()) {
+                        out.putNextEntry(ZipEntry(entry.name).apply { time = entry.time })
+                        if (entry.name == SPAWN_HELPER) out.write(signed) else zip.getInputStream(entry).use { it.copyTo(out) }
+                        out.closeEntry()
+                    }
+                }
+            }
+        } finally {
+            Files.deleteIfExists(unpacked)
+        }
+    }
+
+    private companion object {
+        const val SPAWN_HELPER = "resources/com/pty4j/native/darwin/pty4j-unix-spawn-helper"
+    }
+}
+
+// The properties that turn Compose's signing on and name its identity (in ~/.gradle/gradle.properties or given with -P), read as Compose reads them:
+// an identity without its prefix is a Developer ID.
+if (providers.gradleProperty("compose.desktop.mac.sign").orNull.toBoolean()) {
+    val spawnHelperSigned = Attribute.of("app.katty.spawnHelperSigned", Boolean::class.javaObjectType)
+    dependencies {
+        attributesSchema { attribute(spawnHelperSigned) }
+        artifactTypes.getByName("jar") { attributes.attribute(spawnHelperSigned, false) }
+        registerTransform(SignSpawnHelper::class) {
+            from.attribute(spawnHelperSigned, false).attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "jar")
+            to.attribute(spawnHelperSigned, true).attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "jar")
+            parameters {
+                identity = providers.gradleProperty("compose.desktop.mac.signing.identity").map { identity ->
+                    if (identity.startsWith("Developer ID Application: ")) identity else "Developer ID Application: $identity"
+                }
+                keychain = providers.gradleProperty("compose.desktop.mac.signing.keychain")
+            }
+        }
+    }
+    // The classpath that Compose packages.
+    configurations.runtimeClasspath { attributes.attribute(spawnHelperSigned, true) }
 }
 
 // The icon of the application is the logo of the repository on a rounded square of this colour, the shape that macOS wants: since macOS 26 it puts
@@ -183,7 +268,7 @@ compose {
             modules("jdk.unsupported")
 
             macOS {
-                bundleID = "app.katty"
+                bundleID = "net.kodein.app.katty"
                 dockName = "KaTTY"
                 iconFile.set(layout.buildDirectory.file("icons/KaTTY.icns"))
                 // The ones of the application, which runs the programs of the terminals. The runtime keeps Compose's, which are the JVM's.

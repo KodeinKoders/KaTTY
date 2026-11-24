@@ -65,7 +65,7 @@ ditto "$bundle" "$staging"
 rm -rf "$installed"
 mv "$staging" "$installed"
 
-# jpackage signs the bundle ad hoc: a copy that lost that would not open.
+# The bundle is signed (ad hoc, or with the Developer ID when the build signs it): a copy that lost that would not open.
 codesign --verify --deep --strict "$installed" || fail "the signature of the installed $installed is not valid"
 
 # Spotlight and Launch Services find a new application on their own, but after a delay: say it now.
