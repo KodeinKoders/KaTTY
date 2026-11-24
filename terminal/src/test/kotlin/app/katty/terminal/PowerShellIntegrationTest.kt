@@ -98,8 +98,7 @@ class PowerShellIntegrationTest {
         return listOfNotNull(pwsh?.toString(), if (isWindows) "powershell.exe" else null)
     }
 
-    // Wide: the prompt has the path of a temporary directory, which on a macOS of CI is long enough, with what a test types after it, to wrap the
-    // line, which PSReadLine drew again without running it (it failed or passed with the length of the random digits of the folder).
+    // Wide, so that the prompt (the path of a temporary directory, long on a macOS of CI) and what is typed after it are one row.
     private fun start(shell: String, directory: Path, typeAtPrompt: TypedCommand? = null): TerminalSession =
         TerminalSession.start(240, 20, command = listOf(shell, "-NoLogo"), directory = directory.toString(), typeAtPrompt = typeAtPrompt)
             .also { sessions += it }
@@ -115,9 +114,16 @@ class PowerShellIntegrationTest {
     private fun TerminalSession.await(what: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000
         while (!condition()) {
-            check(System.nanoTime() < deadline) { "Still waiting for $what, the screen is:\n${screen()}" }
+            check(System.nanoTime() < deadline) { "Still waiting for $what (the pty reads keys: ${readingKeys()}), the screen is:\n${screen()}" }
             Thread.sleep(10)
         }
+    }
+
+    // Types [text] at the prompt once the line editor reads it: PowerShell's marks are written before PSReadLine turns the line discipline off,
+    // and what is sent before is echoed by the pty and read as a line, which PSReadLine drew again on the next row without running it.
+    private fun TerminalSession.typeAtThePrompt(shell: String, text: String) {
+        await("the prompt of $shell, and its line editor reading keys") { atPrompt() && readingKeys() != false }
+        sendText(text)
     }
 
     private fun directory(name: String): Path = Files.createTempDirectory(name).also { it.toFile().deleteOnExit() }.toRealPath()
@@ -129,10 +135,8 @@ class PowerShellIntegrationTest {
         for (shell in shells) {
             val session = start(shell, directory("katty interrupt"))
             val events = session.collectEvents()
-            session.await("the first prompt of $shell") { session.atPrompt() }
-
             // At the prompt it is the line editor's: the line is given up, and the shell stays.
-            session.sendText("echo given up")
+            session.typeAtThePrompt(shell, "echo given up")
             // Not the whole line: after a long prompt (a temporary directory of macOS) it wraps.
             session.await("what is typed in $shell") { "given up" in session.screen() }
             session.sendText("\u0003")
@@ -142,7 +146,7 @@ class PowerShellIntegrationTest {
             // While a program runs, it ends that program.
             val forever = if (isWindows) "ping -t 127.0.0.1" else "sleep 600"
             events.clear()
-            session.sendText("$forever\r")
+            session.typeAtThePrompt(shell, "$forever\r")
             session.await("$forever to run in $shell") { TerminalEvent.CommandStarted(null) in events && !session.atPrompt() }
             Thread.sleep(1500)
             session.sendText("\u0003")
@@ -164,29 +168,49 @@ class PowerShellIntegrationTest {
             // The first prompt says where the shell started, a name that is not ASCII included.
             session.await("$shell to report the directory it started in") { session.workingDirectory.value == start.toString() }
 
-            session.sendText("cd '$other'\r")
+            session.typeAtThePrompt(shell, "cd '$other'\r")
             session.await("$shell to report the directory it went to") { session.workingDirectory.value == other.toString() }
             session.await("$shell to report the end of cd") { TerminalEvent.CommandFinished(0) in events }
 
             // A cmdlet that fails ends with 1, a program with its own code.
             events.clear()
-            session.sendText("Get-Item no-such-file\r")
+            session.typeAtThePrompt(shell, "Get-Item no-such-file\r")
             session.await("$shell to report a cmdlet that failed") { TerminalEvent.CommandFinished(1) in events }
             session.await("the next prompt of $shell") { events.lastOrNull() == TerminalEvent.PromptStarted }
             assertTrue(events.indexOf(TerminalEvent.CommandStarted(null)) in 0..<events.indexOf(TerminalEvent.CommandFinished(1)), "$shell: $events")
             val exit = if (isWindows) "cmd.exe /c exit 3" else "sh -c 'exit 3'"
-            session.sendText("$exit\r")
+            session.typeAtThePrompt(shell, "$exit\r")
             session.await("$shell to report the code of a program") { TerminalEvent.CommandFinished(3) in events }
 
             // Return on an empty line runs nothing: a prompt and no command.
             session.await("the prompt after the program of $shell") { events.lastOrNull() == TerminalEvent.PromptStarted }
             events.clear()
-            session.sendText("\r")
+            session.typeAtThePrompt(shell, "\r")
             session.await("the prompt after an empty line in $shell") { TerminalEvent.PromptStarted in events }
             Thread.sleep(300)
             assertFalse(events.any { it is TerminalEvent.CommandStarted || it is TerminalEvent.CommandFinished }, "$shell: $events")
             assertTrue(session.atPrompt(), "$shell waits for a command")
         }
+    }
+
+    @Test
+    fun whatWaitsForThePromptIsTypedOnceTheLineEditorReadsKeys() {
+        assumeTrue("A pty whose line discipline can be read", !isWindows)
+        // A stand-in that does what PowerShell does: it marks its prompt while the pty still reads a line at a time, and its line editor only
+        // turns that off later. What is typed meanwhile is echoed by the pty, before the prompt that the line editor would draw it on.
+        val folder = Files.createTempDirectory("katty stand-in").also { it.toFile().deleteOnExit() }
+        val pwsh = folder.resolve("pwsh")
+        Files.writeString(
+            pwsh,
+            "#!/bin/sh\nprintf '\\033]133;A\\007PS> \\033]133;B\\007'\nsleep 1\nstty raw -echo\n" +
+                "typed=$(dd bs=1 count=12 2>/dev/null)\nstty sane\nprintf '\\r\\nread: %s\\n' \"\$typed\"\nsleep 30\n",
+        )
+        pwsh.toFile().setExecutable(true)
+        pwsh.toFile().deleteOnExit()
+
+        val session = start(pwsh.toString(), folder, TypedCommand(listOf("Write-Output", "x"), run = false))
+        session.await("what was typed to be read") { "read: Write-Output" in session.screen() }
+        assertEquals("PS>", session.screen().lines().first().trimEnd(), "Nothing was echoed by the pty:\n${session.screen()}")
     }
 
     @Test
@@ -206,15 +230,13 @@ class PowerShellIntegrationTest {
         for (shell in shells) {
             val old = TerminalSession.start(100, 20, command = sh("printf 'old 1\\nold 2\\nold 3\\n'; sleep 30"), shellIntegration = false).also { sessions += it }
             old.await("the old content") { "old 3" in old.screen() }
-            // Wide: the prompt has the path of a temporary directory, which on a macOS of CI is long enough to wrap the line that is typed.
+            // Wide, so that the prompt and the line typed after it are one row.
             val restored = TerminalSession.start(
                 200, 20, command = listOf(shell, "-NoLogo"), directory = directory("katty restored").toString(), snapshot = old.snapshot(), restoredNote = "restored",
             ).also { sessions += it }
-            restored.await("the prompt of $shell") { restored.atPrompt() }
-
             // ConPTY takes its console for empty, with the cursor at the top, unless it asks the terminal where the cursor is: the line that
             // PSReadLine draws again as it is typed went over the old content.
-            restored.sendText("Write-Output typed")
+            restored.typeAtThePrompt(shell, "Write-Output typed")
             restored.await("the line typed in $shell") { "Write-Output typed" in restored.screen() }
             restored.sendText("\r")
             restored.await("the output of $shell") { restored.screen().lines().any { it.trimEnd() == "typed" } }

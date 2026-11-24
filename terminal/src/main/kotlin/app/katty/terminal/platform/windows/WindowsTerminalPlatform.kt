@@ -14,6 +14,9 @@ internal object WindowsTerminalPlatform : TerminalPlatform {
     override val pty: PtyControl = object : PtyControl {
         override fun readingPassword(process: PtyProcess): Boolean = false
 
+        // A console has modes of its own, which ConPTY does not show.
+        override fun readingKeys(process: PtyProcess): Boolean? = null
+
         override fun setWindowSize(process: PtyProcess, cols: Int, rows: Int, widthPx: Int, heightPx: Int): Boolean = false
 
         override fun hangUp(process: PtyProcess) {

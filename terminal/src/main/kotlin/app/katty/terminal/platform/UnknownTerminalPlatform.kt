@@ -11,6 +11,8 @@ internal object UnknownTerminalPlatform : TerminalPlatform {
     override val pty: PtyControl = object : PtyControl {
         override fun readingPassword(process: PtyProcess): Boolean = false
 
+        override fun readingKeys(process: PtyProcess): Boolean? = null
+
         override fun setWindowSize(process: PtyProcess, cols: Int, rows: Int, widthPx: Int, heightPx: Int): Boolean = false
 
         override fun hangUp(process: PtyProcess) {

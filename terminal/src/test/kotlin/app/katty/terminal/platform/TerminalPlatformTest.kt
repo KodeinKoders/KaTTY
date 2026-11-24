@@ -34,6 +34,13 @@ class TerminalPlatformTest {
             assertEquals(emptyList(), platform.processes.openFilePaths(process.pid().toInt()))
             assertNull(platform.hostName())
 
+            // Once it runs the program: a program ended as soon as pty4j started it ran on (284 times in 300 on a Mac, measured; none in 100 once
+            // it ran), which made this fail on CI's macOS when the test got there first. Until it runs the program, the child that pty4j forked
+            // is a copy of the JVM, whose handler of SIGTERM is probably what takes the signal.
+            val started = System.nanoTime()
+            while (ProcessHandle.of(process.pid()).flatMap { it.info().command() }.orElse("").endsWith("java") && System.nanoTime() - started < 5_000_000_000) {
+                Thread.sleep(10)
+            }
             platform.pty.hangUp(process)
             assertTrue(process.waitFor(5, TimeUnit.SECONDS), "The program ended")
             platform.pty.closePty(process)

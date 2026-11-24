@@ -19,6 +19,8 @@ internal fun masterOf(process: PtyProcess): Int? = (process as? UnixPtyProcess)?
 internal class PosixPtyControl(private val termios: TermiosLayout, private val setWindowSize: Long) : PtyControl {
     override fun readingPassword(process: PtyProcess): Boolean = masterOf(process)?.let { isPtyReadingPassword(it, termios) } ?: false
 
+    override fun readingKeys(process: PtyProcess): Boolean? = masterOf(process)?.let { ptyLocalFlags(it, termios) }?.let { it and termios.canonical == 0L }
+
     override fun setWindowSize(process: PtyProcess, cols: Int, rows: Int, widthPx: Int, heightPx: Int): Boolean =
         masterOf(process)?.let { setPtyWindowSize(it, setWindowSize, cols, rows, widthPx, heightPx) } ?: false
 

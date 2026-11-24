@@ -177,6 +177,32 @@ public class TerminalSession private constructor(
         producer.request()
     }
 
+    // A mark of the prompt does not say that the line editor reads: PowerShell writes its prompt, and mark B in it, before PSReadLine turns the
+    // line discipline off, and what came meanwhile was echoed by the pty and read as a line ended by a line feed, which PSReadLine drew again on
+    // the next row without running it (the line twice and nothing run, on the macOS of CI). zsh and bash read keys before they draw the prompt.
+    // So what waits is typed once the pty reads keys, at once where that cannot be told (Windows), and after [READING_KEYS_WAIT] whatever it
+    // says, which is what was done before. Not in the callback of the mark: it runs under the lock, on the reader.
+    private fun typePendingWhenReadingKeys() {
+        if (pendingInput.get() == null) return
+        producer.scope.launch {
+            val started = System.nanoTime()
+            while (readingKeys() == false && (System.nanoTime() - started).nanoseconds < READING_KEYS_WAIT) delay(10)
+            val waited = (System.nanoTime() - started).nanoseconds
+            if (readingKeys() == false) {
+                logger.info("Typing at the prompt after {}, though the pty still reads a line at a time", waited)
+            } else {
+                logger.debug("Typing at the prompt after waiting {} for the line editor to read keys", waited)
+            }
+            typePending()
+        }
+    }
+
+    /**
+     * Whether the program that has the terminal reads a key at a time, as a line editor does while it reads a command line: `false` while the
+     * pty still reads a line at a time, which echoes what is sent, and `null` where it cannot be told (Windows).
+     */
+    internal fun readingKeys(): Boolean? = whilePtyOpen(null) { terminalPlatform.pty.readingKeys(process) }
+
     // Whether the shell is reading a command line, between the marks that it makes at the end of the prompt and at the start of the output
     // (OSC 133 B and C): written under the lock, by the reader.
     private var inputActive = false
@@ -456,7 +482,7 @@ public class TerminalSession private constructor(
                     programStatusStore.promptStarted()
                     if (terminal.activeScreen != GhosttyScreen.ALTERNATE) commandMarks.promptStarted()
                     eventFlow.tryEmit(TerminalEvent.PromptStarted)
-                    if (pendingAtPromptStart) typePending()
+                    if (pendingAtPromptStart) typePendingWhenReadingKeys()
                 }
                 GhosttyPromptEventKind.OUTPUT_START -> {
                     inputActive = false
@@ -475,7 +501,7 @@ public class TerminalSession private constructor(
                 GhosttyPromptEventKind.INPUT_START -> {
                     inputActive = true
                     if (terminal.activeScreen != GhosttyScreen.ALTERNATE) commandMarks.inputStarted()
-                    typePending()
+                    typePendingWhenReadingKeys()
                 }
             }
         }
@@ -1293,6 +1319,9 @@ public class TerminalSession private constructor(
 
         // How long a shell that marks its prompts has to mark the first one before what waits for it is typed without it.
         private val MARKS_EXPECTED_DELAY = 5.seconds
+
+        // How long what waits for a prompt waits, after its mark, for the line editor to read keys.
+        private val READING_KEYS_WAIT = 2.seconds
 
         // What a shell takes as "clear the screen and draw the prompt again".
         private const val CONTROL_L: Byte = 0x0C

@@ -23,6 +23,12 @@ internal interface PtyControl {
     fun readingPassword(process: PtyProcess): Boolean
 
     /**
+     * Whether the program that has the pty reads a key at a time (the line discipline off, as a line editor has it while it reads a command
+     * line), `false` while the pty is still a line at a time, and `null` when it cannot be told. Never throws.
+     */
+    fun readingKeys(process: PtyProcess): Boolean?
+
+    /**
      * Sets the window size of the pty, in cells and in pixels (pty4j only sets the cells), and returns whether it worked. Never throws: the
      * caller falls back to pty4j's size in cells.
      */

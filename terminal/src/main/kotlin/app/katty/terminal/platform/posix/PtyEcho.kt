@@ -33,17 +33,20 @@ private val tcgetattr: MethodHandle by lazy {
  * It never throws: when the flags cannot be read it is not a password prompt.
  */
 internal fun isPtyReadingPassword(fd: Int, termios: TermiosLayout): Boolean =
+    ptyLocalFlags(fd, termios)?.let { local -> local and termios.echo == 0L && local and termios.canonical != 0L } ?: false
+
+/** The local flags (`c_lflag`) of the pty whose master is [fd], `null` when they cannot be read. It never throws. */
+internal fun ptyLocalFlags(fd: Int, termios: TermiosLayout): Long? =
     try {
         Arena.ofConfined().use { arena ->
             val attributes = arena.allocate(termios.size)
             if (tcgetattr.invokeExact(fd, attributes) as Int != 0) {
-                false
+                null
             } else {
-                val local = when (termios.localFlagsBytes) {
+                when (termios.localFlagsBytes) {
                     8 -> attributes.get(ValueLayout.JAVA_LONG, termios.localFlagsOffset)
                     else -> attributes.get(ValueLayout.JAVA_INT, termios.localFlagsOffset).toLong() and 0xFFFF_FFFFL
                 }
-                local and termios.echo == 0L && local and termios.canonical != 0L
             }
         }
     } catch (e: Throwable) {
@@ -51,5 +54,5 @@ internal fun isPtyReadingPassword(fd: Int, termios: TermiosLayout): Boolean =
             warned = true
             logger.warn("Could not read the flags of the pty", e)
         }
-        false
+        null
     }
