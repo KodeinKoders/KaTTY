@@ -427,6 +427,22 @@ class TerminalTest {
     }
 
     @Test
+    fun aClickOnTheNameOfAWebPageOpensItInTheBrowserAndNotInTheEditor() {
+        val file = kotlin.io.path.createTempFile("katty-link", ".html").toRealPath()
+        try {
+            val (scene, _) = terminalScene("printf 'see $file:3 now\r\n'; sleep 30", editor = true) { it.text(0).startsWith("see /") }
+
+            scene.linkClick(at(5.5f, 0.5f))
+            scene.renderUntil("the page to be opened") { opened.isNotEmpty() }
+
+            assertEquals(listOf(file.toUri().toString()), opened.toList(), "As its address, without the line")
+            assertEquals(emptyList(), openedFiles.toList(), "Not in the editor")
+        } finally {
+            java.nio.file.Files.deleteIfExists(file)
+        }
+    }
+
+    @Test
     fun withoutAnEditorThePathOfAFileIsOpenedAsItsAddress() {
         val file = kotlin.io.path.createTempFile("katty-link", ".kt").toRealPath()
         try {

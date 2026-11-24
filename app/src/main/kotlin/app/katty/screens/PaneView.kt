@@ -63,6 +63,7 @@ import app.katty.core.TerminalSpec
 import app.katty.core.terminalIdentity
 import app.katty.core.terminals
 import app.katty.copyToClipboard
+import app.katty.openInDefaultBrowser
 import app.katty.readClipboard
 import app.katty.terminal.compose.Terminal
 import app.katty.ui.AgentGlyph
@@ -88,6 +89,7 @@ import app.katty.core.BellMode
 import app.katty.core.OptionKey
 import app.katty.core.SecureInput
 import app.katty.terminal.compose.TerminalBell
+import app.katty.terminal.compose.openInBrowser
 import app.katty.terminal.compose.TerminalOptionAsAlt
 import app.katty.terminal.compose.TerminalSecureInput
 
@@ -251,6 +253,8 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                         commandMarkTooltip = markMenu == null && context.focusTerminals,
                         confirmPaste = context.actions.confirmPaste,
                         onOpenFile = context.actions.onOpenFile?.let { open -> { file -> open(spec.id, file) } },
+                        // A page of the web goes to the browser of the user, whatever the IDE: the library sends it here, not to onOpenFile.
+                        onOpenLink = { url -> openInBrowser(url, openPage = ::openInDefaultBrowser) },
                     )
                     }
                 }

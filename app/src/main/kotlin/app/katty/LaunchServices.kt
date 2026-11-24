@@ -66,6 +66,76 @@ internal fun applicationPath(bundleId: String): String? {
     }
 }
 
+/**
+ * Where the application that opens `https:` addresses is, its bundle (`/Applications/Safari.app`): the web browser of the user, `null` when
+ * LaunchServices has none or this is not macOS. It asks for the address, not for the type `.html`, which an editor may have taken.
+ * Not for the UI thread.
+ */
+internal fun defaultBrowserPath(): String? {
+    if (!isMac) return null
+    return try {
+        Arena.ofConfined().use { arena ->
+            val linker = Linker.nativeLinker()
+            val coreFoundation = SymbolLookup.libraryLookup("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", arena)
+            val coreServices = SymbolLookup.libraryLookup("/System/Library/Frameworks/CoreServices.framework/CoreServices", arena)
+            fun handle(lookup: SymbolLookup, name: String, descriptor: FunctionDescriptor) =
+                linker.downcallHandle(lookup.find(name).orElseThrow { IllegalStateException("$name is not found") }, descriptor)
+
+            val createString = handle(coreFoundation, "CFStringCreateWithCString", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT))
+            val createUrl = handle(coreFoundation, "CFURLCreateWithString", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS))
+            val release = handle(coreFoundation, "CFRelease", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS))
+            val path = handle(coreFoundation, "CFURLGetFileSystemRepresentation", FunctionDescriptor.of(ValueLayout.JAVA_BYTE, ValueLayout.ADDRESS, ValueLayout.JAVA_BYTE, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG))
+            val defaultApplication = handle(coreServices, "LSCopyDefaultApplicationURLForURL", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS))
+
+            val text = createString.invoke(MemorySegment.NULL, arena.allocateFrom("https://example.com/"), UTF8) as MemorySegment
+            if (text == MemorySegment.NULL) return@use null
+            val url = createUrl.invoke(MemorySegment.NULL, text, MemorySegment.NULL) as MemorySegment
+            release.invoke(text)
+            if (url == MemorySegment.NULL) return@use null
+            try {
+                // kLSRolesAll: whatever the application does with it.
+                val application = defaultApplication.invoke(url, -1, MemorySegment.NULL) as MemorySegment
+                if (application == MemorySegment.NULL) return@use null
+                try {
+                    val buffer = arena.allocate(4096)
+                    val ok = (path.invoke(application, 1.toByte(), buffer, 4096L) as Byte).toInt() != 0
+                    buffer.getString(0).takeIf { ok && File(it).isDirectory }
+                } finally {
+                    release.invoke(application)
+                }
+            } finally {
+                release.invoke(url)
+            }
+        }
+    } catch (e: Throwable) {
+        logger.debug("Could not ask LaunchServices for the browser", e)
+        null
+    }
+}
+
+/** The command that opens [page] in the application [browserPath]: `open -a`, which hands the file to that application. */
+internal fun openPageCommand(browserPath: String, page: String): List<String> = listOf("open", "-a", browserPath, page)
+
+/**
+ * Opens the web page [page] in the browser of the user (the application of `https:` addresses, [defaultBrowserPath]), and not in the application
+ * of its type, which may be an editor. With no browser found the system browses its address, as it does for the other links. A failure is
+ * logged. It asks LaunchServices: not for the UI thread.
+ */
+internal fun openInDefaultBrowser(page: File) {
+    val browser = defaultBrowserPath()
+    try {
+        if (browser != null) {
+            ProcessBuilder(openPageCommand(browser, page.path)).redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        } else {
+            logger.debug("No browser for https: found, the system opens {}", page)
+            java.awt.Desktop.getDesktop().browse(page.toURI())
+        }
+    } catch (e: Exception) {
+        logger.warn("Could not open {} in a browser", page, e)
+    }
+}
+
 /** The IDEs that are installed on this machine, with the bundle identifier that opens each. Asks LaunchServices: not for the UI thread. */
 internal fun installedIdes(): Map<Ide, String> = detectIdes(::applicationInstalled)
 

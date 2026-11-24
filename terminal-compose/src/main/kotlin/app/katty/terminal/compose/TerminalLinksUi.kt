@@ -116,10 +116,19 @@ internal class LinkInteraction {
 // What a link may open from here: addresses that a program can write, which a program could use to start anything else.
 private val BROWSED_SCHEMES = setOf("http", "https", "mailto", "ftp")
 
+// The extensions of a page that a browser shows: it runs nothing of the machine, which is why such a file may be opened.
+private val WEB_PAGE_EXTENSIONS = setOf("html", "htm")
+
+/** Whether [file] is a page of the web, a regular file that ends with `.html` or `.htm` (any case): a folder of that name is not. */
+public fun isWebPage(file: File): Boolean = file.isFile && file.extension.lowercase() in WEB_PAGE_EXTENSIONS
+
 /** What clicking a link does, which [linkAction] decides. */
 internal sealed interface LinkAction {
     /** The system opens the address: its browser, its mail program. */
     data class Browse(val uri: URI) : LinkAction
+
+    /** The web browser opens the page `.html` or `.htm` that is there. */
+    data class BrowsePage(val file: File) : LinkAction
 
     /** The Finder opens the folder. */
     data class OpenFolder(val folder: File) : LinkAction
@@ -135,6 +144,7 @@ internal sealed interface LinkAction {
  * What clicking the link [url] does. The addresses of the web and of mail are opened by the system. A `file:` link is not opened: a program
  * can write any text over a link (OSC 8), and opening a file runs it when it is an application or a script (`.app`, `.command`), so it is
  * shown in the Finder instead, and only a folder (with no extension: a bundle such as `X.app` is a folder that would run) is opened there.
+ * The exception is a page of the web (`.html`, `.htm`, see [isWebPage]): a browser shows it and starts nothing, so it is opened there.
  * A file of another machine, one that is not there, and any other scheme are refused.
  */
 internal fun linkAction(url: String): LinkAction {
@@ -152,6 +162,7 @@ internal fun linkAction(url: String): LinkAction {
             val file = File(path)
             when {
                 !file.exists() -> LinkAction.Refuse("there is no such file")
+                isWebPage(file) -> LinkAction.BrowsePage(file)
                 file.isDirectory && file.extension.isEmpty() -> LinkAction.OpenFolder(file)
                 else -> LinkAction.Reveal(file)
             }
@@ -162,9 +173,10 @@ internal fun linkAction(url: String): LinkAction {
 
 /**
  * Opens [url] as [linkAction] says: with the system's browser, for the web, or in the Finder, for a file. The host that wants more gives
- * its own to [Terminal].
+ * its own to [Terminal]. A page of the web that is a file goes to [openPage], which by default asks the system to browse its address: the host
+ * that knows better which browser to use gives its own.
  */
-internal fun openInBrowser(url: String) {
+public fun openInBrowser(url: String, openPage: (File) -> Unit = ::browseFile) {
     val action = linkAction(url)
     if (action is LinkAction.Refuse) {
         logger.warn("Not opening {}: {}", url, action.reason)
@@ -176,6 +188,7 @@ internal fun openInBrowser(url: String) {
             val desktop = if (Desktop.isDesktopSupported()) Desktop.getDesktop() else null
             val supported = when (action) {
                 is LinkAction.Browse -> desktop?.isSupported(Desktop.Action.BROWSE)?.also { if (it) desktop.browse(action.uri) }
+                is LinkAction.BrowsePage -> true.also { openPage(action.file) }
                 is LinkAction.OpenFolder -> desktop?.isSupported(Desktop.Action.OPEN)?.also { if (it) desktop.open(action.folder) }
                 is LinkAction.Reveal -> desktop?.isSupported(Desktop.Action.BROWSE_FILE_DIR)?.also { if (it) desktop.browseFileDirectory(action.file) }
                 is LinkAction.Refuse -> true
@@ -185,4 +198,10 @@ internal fun openInBrowser(url: String) {
             logger.warn("Could not open {}", url, e)
         }
     }
+}
+
+/** What [openInBrowser] does with a page of the web by default: the system browses its `file:` address, which opens the application of its type. */
+internal fun browseFile(page: File) {
+    val desktop = if (Desktop.isDesktopSupported()) Desktop.getDesktop() else null
+    if (desktop?.isSupported(Desktop.Action.BROWSE) == true) desktop.browse(page.toURI()) else logger.warn("Not opening {}: this system has no way to", page)
 }

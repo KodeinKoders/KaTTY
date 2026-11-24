@@ -81,6 +81,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent as AwtKeyEvent
+import java.io.File
 import java.time.Instant
 import kotlin.math.roundToInt
 
@@ -111,7 +112,8 @@ import kotlin.math.roundToInt
  * @param primarySelection What was selected last, which a middle click pastes. Share one between terminals to paste what is selected in
  * one into another.
  * @param onOpenLink Opens the address of a link that was clicked. By default the system opens the ones that start with `http`, `https`,
- * `ftp` and `mailto`, a `file` link is shown in the Finder and not opened (it may be an application or a script), and the others are refused.
+ * `ftp` and `mailto`, a page of the web that is a file (`.html`, `.htm`: [isWebPage]) is opened in the browser, any other `file` link is shown in the
+ * Finder and not opened (it may be an application or a script), and the others are refused.
  * @param ligatures Whether the font joins sequences such as `=>` and `!=` into one glyph. Most programmers' fonts do, and it is on by default.
  * @param focusOnStart Whether the terminal takes the keyboard focus when it is first shown. A host that shows several terminals decides which
  * one has it, and turns this off.
@@ -155,7 +157,7 @@ import kotlin.math.roundToInt
  * tooltip would cover.
  * @param onOpenFile Opens the file of a link that names one ([TerminalLink.file]: a path written in the text, such as `src/Foo.kt:42` in what a
  * compiler printed, or a `file://` address), at its line, in an editor. Without it such a link goes to [onOpenLink] as its `file://` address,
- * which the default shows in the Finder.
+ * which the default shows in the Finder. A page of the web ([isWebPage]) never comes here: it goes to [onOpenLink], to be shown in a browser.
  * @param acceptDrops Whether files dropped on the terminal (from the Finder) paste their paths, escaped for a shell with a backslash before what it
  * would take for something else, and separated by a space, as Ghostty does; a text that is dropped is pasted as it is. It is a paste: the program's
  * bracketed paste mode is followed, [confirmPaste] is asked about what could run commands, and the terminal takes the keyboard.
@@ -583,7 +585,8 @@ public fun Terminal(
                                 open = { link ->
                                     val file = link.file
                                     val fileOpener = openFile.value
-                                    if (file != null && fileOpener != null) fileOpener(file) else openLink.value(link.url)
+                                    // A page of the web is for a browser, not for the editor that the host chose for the other files.
+                                    if (file != null && fileOpener != null && !isWebPage(File(file.path))) fileOpener(file) else openLink.value(link.url)
                                 },
                             )
                             if (ofLink) {

@@ -38,6 +38,28 @@ class LinkActionTest {
     }
 
     @Test
+    fun aWebPageIsOpenedInTheBrowser() {
+        val page = file("index.html")
+        val short = file("old.HTM")
+
+        assertEquals(LinkAction.BrowsePage(page), linkAction(page.toURI().toString()))
+        assertEquals(LinkAction.BrowsePage(short), linkAction("file://localhost${short.path}"))
+    }
+
+    @Test
+    fun aFolderThatLooksLikeAWebPageIsStillOnlyShown() {
+        val folder = file("docs.html", folder = true)
+
+        assertEquals(LinkAction.Reveal(folder), linkAction(folder.toURI().toString()))
+    }
+
+    @Test
+    fun aWebPageThatCannotBeShownIsRefused() {
+        assertIs<LinkAction.Refuse>(linkAction("file://${File(directory, "missing.html").path}"))
+        assertIs<LinkAction.Refuse>(linkAction("file://other-host${directory.path}/index.html"))
+    }
+
+    @Test
     fun aFolderIsOpenedInTheFinder() {
         val folder = file("project", folder = true)
 
