@@ -17,10 +17,13 @@ jobs:
     timeout-minutes: 180
     permissions:
       contents: write
-    env:
-      KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
-      API_KEY: ${{ runner.temp }}/notarization-api-key.p8
     steps:
+      # The runner context is not known in the env of a job: the files of the run are named by a step.
+      - name: Name the files of the run
+        run: |
+          echo "KEYCHAIN=$RUNNER_TEMP/signing.keychain-db" >> "$GITHUB_ENV"
+          echo "API_KEY=$RUNNER_TEMP/notarization-api-key.p8" >> "$GITHUB_ENV"
+        shell: bash
       - name: Check out
         uses: actions/checkout@v7
         with:
