@@ -2005,7 +2005,9 @@ class TerminalSessionTest {
     }
 
     private companion object {
-        const val TIMEOUT_MS = 5_000L
+        // As long as the other tests of the module wait: on Windows, each program of a test is a JVM that starts, and a slow machine of CI
+        // showed nothing in 5 s (Windows x64, once).
+        const val TIMEOUT_MS = 15_000L
     }
 }
 
