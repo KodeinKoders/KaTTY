@@ -11,8 +11,7 @@ import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
-import java.awt.image.ConvolveOp;
-import java.awt.image.Kernel;
+import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
 import javax.imageio.ImageIO;
@@ -62,7 +61,8 @@ class MakeIcon {
     }
 
     // The square, moved down, in translucent black, blurred: a Gaussian blur along each axis in turn, which is the same as both at once. The image
-    // is the canvas with a margin of the blur's reach all around.
+    // is the canvas with a margin of the blur's reach all around. The blur is done here and not by `ConvolveOp`, whose native code (`mlib_image`)
+    // crashed the JVM once on CI's Windows ARM64: the image is black, so only its alpha is blurred.
     static BufferedImage shadow(Shape square) {
         int reach = reach();
         BufferedImage shadow = new BufferedImage(CANVAS + 2 * reach, CANVAS + 2 * reach, BufferedImage.TYPE_INT_ARGB_PRE);
@@ -71,9 +71,40 @@ class MakeIcon {
         graphics.setColor(Color.BLACK);
         graphics.fill(AffineTransform.getTranslateInstance(reach, reach + SHADOW_OFFSET).createTransformedShape(square));
         graphics.dispose();
+        int width = shadow.getWidth();
+        int height = shadow.getHeight();
+        WritableRaster raster = shadow.getRaster();
+        // The fourth band of an ARGB image is its alpha.
+        float[] alpha = raster.getSamples(0, 0, width, height, 3, (float[]) null);
         float[] weights = gaussian(SHADOW_BLUR);
-        BufferedImage across = new ConvolveOp(new Kernel(weights.length, 1, weights), ConvolveOp.EDGE_ZERO_FILL, null).filter(shadow, null);
-        return new ConvolveOp(new Kernel(1, weights.length, weights), ConvolveOp.EDGE_ZERO_FILL, null).filter(across, null);
+        float[] across = blur(alpha, width, height, weights, 1, width);
+        float[] blurred = blur(across, width, height, weights, width, 1);
+        int[] samples = new int[blurred.length];
+        for (int i = 0; i < blurred.length; i++) samples[i] = Math.min(255, Math.round(blurred[i]));
+        // Black, premultiplied: its colours are 0 whatever its alpha.
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB_PRE);
+        result.getRaster().setSamples(0, 0, width, height, 3, samples);
+        return result;
+    }
+
+    // Blurs the values of an image along one axis: `step` is the distance in the array from a pixel to the next along it, `line` from a line of the
+    // axis to the next. What is outside the image counts as 0.
+    static float[] blur(float[] values, int width, int height, float[] weights, int step, int line) {
+        int radius = weights.length / 2;
+        int length = step == 1 ? width : height;
+        int lines = step == 1 ? height : width;
+        float[] result = new float[values.length];
+        for (int l = 0; l < lines; l++) {
+            int start = l * line;
+            for (int i = 0; i < length; i++) {
+                float sum = 0;
+                int from = Math.max(0, i - radius);
+                int to = Math.min(length - 1, i + radius);
+                for (int j = from; j <= to; j++) sum += weights[j - i + radius] * values[start + j * step];
+                result[start + i * step] = sum;
+            }
+        }
+        return result;
     }
 
     // The weights of a Gaussian of this standard deviation, out to its reach, which add up to 1.
