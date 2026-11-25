@@ -1,0 +1,102 @@
+name: release
+
+# A disk image signed with the Developer ID of Kodein and notarized, with the application in it notarized too (`./gradlew :app:notarize`).
+# A tag v* publishes it as a GitHub release; a run started by hand only keeps it as an artifact of the run.
+# The secrets are the organization's: the certificate of the Developer ID as a base64 .p12 and its password, and an App Store Connect API key
+# (the content of its .p8 file, its key ID and its issuer ID), which belongs to the team and not to a person.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+
+  release:
+    runs-on: macOS-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    env:
+      KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
+      API_KEY: ${{ runner.temp }}/notarization-api-key.p8
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+          # The version is 1.0 and the number of commits before this one: a shallow clone would only count what it fetched.
+          fetch-depth: 0
+      - name: Set up JDK Temurin 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Install the signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          # A keychain of this run, with a password that nobody knows, unlocked for as long as the job may take.
+          keychain_password="$(openssl rand -base64 32)"
+          security create-keychain -p "$keychain_password" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$keychain_password" "$KEYCHAIN"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 -D > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          # The certificate is only valid with the intermediate authority that issued it, which the runner may not have.
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN"
+          # codesign may use the key without a dialog, which nobody would answer.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KEYCHAIN"
+        shell: bash
+      - name: Install the notarization key
+        env:
+          APPSTORE_CONNECT_API_KEY: ${{ secrets.APPSTORE_CONNECT_API_KEY }}
+        run: printf '%s\n' "$APPSTORE_CONNECT_API_KEY" > "$API_KEY"
+        shell: bash
+      - name: Notarize
+        env:
+          KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_API_ISSUER_ID }}
+        run: >
+          ./gradlew --stacktrace :app:notarize
+          -Pcompose.desktop.mac.sign=true
+          "-Pcompose.desktop.mac.signing.identity=Kodein (DN74B8MP8V)"
+          "-Pcompose.desktop.mac.signing.keychain=$KEYCHAIN"
+          "-Pmacos.notarization.key=$API_KEY"
+          "-Pmacos.notarization.keyID=$KEY_ID"
+          "-Pmacos.notarization.issuerID=$ISSUER_ID"
+        shell: bash
+      - name: Check what Gatekeeper says
+        run: |
+          dmg="$(ls app/build/compose/binaries/main/dmg/*.dmg)"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          spctl --assess --type exec --verbose=2 app/build/compose/binaries/main/app/KaTTY.app
+          xcrun stapler validate "$dmg"
+          xcrun stapler validate app/build/compose/binaries/main/app/KaTTY.app
+          echo "DMG=$dmg" >> "$GITHUB_ENV"
+        shell: bash
+      - name: Keep the disk image
+        uses: actions/upload-artifact@v7
+        with:
+          name: KaTTY-dmg
+          path: ${{ env.DMG }}
+          if-no-files-found: error
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$DMG" --title "KaTTY $GITHUB_REF_NAME" --generate-notes
+        shell: bash
+      - name: Remove the keychain and the key
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN" || true
+          rm -f "$API_KEY"
+        shell: bash
