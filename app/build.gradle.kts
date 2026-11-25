@@ -150,6 +150,10 @@ abstract class SignSpawnHelper : TransformAction<SignSpawnHelper.Parameters> {
 
 // The properties that turn Compose's signing on and name its identity (in ~/.gradle/gradle.properties or given with -P), read as Compose reads them:
 // an identity without its prefix is a Developer ID.
+val macSigningIdentity = providers.gradleProperty("compose.desktop.mac.signing.identity").map { identity ->
+    if (identity.startsWith("Developer ID Application: ")) identity else "Developer ID Application: $identity"
+}
+val macSigningKeychain = providers.gradleProperty("compose.desktop.mac.signing.keychain")
 if (providers.gradleProperty("compose.desktop.mac.sign").orNull.toBoolean()) {
     val spawnHelperSigned = Attribute.of("app.katty.spawnHelperSigned", Boolean::class.javaObjectType)
     dependencies {
@@ -159,15 +163,116 @@ if (providers.gradleProperty("compose.desktop.mac.sign").orNull.toBoolean()) {
             from.attribute(spawnHelperSigned, false).attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "jar")
             to.attribute(spawnHelperSigned, true).attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, "jar")
             parameters {
-                identity = providers.gradleProperty("compose.desktop.mac.signing.identity").map { identity ->
-                    if (identity.startsWith("Developer ID Application: ")) identity else "Developer ID Application: $identity"
-                }
-                keychain = providers.gradleProperty("compose.desktop.mac.signing.keychain")
+                identity = macSigningIdentity
+                keychain = macSigningKeychain
             }
         }
     }
     // The classpath that Compose packages.
     configurations.runtimeClasspath { attributes.attribute(spawnHelperSigned, true) }
+}
+
+// A complete notarization (`notarize`): Compose's notarizes the disk image only, unsigned, and staples the ticket to it, so the application that
+// is copied out of it had none, and macOS asked Apple at its first launch (refused offline). So the application is notarized and stapled first,
+// then put in the disk image, which is signed, notarized and stapled by Compose's `notarizeDmg`. Two submissions to Apple: each takes minutes,
+// the first ones of a team took more than an hour. The credentials are Compose's properties, as for `notarizeDmg`, and are only read when a task
+// runs: a build without them configures these tasks as any other (`./gradlew tasks`).
+abstract class NotarizeApp : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val script: RegularFileProperty
+
+    @get:Internal
+    abstract val app: DirectoryProperty
+
+    @get:Internal
+    abstract val appleId: Property<String>
+
+    @get:Internal
+    abstract val teamId: Property<String>
+
+    @get:Internal
+    abstract val password: Property<String>
+
+    @get:Inject
+    abstract val exec: ExecOperations
+
+    @TaskAction
+    fun notarize() {
+        exec.exec {
+            commandLine("sh", script.get().asFile, app.get().asFile, appleId.required("appleID"), teamId.required("teamID"))
+            // Not on the command line, which any process of the machine can read.
+            environment("KATTY_NOTARIZATION_PASSWORD", password.required("password"))
+        }
+    }
+
+    private fun Property<String>.required(name: String): String =
+        orNull ?: throw GradleException("Notarizing needs the Gradle property compose.desktop.mac.notarization.$name")
+}
+
+// The disk image that jpackage makes is not signed (only the application in it is), which Apple recommends.
+abstract class SignDmg : DefaultTask() {
+    @get:Internal
+    abstract val dmg: RegularFileProperty
+
+    @get:Internal
+    abstract val identity: Property<String>
+
+    @get:Internal
+    abstract val keychain: Property<String>
+
+    @get:Inject
+    abstract val exec: ExecOperations
+
+    @TaskAction
+    fun sign() {
+        val identity = identity.orNull
+            ?: throw GradleException("Signing needs the Gradle properties compose.desktop.mac.sign and compose.desktop.mac.signing.identity")
+        exec.exec {
+            commandLine(
+                listOf("codesign", "--force", "--timestamp", "--sign", identity) +
+                    (keychain.orNull?.let { listOf("--keychain", it) } ?: emptyList()) +
+                    dmg.get().asFile.path
+            )
+        }
+    }
+}
+
+// Submissions to Apple and signatures, whose results are not files that Gradle could compare: both are made each time they are asked for.
+val notarizeApp = tasks.register<NotarizeApp>("notarizeApp") {
+    group = "compose desktop"
+    description = "Notarizes the application that createDistributable makes, and staples the ticket to it."
+    dependsOn("createDistributable")
+    outputs.upToDateWhen { false }
+    script = layout.projectDirectory.file("notarize-app.sh")
+    app = layout.buildDirectory.dir("compose/binaries/main/app/KaTTY.app")
+    appleId = providers.gradleProperty("compose.desktop.mac.notarization.appleID")
+    teamId = providers.gradleProperty("compose.desktop.mac.notarization.teamID")
+    password = providers.gradleProperty("compose.desktop.mac.notarization.password")
+}
+
+val signDmg = tasks.register<SignDmg>("signDmg") {
+    group = "compose desktop"
+    description = "Signs the disk image that packageDmg makes, with the identity of the application."
+    dependsOn("packageDmg")
+    outputs.upToDateWhen { false }
+    dmg = layout.buildDirectory.file("compose/binaries/main/dmg/KaTTY-${project.version}.dmg")
+    identity = macSigningIdentity
+    keychain = macSigningKeychain
+}
+
+// The disk image is made of the application once it is stapled. Compose registers its tasks once this script has run, so they are taken as they come.
+tasks.matching { it.name == "packageDmg" }.configureEach { mustRunAfter(notarizeApp) }
+tasks.matching { it.name == "notarizeDmg" }.configureEach {
+    dependsOn(signDmg)
+    // Compose's notarization settings have a property that the configuration cache cannot store (`ascProvider`), whatever is set.
+    notCompatibleWithConfigurationCache("Compose's notarization settings cannot be stored in the configuration cache")
+}
+
+tasks.register("notarize") {
+    group = "compose desktop"
+    description = "Notarizes the application and the signed disk image that holds it, and staples a ticket to each."
+    dependsOn(notarizeApp, "notarizeDmg")
 }
 
 // The icon of the application is the logo of the repository on a rounded square of this colour, the shape that macOS wants: since macOS 26 it puts
