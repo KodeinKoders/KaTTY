@@ -68,6 +68,14 @@ class ShellIntegrationTest {
         }
     }
 
+    // Types [text] once the line editor reads keys: the shell reports its directory and marks its prompt before its line editor turns the
+    // line discipline off, and what is sent before is echoed by the pty. zsh then had the line twice on its screen, and the output of the
+    // command was not selected (once on CI's macOS). PowerShellIntegrationTest waits for the same.
+    private fun TerminalSession.typeAtThePrompt(text: String) {
+        await("the line editor to read keys") { readingKeys() != false }
+        sendText(text)
+    }
+
     private fun reportsItsDirectoryAndItsCommands(shell: String, home: Path = emptyHome()) {
         val directory = Files.createTempDirectory("katty-start").also { it.toFile().deleteOnExit() }
         val session = start(shell, home, directory)
@@ -76,10 +84,10 @@ class ShellIntegrationTest {
         await("the directory of the first prompt") { session.workingDirectory.value == directory.toRealPath().toString() }
 
         val events = session.collectEvents()
-        session.sendText("cd /tmp\r")
+        session.typeAtThePrompt("cd /tmp\r")
         await("the directory to follow the shell") { session.workingDirectory.value == "/tmp" }
 
-        session.sendText("false\r")
+        session.typeAtThePrompt("false\r")
         await("the end of the command") { TerminalEvent.CommandFinished(1) in events }
         await("the next prompt") { events.lastOrNull() == TerminalEvent.PromptStarted }
         assertTrue(
@@ -118,7 +126,7 @@ class ShellIntegrationTest {
         await("the first prompt") { session.workingDirectory.value == directory.toRealPath().toString() }
 
         // bash does not take itself for a login shell (KaTTY starts it with --rcfile): `logout` said "not login shell".
-        session.sendText("logout\r")
+        session.typeAtThePrompt("logout\r")
 
         await("the shell to end") { session.exited.value != null }
         await("the logout file to be read") { Files.exists(home.resolve("logged-out")) }
@@ -138,7 +146,7 @@ class ShellIntegrationTest {
         val session = start(shell, emptyHome(), directory)
         await("the prompt") { session.atPrompt() }
 
-        session.sendText("sleep 30\r")
+        session.typeAtThePrompt("sleep 30\r")
         await("the command runs") { session.foregroundProcessName() == "sleep" }
         assertEquals(false, session.atPrompt(), "A program runs")
 
@@ -161,9 +169,9 @@ class ShellIntegrationTest {
         val session = start(shell, emptyHome(), directory)
         await("the first prompt") { session.atPrompt() }
         val events = session.collectEvents()
-        session.sendText("printf 'first\\n'; false\r")
+        session.typeAtThePrompt("printf 'first\\n'; false\r")
         await("the end of the first command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
-        session.sendText("echo second\r")
+        session.typeAtThePrompt("echo second\r")
         await("the end of the second command") { events.count { it is TerminalEvent.PromptStarted } >= 2 }
         await("both marks") { session.frames.value.commandMarks.count { it.finishedAt != null } >= 2 }
 
@@ -188,11 +196,11 @@ class ShellIntegrationTest {
         val events = session.collectEvents()
         assertEquals(null, session.lastCommandOutput(), "No command yet")
 
-        session.sendText("printf 'a\\nb\\n'\r")
+        session.typeAtThePrompt("printf 'a\\nb\\n'\r")
         await("the end of the first command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
         assertEquals("a\nb", session.lastCommandOutput())
 
-        session.sendText("echo second\r")
+        session.typeAtThePrompt("echo second\r")
         await("the end of the second command") { events.count { it is TerminalEvent.PromptStarted } >= 2 }
         assertEquals("second", session.lastCommandOutput(), "The last one, not the first")
     }
@@ -205,7 +213,7 @@ class ShellIntegrationTest {
         assertEquals(false, session.selectLastCommandOutput(), "No command yet")
         assertEquals(null, session.selectedText())
 
-        session.sendText("printf 'a\\nb\\n'\r")
+        session.typeAtThePrompt("printf 'a\\nb\\n'\r")
         await("the end of the command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
 
         // The shell goes on drawing its prompt, which unselects what it writes over: the user selects when it is done, so it is tried until it holds.
@@ -224,7 +232,7 @@ class ShellIntegrationTest {
             cursor.x != null && cursor.x!! > 0 && !session.moveCursorTo(cursor.x!!, cursor.y!!)
         }
 
-        session.sendText(typed)
+        session.typeAtThePrompt(typed)
         await("what is typed to be on the screen") { session.frames.value.rows.any { row -> typed in row.cells.joinToString("") { it.text } } }
         // The line editor may draw the line again (it does after a wide character): the cursor is at the end of it, and stays there.
         fun atEnd(): Boolean {
@@ -242,7 +250,7 @@ class ShellIntegrationTest {
         val column = line.indexOf("hello")
 
         assertTrue(session.moveCursorTo(column, row), "The cursor goes to the h")
-        session.sendText("X\r")
+        session.typeAtThePrompt("X\r")
         await("what is typed after the click to be in the line") { session.frames.value.rows.any { r -> "Xhello" in r.cells.joinToString("") { it.text } } }
         assertEquals(false, session.moveCursorTo(0, row + 1), "Not on the row of the cursor")
     }
@@ -263,9 +271,9 @@ class ShellIntegrationTest {
         await("the first prompt") { session.workingDirectory.value != null }
         val events = session.collectEvents()
 
-        session.sendText("true\r")
+        session.typeAtThePrompt("true\r")
         await("the end of the first command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
-        session.sendText("false\r")
+        session.typeAtThePrompt("false\r")
         await("the end of the second command") { events.count { it is TerminalEvent.PromptStarted } >= 2 }
 
         await("the marks") { session.frames.value.commandMarks.map { it.exitCode } == listOf(0, 1) }
@@ -287,7 +295,7 @@ class ShellIntegrationTest {
         if (clear != null) {
             // The screen is cleared at the first prompt, which the shell draws again at the top (it does not say that it starts: it only
             // says that what is typed starts): the command is run at that prompt.
-            session.sendText("printf 'x\\n'\r")
+            session.typeAtThePrompt("printf 'x\\n'\r")
             await("the end of a command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
             // The frame that shows its output: the one from before the command has a prompt at the top too, which the wait below would take.
             await("the output of the command") { session.frames.value.let { frame -> frame.rows.indices.any { frame.rowText(it) == "x" } } }
@@ -301,7 +309,7 @@ class ShellIntegrationTest {
                 throw IllegalStateException("${e.message}. The screen:\n${session.screen()}", e)
             }
         }
-        session.sendText("printf 'a\\nb\\n'\r")
+        session.typeAtThePrompt("printf 'a\\nb\\n'\r")
         await("the end of the command") { events.count { it is TerminalEvent.PromptStarted } >= ended + 1 }
 
         var frame = session.frames.value
@@ -325,7 +333,7 @@ class ShellIntegrationTest {
         await("the first prompt") { session.workingDirectory.value != null }
         val events = session.collectEvents()
 
-        session.sendText("sh -c 'kill -TSTP \$\$'\r")
+        session.typeAtThePrompt("sh -c 'kill -TSTP \$\$'\r")
         await("the prompt back") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
 
         await("the mark") { session.frames.value.commandMarks.lastOrNull()?.finishedAt != null }
@@ -348,7 +356,7 @@ class ShellIntegrationTest {
 
     @Test
     fun zshMarksTheCommandOfAPromptDrawnAgainByCtrlL() =
-        aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/zsh") { it.sendText("\u000c") }
+        aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/zsh") { it.typeAtThePrompt("\u000c") }
 
     @Test
     fun zshMarksTheCommandOfAPromptDrawnAgainByCommandL() =
@@ -356,7 +364,7 @@ class ShellIntegrationTest {
 
     @Test
     fun bashMarksTheCommandOfAPromptDrawnAgainByCtrlL() =
-        aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/bash") { it.sendText("\u000c") }
+        aMarkCoversThePromptAndTheOutputOfTheCommand("/bin/bash") { it.typeAtThePrompt("\u000c") }
 
     @Test
     fun bashMarksTheCommandOfAPromptDrawnAgainByCommandL() =
@@ -387,7 +395,7 @@ class ShellIntegrationTest {
         await("the first prompt") { session.workingDirectory.value != null }
         val events = session.collectEvents()
 
-        session.sendText("printf '\\033[5 q\\033[?25l'\r")
+        session.typeAtThePrompt("printf '\\033[5 q\\033[?25l'\r")
         await("the end of the command") { events.count { it is TerminalEvent.PromptStarted } >= 1 }
 
         // The cursor of the prompt, which is the default one that the terminal has, a block.
@@ -419,7 +427,7 @@ class ShellIntegrationTest {
             val session = start(shell, home, home)
             await("the prompt of $shell") { session.workingDirectory.value != null }
 
-            session.sendText("echo \"[\$FROM_ZSHENV\$FROM_ZSHRC\$FROM_PROFILE]\"\r")
+            session.typeAtThePrompt("echo \"[\$FROM_ZSHENV\$FROM_ZSHRC\$FROM_PROFILE]\"\r")
 
             val expected = if (shell.endsWith("zsh")) "[envrc]" else "[profile]"
             await("the user's files to be read by $shell") {
@@ -435,7 +443,7 @@ class ShellIntegrationTest {
         val session = start("/bin/zsh", emptyHome(), directory, shellIntegration = false)
         val events = session.collectEvents()
 
-        session.sendText("echo marker-\$((1+1))\r")
+        session.typeAtThePrompt("echo marker-\$((1+1))\r")
 
         await("the output of the command") {
             val frame = session.frames.value
@@ -500,7 +508,7 @@ class ShellIntegrationTest {
         val session = start(fish!!, emptyHome(), directory)
         await("the first prompt") { session.workingDirectory.value != null }
 
-        session.sendText("set -q XDG_DATA_DIRS; and echo is-set; or echo is-unset\r")
+        session.typeAtThePrompt("set -q XDG_DATA_DIRS; and echo is-set; or echo is-unset\r")
 
         await("the output") { "is-unset" in session.screen() }
         assertTrue("is-set" !in session.screen().replace("is-set; or", ""), session.screen())
@@ -527,10 +535,10 @@ class ShellIntegrationTest {
         await("the directory of the first prompt") { session.workingDirectory.value == directory.toRealPath().toString() }
 
         val events = session.collectEvents()
-        session.sendText("cd /tmp\r")
+        session.typeAtThePrompt("cd /tmp\r")
         await("the directory to follow the shell") { session.workingDirectory.value == "/tmp" }
 
-        session.sendText("false\r")
+        session.typeAtThePrompt("false\r")
         await("the end of the command") { TerminalEvent.CommandFinished(1) in events }
         await("the next prompt") { events.lastOrNull() == TerminalEvent.PromptStarted }
         assertTrue(
@@ -547,7 +555,7 @@ class ShellIntegrationTest {
         val session = start(fish!!, emptyHome(), directory)
         await("the first prompt") { session.workingDirectory.value != null }
 
-        session.sendText("echo \"[\$KATTY_SHELL_INTEGRATION_XDG_DIR][\$XDG_DATA_DIRS]\"\r")
+        session.typeAtThePrompt("echo \"[\$KATTY_SHELL_INTEGRATION_XDG_DIR][\$XDG_DATA_DIRS]\"\r")
 
         await("the output") {
             session.frames.value.rows.any { row -> row.cells.joinToString("") { it.text }.trim().startsWith("[][") }
@@ -562,10 +570,10 @@ class ShellIntegrationTest {
         val session = start("/bin/zsh", emptyHome(), directory)
         await("the first prompt") { session.workingDirectory.value != null }
         val events = session.collectEvents()
-        session.sendText("printf 'one\\ntwo\\n'\r")
+        session.typeAtThePrompt("printf 'one\\ntwo\\n'\r")
         await("the output and the next prompt") { events.count { it is TerminalEvent.PromptStarted } >= 1 && screen(session).any { it == "two" } }
         // Typed and not run: it is on the line when the screen is cleared, and stays there.
-        session.sendText("echo partial")
+        session.typeAtThePrompt("echo partial")
         await("the text typed") { screen(session).any { it.endsWith("echo partial") } }
 
         session.clearScreen()
