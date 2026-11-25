@@ -363,7 +363,9 @@ class AgentTrackerTest {
         // A collector that runs where the event is told is inside the write, before the line is read.
         val unconfined = AgentTracker(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
         try {
-            scripts += "$commandStart; ${commandEnd(0)}; sleep 60"
+            // After a second: the events have no replay, and the tracker only follows the session once it has started (it missed them
+            // once on CI's macOS).
+            scripts += "sleep 1; $commandStart; ${commandEnd(0)}; sleep 60"
             val received = collectCommandEnds(unconfined)
             val id = start()
             unconfined.sync(registry.handles.value)
