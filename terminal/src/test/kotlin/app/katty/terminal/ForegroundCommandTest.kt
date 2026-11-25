@@ -88,7 +88,9 @@ class ForegroundCommandTest {
         val session = shell()
         session.sendText("sleep 33 | cat\r")
 
-        val command = session.awaitCommand("the pipeline") { it.argv.firstOrNull() == "sleep" }
+        // Once both are in the group: the shell starts them one after the other, and `sleep` alone was taken for the program (once on
+        // CI's macOS).
+        val command = session.awaitCommand("the pipeline") { it.argv.firstOrNull() == "sleep" && it.groupPids.size >= 2 }
 
         assertTrue(command.pipeline)
     }
