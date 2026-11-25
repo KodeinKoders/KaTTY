@@ -412,6 +412,8 @@ compose {
             // Added to the modules that Compose puts in the runtime of the bundle (java.desktop and what it needs): the git status of the
             // terminals watches their working trees with all their folders, `ExtendedWatchEventModifier.FILE_TREE`, which is in jdk.unsupported.
             modules("jdk.unsupported")
+            // The updates read their manifest and download the disk image with java.net.http's HttpClient.
+            modules("java.net.http")
 
             macOS {
                 bundleID = "net.kodein.app.katty"

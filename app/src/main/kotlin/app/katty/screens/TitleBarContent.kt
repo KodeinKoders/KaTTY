@@ -32,7 +32,7 @@ import org.jetbrains.jewel.window.TitleBarScope
 
 /**
  * What is in the title bar: the sidebar's toggle, and where the user is, as `project / workspace`. In presentation mode ([presenting]) and in teach
- * mode ([teaching]) it says so, with a button that stops it.
+ * mode ([teaching]) it says so, with a button that stops it. A new version of the application ([update]) has a button too.
  */
 @Composable
 fun TitleBarScope.TitleBarContent(
@@ -50,6 +50,7 @@ fun TitleBarScope.TitleBarContent(
     onStopTeaching: () -> Unit = {},
     trailing: @Composable () -> Unit = {},
     environments: Set<String>? = null,
+    update: TitleBarUpdate? = null,
 ) {
     val colors = Katty.colors
     Row(Modifier.align(Alignment.Start).padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -76,10 +77,14 @@ fun TitleBarScope.TitleBarContent(
     Row(Modifier.align(Alignment.End).padding(end = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (presenting) ModeButton("Presenting", AppShortcut.PRESENTATION.label, "Stop presentation mode", onStopPresenting)
         if (teaching) ModeButton("Teaching", AppShortcut.TEACH.label, "Stop teach mode", onStopTeaching)
+        update?.let { ModeButton(it.label, "", it.description, it.onClick) }
         PaletteButton(compactPalette, onPalette)
         trailing()
     }
 }
+
+/** A new version of the application that the title bar offers: [label] on its button, which [onClick] downloads or installs. */
+class TitleBarUpdate(val label: String, val description: String, val onClick: () -> Unit)
 
 /** Says that the window is in a mode ([label]: presentation, teach), with its [shortcut]: a click stops it, which is its [description]. */
 @Composable

@@ -162,6 +162,8 @@ public enum class MainView {
  * its file.
  * @param environmentFolders The environments of the folders that projects are added under, which win over [defaultEnvironment] (see
  * [environmentForProject]).
+ * @param updateCheck How often the application looks for a new version of itself (see [UpdatePolicy]: an organization may impose it).
+ * @param updateAction What it does with one that it finds.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -201,6 +203,8 @@ public data class Settings(
     val defaultEnvironment: String? = null,
     val environmentColors: Map<String, String> = emptyMap(),
     val environmentFolders: List<EnvironmentFolder> = emptyList(),
+    val updateCheck: UpdateCheck = UpdateCheck.DAILY,
+    val updateAction: UpdateAction = UpdateAction.INSTALL_ON_QUIT,
 ) {
     public companion object {
         public const val DEFAULT_LIGHT_COLOR_SCHEME: String = "Alabaster"

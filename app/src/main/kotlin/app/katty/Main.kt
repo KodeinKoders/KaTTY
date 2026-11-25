@@ -17,6 +17,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import app.katty.core.AppVersion
 import app.katty.core.KattyDirectories
 import app.katty.core.KattyStore
 import app.katty.core.RecentProjects
@@ -35,6 +36,9 @@ import app.katty.ui.KattyTheme
 import app.katty.ui.LocalEnvironmentColors
 import app.katty.ui.UiScale
 import app.katty.ui.rememberSystemDark
+import app.katty.update.UpdateControls
+import app.katty.update.UpdateHttp
+import app.katty.update.Updater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,6 +55,8 @@ private val logger = LoggerFactory.getLogger("app.katty.Main")
 fun main() {
     // Before anything uses AWT: the menu bar of macOS is named by what this says when it starts.
     nameApplication()
+    // Before anything goes on the network: the updates go through the proxy that macOS is set to, as Safari does (an HTTP, HTTPS or SOCKS one).
+    System.setProperty("java.net.useSystemProxies", "true")
     // What runs it is not always the JetBrains Runtime that the build asks for (an IDE's run configuration, a `java -jar`), and some of what KaTTY
     // does depends on it: watching the repositories is the system's on the JetBrains Runtime, and polls elsewhere.
     logger.info("KaTTY {} ({}) runs on {}", BuildConfig.VERSION, BuildConfig.GIT_COMMIT, runtimeDescription())
@@ -105,7 +111,11 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
             { id -> store.state.value.locate(id)?.terminal?.running?.agentSession },
         ).also { it.start() }
     }
-    DisposableEffect(Unit) { onDispose { recent.stop(); writer.cancel() } }
+    // The new versions of the application: looked for, downloaded and checked off the UI thread, and installed when it quits.
+    val updater = remember {
+        Updater(directories, AppVersion.parse(BuildConfig.VERSION), { store.state.value.settings }, writer, UpdateHttp(BuildConfig.VERSION)).also { it.start() }
+    }
+    DisposableEffect(Unit) { onDispose { updater.stop(); recent.stop(); writer.cancel() } }
     val windowState = rememberWindowState(placement = geometry.mode.toPlacement(), position = geometry.toPosition(), size = geometry.toSize())
     // Where the window is, how big and in which mode is kept as it changes, and a last time when the application quits.
     val flushWindow = keepWindowGeometry(windowState, windowFile, geometry)
@@ -113,7 +123,7 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     val bridge = remember { WindowBridge() }
     // Once, whichever asks first: the window's close button, or the system's Quit (⌘Q, the Dock, logging out), which ends the process after it.
     val quitting = remember { booleanArrayOf(false) }
-    val quit = {
+    val quit = { relaunch: Boolean ->
         if (!quitting[0]) {
             quitting[0] = true
             flushWindow()
@@ -121,14 +131,17 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
             persistence.flush()
             sessionUsage.stop()
             tracker.close()
+            updater.stop()
             registry.close()
+            // Once everything is saved: the version that is ready takes the place of this one, which goes on until it exits.
+            if (updater.installsAtExit(relaunch)) updater.installAtExit(relaunch)
             exitApplication()
         }
     }
     val latestQuit = rememberUpdatedState(quit)
     // Quitting asks first, in the main window, when programs or agents would be stopped: from the close button and from the system's Quit alike.
     val quitScope = rememberCoroutineScope()
-    val requestQuit: (answer: (Boolean) -> Unit) -> Unit = { answer ->
+    val requestQuit: (relaunch: Boolean, answer: (Boolean) -> Unit) -> Unit = { relaunch, answer ->
         quitScope.launch {
             val confirmed = try {
                 bridge.confirmQuit?.invoke() != false
@@ -137,13 +150,25 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
                 true
             }
             try {
-                if (confirmed) latestQuit.value()
+                if (confirmed) latestQuit.value(relaunch)
             } finally {
                 answer(confirmed)
             }
         }
     }
-    DisposableEffect(Unit) { takeQuitItem(requestQuit); onDispose { } }
+    DisposableEffect(Unit) { takeQuitItem { answer -> requestQuit(false, answer) }; onDispose { } }
+    // What the windows show of the updates; "Restart to update" quits as the system's Quit does, asking first when something runs.
+    val updates = remember {
+        UpdateControls(
+            current = BuildConfig.VERSION,
+            state = updater.state,
+            policy = updater::policy,
+            onCheck = updater::checkNow,
+            onDownload = updater::downloadAvailable,
+            onRestart = { requestQuit(true) {} },
+            onOpen = { uri -> writer.launch(Dispatchers.IO) { runCatching { java.awt.Desktop.getDesktop().browse(uri) } } },
+        )
+    }
 
     val settings by store.state.collectAsState().let { state -> derivedStateOf { state.value.settings } }
     // The system's appearance is read again while the theme follows it: the terminals that have no scheme of their own change with it.
@@ -171,17 +196,17 @@ private fun ApplicationScope.Katty(store: KattyStore, file: StateFile, directori
     KattyTheme(dark) {
         CompositionLocalProvider(LocalEnvironmentColors provides settings.environmentColors) {
             DecoratedWindow(
-                onCloseRequest = { requestQuit {} },
+                onCloseRequest = { requestQuit(false) {} },
                 title = "KaTTY",
                 icon = remember { AppIcon.painter() },
                 state = windowState,
                 onPreviewKeyEvent = windowKeys::handle,
             ) {
                 UiScale(settings.effectiveUiScale) {
-                    KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys, recent = recent)
+                    KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenAbout = { aboutOpen = true }, onOpenBoardWindow = { restoredAtLaunch = false; if (boardWindow) boardFocusTick++ else boardWindow = true }, keys = windowKeys, recent = recent, updates = updates)
                 }
             }
-            if (aboutOpen) AboutWindow(settings.effectiveUiScale, onClose = { aboutOpen = false })
+            if (aboutOpen) AboutWindow(settings.effectiveUiScale, onClose = { aboutOpen = false }, updates = updates)
             if (boardWindow) BoardWindow(store, tracker, sessionUsage, registry, bridge, boardFocusTick, boardWindowFile, restoredAtLaunch, onClose = { boardWindow = false; restoredAtLaunch = false })
         }
     }

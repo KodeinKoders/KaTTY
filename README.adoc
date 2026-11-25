@@ -538,6 +538,45 @@ Each terminal starts your login shell (`$SHELL -l`).
 Your projects, workspaces and settings are kept in `~/Library/Application Support/KaTTY`.
 To try KaTTY without touching them, start it with `-Dkatty.support=/some/folder`.
 
+=== Updates
+
+A KaTTY installed from the disk image of a release updates itself to the latest release.
+The *Updates* page of the settings says how often it looks for one (hourly, daily, weekly, or only when you ask), and what it does with one it finds:
+
+* *Notify*: it says so in the title bar, and downloads it when you ask.
+* *Download*: it downloads it, and installs it when you click *Restart to update*.
+* *Install on quit*, the default: it also installs it when you quit KaTTY.
+
+KaTTY never restarts on its own: installing an update stops the programs of your terminals, as quitting does, and asks first when something runs.
+It only installs a version that is signed by Kodein and notarized by Apple.
+It reads `latest.json` of the latest release on GitHub, and goes through the proxy that macOS is set to.
+A copy that runs from the disk image, or from the Downloads folder, does not update itself: move it to the Applications folder first.
+
+An organization can set the updates with a configuration profile, in the preferences domain `net.kodein.app.katty`.
+Only the values that a profile imposes are read:
+
+[cols="1,1,3"]
+|===
+|Key |Type |What it does
+
+|`UpdatesDisabled`
+|Boolean
+|Turns the updates off.
+
+|`UpdateCheck`
+|String
+|`hourly`, `daily`, `weekly` or `manually`: how often KaTTY looks, which the user cannot change.
+
+|`UpdateAction`
+|String
+|`notify`, `download` or `install-on-quit`: what KaTTY does with a version it finds, which the user cannot change.
+
+|`UpdateFeedURL`
+|String
+|The `https` address of another `latest.json`, a mirror for instance.
+The disk image it names must still be signed by Kodein and notarized.
+|===
+
 
 == Limitations
 
@@ -554,6 +593,8 @@ fish is supported but was never tried, and nushell and elvish are not.
 * Only Claude Code is resumed from its environment's folder: the other agents are looked for in their default folders.
 The usage meter reads the account of the default environment.
 * A terminal moved to a workspace of another environment keeps its own until it is restarted.
+* An update cannot replace a KaTTY that is installed in a folder that needs an administrator: download the new version from the releases page.
+A proxy that needs a password, or a proxy auto-configuration file, may stop KaTTY from finding updates.
 
 
 == Built with

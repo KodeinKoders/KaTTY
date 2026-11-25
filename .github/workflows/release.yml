@@ -1,7 +1,8 @@
 name: release
 
 # A disk image signed with the Developer ID of Kodein and notarized, with the application in it notarized too (`./gradlew :app:notarize`).
-# A tag v* publishes it as a GitHub release; a run started by hand only keeps it as an artifact of the run.
+# A tag v* publishes it as a GitHub release, with latest.json, which the application reads to update itself (the tag must be v and the version of
+# the build); a run started by hand only keeps them as an artifact of the run.
 # The secrets are the organization's: the certificate of the Developer ID as a base64 .p12 and its password, and an App Store Connect API key
 # (the content of its .p8 file, its key ID and its issuer ID), which belongs to the team and not to a person.
 on:
@@ -85,17 +86,40 @@ jobs:
           xcrun stapler validate app/build/compose/binaries/main/app/KaTTY.app
           echo "DMG=$dmg" >> "$GITHUB_ENV"
         shell: bash
+      # What the application reads to know of a new version (releases/latest/download/latest.json, not GitHub's API, which limits the requests
+      # of an address): the version, where its disk image is, its size and SHA-256, and the page of the release. The application only installs a
+      # disk image that it checks itself, whatever this says.
+      - name: Write the manifest of the updates
+        run: |
+          name="$(basename "$DMG")"
+          version="${name#KaTTY-}"
+          version="${version%.dmg}"
+          tag="v$version"
+          # The application takes the version from the name of the disk image, and a release from its tag: they must be the same.
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "$tag" ]]; then
+            echo "::error::The tag $GITHUB_REF_NAME is not the version of the build: tag the commit $tag"
+            exit 1
+          fi
+          releases="https://github.com/$GITHUB_REPOSITORY/releases"
+          jq -n --arg version "$version" --arg dmg "$releases/download/$tag/$name" --argjson size "$(stat -f %z "$DMG")" \
+            --arg sha256 "$(shasum -a 256 "$DMG" | cut -d ' ' -f 1)" --arg notes "$releases/tag/$tag" \
+            '{version: $version, dmg: $dmg, size: $size, sha256: $sha256, notes: $notes}' > "$RUNNER_TEMP/latest.json"
+          cat "$RUNNER_TEMP/latest.json"
+          echo "MANIFEST=$RUNNER_TEMP/latest.json" >> "$GITHUB_ENV"
+        shell: bash
       - name: Keep the disk image
         uses: actions/upload-artifact@v7
         with:
           name: KaTTY-dmg
-          path: ${{ env.DMG }}
+          path: |
+            ${{ env.DMG }}
+            ${{ env.MANIFEST }}
           if-no-files-found: error
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "$DMG" --title "KaTTY $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" "$DMG" "$MANIFEST" --title "KaTTY $GITHUB_REF_NAME" --generate-notes
         shell: bash
       - name: Remove the keychain and the key
         if: always()

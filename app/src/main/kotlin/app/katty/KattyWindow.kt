@@ -1,5 +1,8 @@
 package app.katty
 
+import app.katty.core.UpdateState
+import app.katty.screens.TitleBarUpdate
+import app.katty.update.UpdateControls
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -149,7 +152,7 @@ import java.io.File
  * What is in the window: the title bar, and under it the sidebar and the workspace, or the welcome of an application that has no project.
  */
 @Composable
-fun DecoratedWindowScope.KattyWindowContent(
+internal fun DecoratedWindowScope.KattyWindowContent(
     store: KattyStore,
     registry: SessionRegistry,
     tracker: AgentTracker,
@@ -161,8 +164,9 @@ fun DecoratedWindowScope.KattyWindowContent(
     onOpenAbout: () -> Unit = {},
     keys: WindowKeys = WindowKeys(),
     recent: RecentProjects? = null,
+    updates: UpdateControls = UpdateControls.NONE,
 ) {
-    KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenBoardWindow, onOpenAbout, keys, window, recent) { content ->
+    KattyWindowContent(store, registry, tracker, sessionUsage, directories, attentionSound, bridge, onOpenBoardWindow, onOpenAbout, keys, window, recent, updates) { content ->
         TitleBar { content() }
     }
 }
@@ -185,6 +189,7 @@ internal fun KattyWindowContent(
     keys: WindowKeys,
     window: java.awt.Frame?,
     recent: RecentProjects? = null,
+    updates: UpdateControls = UpdateControls.NONE,
     titleBar: @Composable (content: @Composable TitleBarScope.() -> Unit) -> Unit,
 ) {
     val state by store.state.collectAsState()
@@ -229,6 +234,7 @@ internal fun KattyWindowContent(
         WindowController(store, windowScope, platform, registry::restart, tracker::markAllSeen, tracker::markSeen, recent, registry.runs, restartWithEnvironment = registry::restartWithEnvironment)
     }
     SideEffect {
+        controller.updates = updates
         controller.handles = handles
         controller.infos = infos
         controller.commands = finishedCommands
@@ -470,6 +476,13 @@ internal fun KattyWindowContent(
     val shortcutMap = remember(settings.shortcuts) { ShortcutMap.of(settings.shortcuts) }
     SideEffect { Shortcuts.map = shortcutMap }
 
+    // A new version that was found or is ready has a button in the title bar, which downloads it or restarts on it.
+    val updateState by updates.state.collectAsState()
+    val titleBarUpdate = when (val update = updateState) {
+        is UpdateState.Available -> TitleBarUpdate("Update", "Download KaTTY ${update.manifest.version}", updates.onDownload)
+        is UpdateState.Ready -> TitleBarUpdate("Restart to update", "Restart KaTTY to install ${update.version}", updates.onRestart)
+        else -> null
+    }
     titleBar {
         TitleBarContent(
             state,
@@ -485,6 +498,7 @@ internal fun KattyWindowContent(
             compactPalette = vertical,
             onPalette = { paletteOpen = !paletteOpen },
             environments = environmentListing.names,
+            update = titleBarUpdate,
             trailing = {
                 Box {
                     AttentionBell(attention.count, { attentionOpen = !attentionOpen }, waiting = attention.needsYou.isNotEmpty())
@@ -741,6 +755,7 @@ internal fun KattyWindowContent(
                             onAddProjectFolder = controller::addProjectFolder,
                             onApplyProjectFolder = controller::applyFolderEnvironment,
                         ),
+                        updates = updates,
                         overlay = { controller.environmentRestart?.takeIf { it.fromSettings }?.let { environmentRestartDialog(it) } },
                     )
                 }

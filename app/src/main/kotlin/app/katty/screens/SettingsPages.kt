@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +63,16 @@ import app.katty.core.SecureInput
 import app.katty.core.Settings
 import app.katty.core.ThemeMode
 import app.katty.core.aiAgents
+import app.katty.core.UpdateAction
+import app.katty.core.UpdateCheck
+import app.katty.core.UpdateState
+import app.katty.core.UpdateUnavailable
+import app.katty.update.UpdateControls
+import app.katty.update.canCheck
+import app.katty.update.label
+import app.katty.update.updateStatus
+import org.jetbrains.jewel.ui.component.DefaultButton
+import org.jetbrains.jewel.ui.component.OutlinedButton
 import app.katty.core.defaultAiCommand
 import app.katty.terminal.themes.ITermColorSchemeInfo
 import app.katty.ui.CheckSetting
@@ -105,6 +116,7 @@ enum class SettingsPage(val title: String) {
     SHORTCUTS("Shortcuts"),
     AGENTS("Agents"),
     ENVIRONMENTS("Environments"),
+    UPDATES("Updates"),
 }
 
 /**
@@ -167,6 +179,7 @@ internal fun SettingsContent(
     modifier: Modifier = Modifier,
     environments: EnvironmentListing = EnvironmentListing.EMPTY,
     environmentActions: EnvironmentActions = EnvironmentActions(),
+    updates: UpdateControls = UpdateControls.NONE,
     overlay: @Composable () -> Unit = {},
 ) {
     val colors = Katty.colors
@@ -191,6 +204,7 @@ internal fun SettingsContent(
                             SettingsPage.KEYBOARD -> KeyboardPage(settings, onChange)
                             SettingsPage.AGENTS -> AgentsPage(settings, onChange, agents)
                             SettingsPage.ENVIRONMENTS -> EnvironmentsPage(settings, onChange, environments, environmentActions, onCustomColor = { coloring = it })
+                            SettingsPage.UPDATES -> UpdatesPage(settings, onChange, updates)
                             SettingsPage.SHORTCUTS -> Unit
                         }
                     }
@@ -673,6 +687,64 @@ private fun Section(label: String, content: @Composable () -> Unit) {
 @Composable
 private fun Separator() {
     Divider(org.jetbrains.jewel.ui.Orientation.Horizontal, Modifier.padding(vertical = 6.dp, horizontal = 4.dp))
+}
+
+/**
+ * The version that runs, where its updates are (with what can be done: look now, download what was found, restart on what is ready, read its
+ * notes), how often they are looked for and what is done with what is found. What the organization imposes is shown and cannot be changed.
+ */
+@Composable
+private fun UpdatesPage(settings: Settings, onChange: ((Settings) -> Settings) -> Unit, updates: UpdateControls) {
+    val colors = Katty.colors
+    val state = updates.state.collectAsState().value
+    // The managed preferences are read when the page is drawn for a new state or new settings, not at every frame.
+    val policy = remember(settings, state) { updates.policy() }
+    val unavailable = state as? UpdateState.Unavailable
+    Section("VERSION") {
+        Text("KaTTY ${updates.current}", Modifier.padding(horizontal = 8.dp), color = colors.text, fontWeight = FontWeight.SemiBold)
+        Text(updateStatus(state, policy.action), Modifier.padding(horizontal = 8.dp, vertical = 2.dp).semantics { contentDescription = "Update status" }, color = colors.muted)
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            when (state) {
+                is UpdateState.Available -> DefaultButton(onClick = updates.onDownload) { Text("Download now") }
+                is UpdateState.Ready -> DefaultButton(onClick = updates.onRestart) { Text("Restart to update") }
+                else -> Unit
+            }
+            if (unavailable == null || unavailable.reason != UpdateUnavailable.NOT_PACKAGED && unavailable.reason != UpdateUnavailable.DISABLED_BY_ADMIN) {
+                OutlinedButton(onClick = updates.onCheck, enabled = canCheck(state)) { Text("Check now") }
+            }
+            val notes = when (state) {
+                is UpdateState.Available -> state.manifest.notes
+                is UpdateState.Ready -> state.notes
+                is UpdateState.Unavailable -> state.releases
+                else -> null
+            }
+            notes?.let { uri -> OutlinedButton(onClick = { updates.onOpen(uri) }) { Text(if (state is UpdateState.Unavailable) "Releases page" else "Release notes") } }
+        }
+    }
+    val managed = "Set by your organization."
+    val off = unavailable?.reason == UpdateUnavailable.DISABLED_BY_ADMIN
+    Separator()
+    Section("CHECK FOR UPDATES") {
+        Choice(
+            UpdateCheck.entries.map { ChoiceOption(it, it.label()) },
+            policy.check, { value -> onChange { it.copy(updateCheck = value) } },
+            Modifier.padding(horizontal = 4.dp), enabled = !policy.checkManaged && !off,
+        )
+        Caption(if (policy.checkManaged) managed else "How often KaTTY looks for a new version. Manually: only with Check now.")
+    }
+    Separator()
+    Section("WHEN AN UPDATE IS FOUND") {
+        Choice(
+            UpdateAction.entries.map { ChoiceOption(it, it.label()) },
+            policy.action, { value -> onChange { it.copy(updateAction = value) } },
+            Modifier.padding(horizontal = 4.dp), enabled = !policy.actionManaged && !off,
+        )
+        Caption(
+            if (policy.actionManaged) managed
+            else "Notify: says so, and downloads it when you ask. Download: downloads it, and installs it when you restart KaTTY from the update button. " +
+                "Install on quit: also installs it when you quit KaTTY. Programs that run in the terminals are stopped, as when you quit.",
+        )
+    }
 }
 
 @Composable

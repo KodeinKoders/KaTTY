@@ -1,5 +1,11 @@
 package app.katty
 
+import androidx.compose.runtime.collectAsState
+import app.katty.core.UpdateState
+import app.katty.core.UpdateUnavailable
+import app.katty.update.UpdateControls
+import app.katty.update.canCheck
+import app.katty.update.updateStatus
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -138,7 +144,7 @@ internal fun takeQuitItem(onQuitRequest: (answer: (Boolean) -> Unit) -> Unit) {
  * button, Escape or ⌘W; it does not keep anything.
  */
 @Composable
-internal fun AboutWindow(uiScale: Float, onClose: () -> Unit) {
+internal fun AboutWindow(uiScale: Float, onClose: () -> Unit, updates: UpdateControls = UpdateControls.NONE) {
     val content = aboutContentSize(uiScale)
     val size = DpSize(content.width, content.height + TITLE_BAR_HEIGHT)
     val state = rememberWindowState(position = WindowPosition(Alignment.Center), size = size)
@@ -159,7 +165,7 @@ internal fun AboutWindow(uiScale: Float, onClose: () -> Unit) {
     ) {
         UiScale(uiScale) {
             TitleBar { Text("About $APP_NAME", color = Katty.colors.text) }
-            AboutContent()
+            AboutContent(updates = updates)
         }
     }
 }
@@ -168,14 +174,17 @@ internal fun AboutWindow(uiScale: Float, onClose: () -> Unit) {
  * The size of what the About window shows under its title bar, which grows with the text of the application ([uiScale]): at a fixed size the
  * lines wrap, and the last ones are cut.
  */
-internal fun aboutContentSize(uiScale: Float): DpSize = DpSize(360.dp * uiScale, 340.dp * uiScale)
+internal fun aboutContentSize(uiScale: Float): DpSize = DpSize(360.dp * uiScale, 390.dp * uiScale)
 
 // The height of Jewel's title bar, which does not follow the text of the application.
 private val TITLE_BAR_HEIGHT = 40.dp
 
-/** What the About window shows, apart from the window; [branch] is the one it was built on. */
+/**
+ * What the About window shows, apart from the window; [branch] is the one it was built on. Where the updates are is said under the version,
+ * with a link that looks for one, except for an application that does not update itself (one that runs from Gradle).
+ */
 @Composable
-internal fun AboutContent(modifier: Modifier = Modifier, branch: String = BuildConfig.GIT_BRANCH) {
+internal fun AboutContent(modifier: Modifier = Modifier, branch: String = BuildConfig.GIT_BRANCH, updates: UpdateControls = UpdateControls.NONE) {
     val colors = Katty.colors
     val logo = remember { AppIcon.painter() }
     Column(
@@ -196,6 +205,22 @@ internal fun AboutContent(modifier: Modifier = Modifier, branch: String = BuildC
         commitDateText()?.let { committed ->
             Spacer(Modifier.height(2.dp))
             Text(committed, color = colors.muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+        }
+        val update = updates.state.collectAsState().value
+        if ((update as? UpdateState.Unavailable)?.reason != UpdateUnavailable.NOT_PACKAGED) {
+            Spacer(Modifier.height(10.dp))
+            val action = remember(update) { updates.policy().action }
+            Text(updateStatus(update, action), color = colors.muted, fontSize = 12.sp, textAlign = TextAlign.Center)
+            if (canCheck(update)) {
+                Text(
+                    buildAnnotatedString {
+                        withLink(LinkAnnotation.Clickable("check", TextLinkStyles(SpanStyle(color = colors.accent, textDecoration = TextDecoration.Underline))) { updates.onCheck() }) {
+                            append("Check for updates")
+                        }
+                    },
+                    fontSize = 12.sp,
+                )
+            }
         }
         Spacer(Modifier.height(20.dp))
         Text(

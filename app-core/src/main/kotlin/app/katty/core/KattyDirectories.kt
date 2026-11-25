@@ -42,6 +42,9 @@ public class KattyDirectories(public val support: Path) {
     /** What the terminals showed, one file for each, for the next launch (see [TerminalSnapshotStore]). */
     public val snapshots: Path get() = support.resolve("snapshots")
 
+    /** The disk image of a new version while it is downloaded and checked, when the application last looked for one, and the log of the last install. */
+    public val updates: Path get() = support.resolve("updates")
+
     public companion object {
         /** The system property that changes the directory, for tests and for running a second copy of the application. */
         public const val PROPERTY: String = "katty.support"

@@ -21,6 +21,9 @@ import app.katty.core.CursorShape
 import app.katty.core.MinimumContrast
 import app.katty.core.OptionKey
 import app.katty.core.ScrollbackSize
+import app.katty.core.UpdateAction
+import app.katty.core.UpdateCheck
+import app.katty.update.label
 import app.katty.core.SecureInput
 import app.katty.core.ThemeMode
 import app.katty.core.WorkspaceId
@@ -185,6 +188,17 @@ class PaletteHandlers(
     /** Goes to the workspace before the selected one, crossing projects. */
     val previousWorkspace: () -> Unit = {},
     val nextWorkspace: () -> Unit = {},
+    /** Looks for a new version of the application now; `null` when it cannot update itself. */
+    val checkForUpdates: (() -> Unit)? = null,
+    /** The new version that was found or that is ready, which the two next say. */
+    val updateVersion: String? = null,
+    /** Downloads the version that was found and only said; `null` when there is none. */
+    val downloadUpdate: (() -> Unit)? = null,
+    /** Quits, installs the version that is ready and starts it; `null` when there is none. */
+    val restartToUpdate: (() -> Unit)? = null,
+    /** How often the updates are looked for, and what is done with what is found; `null` when the organization imposes it. */
+    val setUpdateCheck: ((UpdateCheck) -> Unit)? = null,
+    val setUpdateAction: ((UpdateAction) -> Unit)? = null,
 )
 
 /** The entries of the palette, and what each does. */
@@ -427,5 +441,14 @@ fun paletteCommands(
     command("secure-never", "Secure keyboard entry: never") { handlers.setSecureInput(SecureInput.NEVER) }
     command("secure-passwords", "Secure keyboard entry: at password prompts") { handlers.setSecureInput(SecureInput.PASSWORD_PROMPTS) }
     command("secure-always", "Secure keyboard entry: always") { handlers.setSecureInput(SecureInput.ALWAYS) }
+    handlers.checkForUpdates?.let { command("check-updates", "Check for updates", action = it) }
+    handlers.downloadUpdate?.let { command("download-update", "Download KaTTY ${handlers.updateVersion}", action = it) }
+    handlers.restartToUpdate?.let { command("restart-to-update", "Restart to update to KaTTY ${handlers.updateVersion}", action = it) }
+    handlers.setUpdateCheck?.let { set ->
+        for (check in UpdateCheck.entries) command("update-check-${check.name.lowercase()}", "Check for updates: ${check.label().lowercase()}") { set(check) }
+    }
+    handlers.setUpdateAction?.let { set ->
+        for (action in UpdateAction.entries) command("update-action-${action.name.lowercase()}", "When an update is found: ${action.label().lowercase()}") { set(action) }
+    }
     return PaletteCommands(entries, actions)
 }

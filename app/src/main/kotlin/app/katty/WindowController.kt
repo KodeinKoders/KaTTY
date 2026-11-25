@@ -1,5 +1,10 @@
 package app.katty
 
+import app.katty.core.UpdateState
+import app.katty.core.UpdateUnavailable
+import app.katty.update.UpdateControls
+import app.katty.update.canCheck
+import app.katty.update.offeredVersion
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -1397,7 +1402,22 @@ internal class WindowController(
         openSettings = { openSettings() },
         previousWorkspace = { stepWorkspace(-1) },
         nextWorkspace = { stepWorkspace(1) },
+        checkForUpdates = updates.takeIf { canCheck(it.state.value) }?.onCheck,
+        updateVersion = offeredVersion(updates.state.value)?.toString(),
+        downloadUpdate = updates.takeIf { it.state.value is UpdateState.Available }?.onDownload,
+        restartToUpdate = updates.takeIf { it.state.value is UpdateState.Ready }?.onRestart,
+        setUpdateCheck = updatePolicy.takeIf { it.enabled && !it.checkManaged && updatesPossible }?.let { { check -> store.updateSettings { it.copy(updateCheck = check) } } },
+        setUpdateAction = updatePolicy.takeIf { it.enabled && !it.actionManaged && updatesPossible }?.let { { action -> store.updateSettings { it.copy(updateAction = action) } } },
     )
+
+    /** The updates of the application, which the main window gives once it has them (see [UpdateControls]). */
+    var updates: UpdateControls = UpdateControls.NONE
+
+    // Read once for the palette's commands: the managed preferences are read again each time.
+    private val updatePolicy get() = updates.policy()
+
+    // An application that cannot update itself has no settings of updates in the palette (the settings window still shows them).
+    private val updatesPossible get() = (updates.state.value as? UpdateState.Unavailable)?.reason.let { it == null || it == UpdateUnavailable.READ_ONLY || it == UpdateUnavailable.TRANSLOCATED }
 }
 
 /** What the palette calls the command that opens [closed] again. */
