@@ -4,11 +4,13 @@ package app.katty.screens
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.waitUntilExactlyOneExists
 import app.katty.terminal.TerminalSearchState
 import app.katty.terminal.TerminalSession
 import app.katty.terminal.sh
@@ -55,17 +57,16 @@ class FindBarTest {
         // Typed in the field: the search follows.
         onNode(hasSetTextAction()).performTextInput("foo")
         waitUntil(timeoutMillis = 10_000) { session.search.state.value.total == 3 }
-        waitForIdle()
-        onNodeWithText("3 results").assertExists()
+        // The bar draws the state of the search once it has collected it, which an idle composition does not wait for: "1 of 3" was
+        // not there yet once on CI's macOS.
+        waitUntilExactlyOneExists(hasText("3 results"), timeoutMillis = 10_000)
 
         onNodeWithContentDescription("Next match").performClick()
         waitUntil(timeoutMillis = 10_000) { session.search.state.value.selected != null }
-        waitForIdle()
-        onNodeWithText("1 of 3").assertExists()
+        waitUntilExactlyOneExists(hasText("1 of 3"), timeoutMillis = 10_000)
         onNodeWithContentDescription("Next match").performClick()
         waitUntil(timeoutMillis = 10_000) { session.search.state.value.selected == 2 }
-        waitForIdle()
-        onNodeWithText("2 of 3").assertExists()
+        waitUntilExactlyOneExists(hasText("2 of 3"), timeoutMillis = 10_000)
         onNodeWithContentDescription("Previous match").performClick()
         waitUntil(timeoutMillis = 10_000) { session.search.state.value.selected == 1 }
     }
