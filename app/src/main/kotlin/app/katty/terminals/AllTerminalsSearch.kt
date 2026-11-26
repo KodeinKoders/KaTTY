@@ -118,9 +118,13 @@ class AllTerminalsSearch(
     }
 }
 
-/** The order in which a search of every terminal lists them: the one that is selected first, then as the sidebar lists them. */
+/**
+ * The order in which a search of every terminal lists them: the one that is selected first, then as the sidebar lists them. The terminals of the
+ * workspaces that the environment filter hides are not searched.
+ */
 fun KattyState.searchOrder(): List<TerminalId> {
-    val all = allTerminals().map { it.terminal.id }
+    val filter = settings.environmentFilter
+    val all = allTerminals().filter { filter.shows(it.workspace) }.map { it.terminal.id }
     val selected = selection.terminal?.takeIf { it in all } ?: return all
     return listOf(selected) + (all - selected)
 }

@@ -49,6 +49,8 @@ data class MenuAction(
     val checked: Boolean? = null,
     /** A square of this color before the label: what the item gives something (the color of a badge). */
     val swatch: Color? = null,
+    /** Whether the menu stays open when it is chosen: the items of a filter, which are checked one after the other. */
+    val keepOpen: Boolean = false,
     val onClick: () -> Unit,
 ) : MenuEntry
 
@@ -70,10 +72,11 @@ class MenuBuilder {
         hint: String? = null,
         checked: Boolean? = null,
         swatch: Color? = null,
+        keepOpen: Boolean = false,
         onClick: () -> Unit,
     ) {
         // A shortcut that is unbound is an empty text: it is shown as none.
-        entries += MenuAction(label, shortcut?.takeIf { it.isNotEmpty() }, danger, enabled, hint, checked, swatch, onClick)
+        entries += MenuAction(label, shortcut?.takeIf { it.isNotEmpty() }, danger, enabled, hint, checked, swatch, keepOpen, onClick)
     }
 
     fun divider() {
@@ -124,7 +127,7 @@ private fun MenuScope.entries(entries: List<MenuEntry>, close: () -> Unit) {
             is MenuAction -> selectableItem(
                 selected = false,
                 keybinding = entry.shortcut?.let { setOf(it) },
-                onClick = { close(); entry.onClick() },
+                onClick = { if (!entry.keepOpen) close(); entry.onClick() },
                 enabled = entry.enabled,
             ) {
                 // Jewel's `selected` is the highlight of the item under the pointer, not a choice: the check mark is drawn here, in a column of

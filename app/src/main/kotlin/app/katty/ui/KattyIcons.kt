@@ -66,6 +66,7 @@ object KattyIcons {
     val ChevronsDown = KattyIcon(listOf("M4 3l4 4 4-4", "M4 8l4 4 4-4"))
     val ChevronsUp = KattyIcon(listOf("M4 8l4-4 4 4", "M4 13l4-4 4 4"))
     val ChevronUp =KattyIcon(listOf("M4 10l4-4 4 4"))
+    val Funnel = KattyIcon(listOf("M2.5 3h11L9.5 8v4.5l-3 1.5V8z"))
     val Plus = KattyIcon(listOf("M8 3v10M3 8h10"))
     val Folder = KattyIcon(listOf("M2 4.5A1.5 1.5 0 0 1 3.5 3H6l1.5 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z"))
     val FolderPlus = KattyIcon(listOf("M2 4.5A1.5 1.5 0 0 1 3.5 3H6l1.5 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5zM8 7v4M6 9h4"))

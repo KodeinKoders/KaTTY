@@ -3,6 +3,8 @@ package app.katty.screens
 import app.katty.AppShortcut
 import app.katty.SplitLabels
 import app.katty.TerminalKeys
+import app.katty.core.shownProjects
+import app.katty.core.shownWorkspaces
 import app.katty.core.Direction
 import app.katty.core.AgentInfo
 import app.katty.core.AgentState
@@ -245,16 +247,18 @@ fun paletteCommands(
         actions[entry.id] = action
     }
 
-    for (project in state.projects) {
+    // What the environment filter hides is not listed: the palette does not go there.
+    val filter = state.settings.environmentFilter
+    for (project in state.shownProjects(filter)) {
         // The folder with ~ for the home, as the sidebar and the recent projects write it: the user's name has no use there, and is better not shown.
         add(PaletteEntry("project:${project.id.value}", PaletteGroup.PROJECTS, project.name, project.directory.abbreviatedHome(home))) {
             handlers.selectProject(project.id)
         }
     }
-    for (project in state.projects) for (workspace in project.workspaces) {
+    for (project in state.projects) for (workspace in project.shownWorkspaces(filter)) {
         add(PaletteEntry("workspace:${workspace.id.value}", PaletteGroup.WORKSPACES, workspace.name, project.name)) { handlers.openWorkspace(workspace.id) }
     }
-    for (location in state.allTerminals()) {
+    for (location in state.allTerminals().filter { filter.shows(it.workspace) }) {
         val agent = infos[location.terminal.id]?.state ?: AgentState.IDLE
         add(PaletteEntry("terminal:${location.terminal.id.value}", PaletteGroup.TERMINALS, titleOf(location.terminal), "${location.workspace.name}  ·  ${agent.word()}")) {
             handlers.openTerminal(location.terminal.id)

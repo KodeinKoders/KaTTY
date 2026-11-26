@@ -69,7 +69,9 @@ public data class Attention(val needsYou: List<AttentionItem>, val finished: Lis
  * ([commands]). A terminal is listed once: for what its agent says when it needs the user, else for its command.
  */
 public fun KattyState.attention(infos: Map<TerminalId, AgentInfo>, commands: Map<TerminalId, FinishedCommand> = emptyMap()): Attention {
-    val items = allTerminals().mapNotNull { location ->
+    // What the environment filter hides is not listed: the bell and the next terminal that needs the user do not go there.
+    val filter = settings.environmentFilter
+    val items = allTerminals().filter { filter.shows(it.workspace) }.mapNotNull { location ->
         val id = location.terminal.id
         val info = infos[id]?.takeIf { it.state in ATTENTION_STATES }
         val command = commands[id]

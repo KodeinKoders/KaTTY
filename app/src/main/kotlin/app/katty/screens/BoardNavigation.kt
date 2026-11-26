@@ -33,7 +33,9 @@ import app.katty.core.AgentStates
 import app.katty.core.KattyState
 import app.katty.core.NoAgentStates
 import app.katty.core.ProjectId
+import app.katty.core.EnvironmentFilter
 import app.katty.core.counts
+import app.katty.core.shownProjects
 import app.katty.ui.Icon
 import app.katty.ui.Katty
 import app.katty.ui.hoverHighlight
@@ -62,15 +64,22 @@ fun BoardSidebar(
     states: AgentStates = NoAgentStates,
     usage: @Composable () -> Unit = {},
     agents: Int = state.allTerminals().size,
+    available: Set<String>? = null,
+    onEnvironmentFilter: ((EnvironmentFilter) -> Unit)? = null,
 ) {
     val colors = Katty.colors
+    val environmentFilter = state.settings.environmentFilter
     Column(modifier.width(SIDEBAR_WIDTH * uiScaleFactor()).fillMaxHeight().background(colors.side).border(1.dp, colors.line)) {
-        SectionLabel("PROJECTS", Modifier.padding(start = 12.dp, top = 8.dp, bottom = 6.dp))
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("PROJECTS")
+            Spacer(Modifier.weight(1f))
+            if (available != null && onEnvironmentFilter != null) EnvironmentFilterButton(state, available, onEnvironmentFilter)
+        }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             FilterRow("All projects", filter == null, { onFilter(null) }) { Text(agentCount(agents), color = colors.muted, fontSize = 11.sp) }
-            for (project in state.projects) {
+            for (project in state.shownProjects(environmentFilter)) {
                 FilterRow(project.name, filter == project.id, { onFilter(project.id) }) {
-                    for ((s, n) in states.counts(project)) StateCount(s, n)
+                    for ((s, n) in states.counts(project, environmentFilter)) StateCount(s, n)
                 }
             }
         }
@@ -99,14 +108,26 @@ private fun FilterRow(label: String, selected: Boolean, onClick: () -> Unit, tra
 
 /** The same filter as tabs along the top, for the vertical layout. */
 @Composable
-fun BoardTabs(state: KattyState, filter: ProjectId?, onFilter: (ProjectId?) -> Unit, modifier: Modifier = Modifier, states: AgentStates = NoAgentStates) {
+fun BoardTabs(
+    state: KattyState,
+    filter: ProjectId?,
+    onFilter: (ProjectId?) -> Unit,
+    modifier: Modifier = Modifier,
+    states: AgentStates = NoAgentStates,
+    available: Set<String>? = null,
+    onEnvironmentFilter: ((EnvironmentFilter) -> Unit)? = null,
+) {
     val colors = Katty.colors
-    Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line).horizontalScroll(rememberScrollState())) {
-        BoardTab("All projects", filter == null, { onFilter(null) }) {}
-        for (project in state.projects) {
-            BoardTab(project.name, filter == project.id, { onFilter(project.id) }) { for ((s, n) in states.counts(project)) StateCount(s, n) }
+    val environmentFilter = state.settings.environmentFilter
+    Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+            BoardTab("All projects", filter == null, { onFilter(null) }) {}
+            for (project in state.shownProjects(environmentFilter)) {
+                BoardTab(project.name, filter == project.id, { onFilter(project.id) }) { for ((s, n) in states.counts(project, environmentFilter)) StateCount(s, n) }
+            }
+            Spacer(Modifier.width(8.dp))
         }
-        Spacer(Modifier.width(8.dp))
+        if (available != null && onEnvironmentFilter != null) EnvironmentFilterButton(state, available, onEnvironmentFilter, Modifier.padding(horizontal = 6.dp))
     }
 }
 

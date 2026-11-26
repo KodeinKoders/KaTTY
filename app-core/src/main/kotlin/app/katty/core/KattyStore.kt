@@ -54,6 +54,10 @@ public class KattyStore(
 
     private fun newTerminal(directory: String) = TerminalSpec(TerminalId(newId()), directory = directory)
 
+    // What is made to be seen is not left out by the environment filter, which would send the selection somewhere else at once: its environment is shown.
+    private fun KattyState.showing(environment: String?): KattyState =
+        if (settings.environmentFilter.shows(environment)) this else copy(settings = settings.copy(environmentFilter = settings.environmentFilter.showing(environment)))
+
     // ----- Projects
 
     /**
@@ -77,7 +81,9 @@ public class KattyStore(
         // The first workspace is named after its project, which is what it is: the folder as it is.
         val workspace = Workspace(WorkspaceId(newId()), projectName, PaneNode.Leaf(newTerminal(directory)), environment = environment)
         val project = Project(id, projectName, directory, listOf(workspace), environment = environment)
-        edit { it.copy(projects = it.projects + project, selection = Selection(id, workspace.id, workspace.layout.terminals().first().id)) }
+        edit {
+            it.copy(projects = it.projects + project, selection = Selection(id, workspace.id, workspace.layout.terminals().first().id)).showing(environment)
+        }
         return id
     }
 
@@ -138,6 +144,7 @@ public class KattyStore(
             val workspace = saved.workspaces.firstOrNull { it.id == saved.lastWorkspace } ?: saved.workspaces.firstOrNull() ?: return@edit state
             restored = true
             state.copy(projects = state.projects + saved.copy(open = true), selection = Selection(saved.id, workspace.id, workspace.terminalToFocus()))
+                .showing(workspace.environment)
         }
         return if (restored) saved.id else addProject(saved.directory, saved.name)
     }
@@ -200,7 +207,7 @@ public class KattyStore(
                 // The project is open: the workspace that was just made has to be seen.
                 projects = state.projects.map { if (it.id == project) it.copy(workspaces = it.workspaces + workspace, open = true) else it },
                 selection = Selection(project, workspace.id, workspace.layout.terminals().first().id),
-            )
+            ).showing(workspace.environment)
         }
         return workspace.id
     }

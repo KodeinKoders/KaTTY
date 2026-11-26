@@ -18,6 +18,8 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -29,6 +31,8 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import app.katty.core.CursorShape
+import app.katty.core.EnvironmentFilter
+import app.katty.core.environmentNames
 import app.katty.core.KattyDirectories
 import app.katty.core.KattyStore
 import app.katty.core.terminals
@@ -79,6 +83,30 @@ class KattyWindowContentTest {
     private val attentionSound = AttentionSound(clock = { soundTime += 10_000_000_000L; soundTime }, sound = { sounds.incrementAndGet() })
 
     private val state get() = store.state.value
+
+    @Test
+    fun theAreaSaysSoWhenTheFilterHidesEveryWorkspaceAndShowAllBringsItBack() = runComposeUiTest {
+        store.addProject("/tmp")
+        store.setWorkspacesEnvironment(state.projects.single().workspaces.map { it.id }.toSet(), "sunday")
+        val selected = state.selection
+        showWindow()
+        onAllNodesWithContentDescription("Show all environments").assertCountEquals(0)
+
+        // Every environment: the ones of the machine that runs the test are in the list too.
+        val listed = state.environmentNames(registry.environments.listing.value.names)
+        store.updateSettings { it.copy(environmentFilter = EnvironmentFilter().hidingAll(listed)) }
+        waitForIdle()
+
+        // The selection stays, and every place that says it has the way back: the area of the terminals, and the sidebar.
+        assertEquals(selected, state.selection)
+        onAllNodesWithText("No environment is shown").onFirst().assertExists()
+        onAllNodesWithContentDescription("Show all environments").onLast().performClick()
+        waitForIdle()
+
+        assertEquals(EnvironmentFilter.NONE, state.settings.environmentFilter)
+        assertEquals(selected, state.selection)
+        onAllNodesWithContentDescription("Show all environments").assertCountEquals(0)
+    }
 
     @AfterTest
     fun close() {
