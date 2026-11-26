@@ -385,6 +385,13 @@ tasks.test {
     environment("SHELL", "/bin/zsh")
 }
 
+// The Java heap of the application, which G1 otherwise keeps at what it once needed: it started at 1/64 of the memory of the machine (576 MB
+// on 36 GB) and gave nothing back, so a KaTTY at rest kept 230 MB of heap for 85 to 140 MB used. A small initial heap, a collection every 15 s
+// when nothing else made one (`G1PeriodicGCInterval`, which also gives back what is free), and at most 30 % of it free after a collection keep it
+// near what is used: measured with 4 terminals, 120 MB of heap instead of 230, about 110 MB less in Activity Monitor, for a collection of a few
+// milliseconds every 15 s at rest.
+val heapJvmArgs = listOf("-Xms32m", "-XX:G1PeriodicGCInterval=15000", "-XX:MinHeapFreeRatio=10", "-XX:MaxHeapFreeRatio=30")
+
 compose {
     desktop.application {
         mainClass = "app.katty.MainKt"
@@ -398,6 +405,8 @@ compose {
         // ghostty-vt calls the FFM API, and pty4j calls JNA: both are restricted, and the JVM warns on the
         // first native call without this flag.
         jvmArgs += "--enable-native-access=ALL-UNNAMED"
+        // The run task's and the bundle's: Compose puts the application's JVM arguments in the bundle too.
+        jvmArgs += heapJvmArgs
 
         nativeDistributions {
             // The disk image is for macOS on Apple Silicon, the only platform libghostty-vt is built for.
