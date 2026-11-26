@@ -107,6 +107,8 @@ fun AgentBoard(
     onOpenWindow: (() -> Unit)? = null,
     usages: Map<TerminalId, SessionUsage> = emptyMap(),
     environments: Set<String>? = null,
+    emptyBecauseOfFilter: String? = null,
+    onShowAllEnvironments: (() -> Unit)? = null,
 ) {
     val colors = Katty.colors
     val cards = columns.values.flatten()
@@ -132,6 +134,8 @@ fun AgentBoard(
                     "${cards.size} ${if (cards.size == 1) "agent" else "agents"} across $projects ${if (projects == 1) "project" else "projects"}",
                     color = colors.muted,
                 )
+                // The environment filter leaves no card: it says so, with the way to show every environment again.
+                if (emptyBecauseOfFilter != null && onShowAllEnvironments != null) EnvironmentFilterEmpty(emptyBecauseOfFilter, onShowAllEnvironments)
             }
             if (onOpenWindow != null) KattyIconButton(KattyIcons.OpenWindow, "Open the board in a window", onOpenWindow)
         }

@@ -58,7 +58,10 @@ import app.katty.core.WorkspaceId
 import app.katty.core.counts
 import app.katty.core.strip
 import app.katty.core.EnvironmentBadge
+import app.katty.core.EnvironmentFilter
 import app.katty.core.environmentBadge
+import app.katty.core.shownProjects
+import app.katty.core.shownWorkspaces
 import app.katty.ui.EnvironmentPill
 import androidx.compose.runtime.LaunchedEffect
 import app.katty.ui.ButtonSize
@@ -131,14 +134,26 @@ fun Sidebar(
             Spacer(Modifier.weight(1f))
             KattyIconButton(KattyIcons.ChevronsDown, "Open all projects", { store.setAllProjectsOpen(true) })
             KattyIconButton(KattyIcons.ChevronsUp, "Close all projects", { store.setAllProjectsOpen(false) })
+            if (environments != null) {
+                EnvironmentFilterButton(state, environments.available, { filter -> store.updateSettings { it.copy(environmentFilter = filter) } })
+            }
             AddProjectMenuHost(onAddProject, onOpenRecent) {
                 KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, shortcut = AppShortcut.ADD_PROJECT.label)
             }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // The projects are dragged by their row, and the workspaces of the open one by theirs, each among its own.
-            val projects = rememberReorderState(state.projects.map { it.id }) { id, index -> store.moveProject(id, index) }
-            for (project in state.projects) key(project.id) {
+            val filter = state.settings.environmentFilter
+            // What the environment filter leaves.
+            val shown = state.shownProjects(filter)
+            environments?.let { state.emptyListMessage(it.available) }?.let { message ->
+                EnvironmentFilterEmpty(message, { store.updateSettings { it.copy(environmentFilter = EnvironmentFilter.NONE) } }, Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+            }
+            // A project is dropped where the one that is at that place of the list is, which is not the same place when others are hidden.
+            val projects = rememberReorderState(shown.map { it.id }) { id, index ->
+                store.moveProject(id, shown.getOrNull(index)?.let { target -> state.projects.indexOfFirst { it.id == target.id } } ?: index)
+            }
+            for (project in shown) key(project.id) {
                 Column(Modifier.reorderItem(projects, project.id), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     val selected = project.id == state.selection.project
                     val open = project.open
@@ -147,7 +162,7 @@ fun Sidebar(
                         project = project,
                         selected = selected,
                         open = open,
-                        counts = states.counts(project),
+                        counts = states.counts(project, filter),
                         renaming = renamingProject == project.id,
                         onToggle = { store.setProjectOpen(project.id, !open) },
                         // A click opens a closed project, and selects it; on one that is open it closes it. The arrow does the same without selecting.
@@ -180,8 +195,11 @@ fun Sidebar(
                             color = colors.muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
-                        val workspaces = rememberReorderState(project.workspaces.map { it.id }) { id, index -> store.moveWorkspace(id, index) }
-                        for (workspace in project.workspaces) {
+                        val visible = project.shownWorkspaces(filter)
+                        val workspaces = rememberReorderState(visible.map { it.id }) { id, index ->
+                            store.moveWorkspace(id, visible.getOrNull(index)?.let { target -> project.workspaces.indexOfFirst { it.id == target.id } } ?: index)
+                        }
+                        for (workspace in visible) {
                             WorkspaceRow(
                                 modifier = Modifier.reorderItem(workspaces, workspace.id),
                                 drag = Modifier.reorderHandle(workspaces, workspace.id, enabled = renamingWorkspace != workspace.id),

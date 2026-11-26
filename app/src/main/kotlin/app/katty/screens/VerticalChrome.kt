@@ -60,7 +60,10 @@ import app.katty.core.WorkspaceId
 import app.katty.core.counts
 import app.katty.core.strip
 import app.katty.core.EnvironmentBadge
+import app.katty.core.EnvironmentFilter
 import app.katty.core.environmentBadge
+import app.katty.core.shownProjects
+import app.katty.core.shownWorkspaces
 import app.katty.ui.EnvironmentPill
 import androidx.compose.runtime.LaunchedEffect
 import app.katty.ui.GlyphSize
@@ -104,11 +107,19 @@ fun ProjectTabs(
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.side).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
-            val projects = rememberReorderState(state.projects.map { it.id }, horizontal = true) { id, index -> store.moveProject(id, index) }
-            for (project in state.projects) {
+            val filter = state.settings.environmentFilter
+            // A project is dropped where the one that is at that place of the list is, which is not the same place when others are hidden.
+            val shown = state.shownProjects(filter)
+            val projects = rememberReorderState(shown.map { it.id }, horizontal = true) { id, index ->
+                store.moveProject(id, shown.getOrNull(index)?.let { target -> state.projects.indexOfFirst { it.id == target.id } } ?: index)
+            }
+            environments?.let { state.emptyListMessage(it.available) }?.let { message ->
+                EnvironmentFilterEmpty(message, { store.updateSettings { it.copy(environmentFilter = EnvironmentFilter.NONE) } }, Modifier.padding(horizontal = 10.dp))
+            }
+            for (project in shown) {
                 ProjectTab(
                     Modifier.reorderItem(projects, project.id), Modifier.reorderHandle(projects, project.id, enabled = renamingProject != project.id),
-                    project, project.id == state.selection.project, states.counts(project), renamingProject == project.id,
+                    project, project.id == state.selection.project, states.counts(project, filter), renamingProject == project.id,
                     onSelect = { store.selectProject(project.id) },
                     onRename = { onRenamingProject(project.id) },
                     onRenamed = { name ->
@@ -125,6 +136,9 @@ fun ProjectTabs(
                     onMenu = { environments?.onMenu?.invoke() },
                 )
             }
+        }
+        if (environments != null) {
+            EnvironmentFilterButton(state, environments.available, { change -> store.updateSettings { it.copy(environmentFilter = change) } })
         }
         AddProjectMenuHost(onAddProject, onOpenRecent) {
             KattyIconButton(KattyIcons.Plus, "Add project", onAddProject, Modifier.padding(horizontal = 6.dp), shortcut = AppShortcut.ADD_PROJECT.label)
@@ -211,12 +225,16 @@ fun WorkspaceTabs(
     run: app.katty.terminals.RunTerminal? = null,
     runActions: RunActions? = null,
     environments: EnvironmentControls? = null,
+    environmentFilter: EnvironmentFilter = EnvironmentFilter.NONE,
 ) {
     val colors = Katty.colors
     Row(modifier.fillMaxWidth().heightIn(min = TAB_BAR_HEIGHT).background(colors.panel).border(1.dp, colors.line), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
-            val workspaces = rememberReorderState(project?.workspaces.orEmpty().map { it.id }, horizontal = true) { id, index -> store.moveWorkspace(id, index) }
-            for (workspace in project?.workspaces.orEmpty()) {
+            val visible = project?.shownWorkspaces(environmentFilter).orEmpty()
+            val workspaces = rememberReorderState(visible.map { it.id }, horizontal = true) { id, index ->
+                store.moveWorkspace(id, visible.getOrNull(index)?.let { target -> project?.workspaces?.indexOfFirst { it.id == target.id } } ?: index)
+            }
+            for (workspace in visible) {
                 WorkspaceTab(
                     Modifier.reorderItem(workspaces, workspace.id), Modifier.reorderHandle(workspaces, workspace.id, enabled = renamingWorkspace != workspace.id),
                     workspace, workspace.id == selectedWorkspace, states.strip(workspace), workspace.sharedGit(gits), renamingWorkspace == workspace.id,

@@ -13,10 +13,10 @@ public object NoAgentStates : AgentStates {
 
 /**
  * How many terminals of [project] are in each state, the most urgent state first, without the states that none is in: the counts that
- * a project is shown with.
+ * a project is shown with. Only the workspaces that the [filter] shows count.
  */
-public fun AgentStates.counts(project: Project): List<Pair<AgentState, Int>> =
-    project.workspaces.flatMap { it.layout.terminals() }
+public fun AgentStates.counts(project: Project, filter: EnvironmentFilter = EnvironmentFilter.NONE): List<Pair<AgentState, Int>> =
+    project.workspaces.filter { filter.shows(it) }.flatMap { it.layout.terminals() }
         .groupingBy { stateOf(it.id) }.eachCount()
         .toList()
         .sortedByDescending { (state, _) -> state.urgency }

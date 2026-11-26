@@ -66,7 +66,10 @@ import app.katty.core.ProjectId
 import app.katty.core.counts
 import app.katty.core.initialsOf
 import app.katty.core.strip
+import app.katty.core.EnvironmentFilter
 import app.katty.core.environmentBadge
+import app.katty.core.shownProjects
+import app.katty.core.shownWorkspaces
 import app.katty.ui.EnvironmentPill
 import app.katty.core.urgent
 import app.katty.ui.GlyphSize
@@ -111,15 +114,23 @@ fun Rail(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val projects = rememberReorderState(state.projects.map { it.id }) { id, index -> store.moveProject(id, index) }
-            for (project in state.projects) {
+            val filter = state.settings.environmentFilter
+            if (environments != null) {
+                EnvironmentFilterButton(state, environments, { change -> store.updateSettings { it.copy(environmentFilter = change) } })
+            }
+            // A project is dropped where the one that is at that place of the list is, which is not the same place when others are hidden.
+            val shown = state.shownProjects(filter)
+            val projects = rememberReorderState(shown.map { it.id }) { id, index ->
+                store.moveProject(id, shown.getOrNull(index)?.let { target -> state.projects.indexOfFirst { it.id == target.id } } ?: index)
+            }
+            for (project in shown) {
                 Box(Modifier.reorderItem(projects, project.id)) {
                     RailTile(project, project.id == state.selection.project, states.urgent(project), Modifier.reorderHandle(projects, project.id)) {
                         store.selectProject(project.id)
                         open = if (open == project.id) null else project.id
                     }
                     if (open == project.id) {
-                        Flyout(project, state, store, states, gits, environments, onDismiss = { open = null })
+                        Flyout(project, state, store, states, gits, environments, filter, onDismiss = { open = null })
                     }
                 }
             }
@@ -179,7 +190,7 @@ private object BesideEnd : PopupPositionProvider {
 
 /** The workspaces of a project, in a panel that opens beside its tile. */
 @Composable
-private fun Flyout(project: Project, state: KattyState, store: KattyStore, states: AgentStates, gits: Map<TerminalId, GitInfo?>, environments: Set<String>?, onDismiss: () -> Unit) {
+private fun Flyout(project: Project, state: KattyState, store: KattyStore, states: AgentStates, gits: Map<TerminalId, GitInfo?>, environments: Set<String>?, filter: EnvironmentFilter, onDismiss: () -> Unit) {
     val colors = Katty.colors
     Popup(popupPositionProvider = BesideEnd, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
@@ -190,14 +201,17 @@ private fun Flyout(project: Project, state: KattyState, store: KattyStore, state
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OneLine(project.name, Modifier.weight(1f), color = colors.text)
                 environments?.let { project.environmentBadge(it) }?.let { EnvironmentPill(it) }
-                for ((s, n) in states.counts(project)) StateCount(s, n)
+                for ((s, n) in states.counts(project, filter)) StateCount(s, n)
             }
             Text(
                 project.directory.abbreviatedHome(), Modifier.padding(horizontal = 10.dp).padding(bottom = 4.dp),
                 color = colors.muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1,
             )
-            val workspaces = rememberReorderState(project.workspaces.map { it.id }) { id, index -> store.moveWorkspace(id, index) }
-            for (workspace in project.workspaces) {
+            val visible = project.shownWorkspaces(filter)
+            val workspaces = rememberReorderState(visible.map { it.id }) { id, index ->
+                store.moveWorkspace(id, visible.getOrNull(index)?.let { target -> project.workspaces.indexOfFirst { it.id == target.id } } ?: index)
+            }
+            for (workspace in visible) {
                 val selected = workspace.id == state.selection.workspace
                 Row(
                     Modifier.reorderItem(workspaces, workspace.id).fillMaxWidth().heightIn(min = 30.dp).clip(RoundedCornerShape(5.dp))

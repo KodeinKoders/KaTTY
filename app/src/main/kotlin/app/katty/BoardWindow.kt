@@ -34,10 +34,14 @@ import app.katty.core.KattyState
 import app.katty.core.Orientation
 import app.katty.core.ProjectId
 import app.katty.core.TerminalId
+import app.katty.core.EnvironmentFilter
+import app.katty.core.environmentNames
+import app.katty.core.shownProjects
 import app.katty.core.board
 import app.katty.core.orientation
 import app.katty.screens.AgentBoard
 import app.katty.screens.BoardTabs
+import app.katty.screens.emptyBoardMessage
 import app.katty.terminals.AgentTracker
 import app.katty.terminals.SessionRegistry
 import app.katty.terminals.SessionUsageTracker
@@ -131,7 +135,8 @@ fun BoardWindow(
             val size = LocalWindowInfo.current.containerSize
             val vertical = state.settings.layout.orientation(size.width.toFloat(), size.height.toFloat()) == Orientation.VERTICAL
             val environments by registry.environments.listing.collectAsState()
-            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, usages = usages, environments = environments.names)
+            BoardWindowContent(state, infos, handles, now, vertical, onOpen = { bridge.openTerminal.tryEmit(it) }, usages = usages, environments = environments.names,
+                onEnvironmentFilter = { filter -> store.updateSettings { it.copy(environmentFilter = filter) } })
         }
     }
 }
@@ -171,14 +176,18 @@ fun BoardWindowContent(
     modifier: Modifier = Modifier,
     usages: Map<TerminalId, SessionUsage> = emptyMap(),
     environments: Set<String>? = null,
+    onEnvironmentFilter: ((EnvironmentFilter) -> Unit)? = null,
 ) {
     var chosen by remember { mutableStateOf<ProjectId?>(null) }
-    // A project that was removed is not a filter any more.
-    val filter = chosen?.takeIf { id -> state.projects.any { it.id == id } }
+    val environmentFilter = state.settings.environmentFilter
+    // A project that was removed, or that the environment filter hides, is not a filter any more.
+    val filter = chosen?.takeIf { id -> state.shownProjects(environmentFilter).any { it.id == id } }
     val agentStates = remember(infos) { object : AgentStates { override fun stateOf(id: TerminalId) = infos[id]?.state ?: AgentState.IDLE } }
-    val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
+    val columns = remember(state.projects, infos, filter, environmentFilter) { state.board(filter, infos, environmentFilter) }
     Column(modifier.fillMaxSize()) {
-        BoardTabs(state, filter, { chosen = it }, states = agentStates)
-        AgentBoard(columns, handles, now, vertical, onOpen, Modifier.weight(1f), usages = usages, environments = environments)
+        BoardTabs(state, filter, { chosen = it }, states = agentStates, available = environments, onEnvironmentFilter = onEnvironmentFilter)
+        AgentBoard(columns, handles, now, vertical, onOpen, Modifier.weight(1f), usages = usages, environments = environments,
+            emptyBecauseOfFilter = environments?.let { state.emptyBoardMessage(it, columns, infos, filter) },
+            onShowAllEnvironments = onEnvironmentFilter?.let { change -> { change(EnvironmentFilter.NONE) } })
     }
 }

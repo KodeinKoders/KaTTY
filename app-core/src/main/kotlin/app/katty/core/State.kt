@@ -162,6 +162,7 @@ public enum class MainView {
  * its file.
  * @param environmentFolders The environments of the folders that projects are added under, which win over [defaultEnvironment] (see
  * [environmentForProject]).
+ * @param environmentFilter Which environments the lists of projects and the board show (see [EnvironmentFilter]). It is kept for the next launch.
  * @param updateCheck How often the application looks for a new version of itself (see [UpdatePolicy]: an organization may impose it).
  * @param updateAction What it does with one that it finds.
  */
@@ -203,6 +204,7 @@ public data class Settings(
     val defaultEnvironment: String? = null,
     val environmentColors: Map<String, String> = emptyMap(),
     val environmentFolders: List<EnvironmentFolder> = emptyList(),
+    val environmentFilter: EnvironmentFilter = EnvironmentFilter.NONE,
     val updateCheck: UpdateCheck = UpdateCheck.DAILY,
     val updateAction: UpdateAction = UpdateAction.INSTALL_ON_QUIT,
 ) {
@@ -305,15 +307,17 @@ public data class KattyState(
      * `null` when there is no workspace at all.
      */
     public fun workspaceStep(delta: Int): WorkspaceId? {
-        val all = projects.flatMap { it.workspaces }
+        // The workspaces that the environment filter hides are not stepped to.
+        val filter = settings.environmentFilter
+        val all = projects.flatMap { it.shownWorkspaces(filter) }
         if (all.isEmpty()) return null
         val current = all.indexOfFirst { it.id == selection.workspace }
         if (current >= 0) return all[Math.floorMod(current + delta, all.size)].id
         val project = projects.indexOfFirst { it.id == selection.project }
         return when {
-            delta >= 0 -> projects.drop(project + 1).flatMap { it.workspaces }.firstOrNull() ?: all.first()
+            delta >= 0 -> projects.drop(project + 1).flatMap { it.shownWorkspaces(filter) }.firstOrNull() ?: all.first()
             project < 0 -> all.last()
-            else -> projects.take(project).flatMap { it.workspaces }.lastOrNull() ?: all.last()
+            else -> projects.take(project).flatMap { it.shownWorkspaces(filter) }.lastOrNull() ?: all.last()
         }.id
     }
 
@@ -322,6 +326,8 @@ public data class KattyState(
      * ends. With none selected, the first (the last for a negative [delta]). `null` when there is no project.
      */
     public fun projectStep(delta: Int): ProjectId? {
+        // The projects that the environment filter hides are not stepped to.
+        val projects = shownProjects(settings.environmentFilter)
         if (projects.isEmpty()) return null
         val current = projects.indexOfFirst { it.id == selection.project }
         return if (current < 0) (if (delta >= 0) projects.first() else projects.last()).id else projects[Math.floorMod(current + delta, projects.size)].id
@@ -329,7 +335,8 @@ public data class KattyState(
 
     /** The workspace that the shortcut of [number] (from 1) goes to, in the selected project: the one at that place, and for 9 the last one, as tabs do. */
     public fun workspaceByNumber(number: Int): WorkspaceId? {
-        val workspaces = selectedProject?.workspaces.orEmpty()
+        // The numbers are the places among the workspaces that the environment filter shows, as the tabs have them.
+        val workspaces = selectedProject?.shownWorkspaces(settings.environmentFilter).orEmpty()
         return (if (number == LAST_NUMBER) workspaces.lastOrNull() else workspaces.getOrNull(number - 1))?.id
     }
 
@@ -342,11 +349,17 @@ public data class KattyState(
      * ([Project.lastWorkspace]). What was read from a file may not be consistent.
      */
     public fun normalized(): KattyState {
-        val project = selectedProject ?: projects.firstOrNull()
+        val selectedOrFirst = selectedProject ?: projects.firstOrNull()
         // The workspace that is selected, else the one that the project had selected last, else its first one.
-        val workspace = project?.workspaces?.let { workspaces ->
-            workspaces.firstOrNull { it.id == selection.workspace } ?: workspaces.firstOrNull { it.id == project.lastWorkspace } ?: workspaces.firstOrNull()
+        val chosen = selectedOrFirst?.workspaces?.let { workspaces ->
+            workspaces.firstOrNull { it.id == selection.workspace } ?: workspaces.firstOrNull { it.id == selectedOrFirst.lastWorkspace } ?: workspaces.firstOrNull()
         }
+        // A workspace that the environment filter hides is not selected: the nearest one that it shows is, in its project. When it shows none the
+        // selection stays where it is, and the window says so (see `EnvironmentFilter`).
+        val filter = settings.environmentFilter
+        val nearest = if (chosen != null && !filter.shows(chosen)) nearestShownWorkspace(filter, chosen.id) else null
+        val project = if (nearest != null) projects.first { p -> p.workspaces.any { it.id == nearest } } else selectedOrFirst
+        val workspace = if (nearest != null) project?.workspaces?.first { it.id == nearest } else chosen
         val terminals = workspace?.layout?.terminals().orEmpty()
         // The terminal that is selected, else the one that had the focus last in the workspace.
         val terminal = terminals.firstOrNull { it.id == selection.terminal } ?: workspace?.terminalToFocus()?.let { id -> terminals.firstOrNull { it.id == id } }

@@ -259,7 +259,7 @@ It is written to `state.json.tmp`, then moved over `state.json`.
 ** a file of a later version is moved to `state.json.version-<n>` and the state is empty;
 ** fields that the application does not know are ignored.
 * The application never writes over a file that it could not read.
-* Of the environments, the state only keeps names: the folders, the default one, the one of each project and workspace, and the color of the badges of each name; never a variable or a value.
+* Of the environments, the state only keeps names: the folders, the default one, the one of each project and workspace, the color of the badges of each name, and the ones that the filter hides (see <<environment-filter>>); never a variable or a value.
 * The window is kept apart, in `window.json` of the same folder (never in `state.json`, which it would make change at every move):
 ** its position and size as a floating window, in dp, and its mode: floating, maximized or full screen; a window that is minimized is not kept;
 ** while the window is maximized or full screen the position and size that are kept are the floating ones from before, which it goes back to when it is restored;
@@ -538,7 +538,7 @@ In teach mode a "Teaching ⌘⌥T" button, the same, stops it.
 === Horizontal layout
 
 * The project sidebar (272 px), on the left:
-** PROJECTS, with a button to add a project;
+** PROJECTS, with the buttons that open all the projects, that close them, that filter the environments (see <<environment-filter>>) and that add a project;
 ** a row for each project: a chevron, a folder icon, its name, and its counts;
 ** under each project that is open: its folder (with `~` for the home), its workspaces (each with a dot for each terminal's state, in the order of the tree), and "New workspace"; any number of projects are open at once, and a new project is open;
 ** a click on a closed project opens it and selects it, a click on an open project closes it, and the arrow at the left of a project does the same without selecting it;
@@ -546,6 +546,7 @@ In teach mode a "Teaching ⌘⌥T" button, the same, stops it.
 ** the usage of the agents at its bottom;
 ** it scrolls when the list is long.
 * Folded, it is a rail (56 px): a 36 px tile for each project with two letters (the first letters of its first two words, `api-gateway` is `AG`) and a badge of its most urgent state, a dashed tile to add a project, and the usage as percentages at the bottom.
+The filter button is at the top of the rail.
 A click on a tile selects the project, which takes the user to its first workspace only when it was another project (on the project of the selection nothing changes), and opens a panel (264 px) with its folder, its workspaces and "New workspace".
 * The workspace, on the right: a 40 px header (its name, "N terminals", Split right, Split down) above the tree of panes, with 8 px between panes.
 
@@ -555,7 +556,7 @@ The list does not scroll by itself while an item is dragged.
 
 === Vertical layout
 
-* A bar of project tabs (40 px), each with its name and counts, and a button to add a project at the right; it scrolls horizontally.
+* A bar of project tabs (40 px), each with its name and counts, and at the right the button that filters the environments (see <<environment-filter>>) and the button to add a project; it scrolls horizontally.
 * A bar of workspace tabs (40 px), each with the dots of its terminals and its name, the selected one with a 2 px line of the accent color under it; a button for a new workspace; behind a divider at the far right, Split down (the vertical split, first) and Split right.
 * The tree of panes, with every split turned.
 * The usage, in a bar at the bottom.
@@ -788,6 +789,28 @@ A tint of the palette has a light and a dark color; a hex is drawn as it is in b
 "standard" is always muted.
 * The list of the environments that exist is read when the application starts, when a window gets the focus, when a menu that lists them or the settings' page opens, and when the folders change.
 
+[#environment-filter]
+=== Filter
+
+* A button with a funnel, "Filter environments" in its tooltip, filters the lists of projects and the board by environment.
+It is next to the button that adds a project: in the header of the sidebar (and of the board's), at the right of the bar of project tabs of the vertical layout (and of the board's, and of the board window's), and at the top of the rail.
+There is none when no environment exists and no project or workspace has one (unless Standard was left hidden, so that it can be shown again).
+* Its menu has a check box for Standard (what has no environment) and one for each environment, with the color of its badge: the ones that exist, and the ones that a project or a workspace has without a file ("name (not found)", in red).
+A box that is checked is shown; all of them are at first.
+The menu stays open while boxes are checked, and so it does with "Show all" and "Hide all" (at the bottom), which check them all and uncheck them all, Standard too.
+* The button has a dot in the accent color while the filter hides one of the environments that the menu lists, and none otherwise.
+* The filter is on the environment of the workspaces, which is what its shells are started with (a workspace that has none is Standard, whatever its project has):
+** a workspace is listed when its environment is shown, and a project when one of its workspaces is, in the sidebar, the rail (and its panel) and the tabs of the vertical layout; its counts are of the workspaces that are listed;
+** the selected workspace is never one that is hidden: when the filter hides it (a box that is unchecked, "Hide all", or the environment of the workspace that was changed), the selection goes to the shown workspace that is nearest in the order of the sidebar (the projects, each with its workspaces), the next one when two are as near, in another project if need be, and its terminal that had the focus;
+** when the filter shows no workspace the selection stays where it is, and the area of the terminals says "No environment is shown" (or "No workspace in the environments that are shown") with a "Show all" button instead of the terminals, which go on running without being drawn; "Show all" brings the user back to the same workspace;
+** a card of the board is shown when the environment of its terminal's workspace is, and the counts, "N agents across M projects", the projects of the board's sidebar or tabs follow, with no exception for the selection;
+** when the filter leaves no project, the lists of projects (the sidebar and the tabs of the vertical layout, not the rail) say why, and so does the board when it has no card because of it (in the header of the main window and of the board window): "No environment is shown" when Standard and every environment are hidden, else "No project in the environments that are shown" and "No agent in the environments that are shown", each with a "Show all" button that shows every environment again.
+* It is one filter for the main window and the board window, and it is kept with the settings for the next launch: it keeps the names that are hidden, so that an environment that is found later is shown.
+* What is hidden is not gone to: the next and the previous workspace and project, ⌘⌥1…9 (their numbers are the places among the workspaces that are shown), the next terminal that needs the user (⌘⇧J), the bell and its count, the palette and the search in all the terminals do not list it.
+The shells of a workspace that is hidden go on running, and what an agent in it says is still told by its notice and its sound.
+* A project or a workspace that is made (a new workspace, a project that is added or opened again from the recent ones) shows its environment again when it was hidden, since it is made to be seen.
+Dragging a project or a workspace to another place of a list that is filtered puts it where the one at that place is.
+
 === Palette
 
 "Project environment: name" and "Workspace environment: name" for each environment that the selected project or workspace does not have, and "None".
@@ -830,6 +853,7 @@ In a column, the card that arrived in it first is at the top (the oldest first),
 Without a note, it says "At rest.", "Working.", "Waiting for you.", "Failed." or "Finished.".
 * It is titled "Agent board", with "N agents across M projects".
 * It is filtered by project: in the horizontal layout, a sidebar with "All projects" (with the number of agents) and each project with its counts; in the vertical layout, tabs.
+Both have the button that filters the environments (see <<environment-filter>>), which also filters the cards: the counts, "N agents across M projects" and the projects that are listed only have what it shows, and a project that it hides is no longer the filter of the board, which goes back to "All projects".
 * Cards cannot be moved; a click on a card goes to its terminal.
 * A button at the right of the header of the board (in the main window) opens the board in a window of its own, to keep on another screen:
 ** the window shows only the board, with the project tabs along the top as a filter of its own (independent of the main window's), the columns side by side or stacked according to its own shape, and no terminal; it has no such button;

@@ -52,6 +52,9 @@ import app.katty.core.projectsOffFolder
 import app.katty.core.projectsWithoutEnvironment
 import app.katty.screens.EnvironmentActions
 import app.katty.screens.EnvironmentControls
+import app.katty.screens.EmptyBecauseOfFilter
+import app.katty.screens.emptyBecauseOfFilter
+import app.katty.screens.emptyBoardMessage
 import app.katty.screens.RestartWorkspacesDialog
 import app.katty.core.KattyStore
 import app.katty.core.KattyState
@@ -64,6 +67,9 @@ import app.katty.core.TerminalId
 import app.katty.core.TerminalSpec
 import app.katty.core.attention
 import app.katty.core.terminalIdentity
+import app.katty.core.EnvironmentFilter
+import app.katty.core.environmentNames
+import app.katty.core.shownProjects
 import app.katty.core.board
 import app.katty.core.Ide
 import app.katty.core.WorkspaceId
@@ -330,6 +336,9 @@ internal fun KattyWindowContent(
         useProjectEnvironment = controller::useProjectEnvironment,
         openFolder = { controller.openEnvironmentsFolder() },
     )
+    // The filter of the environments: the lists of projects and the board follow it (see EnvironmentFilter).
+    val setEnvironmentFilter: (EnvironmentFilter) -> Unit = { filter -> store.updateSettings { it.copy(environmentFilter = filter) } }
+    val setEnvironmentFilterNone = { setEnvironmentFilter(EnvironmentFilter.NONE) }
     SideEffect { controller.environmentNames = environmentListing.names }
     // Seen: what a terminal finished or failed at stays until the user does something with it (types or clicks in it, or goes to it from the bell,
     // the board, the palette or a notice), not as soon as it is in front of them: coming back to the window shows it, and the bell must still say
@@ -357,13 +366,16 @@ internal fun KattyWindowContent(
     // And when what the sessions take of the settings changes: the cursor, bold text, the scrollback, and whether what they show is kept.
     val sessionSettings = listOf(settings.cursorShape, settings.cursorBlink, settings.boldIsBright, settings.scrollback, settings.restoreContents)
     LaunchedEffect(sessionsKey, sessionSettings) { registry.sync(store.state.value, dark) }
+    // The environment filter shows no workspace, and the selected one is one that it hides (it takes the selection to the nearest one that it shows,
+    // when there is one): its area says so instead of the terminals, which go on running without being drawn.
+    val selectedWorkspaceHidden = state.selectedWorkspace?.let { !settings.environmentFilter.shows(it) } == true
     // No terminal is on the screen while the board is.
-    val shown = if (settings.view == MainView.TERMINALS) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
+    val shown = if (settings.view == MainView.TERMINALS && !selectedWorkspaceHidden) state.selectedWorkspace?.layout?.terminals()?.map { it.id }?.toSet().orEmpty() else emptySet()
     LaunchedEffect(shown, handles) { controller.dropStaleFind() }
     LaunchedEffect(shown, handles.keys) { registry.setVisible(shown) }
     // The run terminal of each workspace that has one, and what the window does with the one of the workspace that is shown.
     val runTerminals by registry.runs.terminals.collectAsState()
-    val shownWorkspace = state.selection.workspace.takeIf { settings.view == MainView.TERMINALS }
+    val shownWorkspace = state.selection.workspace.takeIf { settings.view == MainView.TERMINALS && !selectedWorkspaceHidden }
     LaunchedEffect(shownWorkspace) { registry.runs.setVisible(shownWorkspace) }
     val selectedRun = state.selection.workspace?.let { runTerminals[it] }
     val runActions = RunActions(
@@ -528,6 +540,12 @@ internal fun KattyWindowContent(
                 val area: @Composable (Modifier, Boolean) -> Unit = { areaModifier, header ->
                     if (workspace == null) {
                         EmptyProject(areaModifier, onNewWorkspace = newWorkspace)
+                    } else if (selectedWorkspaceHidden) {
+                        EmptyBecauseOfFilter(
+                            emptyBecauseOfFilter(settings.environmentFilter.hidesAll(state.environmentNames(environmentListing.names)), "workspace"),
+                            setEnvironmentFilterNone,
+                            areaModifier,
+                        )
                     } else {
                         WorkspaceArea(
                             workspace = workspace,
@@ -591,24 +609,26 @@ internal fun KattyWindowContent(
                 }
                 val reveal: (ProjectId) -> Unit = controller::revealProject
                 if (settings.view == MainView.BOARD) {
-                    // A project that was removed is not a filter any more.
-                    val filter = boardFilter?.takeIf { id -> state.projects.any { it.id == id } }
-                    val columns = remember(state.projects, infos, filter) { state.board(filter, infos) }
-                    // "All projects" says how many agents there are whatever the filter is.
-                    val agentsOnBoard = remember(state.projects, infos) { state.board(null, infos).values.sumOf { it.size } }
+                    val environmentFilter = settings.environmentFilter
+                    // A project that was removed, or that the environment filter hides, is not a filter any more.
+                    val filter = boardFilter?.takeIf { id -> state.shownProjects(environmentFilter).any { it.id == id } }
+                    val columns = remember(state.projects, infos, filter, environmentFilter) { state.board(filter, infos, environmentFilter) }
+                    // "All projects" says how many agents there are whatever the project filter is, but not what the environment filter leaves out.
+                    val agentsOnBoard = remember(state.projects, infos, environmentFilter) { state.board(null, infos, environmentFilter).values.sumOf { it.size } }
                     val board: @Composable (Modifier) -> Unit = { boardModifier ->
-                        AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, usages = usages, modifier = boardModifier, onOpenWindow = onOpenBoardWindow, environments = environmentListing.names)
+                        AgentBoard(columns, handles, now, vertical, onOpen = openTerminal, usages = usages, modifier = boardModifier, onOpenWindow = onOpenBoardWindow, environments = environmentListing.names,
+                            emptyBecauseOfFilter = state.emptyBoardMessage(environmentListing.names, columns, infos, filter), onShowAllEnvironments = { setEnvironmentFilter(EnvironmentFilter.NONE) })
                     }
                     // Presentation mode shows the board alone, as it shows the terminals alone.
                     if (vertical) {
                         Column(Modifier.fillMaxSize()) {
-                            if (!controller.presenting) BoardTabs(state, filter, { boardFilter = it }, states = agentStates)
+                            if (!controller.presenting) BoardTabs(state, filter, { boardFilter = it }, states = agentStates, available = environmentListing.names, onEnvironmentFilter = setEnvironmentFilter)
                             board(Modifier.weight(1f))
                             if (!controller.presenting) usageBar()
                         }
                     } else {
                         Row(Modifier.fillMaxSize()) {
-                            if (!controller.presenting) BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() }, agents = agentsOnBoard)
+                            if (!controller.presenting) BoardSidebar(state, filter, { boardFilter = it }, states = agentStates, usage = { usageSection() }, agents = agentsOnBoard, available = environmentListing.names, onEnvironmentFilter = setEnvironmentFilter)
                             board(Modifier.weight(1f))
                         }
                     }
@@ -646,6 +666,7 @@ internal fun KattyWindowContent(
                             run = selectedRun,
                             runActions = runActions,
                             environments = environmentControls,
+                            environmentFilter = settings.environmentFilter,
                         )
                         area(Modifier.weight(1f).fillMaxWidth(), false)
                         if (!controller.presenting) usageBar()
