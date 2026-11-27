@@ -49,10 +49,15 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.katty.AppShortcut
 import app.katty.KeyBinding
+import app.katty.copyToClipboard
+import app.katty.readClipboard
+import app.katty.terminal.TerminalSession
+import app.katty.ui.KattyMenu
 import app.katty.core.AgentState
 import app.katty.core.AiAnswer
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
@@ -99,8 +104,11 @@ class RunActions(
     val onMinimize: () -> Unit = {},
     /** Asks the user before a paste that could run commands. */
     val confirmPaste: (suspend (String) -> Boolean)? = null,
-    /** Whether its find bar is open, and what closes it. */
+    /** Pastes into it from its right-click menu, which asks as [confirmPaste] does. */
+    val onPaste: (TerminalSession, String) -> Unit = { session, text -> session.paste(text) },
+    /** Whether its find bar is open, what opens it and what closes it. */
     val finding: Boolean = false,
+    val onFind: () -> Unit = {},
     val onFindClosed: () -> Unit = {},
 )
 
@@ -174,6 +182,8 @@ internal fun RunOverlay(
     val status = run.status()
     val session = run.session
     val ended = status.state != AgentState.WORKING
+    // Where its right-click menu is open, in the terminal; `null` while it is not.
+    var contextAt by remember { mutableStateOf<IntOffset?>(null) }
     // It has the keyboard when it is shown, and again when what had it is gone.
     LaunchedEffect(run.generation, session, focusTerminals, focusTick) {
         if (focusTerminals && session != null) {
@@ -231,9 +241,33 @@ internal fun RunOverlay(
                                 padding = PaddingValues(TERMINAL_PADDING),
                                 focusRequester = run.focus,
                                 focusOnStart = false,
+                                onContextMenu = { at -> contextAt = IntOffset(at.x.toInt(), at.y.toInt()) },
                                 confirmPaste = actions.confirmPaste,
                             )
                         }
+                    }
+                    contextAt?.let { at ->
+                        KattyMenu(
+                            runContextMenu(
+                                hasSelection = session.selectedText() != null,
+                                ended = ended,
+                                failed = status.state == AgentState.ERROR,
+                                actions = RunMenuActions(
+                                    copy = { session.selectedText()?.let(::copyToClipboard) },
+                                    paste = { readClipboard()?.let { actions.onPaste(session, it) } },
+                                    selectAll = session::selectAll,
+                                    find = actions.onFind,
+                                    clearScreen = session::clearScreen,
+                                    explain = actions.onExplain,
+                                    copyDirectory = { copyToClipboard(run.directory) },
+                                    restart = actions.onRestart,
+                                    minimize = actions.onMinimize,
+                                    stop = actions.onStop,
+                                ),
+                            ),
+                            onDismiss = { contextAt = null },
+                            offset = at,
+                        )
                     }
                     if (actions.finding) {
                         key(run.generation) {

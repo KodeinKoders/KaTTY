@@ -20,6 +20,8 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.rightClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -195,6 +197,36 @@ class KattyWindowContentTest {
         waitUntil(timeoutMillis = 15_000) { first.session!!.exited.value != null }
         assertEquals("sleep 30", registry.runs.terminals.value.getValue(workspace).command)
         onAllNodesWithContentDescription("Run terminal").assertCountEquals(1)
+    }
+
+    // A right click in the run terminal opens its menu, whose items act on it: Find… opens its find bar, Minimize puts it back in the header.
+    @Test
+    fun aRightClickInTheRunTerminalOpensItsMenu() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+        onNodeWithContentDescription("Run a command").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Command").performTextInput("sleep 30")
+        onNodeWithText("Run").performClick()
+        val workspace = state.selection.workspace!!
+        waitUntil(timeoutMillis = 15_000) { registry.runs.terminals.value[workspace]?.session != null }
+        waitForIdle()
+
+        onNodeWithContentDescription("Run terminal").performMouseInput { rightClick(center) }
+        waitForIdle()
+        onNodeWithText("Copy").assertExists()
+        onNodeWithText("Stop the run").assertExists()
+        onAllNodesWithText("Split right").assertCountEquals(0)
+        onNodeWithText("Find…").performClick()
+        waitForIdle()
+        onAllNodesWithContentDescription("Find in terminal").assertCountEquals(1)
+
+        onNodeWithContentDescription("Run terminal").performMouseInput { rightClick(center) }
+        waitForIdle()
+        onNodeWithText("Minimize the run terminal").performClick()
+        waitForIdle()
+        onAllNodesWithContentDescription("Run terminal").assertCountEquals(0)
+        assertTrue(registry.runs.terminals.value.getValue(workspace).session!!.exited.value == null, "Minimizing does not stop it")
     }
 
     // The text of the field of the question of the run.

@@ -272,4 +272,74 @@ class TerminalMenusTest {
         assertEquals(1, asked)
         assertTrue(entries(ai = false).none { "AI" in it.label })
     }
+
+    private fun runActions(explain: (() -> Unit)? = null) = RunMenuActions(
+        copy = { calls += "copy" },
+        paste = { calls += "paste" },
+        selectAll = { calls += "selectAll" },
+        find = { calls += "find" },
+        clearScreen = { calls += "clear" },
+        explain = explain,
+        copyDirectory = { calls += "copyDirectory" },
+        restart = { calls += "restart" },
+        minimize = { calls += "minimize" },
+        stop = { calls += "stop" },
+    )
+
+    // The run terminal's right click has the terminal's text items, then what its header does: no split, rename or move, since it is no pane.
+    @Test
+    fun theMenuOfTheRunTerminalIsItsTextThenWhatItsHeaderDoes() {
+        val entries = runContextMenu(hasSelection = true, ended = false, failed = false, runActions())
+
+        assertEquals(
+            listOf(
+                "Copy", "Paste", "Select all", "---", "Find…", "Clear screen and scrollback", "---", "Copy working directory", "---",
+                "Run the command again", "Minimize the run terminal", "Stop the run",
+            ),
+            entries.labels(),
+        )
+        for (label in listOf("Copy", "Paste", "Select all", "Find…", "Clear screen and scrollback", "Copy working directory", "Run the command again", "Minimize the run terminal", "Stop the run")) {
+            entries.action(label).onClick()
+        }
+        assertEquals(listOf("copy", "paste", "selectAll", "find", "clear", "copyDirectory", "restart", "minimize", "stop"), calls)
+    }
+
+    // Its items say the shortcuts that act on it while it is shown, and stopping it is the red one.
+    @Test
+    fun theMenuOfTheRunTerminalSaysItsShortcuts() {
+        val entries = runContextMenu(hasSelection = true, ended = false, failed = false, runActions())
+
+        assertEquals(app.katty.AppShortcut.RESTART_TERMINAL.label, entries.action("Run the command again").shortcut)
+        assertEquals(app.katty.AppShortcut.RUN_TOGGLE.label, entries.action("Minimize the run terminal").shortcut)
+        assertEquals(app.katty.AppShortcut.CLOSE_TERMINAL.label, entries.action("Stop the run").shortcut)
+        assertEquals(listOf("Stop the run"), entries.filterIsInstance<MenuAction>().filter { it.danger }.map { it.label })
+    }
+
+    // A command that has ended is not stopped: the run terminal is closed.
+    @Test
+    fun theRunTerminalWhoseCommandEndedIsClosedNotStopped() {
+        val labels = runContextMenu(hasSelection = true, ended = true, failed = false, runActions()).labels()
+
+        assertTrue("Close the run terminal" in labels)
+        assertFalse("Stop the run" in labels)
+    }
+
+    // Copy is for what is selected: it is there, disabled, when nothing is.
+    @Test
+    fun theRunTerminalCopiesOnlyASelection() {
+        assertFalse(runContextMenu(hasSelection = false, ended = false, failed = false, runActions()).action("Copy").enabled)
+        assertTrue(runContextMenu(hasSelection = true, ended = false, failed = false, runActions()).action("Copy").enabled)
+    }
+
+    // The AI is asked why the command failed, only once it has failed and while the AI is on.
+    @Test
+    fun theRunTerminalAsksTheAiWhyItsCommandFailed() {
+        var asked = 0
+        val failed = runContextMenu(hasSelection = false, ended = true, failed = true, runActions(explain = { asked++ }))
+        failed.action("Ask AI why it failed").onClick()
+        assertEquals(1, asked)
+
+        assertTrue(runContextMenu(hasSelection = false, ended = true, failed = false, runActions(explain = {})).labels().none { "AI" in it })
+        assertTrue(runContextMenu(hasSelection = false, ended = true, failed = true, runActions(explain = null)).labels().none { "AI" in it })
+    }
 }

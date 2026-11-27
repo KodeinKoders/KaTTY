@@ -386,7 +386,9 @@ internal fun KattyWindowContent(
         onExplain = aiCommand?.let { { state.selection.workspace?.let(controller::explainRunFailure) } },
         onMinimize = { state.selection.workspace?.let(controller::minimizeRun) },
         confirmPaste = controller::confirmPaste,
+        onPaste = controller::pasteInto,
         finding = selectedRun != null && controller.findingRun == selectedRun.workspace,
+        onFind = { selectedRun?.let { controller.findingRun = it.workspace } },
         onFindClosed = { controller.findingRun = null },
     )
     // A run whose command runs, as the dialogs that ask before closing list it with the terminals.

@@ -106,6 +106,51 @@ fun terminalContextMenu(hasSelection: Boolean, actions: ContextMenuActions, pane
     include(paneMenu)
 }
 
+/** What the menu of a right click in the run terminal does. */
+class RunMenuActions(
+    val copy: () -> Unit,
+    val paste: () -> Unit,
+    val selectAll: () -> Unit,
+    val find: () -> Unit,
+    val clearScreen: () -> Unit,
+    /** Asks the AI why its command failed; `null` while the AI is off. */
+    val explain: (() -> Unit)? = null,
+    val copyDirectory: () -> Unit,
+    /** Runs its command again, which asks first while it runs, as the shortcut does. */
+    val restart: () -> Unit,
+    val minimize: () -> Unit,
+    /** Stops its command, which asks first while it runs, or closes it once the command has ended. */
+    val stop: () -> Unit,
+)
+
+/**
+ * The menu of a right click in the run terminal: what is done with its text, as in a terminal's ([terminalContextMenu]), then what its header does,
+ * with the shortcuts that act on it while it is shown. It is no shell and no pane: nothing to split, rename or move, and no command line for the AI
+ * to give a command to.
+ *
+ * @param ended Whether its command has ended: then it is closed, else stopped.
+ * @param failed Whether its command failed: the AI can then be asked why.
+ */
+fun runContextMenu(hasSelection: Boolean, ended: Boolean, failed: Boolean, actions: RunMenuActions): List<MenuEntry> = menu {
+    action("Copy", TerminalKeys.COPY, enabled = hasSelection, onClick = actions.copy)
+    action("Paste", TerminalKeys.PASTE, onClick = actions.paste)
+    action("Select all", TerminalKeys.SELECT_ALL, onClick = actions.selectAll)
+    divider()
+    action("Find…", AppShortcut.FIND.label, onClick = actions.find)
+    action("Clear screen and scrollback", AppShortcut.CLEAR_SCREEN.label, onClick = actions.clearScreen)
+    if (failed) actions.explain?.let { explain ->
+        divider()
+        action(commandQuestionLabel(CommandQuestion.WHY_FAILED), onClick = explain)
+    }
+    divider()
+    action("Copy working directory", onClick = actions.copyDirectory)
+    divider()
+    action("Run the command again", AppShortcut.RESTART_TERMINAL.label, onClick = actions.restart)
+    action("Minimize the run terminal", AppShortcut.RUN_TOGGLE.label, onClick = actions.minimize)
+    if (ended) action("Close the run terminal", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.stop)
+    else action("Stop the run", AppShortcut.CLOSE_TERMINAL.label, danger = true, onClick = actions.stop)
+}
+
 /** What the item that asks the AI [question] about a command says. */
 fun commandQuestionLabel(question: CommandQuestion): String = when (question) {
     CommandQuestion.WHY_FAILED -> "Ask AI why it failed"
