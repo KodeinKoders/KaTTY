@@ -86,7 +86,7 @@ val PANE_GAP = 8.dp
  * @param infos What each terminal says it is doing: the header of a pane says it.
  * @param usages What the session of the agent in each terminal has used: the header says it too.
  * @param showHeader Whether the workspace has a header of its own: the vertical layout has tabs instead.
- * @param maximized The terminal that floats over the area of the workspace, with the others under a scrim.
+ * @param maximized The terminal that floats over the area of the workspace, with the others under a scrim: the one the workspace keeps ([Workspace.maximized]).
  * @param fontSize The size of the terminals' font: the setting's, or presentation mode's.
  * @param paneHeaders Whether each pane has its header: presentation mode shows only the terminals.
  * @param run The run terminal of the workspace, when it has one: the header says it, and it is over the panes while it is shown.
@@ -118,8 +118,9 @@ fun WorkspaceArea(
     // The run terminal that is shown has the keyboard: the panes under it do not take it.
     val runShown = run?.shown == true
     // What the floating pane is, while it grows from its place and while it goes back to it: it outlives `maximized` by the time of the way back.
-    var shown by remember(workspace.id) { mutableStateOf<TerminalId?>(null) }
-    val progress = remember(workspace.id) { Animatable(0f) }
+    // A workspace that the user comes back to shows the terminal that is maximized in it where it is, without growing it again.
+    var shown by remember(workspace.id) { mutableStateOf(maximized) }
+    val progress = remember(workspace.id) { Animatable(if (maximized != null) 1f else 0f) }
     LaunchedEffect(workspace.id, maximized) {
         if (maximized != null) {
             shown = maximized

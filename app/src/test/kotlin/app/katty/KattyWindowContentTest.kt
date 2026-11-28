@@ -704,7 +704,7 @@ class KattyWindowContentTest {
         waitForIdle()
         onNodeWithText("Maximize terminal").performClick()
         waitForIdle()
-        val maximized = state.selection.maximized
+        val maximized = state.maximized
         assertEquals(state.selectedWorkspace!!.layout.terminals().first().id, maximized)
 
         // The maximized pane is composed over the tree, after it.
@@ -714,7 +714,30 @@ class KattyWindowContentTest {
         onAllNodesWithText("Maximize terminal").assertCountEquals(0)
         onNodeWithText("Restore terminal").performClick()
         waitForIdle()
-        assertEquals(null, state.selection.maximized)
+        assertEquals(null, state.maximized)
+    }
+
+    // A workspace that the user comes back to shows the terminal that was maximized in it, maximized.
+    @Test
+    fun aWorkspaceShowsItsMaximizedTerminalWhenTheUserComesBack() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+        val first = state.selection.workspace!!
+        val terminal = state.selection.terminal!!
+        store.split(terminal, app.katty.core.SplitDirection.ROW)
+        store.maximize(terminal)
+        waitForIdle()
+        onNodeWithContentDescription("Restore pane").assertExists()
+        val other = store.addWorkspace(state.selection.project!!, "other")!!
+
+        store.selectWorkspace(other)
+        waitForIdle()
+        onAllNodesWithContentDescription("Restore pane").assertCountEquals(0)
+        store.selectWorkspace(first)
+        waitForIdle()
+
+        onNodeWithContentDescription("Restore pane").assertExists()
+        assertEquals(terminal, state.maximized)
     }
 
     // Only the terminals, in a bigger font, and the keys that are pressed, never what is typed; a click on the title bar's button ends it.

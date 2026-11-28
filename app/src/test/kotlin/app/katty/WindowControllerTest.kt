@@ -112,7 +112,7 @@ class WindowControllerTest {
         handlers.closeTerminal()
         handlers.focusPane(Direction.LEFT)
 
-        assertNull(state.selection.maximized, "Maximized a terminal that is not shown")
+        assertNull(state.maximized, "Maximized a terminal that is not shown")
         assertNull(controller.findingTerminal, "Opened a find bar that is not shown")
         assertEquals(terminals, state.selectedWorkspace!!.layout.terminals().size, "Split or closed a terminal that is not shown")
         assertEquals(focused, terminal, "Moved the focus between panes that are not shown")
@@ -123,7 +123,7 @@ class WindowControllerTest {
         val handlers = controller.paletteHandlers()
 
         handlers.maximize()
-        assertEquals(terminal, state.selection.maximized)
+        assertEquals(terminal, state.maximized)
         handlers.find()
         assertEquals(terminal, controller.findingTerminal)
     }
@@ -132,12 +132,12 @@ class WindowControllerTest {
     fun aDialogSwallowsTheShortcutsAndThePaletteLetsOnlyItsOwnThrough() {
         controller.closingTerminal = terminal
         assertTrue(controller.handle(AppShortcut.MAXIMIZE, null), "A shortcut under a dialog is consumed")
-        assertNull(state.selection.maximized, "and does nothing")
+        assertNull(state.maximized, "and does nothing")
         controller.closingTerminal = null
 
         controller.paletteOpen = true
         assertTrue(controller.handle(AppShortcut.MAXIMIZE, null))
-        assertNull(state.selection.maximized)
+        assertNull(state.maximized)
         assertTrue(controller.handle(AppShortcut.PALETTE, null))
         assertFalse(controller.paletteOpen, "The palette's shortcut closes it")
     }
@@ -151,7 +151,7 @@ class WindowControllerTest {
         assertEquals(0, controller.settingsFocusTick)
 
         controller.handle(AppShortcut.MAXIMIZE, null)
-        assertEquals(terminal, state.selection.maximized, "The main window's shortcuts still act")
+        assertEquals(terminal, state.maximized, "The main window's shortcuts still act")
         controller.handle(AppShortcut.SETTINGS, null)
         assertTrue(controller.settingsOpen, "Asked again, it stays open")
         assertEquals(1, controller.settingsFocusTick, "and comes to the front")
@@ -178,7 +178,7 @@ class WindowControllerTest {
         assertTrue(controller.handle(AppShortcut.MAXIMIZE, null))
         assertTrue(controller.handle(AppShortcut.FIND, null))
 
-        assertNull(state.selection.maximized)
+        assertNull(state.maximized)
         assertNull(controller.findingTerminal)
     }
 

@@ -214,14 +214,29 @@ class StateFileTest {
         assertEquals(state, file.load())
     }
 
+    // What is maximized is kept in memory only: a launch starts with nothing maximized.
     @Test
     fun theTerminalThatIsMaximizedIsNotKept() {
         val state = built()
-        val maximized = state.copy(selection = state.selection.copy(maximized = state.selection.terminal))
+        val maximized = state.copy(projects = state.projects.map { project ->
+            project.copy(workspaces = project.workspaces.map { it.copy(maximized = it.layout.terminals().first().id) })
+        })
+        assertEquals(state.selection.terminal, maximized.maximized)
 
         file.save(maximized)
 
+        assertFalse(path.readText().contains("maximized"))
         assertEquals(state, file.load())
+    }
+
+    // A file of a version that kept the maximized terminal in the selection (and wrote it as null) is still read.
+    @Test
+    fun theMaximizedTerminalOfAnOlderSelectionIsIgnored() {
+        file.save(built())
+        path.writeText(path.readText().replace("\"selection\": {", "\"selection\": {\n        \"maximized\": null,"))
+        assertTrue(path.readText().contains("\"maximized\": null"))
+
+        assertEquals(built(), file.load())
     }
 
     @Test

@@ -341,7 +341,7 @@ fun paletteCommands(
         command("split-down", "Split down", split.downShortcut, handlers.splitDown)
         command("rename-terminal", "Rename terminal", AppShortcut.RENAME_TERMINAL.label, handlers.renameTerminal)
         command("restart-terminal", "Restart terminal", AppShortcut.RESTART_TERMINAL.label, handlers.restartTerminal)
-        command("maximize", if (state.selection.maximized == null) "Maximize terminal" else "Restore terminal", AppShortcut.MAXIMIZE.label, handlers.maximize)
+        command("maximize", if (state.maximized == null) "Maximize terminal" else "Restore terminal", AppShortcut.MAXIMIZE.label, handlers.maximize)
         command("color-scheme", "Change the color scheme of the terminal", action = handlers.colorScheme)
         if (selectedTerminal?.terminal?.name != null) command("process-name", "Use process name for the terminal", action = handlers.useProcessName)
         command("copy-directory", "Copy working directory", action = handlers.copyDirectory)

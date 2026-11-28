@@ -587,7 +587,7 @@ internal fun KattyWindowContent(
                                 onInteraction = interacted,
                                 onExportHistory = controller::exportHistory,
                             ),
-                            maximized = state.selection.maximized,
+                            maximized = state.maximized,
                             font = font,
                             // Presentation mode has a font of its own, and only the terminals: no header over them.
                             fontSize = if (controller.presenting) controller.presentationFontSize else settings.fontSize,

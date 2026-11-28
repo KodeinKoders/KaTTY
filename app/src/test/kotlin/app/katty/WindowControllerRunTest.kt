@@ -158,7 +158,7 @@ class WindowControllerRunTest {
         assertTrue(runs.terminals.value.getValue(workspace).shown)
         controller.handle(AppShortcut.MAXIMIZE, null)
         assertFalse(runs.terminals.value.getValue(workspace).shown)
-        assertNull(state.selection.maximized, "No pane was maximized")
+        assertNull(state.maximized, "No pane was maximized")
     }
 
     @Test

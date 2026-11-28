@@ -87,7 +87,7 @@ class WorkspaceAreaTest {
                 val workspace = state.selectedWorkspace
                 if (workspace != null) {
                     WorkspaceArea(
-                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = !overlay, maximized = state.selection.maximized, infos = infos,
+                        workspace, state.selection.terminal, handles, state.settings, store, flipped = false, focusTerminals = !overlay, maximized = state.maximized, infos = infos,
                         actions = PaneActions(
                             renaming = renaming,
                             onRename = { renaming = it },
@@ -576,10 +576,10 @@ class WorkspaceAreaTest {
         onAllNodesWithContentDescription("Maximize pane")[0].performClick()
         waitForIdle()
 
-        assertEquals(first, store.state.value.selection.maximized)
+        assertEquals(first, store.state.value.maximized)
         onNodeWithContentDescription("Restore pane").performClick()
         waitForIdle()
-        assertEquals(null, store.state.value.selection.maximized)
+        assertEquals(null, store.state.value.maximized)
         assertEquals(2, onAllNodesWithContentDescription("Maximize pane").fetchSemanticsNodes().size)
     }
 

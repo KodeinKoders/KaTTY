@@ -847,7 +847,7 @@ internal class WindowController(
 
     fun maximize() {
         val terminal = state.selection.terminal ?: return
-        store.maximize(if (state.selection.maximized == null) terminal else null)
+        store.maximize(if (state.maximized == null) terminal else null)
     }
 
     fun openProjectIn(id: ProjectId, ide: Ide) {

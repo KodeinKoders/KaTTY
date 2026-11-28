@@ -502,14 +502,85 @@ class KattyStoreTest {
         val b = store.split(a, SplitDirection.ROW)!!
 
         store.maximize(a)
-        assertEquals(a, state.selection.maximized)
+        assertEquals(a, state.maximized)
         assertEquals(a, state.selection.terminal)
         store.focus(b)
-        assertNull(state.selection.maximized)
+        assertNull(state.maximized)
         store.maximize(b)
         store.maximize(null)
-        assertNull(state.selection.maximized)
+        assertNull(state.maximized)
         assertEquals(b, state.selection.terminal)
+    }
+
+    // A workspace keeps its maximized terminal while another one is selected, and has it again when it is selected again.
+    @Test
+    fun aWorkspaceIsStillMaximizedWhenTheUserComesBackToIt() {
+        addProject()
+        val first = workspace.id
+        val a = state.selection.terminal!!
+        store.split(a, SplitDirection.ROW)
+        store.maximize(a)
+        val other = store.addWorkspace(state.projects.single().id, "other")!!
+
+        store.selectWorkspace(other)
+        assertNull(state.maximized, "The other workspace has nothing maximized")
+        store.selectWorkspace(first)
+
+        assertEquals(a, state.maximized)
+    }
+
+    // Opening a terminal of another workspace (the bell, the board, the palette) leaves the maximized terminal of this one; opening a terminal under
+    // the scrim of its own workspace puts that workspace's back, so that it is seen.
+    @Test
+    fun focusingATerminalPutsBackOnlyTheMaximizedTerminalOfItsOwnWorkspace() {
+        addProject()
+        val first = workspace.id
+        val a = state.selection.terminal!!
+        val b = store.split(a, SplitDirection.ROW)!!
+        store.maximize(a)
+        val other = store.addWorkspace(state.projects.single().id, "other")!!
+        store.selectWorkspace(other)
+        val c = state.selection.terminal!!
+        val d = store.split(c, SplitDirection.ROW)!!
+        store.maximize(c)
+
+        store.focus(a)
+        assertEquals(a, state.maximized)
+        store.focus(d)
+        assertNull(state.maximized, "The terminal that was opened is under the scrim")
+        store.selectWorkspace(first)
+        assertEquals(a, state.maximized)
+        store.focus(b)
+        assertNull(state.maximized)
+    }
+
+    @Test
+    fun aMaximizedTerminalThatIsMovedAwayIsNoLongerMaximized() {
+        addProject()
+        val first = workspace.id
+        val a = state.selection.terminal!!
+        store.split(a, SplitDirection.ROW)
+        store.maximize(a)
+        val other = store.addWorkspace(state.projects.single().id, "other")!!
+
+        store.moveTerminal(a, other)
+        store.selectWorkspace(other)
+        assertNull(state.maximized)
+        store.selectWorkspace(first)
+        assertNull(state.maximized)
+    }
+
+    @Test
+    fun aClosedMaximizedTerminalThatIsReopenedIsNotMaximized() {
+        addProject()
+        val a = state.selection.terminal!!
+        val b = store.split(a, SplitDirection.ROW)!!
+        store.maximize(b)
+        store.closeTerminal(b)
+
+        store.reopenClosed()
+
+        assertNull(state.maximized)
     }
 
     @Test
@@ -521,7 +592,7 @@ class KattyStoreTest {
 
         store.closeTerminal(b)
 
-        assertNull(state.selection.maximized)
+        assertNull(state.maximized)
     }
 
     @Test
@@ -548,10 +619,12 @@ class KattyStoreTest {
 
     @Test
     fun theSelectionIsMadeToPointAtSomethingWhenTheStateIsBuiltFromAnInconsistentOne() {
-        val project = Project(ProjectId("p"), "p", "/p", listOf(Workspace(WorkspaceId("w"), "w", PaneNode.Leaf(TerminalSpec(TerminalId("t"), directory = "/p")))))
-        val built = KattyStore(KattyState(projects = listOf(project), selection = Selection(ProjectId("gone"), WorkspaceId("gone"), TerminalId("gone"), TerminalId("gone"))))
+        val workspace = Workspace(WorkspaceId("w"), "w", PaneNode.Leaf(TerminalSpec(TerminalId("t"), directory = "/p")), maximized = TerminalId("gone"))
+        val project = Project(ProjectId("p"), "p", "/p", listOf(workspace))
+        val built = KattyStore(KattyState(projects = listOf(project), selection = Selection(ProjectId("gone"), WorkspaceId("gone"), TerminalId("gone"))))
 
         assertEquals(Selection(ProjectId("p"), WorkspaceId("w"), TerminalId("t")), built.state.value.selection)
+        assertNull(built.state.value.projects.single().workspaces.single().maximized)
     }
 
     @Test

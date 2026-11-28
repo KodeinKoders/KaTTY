@@ -2,6 +2,7 @@ package app.katty.core
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /** What identifies a project. Ids are made up when what they identify is created, and kept as long as it is. */
 @Serializable
@@ -56,6 +57,9 @@ public data class Project(
  * is offered; `null` when it ran none. The run terminal itself is not kept: its program cannot outlive the application.
  * @param environment The name of the environment (see [Environments]) that its shells are given, `null` for none: its project's when it was made.
  * It is what its shells were started with, so it only changes when they are started again; it can then differ from its project's.
+ * @param maximized The terminal that is maximized over its area, `null` for none. It stays while other workspaces are selected, so that the
+ * workspace is as it was left when the user comes back to it, and **only in memory**: it is never written (`@Transient`), so a launch starts with
+ * nothing maximized.
  */
 @Serializable
 public data class Workspace(
@@ -66,6 +70,7 @@ public data class Workspace(
     val ide: String? = null,
     val runCommand: String? = null,
     val environment: String? = null,
+    @Transient val maximized: TerminalId? = null,
 )
 
 /** The command that the run of the workspace [id] is offered: the last one it ran, else the last one its project ran, else none. */

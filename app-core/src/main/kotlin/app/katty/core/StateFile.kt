@@ -52,7 +52,7 @@ public class StateFile(private val path: Path) {
         return try {
             // The settings of an older file are read into what they are now: its one color scheme into the light and the dark ones.
             JSON.decodeFromString(KattyState.serializer(), text)
-                .let { it.copy(selection = it.selection.copy(maximized = null), settings = it.settings.migrated()) }.normalized()
+                .let { it.copy(settings = it.settings.migrated()) }.normalized()
         } catch (e: SerializationException) {
             logger.error("{} cannot be read", path, e)
             keepAside("damaged")
@@ -63,7 +63,7 @@ public class StateFile(private val path: Path) {
     }
 
     /**
-     * Writes [state], replacing what is there. The selection's maximized terminal is not written: it is not for the next launch. One write at a
+     * Writes [state], replacing what is there. What is maximized is not written ([Workspace.maximized]): it is not for the next launch. One write at a
      * time: the debounced one and the flush of the quit are on two threads.
      */
     @Synchronized
@@ -72,7 +72,7 @@ public class StateFile(private val path: Path) {
             logger.warn("Not writing {}: what was there could not be kept aside", path)
             return
         }
-        writeAtomically(path, JSON.encodeToString(KattyState.serializer(), state.copy(selection = state.selection.copy(maximized = null))))
+        writeAtomically(path, JSON.encodeToString(KattyState.serializer(), state))
     }
 
     // Moves the file to a name that says why, and starts empty.

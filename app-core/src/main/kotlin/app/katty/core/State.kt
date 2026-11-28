@@ -256,15 +256,14 @@ public data class EnvironmentFolder(val folder: String, val environment: String?
 public fun usageKey(agent: Agent, label: String): String = "${agent.id}/$label"
 
 /**
- * What is selected: one project, one workspace of it and one terminal of that has the focus. A terminal can be maximized over the
- * workspace's area; that is not kept for the next launch.
+ * What is selected: one project, one workspace of it and one terminal of that has the focus. What is maximized is the workspace's
+ * ([Workspace.maximized]).
  */
 @Serializable
 public data class Selection(
     val project: ProjectId? = null,
     val workspace: WorkspaceId? = null,
     val terminal: TerminalId? = null,
-    val maximized: TerminalId? = null,
 )
 
 /**
@@ -284,6 +283,9 @@ public data class KattyState(
 
     /** The selected workspace, `null` when there is none. */
     val selectedWorkspace: Workspace? get() = selectedProject?.workspaces?.firstOrNull { it.id == selection.workspace }
+
+    /** The terminal that is maximized over the selected workspace ([Workspace.maximized]), `null` when none is. */
+    val maximized: TerminalId? get() = selectedWorkspace?.maximized
 
     /** Where a terminal is, with its workspace and its project. */
     public data class Location(val project: Project, val workspace: Workspace, val terminal: TerminalSpec)
@@ -345,8 +347,8 @@ public data class KattyState(
 
     /**
      * The state with a selection that points at something: the project, workspace and terminal that are not there are replaced by the
-     * first one that is, and a maximized terminal that is not in the selected workspace is put back, and the project keeps its selected workspace
-     * ([Project.lastWorkspace]). What was read from a file may not be consistent.
+     * first one that is, a workspace's maximized terminal that is not in it any more (closed, moved away) is forgotten, and the project keeps its
+     * selected workspace ([Project.lastWorkspace]). What was read from a file may not be consistent.
      */
     public fun normalized(): KattyState {
         val selectedOrFirst = selectedProject ?: projects.firstOrNull()
@@ -364,9 +366,8 @@ public data class KattyState(
         // The terminal that is selected, else the one that had the focus last in the workspace.
         val terminal = terminals.firstOrNull { it.id == selection.terminal } ?: workspace?.terminalToFocus()?.let { id -> terminals.firstOrNull { it.id == id } }
             ?: terminals.firstOrNull()
-        val maximized = selection.maximized?.takeIf { id -> terminals.any { it.id == id } }
-        val normalized = Selection(project?.id, workspace?.id, terminal?.id, maximized)
-        val result = if (normalized == selection) this else copy(selection = normalized)
+        val normalized = Selection(project?.id, workspace?.id, terminal?.id)
+        val result = (if (normalized == selection) this else copy(selection = normalized)).withoutStaleMaximized()
         // Every change comes through here, so a project always keeps the workspace that is selected in it, however it got selected (chosen, added,
         // found again after the one that was selected was closed): the one that it is selected at again.
         return if (project != null && workspace != null && project.lastWorkspace != workspace.id) {
@@ -374,6 +375,13 @@ public data class KattyState(
         } else {
             result
         }
+    }
+
+    // A workspace's maximized terminal that is not in it any more: copied only when there is one, since every change comes through here.
+    private fun withoutStaleMaximized(): KattyState {
+        fun Workspace.stale() = maximized != null && layout.terminals().none { it.id == maximized }
+        if (projects.none { project -> project.workspaces.any { it.stale() } }) return this
+        return copy(projects = projects.map { project -> project.copy(workspaces = project.workspaces.map { if (it.stale()) it.copy(maximized = null) else it }) })
     }
 
     public companion object {

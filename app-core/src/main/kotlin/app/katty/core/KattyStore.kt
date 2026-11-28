@@ -374,15 +374,16 @@ public class KattyStore(
             // Its workspace alone with it, for when the workspace is gone by the time it is opened again.
             item = ClosedItem(
                 location.project.id, location.project.workspaces.indexOfFirst { it.id == location.workspace.id },
-                location.workspace.copy(layout = PaneNode.Leaf(location.terminal), focused = id), location.workspace.layout.placeOf(id), at,
+                location.workspace.copy(layout = PaneNode.Leaf(location.terminal), focused = id, maximized = null), location.workspace.layout.placeOf(id), at,
             )
             val neighbours = location.workspace.layout.terminals()
             val index = neighbours.indexOfFirst { it.id == id }
             val survivors = remaining.terminals()
             // The focus goes to the one that was next to it in the tree: the one before, else the one after.
             val focus = survivors.firstOrNull { it.id == neighbours.getOrNull(index - 1)?.id } ?: survivors.first()
-            val selection = if (state.selection.workspace == location.workspace.id) state.selection.copy(terminal = focus.id, maximized = state.selection.maximized.takeIf { it != id }) else state.selection
-            state.mapWorkspaces { if (it.id == location.workspace.id) it.copy(layout = remaining) else it }.copy(selection = selection)
+            val selection = if (state.selection.workspace == location.workspace.id) state.selection.copy(terminal = focus.id) else state.selection
+            state.mapWorkspaces { if (it.id == location.workspace.id) it.copy(layout = remaining, maximized = it.maximized.takeIf { m -> m != id }) else it }
+                .copy(selection = selection)
         }
         item?.let(::remember)
         return result
@@ -514,7 +515,8 @@ public class KattyStore(
             val joined = PaneNode.Split(splitId, SplitDirection.ROW, 0.5f, target.second.layout, PaneNode.Leaf(from.terminal))
             current.mapWorkspaces {
                 when (it.id) {
-                    target.second.id -> it.copy(layout = joined)
+                    // It has the focus there: a terminal maximized over the workspace would hide it.
+                    target.second.id -> it.copy(layout = joined, maximized = null)
                     from.workspace.id -> if (source == null) null else it.copy(layout = source)
                     else -> it
                 }
@@ -563,17 +565,19 @@ public class KattyStore(
     public fun focus(id: TerminalId) {
         edit { state ->
             val location = state.locate(id) ?: return@edit state
-            val keepsMaximized = state.selection.maximized == id
-            state.rememberingFocus(location, id).copy(selection = Selection(location.project.id, location.workspace.id, id, maximized = if (keepsMaximized) id else null))
+            // A terminal under the scrim of its workspace is put in view; the other workspaces keep what is maximized in them.
+            val shown = state.withMaximized(location.workspace.id, location.workspace.maximized.takeIf { it == id })
+            shown.rememberingFocus(shown.locate(id)!!, id).copy(selection = Selection(location.project.id, location.workspace.id, id))
         }
     }
 
     /** Maximizes the terminal over the area of its workspace, which focuses it; `null` puts it back. */
     public fun maximize(id: TerminalId?) {
         edit { state ->
-            if (id == null) return@edit state.copy(selection = state.selection.copy(maximized = null))
+            if (id == null) return@edit state.selection.workspace?.let { state.withMaximized(it, null) } ?: state
             val location = state.locate(id) ?: return@edit state
-            state.rememberingFocus(location, id).copy(selection = Selection(location.project.id, location.workspace.id, id, maximized = id))
+            val maximized = state.withMaximized(location.workspace.id, id)
+            maximized.rememberingFocus(maximized.locate(id)!!, id).copy(selection = Selection(location.project.id, location.workspace.id, id))
         }
     }
 
@@ -610,6 +614,11 @@ private fun workspaceName(existing: List<Workspace>): String {
     if ("workspace" !in names) return "workspace"
     return generateSequence(2) { it + 1 }.map { "workspace $it" }.first { it !in names }
 }
+
+// The state where [workspace] has [maximized] maximized over it: the same state when it already has.
+private fun KattyState.withMaximized(workspace: WorkspaceId, maximized: TerminalId?): KattyState =
+    if (projects.any { project -> project.workspaces.any { it.id == workspace && it.maximized == maximized } }) this
+    else mapWorkspaces { if (it.id == workspace) it.copy(maximized = maximized) else it }
 
 // The state with [change] applied to every workspace; a workspace for which it gives `null` is removed.
 private fun KattyState.mapWorkspaces(change: (Workspace) -> Workspace?): KattyState =
