@@ -27,6 +27,13 @@ class TerminalMenuActions(
     val useProcessName: (() -> Unit)? = null,
     val splitRight: () -> Unit,
     val splitDown: () -> Unit,
+    /**
+     * Maximizes the terminal over its workspace, or puts it back when [maximized]; `null` when it is alone in its workspace, with nothing to be
+     * maximized over, as the button of its header.
+     */
+    val maximize: (() -> Unit)? = null,
+    /** Whether the terminal is the one that is maximized: the item then puts it back. */
+    val maximized: Boolean = false,
     val moveTo: (WorkspaceId) -> Unit,
     val colorScheme: () -> Unit,
     val copyDirectory: () -> Unit,
@@ -38,7 +45,7 @@ class TerminalMenuActions(
 )
 
 /**
- * The menu that the header of a pane opens: renaming, splitting, moving to another workspace, copying where the shell is, restarting, closing.
+ * The menu that the header of a pane opens: renaming, splitting, maximizing, moving to another workspace, copying where the shell is, restarting, closing.
  *
  * @param destinations The other workspaces of the terminal's project. There is no entry to move to when there are none.
  * @param colorSchemeHint What the terminal's color scheme is: `Default`, or the name of the one that it has.
@@ -52,6 +59,9 @@ fun terminalMenu(destinations: List<WorkspaceChoice>, colorSchemeHint: String, a
     divider()
     action("Split right", split.rightShortcut, onClick = actions.splitRight)
     action("Split down", split.downShortcut, onClick = actions.splitDown)
+    actions.maximize?.let { maximize ->
+        action(if (actions.maximized) "Restore terminal" else "Maximize terminal", AppShortcut.MAXIMIZE.label, onClick = maximize)
+    }
     divider()
     if (destinations.isNotEmpty()) {
         submenu("Move to workspace") {

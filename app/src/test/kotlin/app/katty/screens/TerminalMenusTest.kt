@@ -114,6 +114,35 @@ class TerminalMenusTest {
         assertEquals(listOf("rename", "splitRight", "splitDown", "copyDirectory", "exportHistory", "restart", "close"), calls)
     }
 
+    // As the button of its header: next to the splits, with the shortcut, and not for a terminal alone in its workspace.
+    @Test
+    fun aTerminalIsMaximizedFromItsMenu() {
+        val maximizable = TerminalMenuActions(
+            rename = {}, splitRight = {}, splitDown = {}, maximize = { calls += "maximize" }, moveTo = {}, colorScheme = {}, copyDirectory = {}, restart = {}, close = {},
+        )
+
+        val entries = terminalMenu(emptyList(), "Default", maximizable)
+
+        assertEquals(listOf("Split right", "Split down", "Maximize terminal", "---"), entries.labels().drop(2).take(4))
+        assertEquals("⌘⇧↩", entries.action("Maximize terminal").shortcut)
+        entries.action("Maximize terminal").onClick()
+        assertEquals(listOf("maximize"), calls)
+        assertFalse(terminalMenu(emptyList(), "Default", menuActions).labels().contains("Maximize terminal"))
+    }
+
+    @Test
+    fun theMaximizedTerminalIsPutBackFromItsMenu() {
+        val maximized = TerminalMenuActions(
+            rename = {}, splitRight = {}, splitDown = {}, maximize = { calls += "restore" }, maximized = true, moveTo = {}, colorScheme = {}, copyDirectory = {}, restart = {}, close = {},
+        )
+
+        val entries = terminalMenu(emptyList(), "Default", maximized)
+
+        assertFalse(entries.labels().contains("Maximize terminal"))
+        entries.action("Restore terminal").onClick()
+        assertEquals(listOf("restore"), calls)
+    }
+
     @Test
     fun aTerminalWithANameOfItsOwnCanGoBackToTheNameOfItsProcess() {
         val withName = TerminalMenuActions(

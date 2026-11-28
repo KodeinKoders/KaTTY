@@ -688,6 +688,35 @@ class KattyWindowContentTest {
     private fun press(key: Key, meta: Boolean = false, alt: Boolean = false, ctrl: Boolean = false) =
         keys.handle(KeyEvent(key = key, type = KeyEventType.KeyDown, isMetaPressed = meta, isAltPressed = alt, isCtrlPressed = ctrl))
 
+    // The menu of a pane maximizes it, and the menu of the maximized one puts it back; a terminal alone in its workspace has nothing to be maximized over.
+    @Test
+    fun aPaneIsMaximizedAndPutBackFromItsMenu() = runComposeUiTest {
+        store.addProject(directories.support.toString())
+        showWindow()
+        onNodeWithContentDescription("Pane menu").performClick()
+        waitForIdle()
+        onAllNodesWithText("Maximize terminal").assertCountEquals(0)
+        onNodeWithText("Split right").performClick()
+        waitForIdle()
+        assertEquals(2, state.selectedWorkspace!!.layout.terminals().size)
+
+        onAllNodesWithContentDescription("Pane menu")[0].performClick()
+        waitForIdle()
+        onNodeWithText("Maximize terminal").performClick()
+        waitForIdle()
+        val maximized = state.selection.maximized
+        assertEquals(state.selectedWorkspace!!.layout.terminals().first().id, maximized)
+
+        // The maximized pane is composed over the tree, after it.
+        onNodeWithContentDescription("Restore pane").assertExists()
+        onAllNodesWithContentDescription("Pane menu").onLast().performClick()
+        waitForIdle()
+        onAllNodesWithText("Maximize terminal").assertCountEquals(0)
+        onNodeWithText("Restore terminal").performClick()
+        waitForIdle()
+        assertEquals(null, state.selection.maximized)
+    }
+
     // Only the terminals, in a bigger font, and the keys that are pressed, never what is typed; a click on the title bar's button ends it.
     @Test
     fun presentationModeShowsOnlyTheTerminalsAndTheKeysThatArePressed() = runComposeUiTest {

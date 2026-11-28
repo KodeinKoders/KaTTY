@@ -182,6 +182,13 @@ internal fun PaneView(spec: TerminalSpec, context: PaneContext, floating: Boolea
                     useProcessName = if (spec.name != null) ({ context.store.renameTerminal(spec.id, null) }) else null,
                     splitRight = { context.store.splitVisually(spec.id, right = true, flipped = context.flipped) },
                     splitDown = { context.store.splitVisually(spec.id, right = false, flipped = context.flipped) },
+                    // As the button of the header: the maximized one is put back, and a terminal alone in its workspace has nothing to be maximized over.
+                    maximize = when {
+                        floating -> ({ context.store.maximize(null) })
+                        context.workspace.layout.terminals().size > 1 -> ({ context.store.maximize(spec.id) })
+                        else -> null
+                    },
+                    maximized = floating,
                     moveTo = { context.actions.onMove(spec.id, it) },
                     copyDirectory = { copyToClipboard(spec.directory) },
                     exportHistory = { context.actions.onExportHistory(spec.id) },
